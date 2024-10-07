@@ -10,13 +10,18 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import Link from 'next/link';
+import { signOutAction } from '@/app/actions';
+import { createClient } from "@/utils/supabase/server";
 
 export async function User() {
-//   let session = await auth();
-//   let user = session?.user;
+  const {
+    data: { user },
+  } = await createClient().auth.getUser();
 
   return (
-    <DropdownMenu>
+    <div className="flex items-center gap-2">
+      Hey, {user?.email}!
+      <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
@@ -42,17 +47,15 @@ export async function User() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>My Account</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>Settings</DropdownMenuItem>
-        <DropdownMenuItem>Support</DropdownMenuItem>
+        <DropdownMenuItem>
+          <Link href={`/dashboard/user`} className='w-full' >
+            Settings
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {/* {user ? (
+        {user ? (
           <DropdownMenuItem>
-            <form
-              action={async () => {
-                'use server';
-                await signOut();
-              }}
-            >
+            <form action={signOutAction}>
               <button type="submit">Sign Out</button>
             </form>
           </DropdownMenuItem>
@@ -60,8 +63,9 @@ export async function User() {
           <DropdownMenuItem>
             <Link href="/login">Sign In</Link>
           </DropdownMenuItem>
-        )} */}
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
+    </div>
   );
 }

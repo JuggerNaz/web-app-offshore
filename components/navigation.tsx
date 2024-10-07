@@ -14,9 +14,9 @@ const HomeNav = () => <nav className="w-full flex bg-gray-400 bg-clip-padding ba
     </div>
 </nav>
 
-const DashboardNav = () => <nav className="w-full flex bg-gray-400 bg-clip-padding backdrop-filter backdrop-blur-sm bg-opacity-10 shadow-md border-b border-b-foreground/10 h-16 z-20">
+const DashboardNav = () => <nav className="w-full flex border-b border-b-foreground/10 h-16 z-20">
     <div className="w-full flex justify-end items-center p-3 px-5 text-sm">
-    <User />
+        <User />
     </div>
 </nav>
 
