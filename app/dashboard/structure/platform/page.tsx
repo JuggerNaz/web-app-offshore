@@ -1,5 +1,6 @@
 import { Payment, columns } from "./columns"
 import { DataTable } from "./data-table"
+import { useFetchModules } from "@/utils/hooks/useFetchModules"
  
 async function getData(): Promise<Payment[]> {
   // Fetch data from your API here.
@@ -44,10 +45,11 @@ async function getData(): Promise<Payment[]> {
 
 export default async function PlatformPage() {
     const data = await getData()
+    //const { modules, loading, error } = useFetchModules()
     return (
-      <div className="flex-1 w-full flex flex-col gap-12">
-        <div className="flex flex-col gap-2 items-start">
-          <h2 className="font-bold text-2xl mb-4">Platform</h2>
+      <div className="flex-1 w-full flex flex-col">
+        <div className="flex flex-col items-start">
+          <h2 className="font-bold text-2xl">Platform</h2>
         </div>
         <div className="container mx-auto py-10">
             <DataTable columns={columns} data={data} />
