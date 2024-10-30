@@ -20,7 +20,7 @@
 ## Development for Web App Offshore Nasquest
 
 - Run type gen
- - npx supabase gen types typescript --db-url postgresql://postgres.zpsmxtdqlpbdwfzctqzd:BOU0OHQEj7A0brhS@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres > ./supabase/schema.ts
+ - npx supabase gen types typescript --db-url postgresql://postgres.zpsmxtdqlpbdwfzctqzd:yourpassword@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres > ./supabase/schema.ts
 
 ## Features
 
