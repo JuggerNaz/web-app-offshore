@@ -11,6 +11,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
   } from "@/components/ui/dropdown-menu"
+  import { Database } from "@/supabase/schema"
 
 // This type is used to define the shape of our data.
 // You can use a Zod schema here if you want.
@@ -21,28 +22,38 @@ export type Payment = {
   email: string
 }
 
-export const columns: ColumnDef<Payment>[] = [
+export type Platform = Database["public"]["Tables"]["module"]["Row"]
+
+export const columns: ColumnDef<Platform>[] = [
+  // {
+  //   accessorKey: "status",
+  //   header: "Status",
+  // },
+  // {
+  //   accessorKey: "email",
+  //   header: "Email",
+  // },
   {
-    accessorKey: "status",
-    header: "Status",
+    accessorKey: "category_id",
+    header: "Category",
   },
   {
-    accessorKey: "email",
-    header: "Email",
+    accessorKey: "type_id",
+    header: "Type",
   },
-  {
-    accessorKey: "amount",
-    header: () => <div className="text-right">Amount</div>,
-    cell: ({ row }) => {
-      const amount = parseFloat(row.getValue("amount"))
-      const formatted = new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-      }).format(amount)
+  // {
+  //   accessorKey: "amount",
+  //   header: () => <div className="text-right">Amount</div>,
+  //   cell: ({ row }) => {
+  //     const amount = parseFloat(row.getValue("amount"))
+  //     const formatted = new Intl.NumberFormat("en-US", {
+  //       style: "currency",
+  //       currency: "USD",
+  //     }).format(amount)
  
-      return <div className="text-right font-medium">{formatted}</div>
-    },
-  },
+  //     return <div className="text-right font-medium">{formatted}</div>
+  //   },
+  // },
   {
     id: "actions",
     cell: ({ row }) => {
@@ -59,14 +70,13 @@ export const columns: ColumnDef<Payment>[] = [
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuItem
-                onClick={() => navigator.clipboard.writeText(payment.id)}
+                {/* <DropdownMenuItem
+                  onClick={() => navigator.clipboard.writeText(payment.id)}
                 >
                 Copy payment ID
-                </DropdownMenuItem>
+                </DropdownMenuItem> */}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>View customer</DropdownMenuItem>
-                <DropdownMenuItem>View payment details</DropdownMenuItem>
+                <DropdownMenuItem>View Detail</DropdownMenuItem>
             </DropdownMenuContent>
             </DropdownMenu>
         </div>
