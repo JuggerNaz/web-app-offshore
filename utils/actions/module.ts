@@ -29,8 +29,6 @@ export type ModulesWithCategoryAndType = QueryData<typeof modulesWithCategoryAnd
 
 export const fetchModulesWithCategoryAndType = async () => {
     
-
-    
     const { data, error } = await modulesWithCategoryAndType
 
     console.log(data)
