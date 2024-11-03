@@ -10,8 +10,9 @@ import {
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
-  } from "@/components/ui/dropdown-menu"
-  import { Database } from "@/supabase/schema"
+} from "@/components/ui/dropdown-menu"
+import { Database } from "@/supabase/schema"
+import { ModulesWithCategoryAndType } from "@/utils/actions/module"  
 
 // This type is used to define the shape of our data.
 // You can use a Zod schema here if you want.
@@ -23,8 +24,13 @@ export type Payment = {
 }
 
 export type Platform = Database["public"]["Tables"]["module"]["Row"]
+export type ModuleCategory = Database["public"]["Tables"]["module_category"]["Row"]
+export type ModuleType = Database["public"]["Tables"]["module_type"]["Row"]
+type extractModuleCategoryName = Pick<ModuleCategory, 'name'>
+type extractModuleTypeName = Pick<ModuleType, 'name'>
+export type ModulesJoinModuleCategoryModuleType = Platform & extractModuleCategoryName & extractModuleTypeName
 
-export const columns: ColumnDef<Platform>[] = [
+export const columns: ColumnDef<ModulesJoinModuleCategoryModuleType>[] = [
   // {
   //   accessorKey: "status",
   //   header: "Status",
@@ -34,11 +40,11 @@ export const columns: ColumnDef<Platform>[] = [
   //   header: "Email",
   // },
   {
-    accessorKey: "category_id",
+    accessorKey: "category.name",
     header: "Category",
   },
   {
-    accessorKey: "type_id",
+    accessorKey: "type.name",
     header: "Type",
   },
   // {

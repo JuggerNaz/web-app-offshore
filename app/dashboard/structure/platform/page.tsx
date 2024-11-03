@@ -44,18 +44,18 @@ async function getData(): Promise<Payment[]> {
   ]  
 
 export default async function PlatformPage() {
-    const data = await getData()
     
     const modules = await fetchModules()
-    //console.log(modules)
-    const modulesWithCategoryAndType = await fetchModulesWithCategoryAndType()
+    console.log(modules)
+    const ModulesWithCategoryAndType = await fetchModulesWithCategoryAndType()
+    console.log(ModulesWithCategoryAndType)
     return (
       <div className="flex-1 w-full flex flex-col">
         <div className="flex flex-col items-start">
           <h2 className="font-bold text-2xl">Platform</h2>
         </div>
         <div className="container mx-auto py-10">
-            <DataTable columns={columns} data={modules?.data!} />
+            <DataTable columns={columns} data={ModulesWithCategoryAndType?.data!} />
         </div>
       </div>
     );
