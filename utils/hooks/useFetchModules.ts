@@ -22,27 +22,27 @@ import { Server } from 'lucide-react';
 //   return { data, loading, columns }
 // }
 
-export function useFetchModules() {
-  const [modules, setModules] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const supabase = createClient();
+// export function useFetchModules() {
+//   const [modules, setModules] = useState([])
+//   const [loading, setLoading] = useState(true)
+//   const [error, setError] = useState(null)
+//   const supabase = createClient();
 
-  useEffect(() => {
-    const fetchModules = async () => {
-      try {
-        let { data: module, error } = await supabase.from('modules').select('*')
-        if (error) throw error
-        //setModules(data)
-        console.log(module)
-      } catch (error) {
-        //setError(error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchModules()
-  }, [])
+//   useEffect(() => {
+//     const fetchModules = async () => {
+//       try {
+//         let { data: module, error } = await supabase.from('modules').select('*')
+//         if (error) throw error
+//         //setModules(data)
+//         console.log(module)
+//       } catch (error) {
+//         //setError(error)
+//       } finally {
+//         setLoading(false)
+//       }
+//     }
+//     fetchModules()
+//   }, [])
 
-  return { modules, loading, error }
-}
+//   return { modules, loading, error }
+// }

@@ -1,0 +1,68 @@
+{
+    "Spec1": {
+      "Platform": {
+        "PLAT_ID": 123456789012,
+        "TITLE": "Platform Alpha",
+        "PFIELD": "Field 01",
+        "PDESC": "Main production platform",
+        "PTYPE": "Offshore",
+        "INST_DATE": "2021-05-18",
+        "DESG_LIFE": 25,
+        "ST_NORTH": "45.123",
+        "ST_EAST": "60.456",
+        "DEPTH": 200.50,
+        "AN_QTY": 12,
+        "AN_TYPE": "Steel",
+        "INST_CTR": "BuildCorp",
+        "WALL_THK": 7.5,
+        "PROCESS": "Gas",
+        "PLEGS": 4,
+        "CR_USER": "admin_user",
+        "CR_DATE": "2021-05-18",
+        "DEF_UNIT": "PSI",
+        "WORKUNIT": "A01",
+        "DLEG": 18.75,
+        "CONDUCT": 4,
+        "CSLOT": 3,
+        "PILEINT": 2,
+        "PILESKT": 3,
+        "RISER": 1,
+        "FENDER": 2,
+        "SUMP": 1,
+        "CAISSON": 2,
+        "CRANE": 2,
+        "HELIPAD": "Y",
+        "MANNED": "N"
+      }
+    },
+    "Spec2": {
+      "str_elv": {
+        "PLAT_ID": 987654321012,
+        "ELV": 150.123,
+        "ORIENT": "NW",
+        "WORKUNIT": "B02",
+        "CR_USER": "engineer_01",
+        "CR_DATE": "2022-06-12"
+      },
+      "str_level": {
+        "PLAT_ID": 123450987654,
+        "LEVEL_NAME": "Top Deck",
+        "ELV_FROM": 100.50,
+        "ELV_TO": 200.75,
+        "CR_USER": "manager_01",
+        "CR_DATE": "2023-03-14",
+        "WORKUNIT": "C03"
+      },
+      "str_faces": {
+        "PLAT_ID": 567890123456,
+        "FACE": "North",
+        "FACE_DESC": "Facing shipping lanes",
+        "CR_USER": "supervisor",
+        "CR_DATE": "2022-11-10",
+        "WORKUNIT": "D04",
+        "FACE_FROM": "A1",
+        "FACE_TO": "B2"
+      }
+    }
+  }
+  

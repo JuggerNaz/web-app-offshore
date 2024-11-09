@@ -12,7 +12,8 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Database } from "@/supabase/schema"
-import { ModulesWithCategoryAndType } from "@/utils/actions/module"  
+import moment from "moment"
+import Link from "next/link"
 
 // This type is used to define the shape of our data.
 // You can use a Zod schema here if you want.
@@ -28,9 +29,16 @@ export type ModuleCategory = Database["public"]["Tables"]["module_category"]["Ro
 export type ModuleType = Database["public"]["Tables"]["module_type"]["Row"]
 type extractModuleCategoryName = Pick<ModuleCategory, 'name'>
 type extractModuleTypeName = Pick<ModuleType, 'name'>
-export type ModulesJoinModuleCategoryModuleType = Platform & extractModuleCategoryName & extractModuleTypeName
+type CategoryName = {
+  category: extractModuleCategoryName
+}
+type TypeName = {
+  type: extractModuleTypeName
+}
 
-export const columns: ColumnDef<ModulesJoinModuleCategoryModuleType>[] = [
+export type ModulesJoinModuleCategoryModuleType = Platform & CategoryName & TypeName
+
+export const columns: ColumnDef<Platform>[] = [
   // {
   //   accessorKey: "status",
   //   header: "Status",
@@ -46,6 +54,22 @@ export const columns: ColumnDef<ModulesJoinModuleCategoryModuleType>[] = [
   {
     accessorKey: "type.name",
     header: "Type",
+  },
+  {
+    accessorKey: "created_at",
+    header: "Created At",
+    cell: ({ row }) => {
+      const date: string = row.getValue("created_at")
+      return <div>{moment(date).format("MMMM Do, YYYY")}</div>
+    }
+  },
+  {
+    accessorKey: "modified_by",
+    header: "Modified By",
+    cell: ({ row }) => {
+      const modifiedBy: string = row.getValue("modified_by") || 'N/A'
+      return <div>{modifiedBy}</div>
+    }
   },
   // {
   //   accessorKey: "amount",
@@ -63,7 +87,7 @@ export const columns: ColumnDef<ModulesJoinModuleCategoryModuleType>[] = [
   {
     id: "actions",
     cell: ({ row }) => {
-      const payment = row.original
+      const item = row.original
  
       return (
         <div className="text-center">
@@ -82,7 +106,17 @@ export const columns: ColumnDef<ModulesJoinModuleCategoryModuleType>[] = [
                 Copy payment ID
                 </DropdownMenuItem> */}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>View Detail</DropdownMenuItem>
+                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => {
+                    console.log(item)
+                  }}
+                >
+                  <Link href={`/dashboard/structure/${item.type_id}/${item.id}`}>
+                  View Detail
+                  </Link>
+                </DropdownMenuItem>
             </DropdownMenuContent>
             </DropdownMenu>
         </div>

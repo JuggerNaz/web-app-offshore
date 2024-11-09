@@ -38,7 +38,7 @@ const DashboardMenu = () => {
                     <Layers2 size={20} />
                     Platform
                 </MenuLink>
-                <MenuLink href="/dashboard/structure/platform">
+                <MenuLink href="/dashboard/structure/pipeline">
                     <Layers2 size={20} />
                     Pipeline
                 </MenuLink>
