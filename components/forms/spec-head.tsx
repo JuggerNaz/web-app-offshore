@@ -14,7 +14,14 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Spec1Schema } from "@/utils/schemas/zod"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import { ChevronsUpDown } from "lucide-react"
+  
 
 const formSchema = z.object({
     username: z.string().min(2, {
@@ -34,18 +41,23 @@ export const ColWrap = ({
     )
 }
 
+export const RowWrap = ({
+    children,
+  }: {
+    children: React.ReactNode;
+  }) => {
+    return (
+      <div className="flex justify-items-stretch gap-5">
+          {children}
+      </div>
+    )
+}
+
 type Props = {
     data?: any //TODO: use real type rather than any
 }
 
 export default function SpecHead ({data}: Props) {
-    // const form = useForm<z.infer<typeof formSchema>>({
-    //     resolver: zodResolver(formSchema),
-    //     defaultValues: {
-    //       username: "",
-    //     },
-    // })
-
     const form = useForm<z.infer<typeof Spec1Schema>>({
         resolver: zodResolver(Spec1Schema),
         // defaultValues: {
@@ -58,6 +70,8 @@ export default function SpecHead ({data}: Props) {
         // ✅ This will be type-safe and validated.
         console.log(values)
     }
+
+    const [isOpen, setIsOpen] = useState(true)
     
     useEffect(() => {
         console.log(data)
@@ -67,16 +81,171 @@ export default function SpecHead ({data}: Props) {
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                <div className="flex justify-items-stretch gap-5">
+            <Collapsible
+                open={isOpen}
+                onOpenChange={setIsOpen}
+                className="space-y-2 py-2 px-4 rounded"
+            >
+                <CollapsibleTrigger
+                    className="flex justify-between w-full items-center"
+                >
+                    Detail
+                    <Button variant="ghost" size="sm">
+                        <ChevronsUpDown className="h-4 w-4" />
+                        <span className="sr-only">Toggle</span>
+                    </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                    <RowWrap>
+                        <ColWrap>
+                            <FormField
+                                control={form.control}
+                                name="TITLE"
+                                render={({ field }) => (
+                                <FormItem className="">
+                                    <FormLabel>Title</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="title" {...field} />
+                                    </FormControl>
+                                    {/* <FormDescription>
+                                    This is your public display name.
+                                    </FormDescription> */}
+                                    <FormMessage />
+                                </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="PFIELD"
+                                render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Oil Field</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="Oil field" {...field} />
+                                    </FormControl>
+                                    {/* <FormDescription>
+                                    This is your public display name.
+                                    </FormDescription> */}
+                                    <FormMessage />
+                                </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="INST_DATE"
+                                render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Inst. Date</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="Instantiate date" {...field} />
+                                    </FormControl>
+                                    {/* <FormDescription>
+                                    This is your public display name.
+                                    </FormDescription> */}
+                                    <FormMessage />
+                                </FormItem>
+                                )}
+                            />
+                        </ColWrap>
+                        <ColWrap>
+                            <FormField
+                                control={form.control}
+                                name="PDESC"
+                                render={({ field }) => (
+                                <FormItem className="">
+                                    <FormLabel>Description</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="description" {...field} />
+                                    </FormControl>
+                                    {/* <FormDescription>
+                                    This is your public display name.
+                                    </FormDescription> */}
+                                    <FormMessage />
+                                </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="DEPTH"
+                                render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Depth (m)</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="depth" {...field} />
+                                    </FormControl>
+                                    {/* <FormDescription>
+                                    This is your public display name.
+                                    </FormDescription> */}
+                                    <FormMessage />
+                                </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="DESG_LIFE"
+                                render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Design Life (Year)</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="Design Life" {...field} />
+                                    </FormControl>
+                                    {/* <FormDescription>
+                                    This is your public display name.
+                                    </FormDescription> */}
+                                    <FormMessage />
+                                </FormItem>
+                                )}
+                            />
+                        </ColWrap>
+                        <ColWrap>
+                            <FormField
+                                control={form.control}
+                                name="PTYPE"
+                                render={({ field }) => (
+                                <FormItem className="">
+                                    <FormLabel>Type</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="Type" {...field} />
+                                    </FormControl>
+                                    {/* <FormDescription>
+                                    This is your public display name.
+                                    </FormDescription> */}
+                                    <FormMessage />
+                                </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="PTYPE"
+                                render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Function</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="function" {...field} />
+                                    </FormControl>
+                                    {/* <FormDescription>
+                                    This is your public display name.
+                                    </FormDescription> */}
+                                    <FormMessage />
+                                </FormItem>
+                                )}
+                            />
+                        </ColWrap>
+                    </RowWrap>
+                </CollapsibleContent>
+            </Collapsible>
+
+                
+                <RowWrap>
                     <ColWrap>
                         <FormField
                             control={form.control}
-                            name="TITLE"
+                            name="ST_NORTH"
                             render={({ field }) => (
-                            <FormItem className="">
-                                <FormLabel>Title</FormLabel>
+                            <FormItem>
+                                <FormLabel>Norting (m)</FormLabel>
                                 <FormControl>
-                                    <Input placeholder="title" {...field} />
+                                    <Input placeholder="Northing" {...field} />
                                 </FormControl>
                                 {/* <FormDescription>
                                 This is your public display name.
@@ -87,28 +256,12 @@ export default function SpecHead ({data}: Props) {
                         />
                         <FormField
                             control={form.control}
-                            name="PFIELD"
+                            name="ST_EAST"
                             render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Oil Field</FormLabel>
+                                <FormLabel>Easting (m)</FormLabel>
                                 <FormControl>
-                                    <Input placeholder="Oil field" {...field} />
-                                </FormControl>
-                                {/* <FormDescription>
-                                This is your public display name.
-                                </FormDescription> */}
-                                <FormMessage />
-                            </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="INST_DATE"
-                            render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Inst. Date</FormLabel>
-                                <FormControl>
-                                    <Input placeholder="Instantiate date" {...field} />
+                                    <Input placeholder="Northing" {...field} />
                                 </FormControl>
                                 {/* <FormDescription>
                                 This is your public display name.
@@ -118,8 +271,7 @@ export default function SpecHead ({data}: Props) {
                             )}
                         />
                     </ColWrap>
-                    
-                </div>
+                </RowWrap>
                 <Button type="submit">Submit</Button>
             </form>
       </Form>
