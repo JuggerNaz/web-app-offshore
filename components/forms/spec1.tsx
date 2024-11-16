@@ -21,6 +21,7 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { ChevronsUpDown } from "lucide-react"
+import { RowWrap, ColWrap } from "@/components/forms/utils"
   
 
 const formSchema = z.object({
@@ -29,35 +30,11 @@ const formSchema = z.object({
     }),
 })
 
-export const ColWrap = ({
-    children,
-  }: {
-    children: React.ReactNode;
-  }) => {
-    return (
-      <div className="flex flex-col w-1/3 gap-2">
-          {children}
-      </div>
-    )
-}
-
-export const RowWrap = ({
-    children,
-  }: {
-    children: React.ReactNode;
-  }) => {
-    return (
-      <div className="flex justify-items-stretch gap-5">
-          {children}
-      </div>
-    )
-}
-
 type Props = {
     data?: any //TODO: use real type rather than any
 }
 
-export default function SpecHead ({data}: Props) {
+export default function Spec1 ({data}: Props) {
     const form = useForm<z.infer<typeof Spec1Schema>>({
         resolver: zodResolver(Spec1Schema),
         // defaultValues: {
@@ -84,16 +61,13 @@ export default function SpecHead ({data}: Props) {
             <Collapsible
                 open={isOpen}
                 onOpenChange={setIsOpen}
-                className="space-y-2 py-2 px-4 rounded"
+                className="space-y-2 pt-2 pb-4 px-4 rounded border"
             >
                 <CollapsibleTrigger
                     className="flex justify-between w-full items-center"
                 >
-                    Detail
-                    <Button variant="ghost" size="sm">
-                        <ChevronsUpDown className="h-4 w-4" />
-                        <span className="sr-only">Toggle</span>
-                    </Button>
+                    Detail Head
+                    <ChevronsUpDown className="h-4 w-4" />
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                     <RowWrap>
@@ -271,7 +245,42 @@ export default function SpecHead ({data}: Props) {
                             )}
                         />
                     </ColWrap>
+                    <ColWrap>
+                        <FormField
+                            control={form.control}
+                            name="NORTH_ANGLE"
+                            render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>True North (Deg)</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="degree" {...field} />
+                                </FormControl>
+                                {/* <FormDescription>
+                                This is your public display name.
+                                </FormDescription> */}
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="NORTH_SIDE"
+                            render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Platform North</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="platform north" {...field} />
+                                </FormControl>
+                                {/* <FormDescription>
+                                This is your public display name.
+                                </FormDescription> */}
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+                    </ColWrap>
                 </RowWrap>
+                
                 <Button type="submit">Submit</Button>
             </form>
       </Form>

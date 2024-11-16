@@ -1,7 +1,7 @@
 "use client"
 import { useParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import SpecHead from "@/components/forms/spec-head";
+import SpecHead from "@/components/forms/spec1";
 import { useEffect, useState, Suspense } from "react";
 import { useFetchModule } from "@/utils/hooks/module";
 
