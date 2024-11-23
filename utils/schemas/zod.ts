@@ -92,3 +92,11 @@ export const StrFacesSchema = z.object({
     FACE_TO: z.string().optional(),
 });
   
+export const JobPackSchema = z.object({
+  ACTION: z.enum(["createNew", "modify", "delete", "consolidate"]),
+  TYPE: z.enum(["structure", "component", "componentType"]),
+  SCOPE: z.object({
+    TOPSIDE: z.boolean(),
+    SUBSEA: z.boolean()
+  })
+})
