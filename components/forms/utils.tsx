@@ -1,3 +1,4 @@
+import React, {useState} from "react";
 export const ColWrap = ({
     children,
   }: {
@@ -21,3 +22,25 @@ export const RowWrap = ({
       </div>
     )
 }
+
+export const FormFieldCollapsible = ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => {
+    const [isOpen, setIsOpen] = useState(true);
+    return (
+      <div className="border border-gray-200 rounded p-2">
+        <div
+          className="flex justify-between items-center cursor-pointer"
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          <h3>{title}</h3>
+          <span>{isOpen ? "▲" : "▼"}</span>
+        </div>
+        {isOpen && <div>{children}</div>}
+      </div>
+    );
+  }

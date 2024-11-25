@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/collapsible"
 import { ChevronsUpDown } from "lucide-react"
 import { RowWrap, ColWrap } from "@/components/forms/utils"
-  
+import { FormFieldCollapsible } from "@/components/forms/utils"
 
 const formSchema = z.object({
     username: z.string().min(2, {
@@ -97,9 +97,6 @@ export default function Spec1 ({data}: Props) {
                                     <FormControl>
                                         <Input placeholder="Oil field" {...field} />
                                     </FormControl>
-                                    {/* <FormDescription>
-                                    This is your public display name.
-                                    </FormDescription> */}
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -113,9 +110,6 @@ export default function Spec1 ({data}: Props) {
                                     <FormControl>
                                         <Input placeholder="Instantiate date" {...field} />
                                     </FormControl>
-                                    {/* <FormDescription>
-                                    This is your public display name.
-                                    </FormDescription> */}
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -131,9 +125,6 @@ export default function Spec1 ({data}: Props) {
                                     <FormControl>
                                         <Input placeholder="description" {...field} />
                                     </FormControl>
-                                    {/* <FormDescription>
-                                    This is your public display name.
-                                    </FormDescription> */}
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -147,9 +138,6 @@ export default function Spec1 ({data}: Props) {
                                     <FormControl>
                                         <Input placeholder="depth" {...field} />
                                     </FormControl>
-                                    {/* <FormDescription>
-                                    This is your public display name.
-                                    </FormDescription> */}
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -163,9 +151,6 @@ export default function Spec1 ({data}: Props) {
                                     <FormControl>
                                         <Input placeholder="Design Life" {...field} />
                                     </FormControl>
-                                    {/* <FormDescription>
-                                    This is your public display name.
-                                    </FormDescription> */}
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -181,9 +166,6 @@ export default function Spec1 ({data}: Props) {
                                     <FormControl>
                                         <Input placeholder="Type" {...field} />
                                     </FormControl>
-                                    {/* <FormDescription>
-                                    This is your public display name.
-                                    </FormDescription> */}
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -197,9 +179,6 @@ export default function Spec1 ({data}: Props) {
                                     <FormControl>
                                         <Input placeholder="function" {...field} />
                                     </FormControl>
-                                    {/* <FormDescription>
-                                    This is your public display name.
-                                    </FormDescription> */}
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -208,8 +187,6 @@ export default function Spec1 ({data}: Props) {
                     </RowWrap>
                 </CollapsibleContent>
             </Collapsible>
-
-                
                 <RowWrap>
                     <ColWrap>
                         <FormField
@@ -221,9 +198,6 @@ export default function Spec1 ({data}: Props) {
                                 <FormControl>
                                     <Input placeholder="Northing" {...field} />
                                 </FormControl>
-                                {/* <FormDescription>
-                                This is your public display name.
-                                </FormDescription> */}
                                 <FormMessage />
                             </FormItem>
                             )}
@@ -237,9 +211,6 @@ export default function Spec1 ({data}: Props) {
                                 <FormControl>
                                     <Input placeholder="Northing" {...field} />
                                 </FormControl>
-                                {/* <FormDescription>
-                                This is your public display name.
-                                </FormDescription> */}
                                 <FormMessage />
                             </FormItem>
                             )}
@@ -255,9 +226,6 @@ export default function Spec1 ({data}: Props) {
                                 <FormControl>
                                     <Input placeholder="degree" {...field} />
                                 </FormControl>
-                                {/* <FormDescription>
-                                This is your public display name.
-                                </FormDescription> */}
                                 <FormMessage />
                             </FormItem>
                             )}
@@ -271,16 +239,15 @@ export default function Spec1 ({data}: Props) {
                                 <FormControl>
                                     <Input placeholder="platform north" {...field} />
                                 </FormControl>
-                                {/* <FormDescription>
-                                This is your public display name.
-                                </FormDescription> */}
                                 <FormMessage />
                             </FormItem>
                             )}
                         />
                     </ColWrap>
                 </RowWrap>
-                
+                <FormFieldCollapsible title="Platform Legs">
+                    test
+                </FormFieldCollapsible>
                 <Button type="submit">Submit</Button>
             </form>
       </Form>
