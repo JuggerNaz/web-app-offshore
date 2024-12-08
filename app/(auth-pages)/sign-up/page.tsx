@@ -37,7 +37,7 @@ export default function Signup({ searchParams }: { searchParams: Message }) {
             required
           />
           <SubmitButton formAction={signUpAction} pendingText="Signing up...">
-            Sign up
+            Sign up 
           </SubmitButton>
           <FormMessage message={searchParams} />
         </div>

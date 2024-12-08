@@ -1,0 +1,102 @@
+import * as z from 'zod';
+
+export const Spec1Schema = z.object({
+    PLAT_ID: z.number().optional(),
+    TITLE: z.string().optional(),
+    PFIELD: z.string().optional(),
+    PDESC: z.string().optional(),
+    PTYPE: z.string().optional(),
+    INST_DATE: z.string().optional(),
+    DESG_LIFE: z.number().optional(),
+    ST_NORTH: z.string().optional(),
+    ST_EAST: z.string().optional(),
+    DEPTH: z.number().optional(),
+    AN_QTY: z.number().optional(),
+    AN_TYPE: z.string().optional(),
+    INST_CTR: z.string().optional(),
+    WALL_THK: z.number().optional(),
+    PROCESS: z.string().optional(),
+    PLEGS: z.number().optional(),
+    CR_USER: z.string().optional(),
+    CR_DATE: z.string().optional(),
+    DEF_UNIT: z.string().optional(),
+    WORKUNIT: z.string().optional(),
+    DLEG: z.number().optional(),
+    CONDUCT: z.number().optional(),
+    CSLOT: z.number().optional(),
+    PILEINT: z.number().optional(),
+    PILESKT: z.number().optional(),
+    RISER: z.number().optional(),
+    FENDER: z.number().optional(),
+    SUMP: z.number().optional(),
+    CAISSON: z.number().optional(),
+    CRANE: z.number().optional(),
+    HELIPAD: z.string().optional(),
+    MANNED: z.string().optional(),
+    LEG_T1: z.string().optional(),
+    LEG_T2: z.string().optional(),
+    LEG_T3: z.string().optional(),
+    LEG_T4: z.string().optional(),
+    LEG_T5: z.string().optional(),
+    LEG_T6: z.string().optional(),
+    LEG_T7: z.number().optional(),
+    LEG_T8: z.string().optional(),
+    LEG_T9: z.string().optional(),
+    LEG_T10: z.number().optional(),
+    LEG_T11: z.number().optional(),
+    LEG_T12: z.string().optional(),
+    LEG_T13: z.string().optional(),
+    LEG_T14: z.number().optional(),
+    LEG_T15: z.string().optional(),
+    LEG_T16: z.number().optional(),
+    LEG_T17: z.string().optional(),
+    LEG_T18: z.string().optional(),
+    LEG_T19: z.string().optional(),
+    LEG_T20: z.string().optional(),
+    SENT: z.number().optional(),
+    MATERIAL: z.number().optional(),
+    CP_SYSTEM: z.number().optional(),
+    CORR_CTC: z.number().optional(),
+    NORTH_ANGLE: z.number().optional(),
+    NORTH_SIDE: z.string().optional(),
+    NLEG_T1: z.string().optional(),
+});
+  
+ export const StrElvSchema = z.object({
+    PLAT_ID: z.number().optional(),
+    ELV: z.number().optional(),
+    ORIENT: z.string().optional(),
+    WORKUNIT: z.string().optional(),
+    CR_USER: z.string().optional(),
+    CR_DATE: z.string().optional(),
+});
+  
+export const StrLevelSchema = z.object({
+    PLAT_ID: z.number().optional(),
+    LEVEL_NAME: z.string().optional(),
+    ELV_FROM: z.number().optional(),
+    ELV_TO: z.number().optional(),
+    CR_USER: z.string().optional(),
+    CR_DATE: z.string().optional(),
+    WORKUNIT: z.string().optional(),
+});
+  
+export const StrFacesSchema = z.object({
+    PLAT_ID: z.number().optional(),
+    FACE: z.string().optional(),
+    FACE_DESC: z.string().optional(),
+    CR_USER: z.string().optional(),
+    CR_DATE: z.string().optional(),
+    WORKUNIT: z.string().optional(),
+    FACE_FROM: z.string().optional(),
+    FACE_TO: z.string().optional(),
+});
+  
+export const JobPackSchema = z.object({
+  ACTION: z.enum(["createNew", "modify", "delete", "consolidate"]),
+  TYPE: z.enum(["structure", "component", "componentType"]),
+  SCOPE: z.object({
+    TOPSIDE: z.boolean(),
+    SUBSEA: z.boolean()
+  })
+})
