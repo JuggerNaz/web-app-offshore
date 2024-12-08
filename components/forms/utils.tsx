@@ -1,4 +1,11 @@
 import React, {useState} from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import { ChevronsUpDown } from "lucide-react"
+
 export const ColWrap = ({
     children,
   }: {
@@ -42,5 +49,30 @@ export const FormFieldCollapsible = ({
         </div>
         {isOpen && <div>{children}</div>}
       </div>
+    );
+  }
+
+  export const CollapsibleField = ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => {
+    const [isOpen, setIsOpen] = useState(true)
+    return (
+      <Collapsible
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        className="space-y-2 pt-2 pb-4 px-4 rounded border"
+      >
+        <CollapsibleTrigger
+          className="flex justify-between w-full items-center"
+        >
+          <h3>{title}</h3>
+          <ChevronsUpDown className="h-4 w-4" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>{children}</CollapsibleContent>
+      </Collapsible>
     );
   }
