@@ -557,44 +557,31 @@ export default function ComponentPage() {
 
                       <TabsContent value="specifications2" className="border rounded-lg p-4 mt-4">
                         <div className="space-y-6">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label>Drawing Number</Label>
-                              <Input placeholder="Enter drawing number" />
-                            </div>
-                            <div>
-                              <Label>Drawing Title</Label>
-                              <Input placeholder="Enter drawing title" />
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label>Weight (kg)</Label>
-                              <Input type="number" placeholder="Enter weight" />
-                            </div>
-                            <div>
-                              <Label>Surface Area (m²)</Label>
-                              <Input type="number" placeholder="Enter surface area" />
+                          <div className="border rounded-lg p-4 bg-[#0a2534] text-white">
+                            <h3 className="text-sm mb-6">Associate Component to other Component:</h3>
+                            
+                            <div className="flex items-center gap-4 mb-4">
+                              <Label className="text-white">Associated to:</Label>
+                              <div className="flex-1">
+                                <Input 
+                                  placeholder="Enter associated component"
+                                  className="bg-white text-black h-8"
+                                  value="R1-SK017-BADP-A"
+                                />
+                              </div>
+                              <Button variant="secondary" size="sm" className="h-8">
+                                ...
+                              </Button>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label>Paint Specification</Label>
-                              <Input placeholder="Enter paint specification" />
-                            </div>
-                            <div>
-                              <Label>Paint Code</Label>
-                              <Input placeholder="Enter paint code" />
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 gap-4">
-                            <div>
-                              <Label>Notes</Label>
-                              <textarea 
-                                className="w-full h-32 p-2 border rounded-md"
-                                placeholder="Enter additional notes"
-                              />
-                            </div>
+
+                          <div className="flex justify-end space-x-2">
+                            <Button variant="outline">
+                              Cancel
+                            </Button>
+                            <Button>
+                              OK
+                            </Button>
                           </div>
                         </div>
                       </TabsContent>
