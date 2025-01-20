@@ -13,35 +13,33 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { UnifiedComponentSpec } from "@/utils/types/database-types"
 
-interface ComponentSpec {
-  qId: string;
-  description: string;
-  startNode: string;
-  startLeg: string;
-  endNode: string;
-  endLeg: string;
-  elevation1: number;
-  elevation2: number;
-  distance: number;
-  clockPosition: string;
-  level: string;
-  face: string;
-  part: string;
-  structuralGroup: string;
-  componentId: string;
-  installDate: string;
-  life: number;
-  installedType: string;
-  position: string;
-  material: string;
-  fitting: string;
-  anodeType: string;
-}
+type ComponentSpec = UnifiedComponentSpec;
 
 const defaultSpec: ComponentSpec = {
+  // Base registration fields
+  componentId: '',
+  registrationDate: new Date().toISOString(),
+  lastModified: new Date().toISOString(),
+  status: 'active',
+  componentType: 'PLATFORM',
+  
+  // Common fields
   qId: '',
   description: '',
+  installDate: new Date().toISOString(),
+  life: 0,
+  installedType: '',
+  material: '',
+  fitting: '',
+  part: '',
+  
+  // Location fields (both platform and pipeline)
+  level: '',
+  face: '',
+  structuralGroup: '',
+  position: '',
   startNode: '',
   startLeg: '',
   endNode: '',
@@ -49,19 +47,12 @@ const defaultSpec: ComponentSpec = {
   elevation1: 0,
   elevation2: 0,
   distance: 0,
-  clockPosition: 'N/A',
-  level: '',
-  face: '',
-  part: '',
-  structuralGroup: '',
-  componentId: '',
-  installDate: '',
-  life: 0,
-  installedType: '',
-  position: '',
-  material: '',
-  fitting: '',
-  anodeType: ''
+  clockPosition: '',
+  
+  // Component-specific fields
+  anodeType: '',
+  weight: 0,
+  currentOutput: 0
 }
 
 const componentTypes = [
