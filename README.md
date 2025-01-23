@@ -15,7 +15,7 @@
   <a href="#feedback-and-issues"><strong>Feedback and issues</strong></a>
   <a href="#more-supabase-examples"><strong>More Examples</strong></a>
 </p>
-<br/>
+<br/> 
 
 ## Development for Web App Offshore Nasquest
 
