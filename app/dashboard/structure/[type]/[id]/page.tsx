@@ -4,6 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import SpecHead from "@/components/forms/spec1";
 import { useEffect, useState, Suspense } from "react";
 import { useFetchModule } from "@/utils/hooks/module";
+import Comments from "@/components/comment/comments";
+import Attachments from "@/components/attachment/attachments";
 
 export default function DetailPage() {
     const { type, id } = useParams();
@@ -25,7 +27,7 @@ export default function DetailPage() {
             <TabsTrigger value="spec1">Specification</TabsTrigger>
             <TabsTrigger value="spec2">Specification 2</TabsTrigger>
             <TabsTrigger value="structure-image">Structure Image</TabsTrigger>
-            <TabsTrigger value="comments">Password</TabsTrigger>
+            <TabsTrigger value="comments">Comments</TabsTrigger>
             <TabsTrigger value="attachments">Attachment</TabsTrigger>
           </TabsList>
           <TabsContent value="spec1" className="py-2 px-1">
@@ -35,8 +37,8 @@ export default function DetailPage() {
           </TabsContent>
           <TabsContent value="spec2">Content for specification 2</TabsContent>
           <TabsContent value="structure-image">Structure Image</TabsContent>
-          <TabsContent value="comments">Placeholder for comments</TabsContent>
-          <TabsContent value="attachments">Content for attachments</TabsContent>
+          <TabsContent value="comments"><Comments /></TabsContent>
+          <TabsContent value="attachments"><Attachments /></TabsContent>
         </Tabs>
       </div>
     );
