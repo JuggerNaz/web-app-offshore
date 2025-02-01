@@ -10,9 +10,7 @@ export async function GET() {
         return { error: "Failed to fetch platform" };
     }
 
-    console.log(data)
-
-    return NextResponse.json({ platforms: data })
+    return NextResponse.json({ data })
 }
 
 export async function POST(request: Request) {

@@ -18,5 +18,5 @@ export async function GET(request: Request, context: any) {
             return NextResponse.json({ error: "Failed to fetch platform" }, { status: 500 });
     }
 
-    return NextResponse.json({ platform: data })
+    return NextResponse.json({ data })
 }
