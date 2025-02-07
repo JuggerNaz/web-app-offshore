@@ -24,7 +24,7 @@ export const RowWrap = ({
     children: React.ReactNode;
   }) => {
     return (
-      <div className="flex justify-items-stretch gap-5">
+      <div className="flex justify-between gap-5">
           {children}
       </div>
     )
