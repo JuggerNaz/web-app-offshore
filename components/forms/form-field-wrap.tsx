@@ -8,9 +8,11 @@ import {
     FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 
 export function FormFieldWrap ({
-    label, name, form, description, placeholder, type = 'normal'
+    label, name, form, description, 
+    placeholder, type = 'normal', formControlClass = '', formLabelClass = ''
 }
 :
 {
@@ -18,7 +20,10 @@ export function FormFieldWrap ({
     name:string, 
     form:any, 
     description?:string, 
-    placeholder?:string, type?: 'normal' | 'small' | 'vertical'
+    placeholder?:string, 
+    type?: 'normal' | 'small' | 'vertical' | 'checkbox',
+    formControlClass?: string,
+    formLabelClass?: string
 }) {
     return (
         <FormField
@@ -29,8 +34,11 @@ export function FormFieldWrap ({
                     <FormItemNormal label={label} description={description} placeholder={placeholder} field={field} />
                 ) : type === 'small' ? (
                     <FormItemSmall label={label} description={description} placeholder={placeholder} field={field} />
-                ) : (
-                    <FormItemVertical label={label} description={description} placeholder={placeholder} field={field} />
+                ) : type === 'checkbox' ? (
+                    <FormCheckbox label={label} field={field} />
+                )  : (
+                    <FormItemVertical label={label} description={description} placeholder={placeholder} 
+                    field={field} formControlClass={formControlClass} formLabelClass={formLabelClass} />
                 )
             )}
         />
@@ -58,20 +66,23 @@ export function FormItemNormal ({
 }
 
 export function FormItemVertical ({
-    label, description, placeholder, field
+    label, description, placeholder, field, formControlClass, formLabelClass
 }:
 {
-    label:string, description?:string, placeholder?:string, field:any
+    label:string, description?:string, placeholder?:string, field:any, 
+    formControlClass?:string, formLabelClass?:string
 }) {
     return (
-        <FormItem className="flex flex-col">
-            <div>{label}</div>
-            <FormControl>
-                <Input placeholder={placeholder ?? 'N/A'} {...field} />
-            </FormControl>
-            {
-                description && <FormDescription>{description}</FormDescription>
-            }
+        <FormItem className="flex flex-col gap-1">
+            <div className={`w-full text-sm ${formLabelClass}`}>{label}</div>
+            <div className="flex items-center justify-center gap-3 w-full">
+                <FormControl className={formControlClass}>
+                    <Input placeholder={placeholder ?? 'N/A'} {...field} />
+                </FormControl>
+                {
+                    description && <FormDescription>{description}</FormDescription>
+                }
+            </div>
             <FormMessage />
         </FormItem>
     )
@@ -94,6 +105,31 @@ export function FormItemSmall ({
             }
             <FormMessage />
         </FormItem>
+    )
+}
+
+export function FormCheckbox ({
+    label, field
+}: {
+    label:string, field:any
+}) {
+    return (
+        <FormItem
+                //key={item.id}
+            className="flex flex-row items-start space-x-0 space-y-0 my-4"
+            >
+            <FormControl>
+                <Checkbox
+                    checked={field.value === "NO" ? false : true}
+                    onCheckedChange={(checked) => {
+                        return field.onChange(checked ? "YES" : "NO")
+                    }}
+                />
+            </FormControl>
+            <FormLabel className="text-sm font-normal">
+                {label}
+            </FormLabel>
+            </FormItem>
     )
 }
 

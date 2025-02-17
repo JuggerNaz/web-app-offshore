@@ -71,13 +71,17 @@ export default function Spec1 ({data}: Props) {
                 </CollapsibleField>
                 <RowWrap>
                     <div className="w-1/5 space-y-2">
-                        <FormFieldWrap label="Norting" name="st_north" form={form} placeholder="northing" description="m" />
-                        <FormFieldWrap label="Easting" name="st_east" form={form} placeholder="easting" description="m" />
+                        <FormFieldWrap label="Norting" name="st_north" form={form} placeholder="northing" type="vertical" description="m" />
+                        <FormFieldWrap label="Easting" name="st_east" form={form} placeholder="easting" type="vertical" description="m" />
                     </div>
-                    <div className="w-3/5">
+                    <div className="">
                         <div className="flex gap-3">
                             <div className="flex flex-col justify-center gap-2">
-                                <FormFieldWrap label="No. of Legs" name="plegs" form={form} placeholder="" type="vertical"/>
+                                <FormFieldWrap label="No. of Legs" name="plegs" 
+                                form={form} placeholder="" type="vertical" 
+                                formControlClass="w-1/2 text-center" 
+                                formLabelClass="text-center"
+                                />
                             </div>
                             <div className="flex flex-col gap-2">
                                 <FormFieldWrap label="1:" name="leg_t1" form={form} placeholder="" type="small" />
@@ -122,15 +126,58 @@ export default function Spec1 ({data}: Props) {
                         </div>
                     </div>
                     <div className="w-1/5 space-y-2">
-                        <FormFieldWrap label="True North" name="north_angle" form={form} placeholder="true north" description="Deg." />
-                        <FormFieldWrap label="North Side" name="north_side" form={form} placeholder="north side" />
+                        <FormFieldWrap label="True North" name="north_angle" form={form} placeholder="true north" type="vertical" description="Deg." />
+                        <FormFieldWrap label="Platform North" name="north_side" form={form} placeholder="north side" type="vertical" />
                     </div>
                 </RowWrap>
-                <CollapsibleField title="Platform Legs">
-                    <RowWrap>
-                        
-                    </RowWrap>
-                </CollapsibleField>
+                <RowWrap>
+                    <div className="flex-col w-4/5 space-y-5">
+                        <RowWrap>
+                            <ColWrap>
+                                <FormFieldWrap label="Max Leg Diameter" name="dleg" form={form} placeholder="0" type="vertical" description="mm" />
+                                <FormFieldWrap label="Helipad?" name="helipad" form={form} placeholder="" type="checkbox" />
+                            </ColWrap>
+                            <ColWrap>
+                                <FormFieldWrap label="Max Wall Thickness" name="wall_thk" form={form} placeholder="0" type="vertical" description="mm" />
+                                <FormFieldWrap label="Manned?" name="manned" form={form} placeholder="" type="checkbox" />
+                            </ColWrap>
+                            <ColWrap>
+                                <FormFieldWrap label="Material" name="material" form={form} placeholder="material" type="vertical" />
+                                <FormFieldWrap label="Corrosion Coating" name="corr_ctc" form={form} placeholder="corrosion coating" type="vertical" />
+                            </ColWrap>
+                            <ColWrap>
+                                <FormFieldWrap label="CP System" name="cp_system" form={form} placeholder="cp system" type="vertical" />
+                                <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="installation contractor" type="vertical" />
+                            </ColWrap>
+                        </RowWrap>
+                        <RowWrap className="border rounded p-5">
+                            <ColWrap>
+                                <FormFieldWrap label="Conductors" name="conduct" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Internal Piles" name="pileint" form={form} placeholder="0" type="vertical" />
+                            </ColWrap>
+                            <ColWrap>
+                                <FormFieldWrap label="Slots" name="cslota" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Fenders" name="fender" form={form} placeholder="0" type="vertical" />
+                            </ColWrap>
+                            <ColWrap>
+                                <FormFieldWrap label="Risers" name="riser" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Sumps" name="sump" form={form} placeholder="0" type="vertical" />
+                            </ColWrap>
+                            <ColWrap>
+                                <FormFieldWrap label="Skirt Piles" name="pileskt" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Caissons" name="caisson" form={form} placeholder="0" type="vertical" />
+                            </ColWrap>
+                            <ColWrap>
+                                <FormFieldWrap label="Anode" name="an_qty" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Crane" name="crane" form={form} placeholder="0" type="vertical" />
+                            </ColWrap>
+                        </RowWrap>
+                    </div>
+                    <div className="flex flex-col border rounded w-1/5 p-5 justify-between">
+                        <div>The default unit that to be applied for this platform, its components and inspections.</div>
+                        <FormFieldWrap label="" name="def_unit" form={form} placeholder="default unit" type="vertical" />
+                    </div>
+                </RowWrap>
                 <Button type="submit">Submit</Button>
             </form>
       </Form>

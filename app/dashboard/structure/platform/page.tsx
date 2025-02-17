@@ -2,7 +2,7 @@
 import { columns } from "@/components/data-table/columns"
 import { DataTable } from "@/components/data-table/data-table"
 import useSWR from "swr"
-import { fetcher } from "@/lib/utils"
+import { fetcher } from "@/utils/utils"
 
 export default function PlatformPage() {
     

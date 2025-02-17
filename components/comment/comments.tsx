@@ -10,14 +10,17 @@ import {
   } from "@/components/ui/table"
   import { Button } from "@/components/ui/button"
 
+import { CommentDialog } from "../dialogs/comment-dialog"
+
 export default function Comments() {
     return <TabsContent value="comments" className="border rounded-lg p-4 mt-4">
         <div className="space-y-4">
             <div className="flex justify-between items-center">
             <h4 className="font-medium">Comments History</h4>
-            <Button>
+            {/* <Button>
                 Add Comment
-            </Button>
+            </Button> */}
+            <CommentDialog />
             </div>
             
             <Table>

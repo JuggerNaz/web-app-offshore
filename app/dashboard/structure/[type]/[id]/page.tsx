@@ -7,7 +7,7 @@ import { useFetchModule } from "@/utils/hooks/module";
 import Comments from "@/components/comment/comments";
 import Attachments from "@/components/attachment/attachments";
 import useSWR from "swr";
-import { fetcher } from "@/lib/utils";
+import { fetcher } from "@/utils/utils";
 
 export default function DetailPage() {
     const { type, id } = useParams();

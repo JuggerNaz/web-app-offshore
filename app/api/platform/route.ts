@@ -7,7 +7,7 @@ export async function GET() {
     
     if (error) {
         console.error(error.message);
-        return { error: "Failed to fetch platform" };
+        return NextResponse.json({ error: "Failed to fetch platform" });
     }
 
     return NextResponse.json({ data })

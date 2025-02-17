@@ -12,7 +12,7 @@ export const ColWrap = ({
     children: React.ReactNode;
   }) => {
     return (
-      <div className="flex flex-col w-1/3 gap-2">
+      <div className="flex flex-col grow gap-2">
           {children}
       </div>
     )
@@ -20,11 +20,13 @@ export const ColWrap = ({
 
 export const RowWrap = ({
     children,
+    className
   }: {
-    children: React.ReactNode;
+    children: React.ReactNode,
+    className?: string
   }) => {
     return (
-      <div className="flex justify-between gap-5">
+      <div className={`flex justify-between gap-5 ${className}`}>
           {children}
       </div>
     )
