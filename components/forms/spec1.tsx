@@ -5,19 +5,15 @@ import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import {
   Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
 } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
-import { Spec1Schema, PlatformSchema } from "@/utils/schemas/zod"
+import { PlatformSchema } from "@/utils/schemas/zod"
 import { useEffect, useState } from "react"
 import { RowWrap, ColWrap } from "@/components/forms/utils"
-import { FormFieldCollapsible, CollapsibleField } from "@/components/forms/utils"
+import { CollapsibleField } from "@/components/forms/utils"
 import { FormFieldWrap } from "./form-field-wrap"
+import { fetcher } from "@/utils/utils";
+import {mutate} from "swr";
+import { toast } from "sonner"
 
 const formSchema = z.object({
     username: z.string().min(2, {
@@ -37,14 +33,22 @@ export default function Spec1 ({data}: Props) {
         // },
     })
 
-    const onSubmit = (values: z.infer<typeof PlatformSchema>) => {
+    const onSubmit = async (values: z.infer<typeof PlatformSchema>) => {
         // Do something with the form values.
         // ✅ This will be type-safe and validated.
+        await fetcher(`/api/platform/${values.plat_id}`, {
+            method: 'PUT',
+            body: JSON.stringify(values)
+        })
+        .then((res) => {
+            // mutate(`/api/comment/${pageId}`) //if want to mutate
+            toast("Platform updated successfully")
+        })
+
         console.log(values)
     }
     
     useEffect(() => {
-        console.log(data)
         form.reset(data)
     }, [data])
 
@@ -71,111 +75,111 @@ export default function Spec1 ({data}: Props) {
                 </CollapsibleField>
                 <RowWrap>
                     <div className="w-1/5 space-y-2">
-                        <FormFieldWrap label="Norting" name="st_north" form={form} placeholder="northing" type="vertical" description="m" />
-                        <FormFieldWrap label="Easting" name="st_east" form={form} placeholder="easting" type="vertical" description="m" />
+                        <FormFieldWrap label="Norting" name="st_north" form={form} placeholder="northing" ftype="vertical" description="m" />
+                        <FormFieldWrap label="Easting" name="st_east" form={form} placeholder="easting" ftype="vertical" description="m" />
                     </div>
                     <div className="">
                         <div className="flex gap-3">
                             <div className="flex flex-col justify-center gap-2">
                                 <FormFieldWrap label="No. of Legs" name="plegs" 
-                                form={form} placeholder="" type="vertical" 
+                                form={form} placeholder="" ftype="vertical" 
                                 formControlClass="w-1/2 text-center" 
                                 formLabelClass="text-center"
                                 />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="1:" name="leg_t1" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="2:" name="leg_t2" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="1:" name="leg_t1" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="2:" name="leg_t2" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="3:" name="leg_t3" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="4:" name="leg_t4" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="3:" name="leg_t3" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="4:" name="leg_t4" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="5:" name="leg_t5" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="6:" name="leg_t6" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="5:" name="leg_t5" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="6:" name="leg_t6" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="7:" name="leg_t7" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="8:" name="leg_t8" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="7:" name="leg_t7" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="8:" name="leg_t8" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="9:" name="leg_t9" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="10:" name="leg_t10" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="9:" name="leg_t9" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="10:" name="leg_t10" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="11:" name="leg_t11" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="12:" name="leg_t12" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="11:" name="leg_t11" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="12:" name="leg_t12" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="13:" name="leg_t13" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="14:" name="leg_t14" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="13:" name="leg_t13" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="14:" name="leg_t14" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="15:" name="leg_t15" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="16:" name="leg_t16" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="15:" name="leg_t15" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="16:" name="leg_t16" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="17:" name="leg_t17" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="18:" name="leg_t18" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="17:" name="leg_t17" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="18:" name="leg_t18" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="19:" name="leg_t19" form={form} placeholder="" type="small" />
-                                <FormFieldWrap label="20:" name="leg_t20" form={form} placeholder="" type="small" />
+                                <FormFieldWrap label="19:" name="leg_t19" form={form} placeholder="" ftype="small" />
+                                <FormFieldWrap label="20:" name="leg_t20" form={form} placeholder="" ftype="small" />
                             </div>
                         </div>
                     </div>
                     <div className="w-1/5 space-y-2">
-                        <FormFieldWrap label="True North" name="north_angle" form={form} placeholder="true north" type="vertical" description="Deg." />
-                        <FormFieldWrap label="Platform North" name="north_side" form={form} placeholder="north side" type="vertical" />
+                        <FormFieldWrap label="True North" name="north_angle" form={form} placeholder="true north" ftype="vertical" description="Deg." />
+                        <FormFieldWrap label="Platform North" name="north_side" form={form} placeholder="north side" ftype="vertical" />
                     </div>
                 </RowWrap>
                 <RowWrap>
                     <div className="flex-col w-4/5 space-y-5">
                         <RowWrap>
                             <ColWrap>
-                                <FormFieldWrap label="Max Leg Diameter" name="dleg" form={form} placeholder="0" type="vertical" description="mm" />
-                                <FormFieldWrap label="Helipad?" name="helipad" form={form} placeholder="" type="checkbox" />
+                                <FormFieldWrap label="Max Leg Diameter" name="dleg" form={form} placeholder="0" ftype="vertical" description="mm" />
+                                <FormFieldWrap label="Helipad?" name="helipad" form={form} placeholder="" ftype="checkbox" />
                             </ColWrap>
                             <ColWrap>
-                                <FormFieldWrap label="Max Wall Thickness" name="wall_thk" form={form} placeholder="0" type="vertical" description="mm" />
-                                <FormFieldWrap label="Manned?" name="manned" form={form} placeholder="" type="checkbox" />
+                                <FormFieldWrap label="Max Wall Thickness" name="wall_thk" form={form} placeholder="0" ftype="vertical" description="mm" />
+                                <FormFieldWrap label="Manned?" name="manned" form={form} placeholder="" ftype="checkbox" />
                             </ColWrap>
                             <ColWrap>
-                                <FormFieldWrap label="Material" name="material" form={form} placeholder="material" type="vertical" />
-                                <FormFieldWrap label="Corrosion Coating" name="corr_ctc" form={form} placeholder="corrosion coating" type="vertical" />
+                                <FormFieldWrap label="Material" name="material" form={form} placeholder="material" ftype="vertical" />
+                                <FormFieldWrap label="Corrosion Coating" name="corr_ctc" form={form} placeholder="corrosion coating" ftype="vertical" />
                             </ColWrap>
                             <ColWrap>
-                                <FormFieldWrap label="CP System" name="cp_system" form={form} placeholder="cp system" type="vertical" />
-                                <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="installation contractor" type="vertical" />
+                                <FormFieldWrap label="CP System" name="cp_system" form={form} placeholder="cp system" ftype="vertical" />
+                                <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="installation contractor" ftype="vertical" />
                             </ColWrap>
                         </RowWrap>
                         <RowWrap className="border rounded p-5">
                             <ColWrap>
-                                <FormFieldWrap label="Conductors" name="conduct" form={form} placeholder="0" type="vertical" />
-                                <FormFieldWrap label="Internal Piles" name="pileint" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Conductors" name="conduct" form={form} placeholder="0" ftype="vertical" type="number" />
+                                <FormFieldWrap label="Internal Piles" name="pileint" form={form} placeholder="0" ftype="vertical" />
                             </ColWrap>
                             <ColWrap>
-                                <FormFieldWrap label="Slots" name="cslota" form={form} placeholder="0" type="vertical" />
-                                <FormFieldWrap label="Fenders" name="fender" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Slots" name="cslota" form={form} placeholder="0" ftype="vertical" />
+                                <FormFieldWrap label="Fenders" name="fender" form={form} placeholder="0" ftype="vertical" />
                             </ColWrap>
                             <ColWrap>
-                                <FormFieldWrap label="Risers" name="riser" form={form} placeholder="0" type="vertical" />
-                                <FormFieldWrap label="Sumps" name="sump" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Risers" name="riser" form={form} placeholder="0" ftype="vertical" />
+                                <FormFieldWrap label="Sumps" name="sump" form={form} placeholder="0" ftype="vertical" />
                             </ColWrap>
                             <ColWrap>
-                                <FormFieldWrap label="Skirt Piles" name="pileskt" form={form} placeholder="0" type="vertical" />
-                                <FormFieldWrap label="Caissons" name="caisson" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Skirt Piles" name="pileskt" form={form} placeholder="0" ftype="vertical" />
+                                <FormFieldWrap label="Caissons" name="caisson" form={form} placeholder="0" ftype="vertical" />
                             </ColWrap>
                             <ColWrap>
-                                <FormFieldWrap label="Anode" name="an_qty" form={form} placeholder="0" type="vertical" />
-                                <FormFieldWrap label="Crane" name="crane" form={form} placeholder="0" type="vertical" />
+                                <FormFieldWrap label="Anode" name="an_qty" form={form} placeholder="0" ftype="vertical" />
+                                <FormFieldWrap label="Crane" name="crane" form={form} placeholder="0" ftype="vertical" />
                             </ColWrap>
                         </RowWrap>
                     </div>
                     <div className="flex flex-col border rounded w-1/5 p-5 justify-between">
                         <div>The default unit that to be applied for this platform, its components and inspections.</div>
-                        <FormFieldWrap label="" name="def_unit" form={form} placeholder="default unit" type="vertical" />
+                        <FormFieldWrap label="" name="def_unit" form={form} placeholder="default unit" ftype="vertical" />
                     </div>
                 </RowWrap>
                 <Button type="submit">Submit</Button>

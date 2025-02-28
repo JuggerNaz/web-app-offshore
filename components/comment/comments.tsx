@@ -1,80 +1,31 @@
 
 import { TabsContent } from "@/components/ui/tabs"
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-  } from "@/components/ui/table"
-  import { Button } from "@/components/ui/button"
 
+import { urlId } from "@/utils/client-state"
+import { useAtom } from "jotai"
+import useSWR from "swr"
 import { CommentDialog } from "../dialogs/comment-dialog"
+import { comments } from "@/components/data-table/columns"
+import { DataTable } from "@/components/data-table/data-table"
+import { fetcher } from "@/utils/utils";
 
 export default function Comments() {
-    return <TabsContent value="comments" className="border rounded-lg p-4 mt-4">
+
+    const [pageId, setPageId] = useAtom(urlId)
+
+    const { data, error, isLoading } = useSWR(`/api/comment/${pageId}`, fetcher)
+
+    if (error) return <div>failed to load</div>
+    if (isLoading) return <div>loading...</div>
+
+    return <TabsContent value="comments" className=" p-4 mt-4">
         <div className="space-y-4">
             <div className="flex justify-between items-center">
             <h4 className="font-medium">Comments History</h4>
-            {/* <Button>
-                Add Comment
-            </Button> */}
-            <CommentDialog />
+                <CommentDialog />
             </div>
             
-            <Table>
-            <TableHeader>
-                <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead className="w-[50%]">Comment</TableHead>
-                <TableHead>Actions</TableHead>
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                <TableRow>
-                <TableCell>2024-12-09</TableCell>
-                <TableCell>John Doe</TableCell>
-                <TableCell>Initial inspection completed</TableCell>
-                <TableCell>
-                    <Button variant="ghost" size="sm">
-                    Edit
-                    </Button>
-                </TableCell>
-                </TableRow>
-                <TableRow>
-                <TableCell>2024-12-08</TableCell>
-                <TableCell>Jane Smith</TableCell>
-                <TableCell>Maintenance check performed - all parameters within normal range</TableCell>
-                <TableCell>
-                    <Button variant="ghost" size="sm">
-                    Edit
-                    </Button>
-                </TableCell>
-                </TableRow>
-                <TableRow>
-                <TableCell>2024-12-07</TableCell>
-                <TableCell>Mike Johnson</TableCell>
-                <TableCell>Surface corrosion detected on north face - scheduled for treatment</TableCell>
-                <TableCell>
-                    <Button variant="ghost" size="sm">
-                    Edit
-                    </Button>
-                </TableCell>
-                </TableRow>
-                <TableRow>
-                <TableCell>2024-12-06</TableCell>
-                <TableCell>Sarah Wilson</TableCell>
-                <TableCell>Updated technical specifications after replacement</TableCell>
-                <TableCell>
-                    <Button variant="ghost" size="sm">
-                    Edit
-                    </Button>
-                </TableCell>
-                </TableRow>
-            </TableBody>
-            </Table>
+            <DataTable columns={comments} data={data?.data} />
         </div>
     </TabsContent>
 }
