@@ -1,30 +1,27 @@
 'use client'
-import { columns } from "@/components/data-table/columns"
+import { pipelines } from "@/components/data-table/columns"
 import { DataTable } from "@/components/data-table/data-table"
 import { useFetchModules  } from "@/utils/hooks/module"
 import { useEffect, useState } from "react"
+import useSWR from "swr"
+import { fetcher } from "@/utils/utils"
 
 export default function PipelinePage() {
-    //TODO: use real type rather than any
-    const [data, setData] = useState<any>()
-    useEffect(() => {
-      const fetchData = async () => {
-        let platform = await useFetchModules(1)
-        setData(platform.data)
-      }
-      fetchData()
-    }, [])
+  const { data, error, isLoading } = useSWR('/api/pipeline', fetcher)
 
-    return (
-      <div className="flex-1 w-full flex flex-col">
-        <div className="flex flex-col items-start">
-          <h2 className="font-bold text-2xl">Pipeline</h2>
-        </div>
-        <div className="container mx-auto py-10">
-          {
-            data ? <DataTable columns={columns} data={data} /> : <div>Loading...</div>
-          }
-        </div>
+  if (error) return <div>failed to load</div>
+  if (isLoading) return <div>loading...</div>
+
+  return (
+    <div className="flex-1 w-full flex flex-col">
+      <div className="flex flex-col items-start">
+        <h2 className="font-bold text-2xl">Pipeline</h2>
       </div>
-    );
-  }``
+      <div className="container mx-auto py-10">
+        {
+          data ? <DataTable columns={pipelines} data={data.data} /> : <div>Loading...</div>
+        }
+      </div>
+    </div>
+  );
+}

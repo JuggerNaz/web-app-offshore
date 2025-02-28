@@ -26,6 +26,8 @@ export async function PUT(request: Request, context: any) {
     const body = await request.json();
     const supabase = createClient();
 
+    console.log(id, body)
+
     const { data, error } = await supabase.from("platform").update(body).eq("plat_id", id).single();
 
     if (error) {

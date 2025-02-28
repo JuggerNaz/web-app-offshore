@@ -3,31 +3,25 @@ import { useParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import SpecHead from "@/components/forms/spec1";
 import { useEffect, useState, Suspense } from "react";
-import { useFetchModule } from "@/utils/hooks/module";
 import Comments from "@/components/comment/comments";
 import Attachments from "@/components/attachment/attachments";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
+import { useAtom } from "jotai";
+import { urlId } from "@/utils/client-state";
 
 export default function DetailPage() {
     const { type, id } = useParams();
-    // const [data, setData] = useState<any>()
+    const [pageId, setPageId] = useAtom(urlId)
     
-    // useEffect(() => {
-    //   const fetchData = async () => {
-    //     let platform = await useFetchModule(Number(id))
-    //     setData(platform.data)
-    //     console.log(platform.data)
-    //   }
-    //   fetchData()
-    // }, [])
+    useEffect(() => {
+      setPageId(parseInt(Array.isArray(id) ? id[0] : id))
+    }, [])
 
-    const { data, error, isLoading } = useSWR(`/api/platform/${id}`, fetcher)
+    const { data, error, isLoading } = useSWR(`/api/${type}/${id}`, fetcher)
 
     if (error) return <div>failed to load</div>
     if (isLoading) return <div>loading...</div>
-
-    console.log(data)
     
     return (
       <div className="flex-1 w-full flex flex-col gap-12">

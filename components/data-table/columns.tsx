@@ -16,6 +16,8 @@ import moment from "moment"
 import Link from "next/link"
 
 export type Platform = Database["public"]["Tables"]["platform"]["Row"]
+export type Comment = Database["public"]["Tables"]["comment"]["Row"]
+export type Pipeline = Database["public"]["Tables"]["u_pipeline"]["Row"]
 
 export const columns: ColumnDef<Platform>[] = [
   {
@@ -100,7 +102,7 @@ export const columns: ColumnDef<Platform>[] = [
   },
 ]
 
-export const pipelines: ColumnDef<Platform>[] = [
+export const pipelines: ColumnDef<Pipeline>[] = [
   {
     accessorKey: "title",
     header: "Title",
@@ -142,9 +144,67 @@ export const pipelines: ColumnDef<Platform>[] = [
                     console.log(item)
                   }}
                 >
-                  <Link href={`/dashboard/structure/platform/${item.plat_id}`}>
+                  <Link href={`/dashboard/structure/pipeline/${item.pipe_id}`}>
                   View Detail
                   </Link>
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+      )
+    },
+  },
+]
+
+export const comments: ColumnDef<Comment>[] = [
+  {
+    accessorKey: "created_at",
+    header: "Created At",
+    cell: ({ row }) => {
+      const date: string = row.getValue("created_at")
+      return <div>{moment(date).format("MMMM Do, YYYY")}</div>
+    }
+  },
+  {
+    accessorKey: "text",
+    header: "Text",
+  },
+  {
+    accessorKey: "user_id",
+    header: "User",
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original
+ 
+      return (
+        <div className="text-center">
+            <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreVertical className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                {/* <DropdownMenuItem
+                  onClick={() => navigator.clipboard.writeText(payment.id)}
+                >
+                Copy payment ID
+                </DropdownMenuItem> */}
+                <DropdownMenuSeparator />
+                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => {
+                    console.log(item)
+                  }}
+                >
+                  {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
+                  View Detail
+                  </Link> */}
                 </DropdownMenuItem>
             </DropdownMenuContent>
             </DropdownMenu>
