@@ -8,14 +8,17 @@ import Attachments from "@/components/attachment/attachments";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { useAtom } from "jotai";
-import { urlId } from "@/utils/client-state";
+import { urlId, urlType } from "@/utils/client-state";
+import Spec1Pipeline from "@/components/forms/spec1-pipeline";
 
 export default function DetailPage() {
     const { type, id } = useParams();
     const [pageId, setPageId] = useAtom(urlId)
+    const [pageType, setPageType] = useAtom(urlType)
     
     useEffect(() => {
       setPageId(parseInt(Array.isArray(id) ? id[0] : id))
+      setPageType(Array.isArray(type) ? type[0] : type)
     }, [])
 
     const { data, error, isLoading } = useSWR(`/api/${type}/${id}`, fetcher)
@@ -35,7 +38,7 @@ export default function DetailPage() {
           </TabsList>
           <TabsContent value="spec1" className="py-2 px-1">
             <Suspense fallback={<Loading />}>
-              <SpecHead data={data?.data} />
+              { type === 'platform' ? <SpecHead data={data?.data} /> : <Spec1Pipeline data={data?.data} /> }
             </Suspense>
           </TabsContent>
           <TabsContent value="spec2">Content for specification 2</TabsContent>

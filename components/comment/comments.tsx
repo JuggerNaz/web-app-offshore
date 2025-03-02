@@ -1,7 +1,7 @@
 
 import { TabsContent } from "@/components/ui/tabs"
 
-import { urlId } from "@/utils/client-state"
+import { urlId, urlType } from "@/utils/client-state"
 import { useAtom } from "jotai"
 import useSWR from "swr"
 import { CommentDialog } from "../dialogs/comment-dialog"
@@ -12,8 +12,9 @@ import { fetcher } from "@/utils/utils";
 export default function Comments() {
 
     const [pageId, setPageId] = useAtom(urlId)
+    const [pageType, setPageType] = useAtom(urlType)
 
-    const { data, error, isLoading } = useSWR(`/api/comment/${pageId}`, fetcher)
+    const { data, error, isLoading } = useSWR(`/api/comment/${pageType}/${pageId}`, fetcher)
 
     if (error) return <div>failed to load</div>
     if (isLoading) return <div>loading...</div>

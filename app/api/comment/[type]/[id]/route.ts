@@ -2,10 +2,11 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request, context: any) {
-    const { id } = context.params;
+    const { id, type } = context.params;
 
     const supabase = createClient();
-    const { data, error } = await supabase.from("comment").select("*").eq("structure_id", id);
+    const { data, error } = await supabase.from("comment").select("*").eq("structure_id", id)
+    .eq("structure_type", type);
 
     if (error) {
         if (error.code === 'PGRST116') {
