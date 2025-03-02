@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { useAtom } from "jotai";
-import { urlId } from "@/utils/client-state";
+import { urlId, urlType } from "@/utils/client-state";
 import React, {useState} from "react";
 import {mutate} from "swr";
 import { fetcher } from "@/utils/utils";
@@ -20,6 +20,7 @@ export function CommentDialog() {
     const [pageId, setPageId] = useAtom(urlId)
     const [comment, setComment] = useState("")
     const [open, setOpen] = useState(false)
+    const [pageType, setPageType] = useAtom(urlType)
 
     const SubmitComment = async (e: any) => {
         //todo use proper event
@@ -28,11 +29,12 @@ export function CommentDialog() {
             method: 'POST',
             body: JSON.stringify({
                 "structure_id": pageId,
-                "text": comment
+                "text": comment,
+                "structure_type": pageType
             })
         }).then((res) => {
             setOpen(false)
-            mutate(`/api/comment/${pageId}`)
+            mutate(`/api/comment/${pageType}/${pageId}`)
             setComment("")
             toast("Comment added successfully")
         })

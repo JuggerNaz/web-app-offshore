@@ -25,7 +25,7 @@ type Props = {
     data?: any //TODO: use real type rather than any
 }
 
-export default function Spec1 ({data}: Props) {
+export default function Spec1Pipeline ({data}: Props) {
     const form = useForm<z.infer<typeof PlatformSchema>>({
         resolver: zodResolver(PlatformSchema),
         // defaultValues: {
@@ -55,7 +55,7 @@ export default function Spec1 ({data}: Props) {
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                <CollapsibleField title="Detail Head Platform">
+                <CollapsibleField title="Detail Head Pipeline">
                     <RowWrap>
                         <ColWrap>
                             <FormFieldWrap label="Title" name="title" form={form} placeholder="title" />
@@ -73,7 +73,7 @@ export default function Spec1 ({data}: Props) {
                         </ColWrap>
                     </RowWrap>
                 </CollapsibleField>
-                <RowWrap>
+                {/* <RowWrap>
                     <div className="w-1/5 space-y-2">
                         <FormFieldWrap label="Norting" name="st_north" form={form} placeholder="northing" ftype="vertical" description="m" />
                         <FormFieldWrap label="Easting" name="st_east" form={form} placeholder="easting" ftype="vertical" description="m" />
@@ -181,7 +181,7 @@ export default function Spec1 ({data}: Props) {
                         <div>The default unit that to be applied for this platform, its components and inspections.</div>
                         <FormFieldWrap label="" name="def_unit" form={form} placeholder="default unit" ftype="vertical" />
                     </div>
-                </RowWrap>
+                </RowWrap> */}
                 <Button type="submit">Submit</Button>
             </form>
       </Form>
