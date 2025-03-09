@@ -15,12 +15,6 @@ import { fetcher } from "@/utils/utils";
 import {mutate} from "swr";
 import { toast } from "sonner"
 
-const formSchema = z.object({
-    username: z.string().min(2, {
-      message: "Username must be at least 2 characters.",
-    }),
-})
-
 type Props = {
     data?: any //TODO: use real type rather than any
 }

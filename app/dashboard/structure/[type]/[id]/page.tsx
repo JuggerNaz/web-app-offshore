@@ -10,6 +10,8 @@ import { fetcher } from "@/utils/utils";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import Spec1Pipeline from "@/components/forms/spec1-pipeline";
+import Spec2Platform from "@/components/forms/spec2-platform";
+import { Button } from "@/components/ui/button";
 
 export default function DetailPage() {
     const { type, id } = useParams();
@@ -27,7 +29,10 @@ export default function DetailPage() {
     if (isLoading) return <div>loading...</div>
     
     return (
-      <div className="flex-1 w-full flex flex-col gap-12">
+      <div className="flex-1 w-full flex flex-col gap-3">
+        <div className="flex justify-end">
+          <Button type="submit">View Component</Button>
+        </div>
         <Tabs defaultValue="spec1" className="w-full">
           <TabsList className="w-full justify-items-stretch">
             <TabsTrigger value="spec1">Specification</TabsTrigger>
@@ -41,7 +46,11 @@ export default function DetailPage() {
               { type === 'platform' ? <SpecHead data={data?.data} /> : <Spec1Pipeline data={data?.data} /> }
             </Suspense>
           </TabsContent>
-          <TabsContent value="spec2">Content for specification 2</TabsContent>
+          <TabsContent value="spec2">
+            <Suspense fallback={<Loading />}>
+              { type === 'platform' ? <Spec2Platform /> : <Spec2Platform /> }
+            </Suspense>
+          </TabsContent>
           <TabsContent value="structure-image">Structure Image</TabsContent>
           <TabsContent value="comments"><Comments /></TabsContent>
           <TabsContent value="attachments"><Attachments /></TabsContent>

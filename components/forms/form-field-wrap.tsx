@@ -55,7 +55,9 @@ export function FormItemNormal ({
 }) {
     return (
         <FormItem>
-            <FormLabel>{label}</FormLabel>
+            {
+                label && <FormLabel>{label}</FormLabel>
+            }
             <FormControl>
                 <Input placeholder={placeholder ?? 'N/A'} {...field} type={type} />
             </FormControl>
