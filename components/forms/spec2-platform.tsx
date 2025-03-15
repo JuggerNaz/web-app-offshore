@@ -21,7 +21,7 @@ export default function Spec2Platform () {
                     <div className="w-1/2 rounded bg-muted p-2">
                         <div className="font-bold text-center mb-3">Below Splash Level</div>
                         <div className="flex gap-2">
-                            <input type="text" className="w-1/2 border p-1 bg-mu" />
+                            <input type="text" className="w-1/2 border p-1 bg-muted" />
                             
                         </div>
                     </div>
