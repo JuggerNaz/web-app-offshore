@@ -10,10 +10,20 @@ import {
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectLabel,
+    SelectTrigger,
+    SelectValue,
+  } from "@/components/ui/select"
+
 export function FormFieldWrap ({
     label, name, form, description, 
     placeholder, ftype = 'normal', formControlClass = '', formLabelClass = '',
-    type = 'text'
+    type = 'text', options
 }
 :
 {
@@ -22,10 +32,11 @@ export function FormFieldWrap ({
     form:any, 
     description?:string, 
     placeholder?:string, 
-    ftype?: 'normal' | 'small' | 'vertical' | 'checkbox',
+    ftype?: 'normal' | 'small' | 'vertical' | 'checkbox' | 'select',
     formControlClass?: string,
     formLabelClass?: string,
-    type?: 'text' | 'number' | 'email' | 'password'
+    type?: 'text' | 'number' | 'email' | 'password',
+    options?: {label:string, value:string}[]
 }) {
     return (
         <FormField
@@ -38,7 +49,9 @@ export function FormFieldWrap ({
                     <FormItemSmall label={label} description={description} placeholder={placeholder} field={field} type={type} />
                 ) : ftype === 'checkbox' ? (
                     <FormCheckbox label={label} field={field} />
-                )  : (
+                ) : ftype === 'select' ? (
+                    <FormSelect label={label} options={options} field={field} />
+                ) : (
                     <FormItemVertical label={label} description={description} placeholder={placeholder} 
                     field={field} formControlClass={formControlClass} formLabelClass={formLabelClass} type={type} />
                 )
@@ -134,6 +147,33 @@ export function FormCheckbox ({
                 {label}
             </FormLabel>
             </FormItem>
+    )
+}
+
+export function FormSelect ({
+    label, options, field
+}: {        
+    label:string, options?: {label:string, value:string}[], field:any
+}) {
+    return (
+        <FormItem>
+            <FormLabel>{label}</FormLabel>
+            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <SelectTrigger className="">
+                    <SelectValue placeholder="Select a orientation" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectGroup>
+                    <SelectLabel>{label}</SelectLabel>
+                    {
+                        options!.map((item, index) => (
+                            <SelectItem key={index} value={item.value}>{item.label}</SelectItem>
+                        ))
+                    }
+                    </SelectGroup>
+                </SelectContent>
+            </Select>
+        </FormItem>
     )
 }
 

@@ -210,3 +210,24 @@ export const PipelineSchema = z.object({
   wall_thk: z.coerce.number().nullable(),
   workunit: z.string().nullable()
 })
+
+export const ElevationSchema = z.object({
+  cr_date: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_user: z
+    .string()
+    .optional()
+    .nullable(),
+  elv: z.coerce.number().optional(),
+  orient: z
+    .string()
+    .optional()
+    .nullable(),
+  plat_id: z.coerce.number().optional(),
+  workunit: z
+    .string()
+    .optional()
+    .nullable()
+})
