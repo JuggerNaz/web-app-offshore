@@ -18,7 +18,8 @@ import {
     Users2,
     BrickWall,
     Menu,
-    Layers2
+    Layers2,
+    Calendar
 } from "lucide-react"
 import Link from "next/link";
 
@@ -49,7 +50,11 @@ const DashboardMenu = () => {
             </MenuLink>
             <MenuLink href="/dashboard/job-pack">
                 <Package size={20} />
-                 Job Pack
+                Job Pack
+            </MenuLink>
+            <MenuLink href="/dashboard/planning">
+                <Calendar size={20} />
+                Planning
             </MenuLink>
         </nav>
     );
