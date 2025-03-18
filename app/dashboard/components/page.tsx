@@ -5,6 +5,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
   TableBody,
@@ -16,6 +20,7 @@ import {
 import { UnifiedComponentSpec } from "@/utils/types/database-types"
 import Comments from '@/components/comment/comments'
 import Attachments from '@/components/attachment/attachments'
+import { cn } from "@/lib/utils"
 
 type ComponentSpec = UnifiedComponentSpec;
 
@@ -26,7 +31,7 @@ const defaultSpec: ComponentSpec = {
   lastModified: new Date().toISOString(),
   status: 'active',
   componentType: 'PLATFORM',
-  
+
   // Common fields
   qId: '',
   description: '',
@@ -36,7 +41,7 @@ const defaultSpec: ComponentSpec = {
   material: '',
   fitting: '',
   part: '',
-  
+
   // Location fields (both platform and pipeline)
   level: '',
   face: '',
@@ -50,7 +55,7 @@ const defaultSpec: ComponentSpec = {
   elevation2: 0,
   distance: 0,
   clockPosition: '',
-  
+
   // Component-specific fields
   anodeType: '',
   weight: 0,
@@ -92,12 +97,14 @@ const componentTypes = [
 ];
 
 export default function ComponentPage() {
+  const [step, setStep] = useState(1);
+  const [activeTab, setActiveTab] = useState(`step-${step}`);
   const [selectedComponent, setSelectedComponent] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSpecForm, setShowSpecForm] = useState(false);
   const [currentSpec, setCurrentSpec] = useState<ComponentSpec>(defaultSpec);
 
-  const filteredComponents = componentTypes.filter(comp => 
+  const filteredComponents = componentTypes.filter(comp =>
     comp.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -129,477 +136,329 @@ export default function ComponentPage() {
     });
   };
 
+  // Update activeTab when step changes
+  const handleNext = () => {
+    const nextStep = Math.min(step + 1, 4);
+    setStep(nextStep);
+    setActiveTab(`step-${nextStep}`);
+  };
+
+  const handlePrevious = () => {
+    const prevStep = Math.max(step - 1, 1);
+    setStep(prevStep);
+    setActiveTab(`step-${prevStep}`);
+  };
+
+  // Handle tab change
+  const handleTabChange = (value: string) => {
+    const newStep = parseInt(value.split('-')[1]);
+    setStep(newStep);
+    setActiveTab(value);
+  };
+
   return (
     <div className="flex-1 w-full flex flex-col">
       <div className="flex flex-col items-start">
-        <h2 className="font-bold text-2xl mb-4">Components</h2>
+        <h2 className="font-bold text-2xl">Components {step > 1 ? `Management - Step ${step}` : ""}</h2>
+        <p className="text-muted-foreground">Create and manage inspection components</p>
       </div>
 
-      <div className="container mx-auto py-6">
-        <div className="border rounded-md bg-card">
-          <div className="flex">
-            {/* Left Sidebar */}
-            <div className="w-64 bg-secondary text-secondary-foreground">
-              <div className="p-4">
-                <input
-                  type="text"
-                  placeholder="Search Q ID"
-                  className="w-full p-2 rounded bg-muted text-muted-foreground placeholder:text-muted-foreground/60 border-input text-sm"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <div className="font-bold mb-2 px-4 text-sm">Components List</div>
-              <div className="h-[calc(100vh-350px)] overflow-y-auto">
-                {filteredComponents.map((comp) => (
-                  <button
-                    key={comp}
-                    className={`w-full text-left px-4 py-1.5 cursor-pointer transition-colors text-xs
-                      ${selectedComponent === comp 
-                        ? 'bg-primary text-primary-foreground' 
-                        : 'hover:bg-accent hover:text-accent-foreground'
-                      }`}
-                    onClick={() => handleComponentSelect(comp)}
-                  >
-                    {comp}
-                  </button>
-                ))}
-              </div>
+      <div className="mt-4">
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="step-1">Component Selection</TabsTrigger>
+            <TabsTrigger value="step-2" disabled={step < 2}>Component Details</TabsTrigger>
+            <TabsTrigger value="step-3" disabled={step < 3}>Inspection History</TabsTrigger>
+            <TabsTrigger value="step-4" disabled={step < 4}>Attachments</TabsTrigger>
+          </TabsList>
+
+          {/* Step 1: Component Selection */}
+          <TabsContent value="step-1" className="space-y-4 mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Component Type</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="componentType">Select Component Type</Label>
+                    <Select defaultValue="ALL COMPONENTS">
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select component type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {componentTypes.map((type) => (
+                          <SelectItem key={type} value={type}>{type}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="searchComponent">Search Component</Label>
+                    <Input
+                      id="searchComponent"
+                      placeholder="Search by Q ID or description"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Available Components</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px]">Comp ID</TableHead>
+                        <TableHead>Q ID</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Component Type</TableHead>
+                        <TableHead>Location</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredComponents.slice(0, 5).map((comp, index) => (
+                        <TableRow key={index} className="cursor-pointer hover:bg-muted" onClick={() => handleComponentSelect(comp)}>
+                          <TableCell className="font-medium">COMP-{index + 1}</TableCell>
+                          <TableCell>{`Q${index + 100}`}</TableCell>
+                          <TableCell>{comp}</TableCell>
+                          <TableCell>{comp}</TableCell>
+                          <TableCell>{index % 2 === 0 ? 'TOPSIDE' : 'SUBSEA'}</TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="outline" size="sm" onClick={() => handleComponentSelect(comp)}>
+                              Select
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-end">
+              <Button onClick={handleNext} disabled={!selectedComponent}>Next</Button>
             </div>
+          </TabsContent>
 
-            {/* Main Content */}
-            <div className="flex-1 bg-background">
-              <div className="p-6">
-                {selectedComponent && !showSpecForm ? (
-                  <div className="w-full overflow-auto">
-                    <Table className="w-full">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="whitespace-nowrap">Comp ID</TableHead>
-                          <TableHead className="whitespace-nowrap">Q ID</TableHead>
-                          <TableHead className="whitespace-nowrap">Description</TableHead>
-                          <TableHead className="whitespace-nowrap">Component Type</TableHead>
-                          <TableHead className="whitespace-nowrap">S Node</TableHead>
-                          <TableHead className="whitespace-nowrap">E Node</TableHead>
-                          <TableHead className="whitespace-nowrap">S Leg</TableHead>
-                          <TableHead className="whitespace-nowrap">E Leg</TableHead>
-                          <TableHead className="whitespace-nowrap">Elevation 1</TableHead>
-                          <TableHead className="whitespace-nowrap">Elevation 2</TableHead>
-                          <TableHead className="whitespace-nowrap">Distance</TableHead>
-                          <TableHead className="whitespace-nowrap">Clock Pos</TableHead>
-                          <TableHead className="whitespace-nowrap w-[100px]">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell>
-                            <Input 
-                              placeholder="Enter Comp ID"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              placeholder="Enter Q ID"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              placeholder="Enter Description"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <select className="w-full h-8 rounded-md border border-input bg-background px-3 py-1 text-sm">
-                              <option value="">Select Type</option>
-                              {componentTypes.map((type) => (
-                                <option key={type} value={type}>{type}</option>
-                              ))}
-                            </select>
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              placeholder="S Node"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              placeholder="E Node"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              placeholder="S Leg"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              placeholder="E Leg"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              type="number"
-                              placeholder="Elevation 1"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              type="number"
-                              placeholder="Elevation 2"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              type="number"
-                              placeholder="Distance"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input 
-                              placeholder="Clock Pos"
-                              className="h-8"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Button size="sm" className="w-full h-8">
-                              Add
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>{currentSpec.componentId}</TableCell>
-                          <TableCell>{currentSpec.qId}</TableCell>
-                          <TableCell>{currentSpec.description}</TableCell>
-                          <TableCell>{selectedComponent}</TableCell>
-                          <TableCell>{currentSpec.startNode}</TableCell>
-                          <TableCell>{currentSpec.endNode}</TableCell>
-                          <TableCell>{currentSpec.startLeg}</TableCell>
-                          <TableCell>{currentSpec.endLeg}</TableCell>
-                          <TableCell>{currentSpec.elevation1}</TableCell>
-                          <TableCell>{currentSpec.elevation2}</TableCell>
-                          <TableCell>{currentSpec.distance}</TableCell>
-                          <TableCell>{currentSpec.clockPosition}</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm" className="w-full h-8">
-                              Edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>AN/00102A-00102B/00000/00</TableCell>
-                          <TableCell>BAN102</TableCell>
-                          <TableCell>BAN102</TableCell>
-                          <TableCell>ANODE</TableCell>
-                          <TableCell>102A</TableCell>
-                          <TableCell>102B</TableCell>
-                          <TableCell>B1</TableCell>
-                          <TableCell>A1</TableCell>
-                          <TableCell>-27.000</TableCell>
-                          <TableCell>-27.000</TableCell>
-                          <TableCell>0.00</TableCell>
-                          <TableCell>N/A</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm" className="w-full h-8">
-                              Edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>AN/00103A-00103B/00000/00</TableCell>
-                          <TableCell>BAN103</TableCell>
-                          <TableCell>BAN103</TableCell>
-                          <TableCell>ANODE</TableCell>
-                          <TableCell>103A</TableCell>
-                          <TableCell>103B</TableCell>
-                          <TableCell>B2</TableCell>
-                          <TableCell>A2</TableCell>
-                          <TableCell>-28.000</TableCell>
-                          <TableCell>-28.000</TableCell>
-                          <TableCell>0.00</TableCell>
-                          <TableCell>N/A</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm" className="w-full h-8">
-                              Edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>AN/00104A-00104B/00000/00</TableCell>
-                          <TableCell>BAN104</TableCell>
-                          <TableCell>BAN104</TableCell>
-                          <TableCell>ANODE</TableCell>
-                          <TableCell>104A</TableCell>
-                          <TableCell>104B</TableCell>
-                          <TableCell>B3</TableCell>
-                          <TableCell>A3</TableCell>
-                          <TableCell>-29.000</TableCell>
-                          <TableCell>-29.000</TableCell>
-                          <TableCell>0.00</TableCell>
-                          <TableCell>N/A</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm" className="w-full h-8">
-                              Edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
+          {/* Step 2: Component Details */}
+          <TabsContent value="step-2" className="space-y-4 mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Component Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="componentId">Component ID</Label>
+                    <Input
+                      id="componentId"
+                      value={currentSpec.componentId}
+                      onChange={(e) => setCurrentSpec({ ...currentSpec, componentId: e.target.value })}
+                    />
                   </div>
-                ) : showSpecForm ? (
-                  <div className="space-y-6">
-                    <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-lg font-medium">Component Specifications</h3>
-                      <Button variant="outline" onClick={() => setShowSpecForm(false)}>
-                        Back to List
-                      </Button>
-                    </div>
-
-                    <Tabs defaultValue="specifications" className="w-full">
-                      <TabsList className="grid w-full grid-cols-4">
-                        <TabsTrigger value="specifications">Specifications</TabsTrigger>
-                        <TabsTrigger value="specifications2">Specifications 2</TabsTrigger>
-                        <TabsTrigger value="comments">Comments</TabsTrigger>
-                        <TabsTrigger value="attachments">Attachments</TabsTrigger>
-                      </TabsList>
-
-                      <TabsContent value="specifications" className="border rounded-lg p-4 mt-4">
-                        <div className="space-y-6">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label>Q Id</Label>
-                              <Input 
-                                value={currentSpec.qId}
-                                onChange={(e) => setCurrentSpec({...currentSpec, qId: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Description</Label>
-                              <Input 
-                                value={currentSpec.description}
-                                onChange={(e) => setCurrentSpec({...currentSpec, description: e.target.value})}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-4 gap-4">
-                            <div>
-                              <Label>Start Node</Label>
-                              <Input 
-                                value={currentSpec.startNode}
-                                onChange={(e) => setCurrentSpec({...currentSpec, startNode: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Start Leg</Label>
-                              <Input 
-                                value={currentSpec.startLeg}
-                                onChange={(e) => setCurrentSpec({...currentSpec, startLeg: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Elevation 1</Label>
-                              <Input 
-                                type="number"
-                                value={currentSpec.elevation1}
-                                onChange={(e) => setCurrentSpec({...currentSpec, elevation1: parseFloat(e.target.value)})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Distance</Label>
-                              <Input 
-                                type="number"
-                                value={currentSpec.distance}
-                                onChange={(e) => setCurrentSpec({...currentSpec, distance: parseFloat(e.target.value)})}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-4 gap-4">
-                            <div>
-                              <Label>End Node</Label>
-                              <Input 
-                                value={currentSpec.endNode}
-                                onChange={(e) => setCurrentSpec({...currentSpec, endNode: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>End Leg</Label>
-                              <Input 
-                                value={currentSpec.endLeg}
-                                onChange={(e) => setCurrentSpec({...currentSpec, endLeg: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Elevation 2</Label>
-                              <Input 
-                                type="number"
-                                value={currentSpec.elevation2}
-                                onChange={(e) => setCurrentSpec({...currentSpec, elevation2: parseFloat(e.target.value)})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Clock Position</Label>
-                              <Input 
-                                value={currentSpec.clockPosition}
-                                onChange={(e) => setCurrentSpec({...currentSpec, clockPosition: e.target.value})}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-4">
-                            <div>
-                              <Label>Level</Label>
-                              <Input 
-                                value={currentSpec.level}
-                                onChange={(e) => setCurrentSpec({...currentSpec, level: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Face</Label>
-                              <Input 
-                                value={currentSpec.face}
-                                onChange={(e) => setCurrentSpec({...currentSpec, face: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Part</Label>
-                              <Input 
-                                value={currentSpec.part}
-                                onChange={(e) => setCurrentSpec({...currentSpec, part: e.target.value})}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label>Structural Group</Label>
-                              <Input 
-                                value={currentSpec.structuralGroup}
-                                onChange={(e) => setCurrentSpec({...currentSpec, structuralGroup: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Component Id</Label>
-                              <Input 
-                                value={currentSpec.componentId}
-                                onChange={(e) => setCurrentSpec({...currentSpec, componentId: e.target.value})}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-4">
-                            <div>
-                              <Label>Install Date</Label>
-                              <Input 
-                                type="date"
-                                value={currentSpec.installDate}
-                                onChange={(e) => setCurrentSpec({...currentSpec, installDate: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Life (years)</Label>
-                              <Input 
-                                type="number"
-                                value={currentSpec.life}
-                                onChange={(e) => setCurrentSpec({...currentSpec, life: parseInt(e.target.value)})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Position</Label>
-                              <Input 
-                                value={currentSpec.position}
-                                onChange={(e) => setCurrentSpec({...currentSpec, position: e.target.value})}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-4">
-                            <div>
-                              <Label>Material</Label>
-                              <Input 
-                                value={currentSpec.material}
-                                onChange={(e) => setCurrentSpec({...currentSpec, material: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Fitting</Label>
-                              <Input 
-                                value={currentSpec.fitting}
-                                onChange={(e) => setCurrentSpec({...currentSpec, fitting: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <Label>Anode Type</Label>
-                              <Input 
-                                value={currentSpec.anodeType}
-                                onChange={(e) => setCurrentSpec({...currentSpec, anodeType: e.target.value})}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </TabsContent>
-
-                      <TabsContent value="specifications2" className="border rounded-lg p-4 mt-4">
-                        <div className="space-y-6">
-                          <div className="border rounded-lg p-4 bg-[#0a2534] text-white">
-                            <h3 className="text-sm mb-6">Associate Component to other Component:</h3>
-                            
-                            <div className="flex items-center gap-4 mb-4">
-                              <Label className="text-white">Associated to:</Label>
-                              <div className="flex-1">
-                                <Input 
-                                  placeholder="Enter associated component"
-                                  className="bg-white text-black h-8"
-                                  value="R1-SK017-BADP-A"
-                                />
-                              </div>
-                              <Button variant="secondary" size="sm" className="h-8">
-                                ...
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-end space-x-2">
-                            <Button variant="outline">
-                              Cancel
-                            </Button>
-                            <Button>
-                              OK
-                            </Button>
-                          </div>
-                        </div>
-                      </TabsContent>
-                      <Comments />
-                      <Attachments />
-                    </Tabs>
-
-                    <div className="flex justify-end space-x-4 mt-6">
-                      <Button variant="outline" onClick={() => setShowSpecForm(false)}>
-                        Cancel
-                      </Button>
-                      <Button>
-                        Save Changes
-                      </Button>
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="qId">Q ID</Label>
+                    <Input
+                      id="qId"
+                      value={currentSpec.qId}
+                      onChange={(e) => setCurrentSpec({ ...currentSpec, qId: e.target.value })}
+                    />
                   </div>
-                ) : (
-                  <div className="text-center text-muted-foreground mt-10">
-                    Select a component from the list to view details
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Input
+                      id="description"
+                      value={currentSpec.description}
+                      onChange={(e) => setCurrentSpec({ ...currentSpec, description: e.target.value })}
+                    />
                   </div>
-                )}
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="componentType">Component Type</Label>
+                    <Select
+                      value={currentSpec.componentType}
+                      onValueChange={(value) => setCurrentSpec({ ...currentSpec, componentType: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select component type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {componentTypes.map((type) => (
+                          <SelectItem key={type} value={type}>{type}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="material">Material</Label>
+                    <Input
+                      id="material"
+                      value={currentSpec.material}
+                      onChange={(e) => setCurrentSpec({ ...currentSpec, material: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="installedType">Installed Type</Label>
+                    <Input
+                      id="installedType"
+                      value={currentSpec.installedType}
+                      onChange={(e) => setCurrentSpec({ ...currentSpec, installedType: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="startNode">Start Node</Label>
+                    <Input
+                      id="startNode"
+                      value={currentSpec.startNode}
+                      onChange={(e) => setCurrentSpec({ ...currentSpec, startNode: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="endNode">End Node</Label>
+                    <Input
+                      id="endNode"
+                      value={currentSpec.endNode}
+                      onChange={(e) => setCurrentSpec({ ...currentSpec, endNode: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="elevation1">Elevation 1</Label>
+                    <Input
+                      id="elevation1"
+                      type="number"
+                      value={currentSpec.elevation1}
+                      onChange={(e) => setCurrentSpec({ ...currentSpec, elevation1: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="elevation2">Elevation 2</Label>
+                    <Input
+                      id="elevation2"
+                      type="number"
+                      value={currentSpec.elevation2}
+                      onChange={(e) => setCurrentSpec({ ...currentSpec, elevation2: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+              <Button onClick={handleNext}>Next</Button>
             </div>
-          </div>
-        </div>
+          </TabsContent>
+
+          {/* Step 3: Inspection History */}
+          <TabsContent value="step-3" className="space-y-4 mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Inspection History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Inspection Date</TableHead>
+                        <TableHead>Inspection Type</TableHead>
+                        <TableHead>Inspection Mode</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Findings</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell>2023-05-15</TableCell>
+                        <TableCell>General Visual</TableCell>
+                        <TableCell>ROV</TableCell>
+                        <TableCell>Completed</TableCell>
+                        <TableCell>No anomalies</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm">View</Button>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>2022-11-20</TableCell>
+                        <TableCell>Close Visual</TableCell>
+                        <TableCell>DIVING</TableCell>
+                        <TableCell>Completed</TableCell>
+                        <TableCell>Minor corrosion</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm">View</Button>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>2021-08-03</TableCell>
+                        <TableCell>General Visual</TableCell>
+                        <TableCell>ROV</TableCell>
+                        <TableCell>Completed</TableCell>
+                        <TableCell>No anomalies</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm">View</Button>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+              <Button onClick={handleNext}>Next</Button>
+            </div>
+          </TabsContent>
+
+          {/* Step 4: Attachments */}
+          <TabsContent value="step-4" className="space-y-4 mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Attachments & Comments</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Tabs defaultValue="attachments" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="attachments">Attachments</TabsTrigger>
+                    <TabsTrigger value="comments">Comments</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="attachments" className="mt-4">
+                    <Attachments entityId={currentSpec.componentId || "temp-id"} entityType="component" />
+                  </TabsContent>
+                  <TabsContent value="comments" className="mt-4">
+                    <Comments entityId={currentSpec.componentId || "temp-id"} entityType="component" />
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+              <Button onClick={() => alert("Component data saved!")}>Save</Button>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
