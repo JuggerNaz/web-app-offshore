@@ -23,7 +23,7 @@ import {
 export function FormFieldWrap ({
     label, name, form, description, 
     placeholder, ftype = 'normal', formControlClass = '', formLabelClass = '',
-    type = 'text', options
+    type = 'text', options, maxLength
 }
 :
 {
@@ -36,7 +36,8 @@ export function FormFieldWrap ({
     formControlClass?: string,
     formLabelClass?: string,
     type?: 'text' | 'number' | 'email' | 'password',
-    options?: {label:string, value:string}[]
+    options?: {label:string, value:string}[],
+    maxLength?: string
 }) {
     return (
         <FormField
@@ -44,16 +45,16 @@ export function FormFieldWrap ({
             name={name}
             render={({ field }) => (
                 ftype === 'normal' ? (
-                    <FormItemNormal label={label} description={description} placeholder={placeholder} field={field} type={type} />
+                    <FormItemNormal label={label} description={description} placeholder={placeholder} field={field} type={type} maxLength={maxLength} />
                 ) : ftype === 'small' ? (
-                    <FormItemSmall label={label} description={description} placeholder={placeholder} field={field} type={type} />
+                    <FormItemSmall label={label} description={description} placeholder={placeholder} field={field} type={type} maxLength={maxLength} />
                 ) : ftype === 'checkbox' ? (
                     <FormCheckbox label={label} field={field} />
                 ) : ftype === 'select' ? (
                     <FormSelect label={label} options={options} field={field} />
                 ) : (
                     <FormItemVertical label={label} description={description} placeholder={placeholder} 
-                    field={field} formControlClass={formControlClass} formLabelClass={formLabelClass} type={type} />
+                    field={field} formControlClass={formControlClass} formLabelClass={formLabelClass} type={type} maxLength={maxLength} />
                 )
             )}
         />
@@ -61,10 +62,10 @@ export function FormFieldWrap ({
 }
 
 export function FormItemNormal ({
-    label, description, placeholder, field, type
+    label, description, placeholder, field, type, maxLength
 }:
 {
-    label:string, description?:string, placeholder?:string, field:any, type: 'text' | 'number' | 'email' | 'password'
+    label:string, description?:string, placeholder?:string, field:any, type: 'text' | 'number' | 'email' | 'password', maxLength?: string
 }) {
     return (
         <FormItem>
@@ -72,7 +73,7 @@ export function FormItemNormal ({
                 label && <FormLabel>{label}</FormLabel>
             }
             <FormControl>
-                <Input placeholder={placeholder ?? 'N/A'} {...field} type={type} />
+                <Input placeholder={placeholder ?? 'N/A'} {...field} type={type} maxLength={maxLength} />
             </FormControl>
             {
                 description && <FormDescription>{description}</FormDescription>
@@ -83,18 +84,18 @@ export function FormItemNormal ({
 }
 
 export function FormItemVertical ({
-    label, description, placeholder, field, formControlClass, formLabelClass, type
+    label, description, placeholder, field, formControlClass, formLabelClass, type, maxLength
 }:
 {
     label:string, description?:string, placeholder?:string, field:any, 
-    formControlClass?:string, formLabelClass?:string, type?: 'text' | 'number' | 'email' | 'password'
+    formControlClass?:string, formLabelClass?:string, type?: 'text' | 'number' | 'email' | 'password', maxLength?: string
 }) {
     return (
         <FormItem className="flex flex-col gap-1">
             <div className={`w-full text-sm ${formLabelClass}`}>{label}</div>
             <div className="flex items-center justify-center gap-3 w-full">
                 <FormControl className={formControlClass}>
-                    <Input placeholder={placeholder ?? 'N/A'} {...field} type={type} />
+                    <Input placeholder={placeholder ?? 'N/A'} {...field} type={type} maxLength={maxLength} />
                 </FormControl>
                 {
                     description && <FormDescription>{description}</FormDescription>
@@ -106,16 +107,16 @@ export function FormItemVertical ({
 }
 
 export function FormItemSmall ({
-    label, description, placeholder, field, type
+    label, description, placeholder, field, type, maxLength
 }:
 {
-    label:string, description?:string, placeholder?:string, field:any, type?: 'text' | 'number' | 'email' | 'password'
+    label:string, description?:string, placeholder?:string, field:any, type?: 'text' | 'number' | 'email' | 'password', maxLength?: string
 }) {
     return (
         <FormItem className="flex flex-col w-11 gap-1">
             <FormLabel>{label}</FormLabel>
             <FormControl>
-                <Input placeholder={placeholder ?? 'N/A'} {...field} type={type} />
+                <Input placeholder={placeholder ?? 'N/A'} {...field} type={type} maxLength={maxLength} />
             </FormControl>
             {
                 description && <FormDescription>{description}</FormDescription>
@@ -160,7 +161,7 @@ export function FormSelect ({
             <FormLabel>{label}</FormLabel>
             <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <SelectTrigger className="">
-                    <SelectValue placeholder="Select a orientation" />
+                    <SelectValue placeholder={`Select ${label}`} />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectGroup>

@@ -12,6 +12,7 @@ import { urlId, urlType } from "@/utils/client-state";
 import Spec1Pipeline from "@/components/forms/spec1-pipeline";
 import Spec2Platform from "@/components/forms/spec2-platform";
 import { Button } from "@/components/ui/button";
+import Spec2Pipeline from "@/components/forms/spec2-pipeline";
 
 export default function DetailPage() {
     const { type, id } = useParams();
@@ -48,7 +49,7 @@ export default function DetailPage() {
           </TabsContent>
           <TabsContent value="spec2">
             <Suspense fallback={<Loading />}>
-              { type === 'platform' ? <Spec2Platform /> : <Spec2Platform /> }
+              { type === 'platform' ? <Spec2Platform /> : <Spec2Pipeline /> }
             </Suspense>
           </TabsContent>
           <TabsContent value="structure-image">Structure Image</TabsContent>

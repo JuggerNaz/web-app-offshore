@@ -14,10 +14,15 @@ import {
 import { Database } from "@/supabase/schema"
 import moment from "moment"
 import Link from "next/link"
+import { mutate } from "swr";
+import { fetcher } from "@/utils/utils";
+import { toast } from "sonner"
 
 export type Platform = Database["public"]["Tables"]["platform"]["Row"]
 export type Comment = Database["public"]["Tables"]["comment"]["Row"]
 export type Pipeline = Database["public"]["Tables"]["u_pipeline"]["Row"]
+export type Levels = Database["public"]["Tables"]["str_level"]["Row"]
+export type Faces = Database["public"]["Tables"]["str_faces"]["Row"]
 
 export const columns: ColumnDef<Platform>[] = [
   {
@@ -205,6 +210,124 @@ export const comments: ColumnDef<Comment>[] = [
                   {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
                   View Detail
                   </Link> */}
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+      )
+    },
+  },
+]
+
+export const levels: ColumnDef<Levels>[] = [
+  {
+    accessorKey: "level_name",
+    header: "Level Name",
+  },
+  {
+    accessorKey: "elv_from",
+    header: "Start Elevation",
+  },
+  {
+    accessorKey: "elv_to",
+    header: "End Elevation",
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original
+ 
+      return (
+        <div className="text-center">
+            <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreVertical className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                {/* <DropdownMenuItem
+                  onClick={() => navigator.clipboard.writeText(payment.id)}
+                >
+                Copy payment ID
+                </DropdownMenuItem> */}
+                <DropdownMenuSeparator />
+                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={async() => {
+                    await fetcher(`/api/platform/level`, {
+                      method: 'DELETE',
+                      body: JSON.stringify(item)
+                    })
+                    .then((res) => {
+                      mutate(`/api/platform/level/${item.plat_id}`)
+                      toast("Level deleted successfully")
+                    })
+                  }}
+                >
+                  Remove
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+      )
+    },
+  },
+]
+
+export const faces: ColumnDef<Faces>[] = [
+  {
+    accessorKey: "face",
+    header: "Name",
+  },
+  {
+    accessorKey: "face_from",
+    header: "From",
+  },
+  {
+    accessorKey: "face_to",
+    header: "To",
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original
+ 
+      return (
+        <div className="text-center">
+            <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreVertical className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                {/* <DropdownMenuItem
+                  onClick={() => navigator.clipboard.writeText(payment.id)}
+                >
+                Copy payment ID
+                </DropdownMenuItem> */}
+                <DropdownMenuSeparator />
+                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={async() => {
+                    await fetcher(`/api/platform/faces`, {
+                      method: 'DELETE',
+                      body: JSON.stringify(item)
+                    })
+                    .then((res) => {
+                      mutate(`/api/platform/faces/${item.plat_id}`)
+                      toast("Faces deleted successfully")
+                    })
+                  }}
+                >
+                  Remove
                 </DropdownMenuItem>
             </DropdownMenuContent>
             </DropdownMenu>

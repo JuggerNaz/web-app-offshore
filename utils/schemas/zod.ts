@@ -231,3 +231,59 @@ export const ElevationSchema = z.object({
     .optional()
     .nullable()
 })
+
+export const LevelSchema = z.object({
+  cr_date: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_user: z
+    .string()
+    .optional()
+    .nullable(),
+  elv_from: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  elv_to: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  level_name: z.string().optional(),
+  plat_id: z.number().optional(),
+  workunit: z
+    .string()
+    .optional()
+    .nullable()
+})
+
+export const FacesSchema = z.object({
+  cr_date: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_user: z
+    .string()
+    .optional()
+    .nullable(),
+  face: z.string().optional(),
+  face_desc: z
+    .string()
+    .optional()
+    .nullable(),
+  face_from: z
+    .string()
+    .optional()
+    .nullable(),
+  face_to: z
+    .string()
+    .optional()
+    .nullable(),
+  plat_id: z.number().optional(),
+  workunit: z
+    .string()
+    .optional()
+    .nullable()
+})
