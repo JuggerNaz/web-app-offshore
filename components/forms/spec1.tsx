@@ -12,7 +12,7 @@ import { RowWrap, ColWrap } from "@/components/forms/utils"
 import { CollapsibleField } from "@/components/forms/utils"
 import { FormFieldWrap } from "./form-field-wrap"
 import { fetcher } from "@/utils/utils";
-import {mutate} from "swr";
+import useSWR, {mutate} from "swr";
 import { toast } from "sonner"
 
 type Props = {
@@ -20,6 +20,12 @@ type Props = {
 }
 
 export default function Spec1 ({data}: Props) {
+    const { data : libData, error, isLoading } = useSWR(`/api/library/${'PLAT_TYP,PLAT_FUNCT,PLAT_MAT,PLAT_CP,CORR_CTG,PLAT_CONT'}`, fetcher)
+
+    useEffect(() => {
+        form.reset(data)
+    }, [data])
+    
     const form = useForm<z.infer<typeof PlatformSchema>>({
         resolver: zodResolver(PlatformSchema),
         // defaultValues: {
@@ -38,13 +44,10 @@ export default function Spec1 ({data}: Props) {
             // mutate(`/api/comment/${pageId}`) //if want to mutate
             toast("Platform updated successfully")
         })
-
-        console.log(values)
     }
-    
-    useEffect(() => {
-        form.reset(data)
-    }, [data])
+
+    if (error) return <div>failed to load</div>
+    if (isLoading) return <div>loading...</div>
 
     return (
         <Form {...form}>
@@ -62,8 +65,20 @@ export default function Spec1 ({data}: Props) {
                             <FormFieldWrap label="Design Life" name="desg_life" form={form} placeholder="design life" />
                         </ColWrap>
                         <ColWrap>
-                            <FormFieldWrap label="Type" name="ptype" form={form} placeholder="type" />
-                            <FormFieldWrap label="Function" name="ptype" form={form} placeholder="function" />
+                            {/* <FormFieldWrap label="Type" name="ptype" form={form} placeholder="type" /> */}
+                            <FormFieldWrap label="Type" name="ptype" options={
+                                        libData.data.filter((x:any) => x.lib_code == 'PLAT_TYP').map((x:any) => {
+                                        return { label: x.lib_desc, value: x.lib_id
+                                    }
+                                })} form={form} ftype="select" 
+                            />
+                            {/* <FormFieldWrap label="Function" name="ptype" form={form} placeholder="function" /> */}
+                            <FormFieldWrap label="Function" name="process" options={
+                                        libData.data.filter((x:any) => x.lib_code == 'PLAT_FUNCT').map((x:any) => {
+                                        return { label: x.lib_desc, value: x.lib_id
+                                    }
+                                })} form={form} ftype="select" 
+                            />
                         </ColWrap>
                     </RowWrap>
                 </CollapsibleField>
@@ -83,42 +98,42 @@ export default function Spec1 ({data}: Props) {
                             </div>
                             <div className="flex flex-col gap-2">
                                 <FormFieldWrap label="1:" name="leg_t1" form={form} placeholder="" ftype="small" />
-                                <FormFieldWrap label="2:" name="leg_t2" form={form} placeholder="" ftype="small" />
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="3:" name="leg_t3" form={form} placeholder="" ftype="small" />
-                                <FormFieldWrap label="4:" name="leg_t4" form={form} placeholder="" ftype="small" />
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="5:" name="leg_t5" form={form} placeholder="" ftype="small" />
-                                <FormFieldWrap label="6:" name="leg_t6" form={form} placeholder="" ftype="small" />
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="7:" name="leg_t7" form={form} placeholder="" ftype="small" />
-                                <FormFieldWrap label="8:" name="leg_t8" form={form} placeholder="" ftype="small" />
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <FormFieldWrap label="9:" name="leg_t9" form={form} placeholder="" ftype="small" />
-                                <FormFieldWrap label="10:" name="leg_t10" form={form} placeholder="" ftype="small" />
-                            </div>
-                            <div className="flex flex-col gap-2">
                                 <FormFieldWrap label="11:" name="leg_t11" form={form} placeholder="" ftype="small" />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <FormFieldWrap label="2:" name="leg_t2" form={form} placeholder="" ftype="small" />
                                 <FormFieldWrap label="12:" name="leg_t12" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
+                                <FormFieldWrap label="3:" name="leg_t3" form={form} placeholder="" ftype="small" />
                                 <FormFieldWrap label="13:" name="leg_t13" form={form} placeholder="" ftype="small" />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <FormFieldWrap label="4:" name="leg_t4" form={form} placeholder="" ftype="small" />
                                 <FormFieldWrap label="14:" name="leg_t14" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
+                                <FormFieldWrap label="5:" name="leg_t5" form={form} placeholder="" ftype="small" />
                                 <FormFieldWrap label="15:" name="leg_t15" form={form} placeholder="" ftype="small" />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <FormFieldWrap label="6:" name="leg_t6" form={form} placeholder="" ftype="small" />
                                 <FormFieldWrap label="16:" name="leg_t16" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
+                                <FormFieldWrap label="7:" name="leg_t7" form={form} placeholder="" ftype="small" />
                                 <FormFieldWrap label="17:" name="leg_t17" form={form} placeholder="" ftype="small" />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <FormFieldWrap label="8:" name="leg_t8" form={form} placeholder="" ftype="small" />
                                 <FormFieldWrap label="18:" name="leg_t18" form={form} placeholder="" ftype="small" />
                             </div>
                             <div className="flex flex-col gap-2">
+                                <FormFieldWrap label="9:" name="leg_t9" form={form} placeholder="" ftype="small" />
                                 <FormFieldWrap label="19:" name="leg_t19" form={form} placeholder="" ftype="small" />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <FormFieldWrap label="10:" name="leg_t10" form={form} placeholder="" ftype="small" />
                                 <FormFieldWrap label="20:" name="leg_t20" form={form} placeholder="" ftype="small" />
                             </div>
                         </div>
@@ -140,12 +155,36 @@ export default function Spec1 ({data}: Props) {
                                 <FormFieldWrap label="Manned?" name="manned" form={form} placeholder="" ftype="checkbox" />
                             </ColWrap>
                             <ColWrap>
-                                <FormFieldWrap label="Material" name="material" form={form} placeholder="material" ftype="vertical" />
-                                <FormFieldWrap label="Corrosion Coating" name="corr_ctc" form={form} placeholder="corrosion coating" ftype="vertical" />
+                                {/* <FormFieldWrap label="Material" name="material" form={form} placeholder="material" ftype="vertical" /> */}
+                                <FormFieldWrap label="Material" name="material" options={
+                                        libData.data.filter((x:any) => x.lib_code == 'PLAT_MAT').map((x:any) => {
+                                        return { label: x.lib_desc, value: x.lib_id
+                                        }
+                                    })} form={form} ftype="vselect" 
+                                />
+                                {/* <FormFieldWrap label="Corrosion Coating" name="corr_ctc" form={form} placeholder="corrosion coating" ftype="vertical" /> */}
+                                <FormFieldWrap label="Corrosion Coating" name="corr_ctg" options={
+                                        libData.data.filter((x:any) => x.lib_code == 'CORR_CTG').map((x:any) => {
+                                        return { label: x.lib_desc, value: x.lib_id
+                                        }
+                                    })} form={form} ftype="vselect" 
+                                />
                             </ColWrap>
                             <ColWrap>
-                                <FormFieldWrap label="CP System" name="cp_system" form={form} placeholder="cp system" ftype="vertical" />
-                                <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="installation contractor" ftype="vertical" />
+                                {/* <FormFieldWrap label="CP System" name="cp_system" form={form} placeholder="cp system" ftype="vertical" /> */}
+                                <FormFieldWrap label="CP System" name="cp_system" options={
+                                        libData.data.filter((x:any) => x.lib_code == 'PLAT_CP').map((x:any) => {
+                                        return { label: x.lib_desc, value: x.lib_id
+                                        }
+                                    })} form={form} ftype="vselect" 
+                                />
+                                {/* <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="installation contractor" ftype="vertical" /> */}
+                                <FormFieldWrap label="Installation Contractor" name="inst_ctr" options={
+                                        libData.data.filter((x:any) => x.lib_code == 'PLAT_CONT').map((x:any) => {
+                                        return { label: x.lib_desc, value: x.lib_id
+                                        }
+                                    })} form={form} ftype="vselect" 
+                                />
                             </ColWrap>
                         </RowWrap>
                         <RowWrap className="border rounded p-5">
@@ -176,7 +215,9 @@ export default function Spec1 ({data}: Props) {
                         <FormFieldWrap label="" name="def_unit" form={form} placeholder="default unit" ftype="vertical" />
                     </div>
                 </RowWrap>
-                <Button type="submit">Submit</Button>
+                <div className="flex justify-end">
+                    <Button type="submit">Save</Button>
+                </div>
             </form>
       </Form>
     )

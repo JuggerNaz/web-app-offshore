@@ -286,7 +286,7 @@ export default function ComponentPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="componentType">Component Type</Label>
-                    <Select
+                    {/* <Select
                       value={currentSpec.componentType}
                       onValueChange={(value) => setCurrentSpec({ ...currentSpec, componentType: value })}
                     >
@@ -298,7 +298,7 @@ export default function ComponentPage() {
                           <SelectItem key={type} value={type}>{type}</SelectItem>
                         ))}
                       </SelectContent>
-                    </Select>
+                    </Select> */}
                   </div>
                 </div>
 
@@ -443,12 +443,12 @@ export default function ComponentPage() {
                     <TabsTrigger value="attachments">Attachments</TabsTrigger>
                     <TabsTrigger value="comments">Comments</TabsTrigger>
                   </TabsList>
-                  <TabsContent value="attachments" className="mt-4">
+                  {/* <TabsContent value="attachments" className="mt-4">
                     <Attachments entityId={currentSpec.componentId || "temp-id"} entityType="component" />
                   </TabsContent>
                   <TabsContent value="comments" className="mt-4">
                     <Comments entityId={currentSpec.componentId || "temp-id"} entityType="component" />
-                  </TabsContent>
+                  </TabsContent> */}
                 </Tabs>
               </CardContent>
             </Card>

@@ -32,7 +32,7 @@ export function FormFieldWrap ({
     form:any, 
     description?:string, 
     placeholder?:string, 
-    ftype?: 'normal' | 'small' | 'vertical' | 'checkbox' | 'select',
+    ftype?: 'normal' | 'small' | 'vertical' | 'checkbox' | 'select' | 'vselect',
     formControlClass?: string,
     formLabelClass?: string,
     type?: 'text' | 'number' | 'email' | 'password',
@@ -52,6 +52,8 @@ export function FormFieldWrap ({
                     <FormCheckbox label={label} field={field} />
                 ) : ftype === 'select' ? (
                     <FormSelect label={label} options={options} field={field} />
+                ) : ftype === 'vselect' ? (
+                    <FormSelectVertical label={label} options={options} field={field} />
                 ) : (
                     <FormItemVertical label={label} description={description} placeholder={placeholder} 
                     field={field} formControlClass={formControlClass} formLabelClass={formLabelClass} type={type} maxLength={maxLength} />
@@ -159,6 +161,35 @@ export function FormSelect ({
     return (
         <FormItem>
             <FormLabel>{label}</FormLabel>
+            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <SelectTrigger className="">
+                    <SelectValue placeholder={`Select ${label}`} />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectGroup>
+                    <SelectLabel>{label}</SelectLabel>
+                    {
+                        options!.map((item, index) => (
+                            <SelectItem key={index} value={item.value}>{item.label}</SelectItem>
+                        ))
+                    }
+                    </SelectGroup>
+                </SelectContent>
+            </Select>
+        </FormItem>
+    )
+}
+
+export function FormSelectVertical ({
+    label, options, field
+}: {        
+    label:string, options?: {label:string, value:string}[], field:any
+}) {
+    return (
+        <FormItem className="flex flex-col gap-1">
+            <div className={`w-full text-sm`}>
+                {label}
+            </div>
             <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <SelectTrigger className="">
                     <SelectValue placeholder={`Select ${label}`} />
