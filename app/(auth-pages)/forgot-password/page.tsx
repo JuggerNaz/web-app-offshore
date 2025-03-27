@@ -9,7 +9,7 @@ import { SmtpMessage } from "../smtp-message";
 export default function ForgotPassword({
   searchParams,
 }: {
-  searchParams: Message;
+  searchParams: Promise<Message>;
 }) {
   return (
     <>

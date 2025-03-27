@@ -287,3 +287,63 @@ export const FacesSchema = z.object({
     .optional()
     .nullable()
 })
+
+export const PipeGeoSchema = z.object({
+  cr_date: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_user: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_datum: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_dir: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_dx: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  geo_dx_u: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_dy: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  geo_dy_u: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_dz: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  geo_dz_u: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_elli_sph: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_proj_nam: z.string().optional(),
+  geo_units: z
+    .string()
+    .optional()
+    .nullable(),
+  str_id: z.coerce.number().optional(),
+  workunit: z
+    .string()
+    .optional()
+    .nullable()
+})

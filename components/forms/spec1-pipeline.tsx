@@ -105,7 +105,7 @@ export default function Spec1Pipeline ({data}: Props) {
                 </RowWrap>
                 <Separator />
                 <RowWrap>
-                    <div className="flex-col w-4/5 space-y-5">;<div className="     "></div>
+                    <div className="flex-col w-4/5 space-y-5"><div className="     "></div>
                     <RowWrap>
                         <ColWrap>
                             <FormFieldWrap label="Length" name="plength" form={form} placeholder="" ftype="vertical" description="km" />

@@ -1,8 +1,8 @@
+"use client"
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
-import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { X, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import useSWR from "swr"
 import { fetcher } from "@/utils/utils";
 import { ElevationDialog } from "../dialogs/elevation-dialog";

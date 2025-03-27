@@ -7,7 +7,7 @@ import Link from "next/link";
 import { signInAction } from "@/app/actions";
 import Image from "next/image";
 
-export default async function Index({ searchParams }: { searchParams: Message }) {
+export default async function Index({ searchParams }: { searchParams: Promise<Message> }) {
   return (
     <>
       <main className="flex-1 flex flex-col">
