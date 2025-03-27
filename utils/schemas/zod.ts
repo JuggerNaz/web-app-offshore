@@ -166,3 +166,184 @@ export const PlatformSchema = z.object({
   wall_thk: z.coerce.number().optional().nullable(),
   workunit: z.string().optional().nullable()
 })
+
+export const PipelineSchema = z.object({
+  an_qty: z.coerce.number().nullable(),
+  an_type: z.string().nullable(),
+  burial: z.coerce.number().nullable(),
+  conc_ctg: z.string().nullable(),
+  conc_ctg_per: z.coerce.number().nullable(),
+  corr_ctg: z.string().nullable(),
+  cp_system: z.string().nullable(),
+  cr_date: z.string().nullable(),
+  cr_user: z.string().nullable(),
+  def_unit: z.string().nullable(),
+  depth: z.coerce.number().nullable(),
+  desg_life: z.coerce.number().nullable(),
+  desg_press: z.coerce.number().nullable(),
+  end_fp: z.coerce.number().nullable(),
+  end_loc: z.string().nullable(),
+  end_x: z.string().nullable(),
+  end_y: z.string().nullable(),
+  fp_tolerance: z.coerce.number().nullable(),
+  inst_ctr: z.string().nullable(),
+  inst_date: z.string().nullable(),
+  line_diam: z.coerce.number().nullable(),
+  material: z.string().nullable(),
+  oper_press: z.coerce.number().nullable(),
+  pdesc: z.string().nullable(),
+  pfield: z.string().nullable(),
+  pipe_id: z.coerce.number(),
+  plength: z.coerce.number().nullable(),
+  process: z.string().nullable(),
+  ptype: z.string().nullable(),
+  ra_qty: z.coerce.number().nullable(),
+  ra_type: z.string().nullable(),
+  sent: z.string().nullable(),
+  span_cons: z.coerce.number().nullable(),
+  span_oper: z.coerce.number().nullable(),
+  st_fp: z.coerce.number().nullable(),
+  st_loc: z.string().nullable(),
+  st_x: z.string().nullable(),
+  st_y: z.string().nullable(),
+  title: z.string(),
+  wall_thk: z.coerce.number().nullable(),
+  workunit: z.string().nullable()
+})
+
+export const ElevationSchema = z.object({
+  cr_date: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_user: z
+    .string()
+    .optional()
+    .nullable(),
+  elv: z.coerce.number().optional(),
+  orient: z
+    .string()
+    .optional()
+    .nullable(),
+  plat_id: z.coerce.number().optional(),
+  workunit: z
+    .string()
+    .optional()
+    .nullable()
+})
+
+export const LevelSchema = z.object({
+  cr_date: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_user: z
+    .string()
+    .optional()
+    .nullable(),
+  elv_from: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  elv_to: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  level_name: z.string().optional(),
+  plat_id: z.number().optional(),
+  workunit: z
+    .string()
+    .optional()
+    .nullable()
+})
+
+export const FacesSchema = z.object({
+  cr_date: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_user: z
+    .string()
+    .optional()
+    .nullable(),
+  face: z.string().optional(),
+  face_desc: z
+    .string()
+    .optional()
+    .nullable(),
+  face_from: z
+    .string()
+    .optional()
+    .nullable(),
+  face_to: z
+    .string()
+    .optional()
+    .nullable(),
+  plat_id: z.number().optional(),
+  workunit: z
+    .string()
+    .optional()
+    .nullable()
+})
+
+export const PipeGeoSchema = z.object({
+  cr_date: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_user: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_datum: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_dir: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_dx: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  geo_dx_u: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_dy: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  geo_dy_u: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_dz: z
+    .coerce
+    .number()
+    .optional()
+    .nullable(),
+  geo_dz_u: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_elli_sph: z
+    .string()
+    .optional()
+    .nullable(),
+  geo_proj_nam: z.string().optional(),
+  geo_units: z
+    .string()
+    .optional()
+    .nullable(),
+  str_id: z.coerce.number().optional(),
+  workunit: z
+    .string()
+    .optional()
+    .nullable()
+})

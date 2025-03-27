@@ -37,7 +37,7 @@ export default async function Layout({
         <div className="grow">
             <div className="flex flex-col h-screen">
                 <DashboardNav />
-                <div className="grow flex-col p-5 z-10">
+                <div className="grow flex-col p-5 z-10 overflow-y-scroll">
                     {children}
                 </div>
             </div>

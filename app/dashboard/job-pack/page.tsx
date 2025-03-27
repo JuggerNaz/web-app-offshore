@@ -1,6 +1,21 @@
 'use client'
+import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import {
   Form,
   FormControl,
@@ -12,9 +27,11 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { JobPackSchema } from "@/utils/schemas/zod"
-import { useState } from "react"
+import { cn } from "@/lib/utils"
 
 export default function JobPackPage() {
+  const [step, setStep] = useState(1);
+  const [activeTab, setActiveTab] = useState(`step-${step}`);
   const [formData, setFormData] = useState<Partial<z.infer<typeof JobPackSchema>>>({})
 
   const form = useForm<z.infer<typeof JobPackSchema>>({
@@ -27,388 +44,520 @@ export default function JobPackPage() {
     }
   })
 
+  // Update activeTab when step changes
+  useEffect(() => {
+    setActiveTab(`step-${step}`)
+  }, [step])
+
+  const handleNext = () => {
+    const nextStep = Math.min(step + 1, 4);
+    setStep(nextStep);
+  }
+
+  const handlePrevious = () => {
+    const prevStep = Math.max(step - 1, 1);
+    setStep(prevStep);
+  }
+
+  // Handle tab change
+  const handleTabChange = (value: string) => {
+    const newStep = parseInt(value.split('-')[1]);
+    setStep(newStep);
+    setActiveTab(value);
+  }
+
   const onSubmit = (data: z.infer<typeof JobPackSchema>) => {
     setFormData(prev => ({ ...prev, ...data }))
     console.log('Form data:', data)
+    alert("Job Pack created successfully!")
+    setStep(1)
   }
-
-  // Step 1: Initial Selection
-  const Step1Content = () => (
-    <div className="space-y-6">
-      <div className="text-blue-500">
-        Select any of the choice and press Next Button to Continue or Close Button to Exit
-      </div>
-
-      <div className="grid grid-cols-2 gap-6">
-        <div className="border rounded-md p-4">
-          <FormField
-            control={form.control}
-            name="ACTION"
-            render={({ field }) => (
-              <FormItem className="space-y-4">
-                <div className="flex flex-col gap-2">
-                  {[
-                    { value: 'createNew', label: 'Create New Jobpack' },
-                    { value: 'modify', label: 'Modify Jobpack' },
-                    { value: 'delete', label: 'Delete Jobpack' },
-                    { value: 'consolidate', label: 'Consolidate Jobpack' }
-                  ].map((action) => (
-                    <label key={action.value} className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        {...field}
-                        value={action.value}
-                        checked={field.value === action.value}
-                      />
-                      {action.label}
-                    </label>
-                  ))}
-                </div>
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <div className="border rounded-md p-4">
-          <FormField
-            control={form.control}
-            name="TYPE"
-            render={({ field }) => (
-              <FormItem>
-                <div className="flex flex-col gap-2">
-                  {[
-                    { value: 'structure', label: 'Structure' },
-                    { value: 'component', label: 'Component' }
-                  ].map((type) => (
-                    <label key={type.value} className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        {...field}
-                        value={type.value}
-                        checked={field.value === type.value}
-                      />
-                      {type.label}
-                    </label>
-                  ))}
-                </div>
-              </FormItem>
-            )}
-          />
-        </div>
-      </div>
-
-      <div className="border rounded-md p-4">
-        <div className="flex gap-8">
-          <FormField
-            control={form.control}
-            name="SCOPE.TOPSIDE"
-            render={({ field }) => (
-              <FormItem>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={field.value}
-                    onChange={field.onChange}
-                  />
-                  Topside
-                </label>
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="SCOPE.SUBSEA"
-            render={({ field }) => (
-              <FormItem>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={field.value}
-                    onChange={field.onChange}
-                  />
-                  Subsea
-                </label>
-              </FormItem>
-            )}
-          />
-        </div>
-      </div>
-
-      <div className="border rounded-md p-4">
-        <div className="text-blue-500">
-          {formData.ACTION === 'createNew' ? 'Create a new Jobpack' : 
-           formData.ACTION === 'modify' ? 'Modifying JobPack' :
-           formData.ACTION === 'delete' ? 'Delete JobPack' :
-           formData.ACTION === 'consolidate' ? 'Consolidate JobPack' : ''}
-        </div>
-      </div>
-    </div>
-  )
-
-  // Step 2: JobPack Details
-  const Step2Content = () => (
-    <div className="space-y-6">
-      <div className="text-blue-500">JobPack Details :</div>
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block">Job Name:</label>
-              <input type="text" className="border p-2 w-full" defaultValue="UIMC2022/SKA/PIPE1" />
-            </div>
-            <div>
-              <label className="block">Plan Type:</label>
-              <input type="text" className="border p-2 w-full" defaultValue="INSTANT" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block">Start Date:</label>
-              <input type="text" className="border p-2 w-full" defaultValue="03-MAR-2022" />
-            </div>
-            <div>
-              <label className="block">End:</label>
-              <input type="text" className="border p-2 w-full" defaultValue="00- -0000" />
-            </div>
-          </div>
-          <div>
-            <label className="block">Contractor:</label>
-            <input type="text" className="border p-2 w-full" defaultValue="ALAM MARITIM (M) SDN BHD" />
-          </div>
-          <div>
-            <label className="block">Company Rep:</label>
-            <input type="text" className="border p-2 w-full" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block">Vessel:</label>
-              <input type="text" className="border p-2 w-full" defaultValue="MV PIONEER" />
-            </div>
-            <div>
-              <label className="block">Dive Type:</label>
-              <input type="text" className="border p-2 w-full" />
-            </div>
-          </div>
-          <div>
-            <label className="block">Contract Ref#:</label>
-            <input type="text" className="border p-2 w-full" />
-          </div>
-          <div>
-            <label className="block">Contractor Ref#:</label>
-            <input type="text" className="border p-2 w-full" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block">Estimated Time:</label>
-              <div className="flex">
-                <input type="text" className="border p-2 w-full" />
-                <span className="p-2 text-red-500">Hours</span>
-              </div>
-            </div>
-            <div>
-              <label className="block">Status:</label>
-              <input type="text" className="border p-2 w-full" defaultValue="OPEN" />
-            </div>
-          </div>
-          <div>
-            <label className="block">Comments:</label>
-            <textarea className="border p-2 w-full h-24" />
-          </div>
-        </div>
-        <div>
-          <div className="border p-4 mb-4">
-            <div className="text-center mb-4">Contractor Logo:</div>
-            <div className="w-32 h-32 mx-auto border"></div>
-          </div>
-          <div className="border p-4">
-            <div className="mb-2">Contractor Address:</div>
-            <div className="text-sm">
-              ALAM MARITIM (M) SDN BHD<br />
-              No. 38F, Level 3, Jalan Radin Anum,<br />
-              Bandar Baru Sri Petaling,<br />
-              57000 Kuala Lumpur
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
-  // Step 3: Structure Selection
-  const Step3Content = () => (
-    <div className="space-y-6">
-      <div className="text-blue-500">Selected Structure for the Jobpack</div>
-      <div className="border rounded-md p-4">
-        <table className="w-full mb-4">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-2 text-left">Title</th>
-              <th className="p-2 text-left">Type</th>
-              <th className="p-2 text-left">Field</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="bg-blue-100">
-              <td className="p-2">BYDP-C</td>
-              <td className="p-2">PLATFORM</td>
-              <td className="p-2">BAYAN</td>
-            </tr>
-            <tr>
-              <td className="p-2">BYR-A</td>
-              <td className="p-2">PLATFORM</td>
-              <td className="p-2">BAYAN</td>
-            </tr>
-            <tr>
-              <td className="p-2">SKAPL423</td>
-              <td className="p-2">PIPELINE</td>
-              <td className="p-2">BAYAN</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div className="text-blue-500 mb-2">Select the Structure and drag to the top window or click the button ⬆️</div>
-
-        <table className="w-full">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-2 text-left">Title</th>
-              <th className="p-2 text-left">Field Name</th>
-              <th className="p-2 text-left">Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="p-2">12" PC4DPA-B11DRA PC-4</td>
-              <td className="p-2">PC-4</td>
-              <td className="p-2">12" INCH GAS PC4DP-A TO B11DR-A</td>
-            </tr>
-            {/* Add more rows as per image */}
-          </tbody>
-        </table>
-
-        <div className="flex justify-between mt-4">
-          <Button variant="outline">Delete</Button>
-          <div className="flex gap-2">
-            <input type="text" placeholder="Search Structure Title" className="border p-2" />
-            <Button>Refresh</Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
-  // Step 4: Inspection Selection
-  const Step4Content = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2">
-          <div className="text-blue-500 mb-2">Structure List</div>
-          <input type="text" className="border p-2 w-full" defaultValue="BYDP-C" readOnly />
-        </div>
-        <div>
-          <div className="text-blue-500 mb-2">Job Type</div>
-          <input type="text" className="border p-2 w-full" defaultValue="Pipeline" readOnly />
-        </div>
-      </div>
-
-      <div className="text-blue-500">Selected Inspection List for the Job</div>
-      <div className="border rounded-md p-4">
-        <table className="w-full mb-4">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-2 text-left">Inspection Type</th>
-              <th className="p-2 text-left">Insp. Code</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="bg-blue-100">
-              <td className="p-2">AC Electromagnetic F.C.G.</td>
-              <td className="p-2">ACEFC</td>
-            </tr>
-            <tr>
-              <td className="p-2">ACFM Survey</td>
-              <td className="p-2">ACFMC</td>
-            </tr>
-            <tr>
-              <td className="p-2">Acoustic Emission</td>
-              <td className="p-2">ACUEM</td>
-            </tr>
-            <tr>
-              <td className="p-2">Adhesion Testing</td>
-              <td className="p-2">ADHES</td>
-            </tr>
-            <tr>
-              <td className="p-2">Maintenance Task - Anode</td>
-              <td className="p-2">ANMAIN</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div className="text-blue-500 mb-2">Select the Inspections and drag to the top window or click the button ⬆️</div>
-
-        <table className="w-full mb-4">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-2 text-left">Insp. Code</th>
-              <th className="p-2 text-left">InspectionName</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* Selected inspections will appear here */}
-          </tbody>
-        </table>
-
-        <div className="flex justify-between">
-          <Button variant="outline">Delete</Button>
-          <div className="flex gap-2">
-            <input type="text" placeholder="Search Inspection Code" className="border p-2" />
-            <Button>Refresh</Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
 
   return (
     <div className="flex-1 w-full flex flex-col">
       <div className="flex flex-col items-start">
-        <h2 className="font-bold text-2xl">Job Pack</h2>
+        <h2 className="font-bold text-2xl">Job Pack {step > 1 ? `Creation - Step ${step}` : ""}</h2>
+        <p className="text-muted-foreground">Create and manage inspection job packs</p>
       </div>
 
-      <div className="container mx-auto py-10">
+      <div className="mt-4">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <div className="border rounded-md p-6 bg-card">
-              <Tabs defaultValue="step1" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="step1">Step 1</TabsTrigger>
-                  <TabsTrigger value="step2">Step 2</TabsTrigger>
-                  <TabsTrigger value="step3">Step 3</TabsTrigger>
-                  <TabsTrigger value="step4">Step 4</TabsTrigger>
-                </TabsList>
-                <TabsContent value="step1">
-                  <Step1Content />
-                </TabsContent>
-                <TabsContent value="step2">
-                  <Step2Content />
-                </TabsContent>
-                <TabsContent value="step3">
-                  <Step3Content />
-                </TabsContent>
-                <TabsContent value="step4">
-                  <Step4Content />
-                </TabsContent>
-              </Tabs>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <Tabs value={activeTab} onValueChange={handleTabChange}>
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="step-1">Initial Selection</TabsTrigger>
+                <TabsTrigger value="step-2" disabled={step < 2}>Job Pack Details</TabsTrigger>
+                <TabsTrigger value="step-3" disabled={step < 3}>Structure Selection</TabsTrigger>
+                <TabsTrigger value="step-4" disabled={step < 4}>Inspection Types</TabsTrigger>
+              </TabsList>
 
-              <div className="flex justify-between mt-6">
-                <Button variant="outline" type="button">
-                  Close
-                </Button>
-                <Button type="submit">
-                  Submit
-                </Button>
-              </div>
-            </div>
+              {/* Step 1: Initial Selection */}
+              <TabsContent value="step-1" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Action</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <FormField
+                      control={form.control}
+                      name="ACTION"
+                      render={({ field }) => (
+                        <FormItem className="space-y-4">
+                          <FormControl>
+                            <RadioGroup
+                              onValueChange={field.onChange}
+                              value={field.value}
+                              className="flex flex-col gap-2"
+                            >
+                              {[
+                                { value: 'createNew', label: 'Create New Jobpack' },
+                                { value: 'modify', label: 'Modify Jobpack' },
+                                { value: 'delete', label: 'Delete Jobpack' },
+                                { value: 'consolidate', label: 'Consolidate Jobpack' }
+                              ].map((action) => (
+                                <div key={action.value} className="flex items-center space-x-2">
+                                  <RadioGroupItem value={action.value} id={action.value} />
+                                  <Label htmlFor={action.value}>{action.label}</Label>
+                                </div>
+                              ))}
+                            </RadioGroup>
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Type</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <FormField
+                      control={form.control}
+                      name="TYPE"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <RadioGroup
+                              onValueChange={field.onChange}
+                              value={field.value}
+                              className="flex flex-col gap-2"
+                            >
+                              {[
+                                { value: 'structure', label: 'Structure' },
+                                { value: 'component', label: 'Component' }
+                              ].map((type) => (
+                                <div key={type.value} className="flex items-center space-x-2">
+                                  <RadioGroupItem value={type.value} id={type.value} />
+                                  <Label htmlFor={type.value}>{type.label}</Label>
+                                </div>
+                              ))}
+                            </RadioGroup>
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Scope</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center space-x-4">
+                      <FormField
+                        control={form.control}
+                        name="SCOPE.TOPSIDE"
+                        render={({ field }) => (
+                          <FormItem>
+                            <div className="flex items-center space-x-2">
+                              <FormControl>
+                                <Checkbox
+                                  id="topside"
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                              <Label htmlFor="topside">Topside</Label>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="SCOPE.SUBSEA"
+                        render={({ field }) => (
+                          <FormItem>
+                            <div className="flex items-center space-x-2">
+                              <FormControl>
+                                <Checkbox
+                                  id="subsea"
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                              <Label htmlFor="subsea">Subsea</Label>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {formData.ACTION && (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <p className="text-blue-500">
+                        {formData.ACTION === 'createNew' ? 'Create a new Jobpack' :
+                          formData.ACTION === 'modify' ? 'Modifying JobPack' :
+                            formData.ACTION === 'delete' ? 'Delete JobPack' :
+                              formData.ACTION === 'consolidate' ? 'Consolidate JobPack' : ''}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div className="flex justify-end">
+                  <Button onClick={handleNext}>Next</Button>
+                </div>
+              </TabsContent>
+
+              {/* Step 2: JobPack Details */}
+              <TabsContent value="step-2" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Job Pack Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-2 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="jobName">Job Name</Label>
+                            <Input id="jobName" defaultValue="UIMC2022/SKA/PIPE1" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="planType">Plan Type</Label>
+                            <Input id="planType" defaultValue="INSTANT" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="startDate">Start Date</Label>
+                            <Input id="startDate" type="date" defaultValue="2022-03-03" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="endDate">End Date</Label>
+                            <Input id="endDate" type="date" />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="contractor">Contractor</Label>
+                          <Input id="contractor" defaultValue="ALAM MARITIM (M) SDN BHD" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="companyRep">Company Rep</Label>
+                          <Input id="companyRep" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="vessel">Vessel</Label>
+                            <Input id="vessel" defaultValue="MV PIONEER" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="diveType">Dive Type</Label>
+                            <Select>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select dive type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="saturation">Saturation</SelectItem>
+                                <SelectItem value="surface">Surface</SelectItem>
+                                <SelectItem value="rov">ROV</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="contractRef">Contract Ref#</Label>
+                          <Input id="contractRef" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="contractorRef">Contractor Ref#</Label>
+                          <Input id="contractorRef" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="estimatedTime">Estimated Time</Label>
+                            <div className="flex items-center">
+                              <Input id="estimatedTime" type="number" />
+                              <span className="ml-2 text-muted-foreground">Hours</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="status">Status</Label>
+                            <Select defaultValue="OPEN">
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="OPEN">OPEN</SelectItem>
+                                <SelectItem value="CLOSED">CLOSED</SelectItem>
+                                <SelectItem value="PENDING">PENDING</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="comments">Comments</Label>
+                          <textarea
+                            id="comments"
+                            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="border rounded-md p-4 mb-4">
+                          <div className="text-center mb-4">Contractor Logo:</div>
+                          <div className="w-32 h-32 mx-auto border flex items-center justify-center">
+                            <Button variant="outline" size="sm">Upload</Button>
+                          </div>
+                        </div>
+                        <div className="border rounded-md p-4">
+                          <div className="mb-2 font-medium">Contractor Address:</div>
+                          <div className="text-sm text-muted-foreground">
+                            ALAM MARITIM (M) SDN BHD<br />
+                            No. 38F, Level 3, Jalan Radin Anum,<br />
+                            Bandar Baru Sri Petaling,<br />
+                            57000 Kuala Lumpur
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+                  <Button onClick={handleNext}>Next</Button>
+                </div>
+              </TabsContent>
+
+              {/* Step 3: Structure Selection */}
+              <TabsContent value="step-3" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Selected Structure List</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="border rounded-md mb-4">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Title</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Field</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell>BNDP-A</TableCell>
+                            <TableCell>PLATFORM</TableCell>
+                            <TableCell>BARONIA</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Remove</Button>
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>TKT-H</TableCell>
+                            <TableCell>PLATFORM</TableCell>
+                            <TableCell>TUKAU</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Remove</Button>
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Select the Structure and click to add to the list above
+                    </p>
+
+                    <div className="border rounded-md">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Title</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Field</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow className="cursor-pointer hover:bg-muted">
+                            <TableCell>BODP-C</TableCell>
+                            <TableCell>PLATFORM</TableCell>
+                            <TableCell>BOKOR</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Add</Button>
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="cursor-pointer hover:bg-muted">
+                            <TableCell>BNJT-H</TableCell>
+                            <TableCell>PLATFORM</TableCell>
+                            <TableCell>BARONIA</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Add</Button>
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="cursor-pointer hover:bg-muted">
+                            <TableCell>12" PC4DPA-B11DRA</TableCell>
+                            <TableCell>PIPELINE</TableCell>
+                            <TableCell>PC-4</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Add</Button>
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+
+                      <div className="flex justify-between p-2 border-t">
+                        <Button variant="outline">Delete</Button>
+                        <div className="flex gap-2">
+                          <Input placeholder="Search Structure Title" className="w-64" />
+                          <Button variant="outline">Refresh</Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+                  <Button onClick={handleNext}>Next</Button>
+                </div>
+              </TabsContent>
+
+              {/* Step 4: Inspection Types */}
+              <TabsContent value="step-4" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Inspection Types</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="border rounded-md mb-4">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Inspection Type</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead>Scope</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell>GVI</TableCell>
+                            <TableCell>General Visual Inspection</TableCell>
+                            <TableCell>SUBSEA</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Remove</Button>
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>CVI</TableCell>
+                            <TableCell>Close Visual Inspection</TableCell>
+                            <TableCell>SUBSEA</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Remove</Button>
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Select inspection types to add to the job pack
+                    </p>
+
+                    <div className="border rounded-md">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Inspection Type</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead>Scope</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow className="cursor-pointer hover:bg-muted">
+                            <TableCell>FMD</TableCell>
+                            <TableCell>Flooded Member Detection</TableCell>
+                            <TableCell>SUBSEA</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Add</Button>
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="cursor-pointer hover:bg-muted">
+                            <TableCell>CP</TableCell>
+                            <TableCell>Cathodic Protection</TableCell>
+                            <TableCell>SUBSEA</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Add</Button>
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="cursor-pointer hover:bg-muted">
+                            <TableCell>UT</TableCell>
+                            <TableCell>Ultrasonic Testing</TableCell>
+                            <TableCell>SUBSEA</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">Add</Button>
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Job Pack Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="border rounded-md p-3">
+                        <h4 className="font-medium mb-2">Job Pack Details</h4>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                          <li>Job Name: UIMC2022/SKA/PIPE1</li>
+                          <li>Contractor: ALAM MARITIM (M) SDN BHD</li>
+                          <li>Vessel: MV PIONEER</li>
+                          <li>Start Date: 03-MAR-2022</li>
+                        </ul>
+                      </div>
+                      <div className="border rounded-md p-3">
+                        <h4 className="font-medium mb-2">Selected Structures</h4>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                          <li>BNDP-A (PLATFORM, BARONIA)</li>
+                          <li>TKT-H (PLATFORM, TUKAU)</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+                  <Button type="submit">Finish</Button>
+                </div>
+              </TabsContent>
+            </Tabs>
           </form>
         </Form>
       </div>
