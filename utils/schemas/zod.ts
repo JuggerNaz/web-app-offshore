@@ -347,3 +347,101 @@ export const PipeGeoSchema = z.object({
     .optional()
     .nullable()
 })
+
+export const JobpackSchema = z.object({
+  closed_by: z
+    .string()
+    .optional()
+    .nullable(),
+  closed_on: z
+    .string()
+    .optional()
+    .nullable(),
+  comprep: z
+    .string()
+    .optional()
+    .nullable(),
+  contrac: z
+    .string()
+    .optional()
+    .nullable(),
+  contrac_logo: z
+    .string()
+    .optional()
+    .nullable(),
+  contract_ref: z
+    .string()
+    .optional()
+    .nullable(),
+  contractor_ref: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_date: z
+    .string()
+    .optional()
+    .nullable(),
+  cr_user: z
+    .string()
+    .optional()
+    .nullable(),
+  cursrc: z
+    .string()
+    .optional()
+    .nullable(),
+  divetyp: z
+    .string()
+    .optional()
+    .nullable(),
+  from_date: z
+    .string()
+    .optional()
+    .nullable(),
+  idesc: z
+    .string()
+    .optional()
+    .nullable(),
+  iend: z
+    .string()
+    .optional()
+    .nullable(),
+  inspno: z.string().optional(),
+  istart: z
+    .string()
+    .optional()
+    .nullable(),
+  jobname: z
+    .string()
+    .optional()
+    .nullable(),
+  plantype: z
+    .string()
+    .optional()
+    .nullable(),
+  site_hrs: z
+    .number()
+    .optional()
+    .nullable(),
+  status: z
+    .string()
+    .optional()
+    .nullable(),
+  subsea: z.coerce.number().optional(),
+  tasktype: z
+    .string()
+    .optional()
+    .nullable(),
+  to_date: z
+    .string()
+    .optional()
+    .nullable(),
+  topside: z.coerce.number().optional(),
+  vessel: z
+    .string()
+    .optional()
+    .nullable(),
+  workunit: z
+    .string()
+    .optional()
+    .nullable()
+})

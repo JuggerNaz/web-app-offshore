@@ -17,12 +17,14 @@ import Link from "next/link"
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner"
+import { Trash2, Edit2 } from "lucide-react"
 
 export type Platform = Database["public"]["Tables"]["platform"]["Row"]
 export type Comment = Database["public"]["Tables"]["comment"]["Row"]
 export type Pipeline = Database["public"]["Tables"]["u_pipeline"]["Row"]
 export type Levels = Database["public"]["Tables"]["str_level"]["Row"]
 export type Faces = Database["public"]["Tables"]["str_faces"]["Row"]
+export type Jobpack = Database["public"]["Tables"]["workpl"]["Row"]
 
 export const columns: ColumnDef<Platform>[] = [
   {
@@ -328,6 +330,77 @@ export const faces: ColumnDef<Faces>[] = [
                   }}
                 >
                   Remove
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+      )
+    },
+  },
+]
+
+export const jobpacks: ColumnDef<Jobpack>[] = [
+  {
+    accessorKey: "jobname",
+    header: "Name",
+  },
+  {
+    accessorKey: "plantype",
+    header: "Plan Type",
+  },
+  {
+    accessorKey: "tasktype",
+    header: "Task Type",
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original
+ 
+      return (
+        <div className="text-center">
+            <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreVertical className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+                <DropdownMenuItem
+                  className="cursor-pointer w-full"
+                  onClick={async() => {
+                    // await fetcher(`/api/platform/faces`, {
+                    //   method: 'DELETE',
+                    //   body: JSON.stringify(item)
+                    // })
+                    // .then((res) => {
+                    //   mutate(`/api/platform/faces/${item.inspno}`)
+                    //   toast("Faces deleted successfully")
+                    // })
+                  }}
+
+                >
+                  <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
+                    <Edit2 size={18} className="mr-2" /> Modify
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => {
+                    console.log(item)
+                  }}
+                >
+                  <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
+                    <Trash2 size={18} className="mr-2" /> Delete
+                  </Link>
                 </DropdownMenuItem>
             </DropdownMenuContent>
             </DropdownMenu>

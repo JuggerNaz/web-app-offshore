@@ -35,7 +35,7 @@ export function FormFieldWrap ({
     ftype?: 'normal' | 'small' | 'vertical' | 'checkbox' | 'select' | 'vselect',
     formControlClass?: string,
     formLabelClass?: string,
-    type?: 'text' | 'number' | 'email' | 'password',
+    type?: 'text' | 'number' | 'email' | 'password' | 'date' | 'datetime-local',
     options?: {label:string, value:string}[],
     maxLength?: string
 }) {
@@ -67,7 +67,7 @@ export function FormItemNormal ({
     label, description, placeholder, field, type, maxLength
 }:
 {
-    label:string, description?:string, placeholder?:string, field:any, type: 'text' | 'number' | 'email' | 'password', maxLength?: string
+    label:string, description?:string, placeholder?:string, field:any, type: 'text' | 'number' | 'email' | 'password' |'date' | 'datetime-local', maxLength?: string
 }) {
     return (
         <FormItem>
@@ -90,11 +90,11 @@ export function FormItemVertical ({
 }:
 {
     label:string, description?:string, placeholder?:string, field:any, 
-    formControlClass?:string, formLabelClass?:string, type?: 'text' | 'number' | 'email' | 'password', maxLength?: string
+    formControlClass?:string, formLabelClass?:string, type?: 'text' | 'number' | 'email' | 'password' | 'date' | 'datetime-local', maxLength?: string
 }) {
     return (
-        <FormItem className="flex flex-col gap-1">
-            <div className={`w-full text-sm ${formLabelClass}`}>{label}</div>
+        <FormItem className="flex flex-col gap-2">
+            <div className={`w-full text-sm font-medium ${formLabelClass}`}>{label}</div>
             <div className="flex items-center justify-center gap-3 w-full">
                 <FormControl className={formControlClass}>
                     <Input placeholder={placeholder ?? 'N/A'} {...field} type={type} maxLength={maxLength} />
@@ -112,10 +112,10 @@ export function FormItemSmall ({
     label, description, placeholder, field, type, maxLength
 }:
 {
-    label:string, description?:string, placeholder?:string, field:any, type?: 'text' | 'number' | 'email' | 'password', maxLength?: string
+    label:string, description?:string, placeholder?:string, field:any, type?: 'text' | 'number' | 'email' | 'password' | 'date' | 'datetime-local', maxLength?: string
 }) {
     return (
-        <FormItem className="flex flex-col w-11 gap-1">
+        <FormItem className="flex flex-col w-11 gap-2">
             <FormLabel>{label}</FormLabel>
             <FormControl>
                 <Input placeholder={placeholder ?? 'N/A'} {...field} type={type} maxLength={maxLength} />
@@ -139,12 +139,23 @@ export function FormCheckbox ({
             className="flex flex-row items-start space-x-0 space-y-0 my-4"
             >
             <FormControl>
-                <Checkbox
-                    checked={field.value === "NO" ? false : true}
-                    onCheckedChange={(checked) => {
-                        return field.onChange(checked ? "YES" : "NO")
-                    }}
-                />
+                {
+                    typeof field.value === 'string' && field.value === 'YES' ? (
+                        <Checkbox
+                            checked={field.value === "NO" ? false : true}
+                            onCheckedChange={(checked) => {
+                                return field.onChange(checked ? "YES" : "NO")
+                            }}
+                        />
+                    ) : (
+                        <Checkbox
+                            checked={field.value === 0 ? false : true}
+                            onCheckedChange={(checked) => {
+                                return field.onChange(checked ? 1 : 0)
+                            }}
+                        />
+                    )
+                }
             </FormControl>
             <FormLabel className="text-sm font-normal">
                 {label}
@@ -186,8 +197,8 @@ export function FormSelectVertical ({
     label:string, options?: {label:string, value:string}[], field:any
 }) {
     return (
-        <FormItem className="flex flex-col gap-1">
-            <div className={`w-full text-sm`}>
+        <FormItem className="flex flex-col gap-2">
+            <div className={`w-full text-sm font-medium`}>
                 {label}
             </div>
             <Select onValueChange={field.onChange} defaultValue={field.value}>

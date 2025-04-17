@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request, context: any) {
-    const { filter } = context.params;
+    const { filter } = await context.params;
 
     const supabase = createClient();
     const { data, error } = await supabase.from("u_lib_list").select().in("lib_code",[...filter.split(',')]);

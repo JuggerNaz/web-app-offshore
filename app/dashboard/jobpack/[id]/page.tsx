@@ -26,23 +26,39 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
-import { JobPackSchema } from "@/utils/schemas/zod"
-import { cn } from "@/lib/utils"
+import { JobpackSchema } from "@/utils/schemas/zod"
+import { useAtom } from "jotai";
+import { urlInspNo } from "@/utils/client-state";
+import { useParams } from "next/navigation";
+import useSWR from "swr"
+import { fetcher } from "@/utils/utils";
+import { FormFieldWrap } from "@/components/forms/form-field-wrap"
+import { ColWrap, RowWrap } from "@/components/forms/utils"
 
 export default function JobPackPage() {
+  const { id } = useParams();
   const [step, setStep] = useState(1);
   const [activeTab, setActiveTab] = useState(`step-${step}`);
-  const [formData, setFormData] = useState<Partial<z.infer<typeof JobPackSchema>>>({})
+  const [formData, setFormData] = useState<Partial<z.infer<typeof JobpackSchema>>>({})
+  const [inspNo, setInspNo] = useAtom(urlInspNo)
+  const { data, error, isLoading } = useSWR(`/api/jobpack/${id}`, fetcher)
+  const { data : libData, error: libDataError, isLoading: libDataLoading } = useSWR(`/api/library/${'DIVETYP'}`, fetcher)
 
-  const form = useForm<z.infer<typeof JobPackSchema>>({
-    resolver: zodResolver(JobPackSchema),
-    defaultValues: {
-      SCOPE: {
-        TOPSIDE: false,
-        SUBSEA: false
-      }
-    }
+  console.log(data)
+
+  useEffect(() => {
+    if(data)
+      form.reset(data?.data)
+  }, [data])
+
+  const form = useForm<z.infer<typeof JobpackSchema>>({
+    resolver: zodResolver(JobpackSchema),
   })
+
+  useEffect(() => {
+    const resolvedInspNo = Array.isArray(id) ? id[0] : id;
+    setInspNo(resolvedInspNo || "");
+  }, []);
 
   // Update activeTab when step changes
   useEffect(() => {
@@ -66,17 +82,20 @@ export default function JobPackPage() {
     setActiveTab(value);
   }
 
-  const onSubmit = (data: z.infer<typeof JobPackSchema>) => {
+  const onSubmit = (data: z.infer<typeof JobpackSchema>) => {
     setFormData(prev => ({ ...prev, ...data }))
     console.log('Form data:', data)
     alert("Job Pack created successfully!")
     setStep(1)
   }
 
+  if (error || libDataError) return <div>failed to load</div>
+  if (isLoading || libDataLoading) return <div>loading...</div>
+
   return (
     <div className="flex-1 w-full flex flex-col">
       <div className="flex flex-col items-start">
-        <h2 className="font-bold text-2xl">Job Pack {step > 1 ? `Creation - Step ${step}` : ""}</h2>
+        <h2 className="font-bold text-2xl">Job Pack {`(${id})`} {step > 1 ? `Creation - Step ${step}` : ""}</h2>
         <p className="text-muted-foreground">Create and manage inspection job packs</p>
       </div>
 
@@ -93,7 +112,7 @@ export default function JobPackPage() {
 
               {/* Step 1: Initial Selection */}
               <TabsContent value="step-1" className="space-y-4 mt-4">
-                <Card>
+                {/* <Card>
                   <CardHeader>
                     <CardTitle>Action</CardTitle>
                   </CardHeader>
@@ -111,8 +130,8 @@ export default function JobPackPage() {
                             >
                               {[
                                 { value: 'createNew', label: 'Create New Jobpack' },
-                                { value: 'modify', label: 'Modify Jobpack' },
-                                { value: 'delete', label: 'Delete Jobpack' },
+                                // { value: 'modify', label: 'Modify Jobpack' },
+                                // { value: 'delete', label: 'Delete Jobpack' },
                                 { value: 'consolidate', label: 'Consolidate Jobpack' }
                               ].map((action) => (
                                 <div key={action.value} className="flex items-center space-x-2">
@@ -126,7 +145,7 @@ export default function JobPackPage() {
                       )}
                     />
                   </CardContent>
-                </Card>
+                </Card> */}
 
                 <Card>
                   <CardHeader>
@@ -166,44 +185,10 @@ export default function JobPackPage() {
                     <CardTitle>Scope</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center space-x-4">
-                      <FormField
-                        control={form.control}
-                        name="SCOPE.TOPSIDE"
-                        render={({ field }) => (
-                          <FormItem>
-                            <div className="flex items-center space-x-2">
-                              <FormControl>
-                                <Checkbox
-                                  id="topside"
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                              <Label htmlFor="topside">Topside</Label>
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="SCOPE.SUBSEA"
-                        render={({ field }) => (
-                          <FormItem>
-                            <div className="flex items-center space-x-2">
-                              <FormControl>
-                                <Checkbox
-                                  id="subsea"
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                              <Label htmlFor="subsea">Subsea</Label>
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                    <RowWrap>
+                      <FormFieldWrap label="Topside" name="topside" form={form} placeholder="" ftype="checkbox" />
+                      <FormFieldWrap label="Subsea" name="subsea" form={form} placeholder="" ftype="checkbox" />
+                    </RowWrap>
                   </CardContent>
                 </Card>
 
@@ -232,94 +217,61 @@ export default function JobPackPage() {
                     <CardTitle>Job Pack Details</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="col-span-2 space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="jobName">Job Name</Label>
-                            <Input id="jobName" defaultValue="UIMC2022/SKA/PIPE1" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="planType">Plan Type</Label>
-                            <Input id="planType" defaultValue="INSTANT" />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="startDate">Start Date</Label>
-                            <Input id="startDate" type="date" defaultValue="2022-03-03" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="endDate">End Date</Label>
-                            <Input id="endDate" type="date" />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="contractor">Contractor</Label>
-                          <Input id="contractor" defaultValue="ALAM MARITIM (M) SDN BHD" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="companyRep">Company Rep</Label>
-                          <Input id="companyRep" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="vessel">Vessel</Label>
-                            <Input id="vessel" defaultValue="MV PIONEER" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="diveType">Dive Type</Label>
-                            <Select>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select dive type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="saturation">Saturation</SelectItem>
-                                <SelectItem value="surface">Surface</SelectItem>
-                                <SelectItem value="rov">ROV</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="contractRef">Contract Ref#</Label>
-                          <Input id="contractRef" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="contractorRef">Contractor Ref#</Label>
-                          <Input id="contractorRef" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="estimatedTime">Estimated Time</Label>
-                            <div className="flex items-center">
-                              <Input id="estimatedTime" type="number" />
-                              <span className="ml-2 text-muted-foreground">Hours</span>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="status">Status</Label>
-                            <Select defaultValue="OPEN">
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="OPEN">OPEN</SelectItem>
-                                <SelectItem value="CLOSED">CLOSED</SelectItem>
-                                <SelectItem value="PENDING">PENDING</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="comments">Comments</Label>
-                          <textarea
-                            id="comments"
-                            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          />
-                        </div>
+                    <RowWrap>
+                      <div className="flex-col w-2/3 space-y-6">
+                        <RowWrap>
+                          <ColWrap>
+                            <FormFieldWrap label="Job Name" name="jobname" form={form} placeholder="Jobpack Name" ftype="vertical" />
+                            <FormFieldWrap label="Start Date" name="istart" form={form} placeholder="" type="datetime-local" ftype="vertical" />
+                          </ColWrap>
+                          <ColWrap>
+                            <FormFieldWrap label="Plan Type" name="plantype" form={form} placeholder="" ftype="vertical" />
+                            <FormFieldWrap label="End Date" name="iend" form={form} placeholder="" type="datetime-local" ftype="vertical" />
+                          </ColWrap>
+                        </RowWrap>
+                        <RowWrap>
+                          <ColWrap>
+                            <FormFieldWrap label="Contractor" name="contrac" form={form} placeholder="" ftype="vertical" />
+                            <FormFieldWrap label="Company Rep" name="comprep" form={form} placeholder="" ftype="vertical" />
+                          </ColWrap>
+                        </RowWrap>
+                        <RowWrap>
+                          <ColWrap>
+                            <FormFieldWrap label="Vessel" name="vesel" form={form} placeholder="" ftype="vertical" />
+                          </ColWrap>
+                          <ColWrap>
+                            <FormFieldWrap label="Dive Type" name="divetyp" options={
+                                        libData.data.filter((x:any) => x.lib_code == 'DIVETYP').map((x:any) => {
+                                        return { label: x.lib_desc, value: x.lib_id
+                                    }
+                                })} form={form} ftype="vselect" 
+                            />
+                          </ColWrap>
+                        </RowWrap>
+                        <RowWrap>
+                          <ColWrap>
+                            <FormFieldWrap label="Contract Ref#" name="contract_ref" form={form} placeholder="" ftype="vertical" />
+                          </ColWrap>
+                          <ColWrap>
+                            <FormFieldWrap label="Contractor Ref#" name="contractor_ref" form={form} placeholder="" ftype="vertical" />
+                          </ColWrap>
+                        </RowWrap>
+                        <RowWrap>
+                          <ColWrap>
+                            <FormFieldWrap label="Estimated Time" name="site_hrs" form={form} placeholder="" ftype="vertical" />
+                          </ColWrap>
+                          <ColWrap>
+                            <FormFieldWrap label="Status" name="status" options={
+                             [
+                                { label: 'OPEN', value: 'OPEN' },
+                                { label: 'CLOSED', value: 'CLOSED' }
+                             ] 
+                            } form={form} ftype="vselect" 
+                            />
+                          </ColWrap>
+                        </RowWrap>
                       </div>
-                      <div>
+                      <div className="flex-col w-1/3">
                         <div className="border rounded-md p-4 mb-4">
                           <div className="text-center mb-4">Contractor Logo:</div>
                           <div className="w-32 h-32 mx-auto border flex items-center justify-center">
@@ -335,6 +287,23 @@ export default function JobPackPage() {
                             57000 Kuala Lumpur
                           </div>
                         </div>
+                      </div>
+                    </RowWrap>
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-2 space-y-4">
+                       
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="comments">Comments</Label>
+                          <textarea
+                            id="comments"
+                            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        
                       </div>
                     </div>
                   </CardContent>

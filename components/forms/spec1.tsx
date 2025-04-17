@@ -28,9 +28,6 @@ export default function Spec1 ({data}: Props) {
     
     const form = useForm<z.infer<typeof PlatformSchema>>({
         resolver: zodResolver(PlatformSchema),
-        // defaultValues: {
-        //   TITLE: data?.Spec1.TITLE,
-        // },
     })
 
     const onSubmit = async (values: z.infer<typeof PlatformSchema>) => {

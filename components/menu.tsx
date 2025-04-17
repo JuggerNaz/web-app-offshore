@@ -48,7 +48,7 @@ const DashboardMenu = () => {
                 <Package size={20} />
                 Components
             </MenuLink>
-            <MenuLink href="/dashboard/job-pack">
+            <MenuLink href="/dashboard/jobpack">
                 <Package size={20} />
                 Job Pack
             </MenuLink>
