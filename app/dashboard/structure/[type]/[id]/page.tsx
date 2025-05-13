@@ -13,31 +13,28 @@ import Spec1Pipeline from "@/components/forms/spec1-pipeline";
 import Spec2Platform from "@/components/forms/spec2-platform";
 import { Button } from "@/components/ui/button";
 import Spec2Pipeline from "@/components/forms/spec2-pipeline";
+import {getDefaultsForSchema} from 'zod-defaults'
+import { PipelineSchema, PlatformSchema } from "@/utils/schemas/zod"
 
 export default function DetailPage() {
     const { type, id } = useParams();
     const [pageId, setPageId] = useAtom(urlId)
     const [pageType, setPageType] = useAtom(urlType)
 
-    const { data, error, isLoading } = useSWR(`/api/${type}/${id}`, fetcher)
+    //avoid calling api when id is new
+    const { data, error, isLoading } = useSWR(id === 'new' ? null : `/api/${type}/${id}`, fetcher)
+    // const { data, error, isLoading } = useSWR(`/api/${type}/${id}`, fetcher)
 
-    // useEffect(() => {
-    //   setPageId(parseInt(Array.isArray(id) ? id[0] : id))
-    //   setPageType(Array.isArray(type) ? type[0] : type)
-    // }, [])
+    const defaults = getDefaultsForSchema(PlatformSchema)
+    defaults.plat_id = 0
+    const pipelineDefaults = getDefaultsForSchema(PipelineSchema)
+    pipelineDefaults.pipe_id = 0
 
     useEffect(() => {
-      const resolvedId = Array.isArray(id) ? id[0] : id ?? "0"; // Fallback to "0" if `id` is undefined
       const resolvedType = Array.isArray(type) ? type[0] : type;
-    
-      setPageId(parseInt(resolvedId));
+      setPageId(parseInt(id as string) ?? 0);
       setPageType(resolvedType || "platform"); // Provide a fallback for `type` if needed
     }, []);
-
-
-    // const { data: pipeGeoData, error: errorPipeGeo, isLoading: isLoadingPipeGeo } = useSWR(`/api/pipeline/pipegeo/${pageId}`, fetcher)
-    // if (errorPipeGeo) return <div>failed to load</div>
-    // if (isLoadingPipeGeo) return <div>loading...</div>
     
     if (error) return <div>failed to load</div>
     if (isLoading) return <div>loading...</div>
@@ -47,17 +44,17 @@ export default function DetailPage() {
         <div className="flex justify-end">
           <Button type="submit">View Component</Button>
         </div>
-        <Tabs defaultValue="spec1" className="w-full">
-          <TabsList className="w-full justify-items-stretch">
-            <TabsTrigger value="spec1">Specification</TabsTrigger>
-            <TabsTrigger value="spec2">Specification 2</TabsTrigger>
-            <TabsTrigger value="structure-image">Structure Image</TabsTrigger>
-            <TabsTrigger value="comments">Comments</TabsTrigger>
-            <TabsTrigger value="attachments">Attachment</TabsTrigger>
+        <Tabs defaultValue="spec1">
+          <TabsList className="w-full">
+            <TabsTrigger className="grow" value="spec1">Specification</TabsTrigger>
+            <TabsTrigger className="grow" value="spec2" disabled={id === 'new' ? true : false}>Specification 2</TabsTrigger>
+            <TabsTrigger className="grow" value="structure-image" disabled={id === 'new' ? true : false}>Structure Image</TabsTrigger>
+            <TabsTrigger className="grow" value="comments" disabled={id === 'new' ? true : false}>Comments</TabsTrigger>
+            <TabsTrigger className="grow" value="attachments" disabled={id === 'new' ? true : false}>Attachment</TabsTrigger>
           </TabsList>
           <TabsContent value="spec1" className="py-2 px-1">
             <Suspense fallback={<Loading />}>
-              { type === 'platform' ? <SpecHead data={data?.data} /> : <Spec1Pipeline data={data?.data} /> }
+              { type === 'platform' ? <SpecHead data={id === 'new' ? defaults : data?.data } /> : <Spec1Pipeline data={id === 'new' ? pipelineDefaults : data?.data} /> }
             </Suspense>
           </TabsContent>
           <TabsContent value="spec2">

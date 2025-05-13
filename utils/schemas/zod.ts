@@ -153,7 +153,7 @@ export const PlatformSchema = z.object({
   pfield: z.string().optional().nullable(),
   pileint: z.coerce.number().optional().nullable(),
   pileskt: z.coerce.number().optional().nullable(),
-  plat_id: z.coerce.number(),
+  plat_id: z.coerce.number().optional(),
   plegs: z.coerce.number().optional().nullable(),
   process: z.string().optional().nullable(),
   ptype: z.string().optional().nullable(),
@@ -162,53 +162,53 @@ export const PlatformSchema = z.object({
   st_east: z.string().optional().nullable(),
   st_north: z.string().optional().nullable(),
   sump: z.coerce.number().optional().nullable(),
-  title: z.string(),
+  title: z.string().min(1),
   wall_thk: z.coerce.number().optional().nullable(),
   workunit: z.string().optional().nullable()
 })
 
 export const PipelineSchema = z.object({
-  an_qty: z.coerce.number().nullable(),
-  an_type: z.string().nullable(),
-  burial: z.coerce.number().nullable(),
-  conc_ctg: z.string().nullable(),
-  conc_ctg_per: z.coerce.number().nullable(),
-  corr_ctg: z.string().nullable(),
-  cp_system: z.string().nullable(),
-  cr_date: z.string().nullable(),
-  cr_user: z.string().nullable(),
-  def_unit: z.string().nullable(),
-  depth: z.coerce.number().nullable(),
-  desg_life: z.coerce.number().nullable(),
-  desg_press: z.coerce.number().nullable(),
-  end_fp: z.coerce.number().nullable(),
-  end_loc: z.string().nullable(),
-  end_x: z.string().nullable(),
-  end_y: z.string().nullable(),
-  fp_tolerance: z.coerce.number().nullable(),
-  inst_ctr: z.string().nullable(),
-  inst_date: z.string().nullable(),
-  line_diam: z.coerce.number().nullable(),
-  material: z.string().nullable(),
-  oper_press: z.coerce.number().nullable(),
-  pdesc: z.string().nullable(),
-  pfield: z.string().nullable(),
+  an_qty: z.coerce.number().nullable().optional(),
+  an_type: z.string().nullable().optional(),
+  burial: z.coerce.number().nullable().optional(),
+  conc_ctg: z.string().nullable().optional(),
+  conc_ctg_per: z.coerce.number().nullable().optional(),
+  corr_ctg: z.string().nullable().optional(),
+  cp_system: z.string().nullable().optional(),
+  cr_date: z.string().nullable().optional(),
+  cr_user: z.string().nullable().optional(),
+  def_unit: z.string().nullable().optional(),
+  depth: z.coerce.number().nullable().optional(),
+  desg_life: z.coerce.number().nullable().optional(),
+  desg_press: z.coerce.number().nullable().optional(),
+  end_fp: z.coerce.number().nullable().optional(),
+  end_loc: z.string().nullable().optional(),
+  end_x: z.string().nullable().optional(),
+  end_y: z.string().nullable().optional(),
+  fp_tolerance: z.coerce.number().nullable().optional(),
+  inst_ctr: z.string().nullable().optional(),
+  inst_date: z.string().nullable().optional(),
+  line_diam: z.coerce.number().nullable().optional(),
+  material: z.string().nullable().optional(),
+  oper_press: z.coerce.number().nullable().optional(),
+  pdesc: z.string().nullable().optional(),
+  pfield: z.string().nullable().optional(),
   pipe_id: z.coerce.number(),
-  plength: z.coerce.number().nullable(),
-  process: z.string().nullable(),
-  ptype: z.string().nullable(),
-  ra_qty: z.coerce.number().nullable(),
-  ra_type: z.string().nullable(),
-  sent: z.string().nullable(),
-  span_cons: z.coerce.number().nullable(),
-  span_oper: z.coerce.number().nullable(),
-  st_fp: z.coerce.number().nullable(),
-  st_loc: z.string().nullable(),
-  st_x: z.string().nullable(),
-  st_y: z.string().nullable(),
-  title: z.string(),
-  wall_thk: z.coerce.number().nullable(),
-  workunit: z.string().nullable()
+  plength: z.coerce.number().nullable().optional(),
+  process: z.string().nullable().optional(),
+  ptype: z.string().nullable().optional(),
+  ra_qty: z.coerce.number().nullable().optional(),
+  ra_type: z.string().nullable().optional(),
+  sent: z.string().nullable().optional(),
+  span_cons: z.coerce.number().nullable().optional(),
+  span_oper: z.coerce.number().nullable().optional(),
+  st_fp: z.coerce.number().nullable().optional(),
+  st_loc: z.string().nullable().optional(),
+  st_x: z.string().nullable().optional(),
+  st_y: z.string().nullable().optional(),
+  title: z.string().min(1),
+  wall_thk: z.coerce.number().nullable().optional(),
+  workunit: z.string().nullable().optional()
 })
 
 export const ElevationSchema = z.object({
@@ -419,6 +419,7 @@ export const JobpackSchema = z.object({
     .optional()
     .nullable(),
   site_hrs: z
+    .coerce
     .number()
     .optional()
     .nullable(),
@@ -428,9 +429,9 @@ export const JobpackSchema = z.object({
     .nullable(),
   subsea: z.coerce.number().optional(),
   tasktype: z
-    .string()
-    .optional()
-    .nullable(),
+    .string(),
+    // .optional()
+    // .nullable(),
   to_date: z
     .string()
     .optional()

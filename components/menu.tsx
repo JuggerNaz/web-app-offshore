@@ -54,7 +54,7 @@ const DashboardMenu = () => {
             </MenuLink>
             <MenuLink href="/dashboard/planning">
                 <Calendar size={20} />
-                Planning
+                Inspection Planning
             </MenuLink>
         </nav>
     );

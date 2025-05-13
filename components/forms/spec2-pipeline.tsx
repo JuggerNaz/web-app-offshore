@@ -7,16 +7,16 @@ import {
     CardHeader,
     CardTitle,
   } from "@/components/ui/card"
-  import { useAtom } from "jotai";
-  import { urlId, urlType } from "@/utils/client-state";
-  import useSWR from "swr"
-  import { fetcher } from "@/utils/utils";
-  import {mutate} from "swr";
-  import { toast } from "sonner";  
-  import { zodResolver } from "@hookform/resolvers/zod"
-  import { useForm } from "react-hook-form"
-  import { z } from "zod"
-  import { PipeGeoSchema } from "@/utils/schemas/zod";
+import { useAtom } from "jotai";
+import { urlId, urlType } from "@/utils/client-state";
+import useSWR from "swr"
+import { fetcher } from "@/utils/utils";
+import {mutate} from "swr";
+import { toast } from "sonner";  
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import { z } from "zod"
+import { PipeGeoSchema } from "@/utils/schemas/zod";
 import { ColWrap, RowWrap } from "./utils";
 import { FormFieldWrap } from "./form-field-wrap";
 import { Button } from "../ui/button";
@@ -24,6 +24,7 @@ import {
   Form,
 } from "@/components/ui/form"
 import { useEffect } from "react";
+import { Save } from "lucide-react";
 
 export default function Spec2Pipeline () {
     const [pageId, setPageId] = useAtom(urlId)
@@ -35,18 +36,33 @@ export default function Spec2Pipeline () {
     }, [data])
     
     const form = useForm<z.infer<typeof PipeGeoSchema>>({
-      resolver: zodResolver(PipeGeoSchema),
+      resolver: zodResolver(PipeGeoSchema)
     })
 
+    console.log("data", data)
+
     const onSubmit = async (values: z.infer<typeof PipeGeoSchema>) => {
+      if(!data.error && data.data) {
         await fetcher(`/api/pipeline/pipegeo/${values.str_id}`, {
             method: 'PUT',
             body: JSON.stringify(values)
         })
         .then((res) => {
-            // mutate(`/api/comment/${pageId}`) //if want to mutate
+            mutate(`/api/pipeline/pipegeo/${values.str_id}`)
             toast("Pipeline Geodetic Parameter updated successfully")
         })
+      }
+      else {
+        values.str_id = pageId
+        await fetcher(`/api/pipeline/pipegeo`, {
+            method: 'POST',
+            body: JSON.stringify(values)
+        })
+        .then((res) => {
+            mutate(`/api/pipeline/pipegeo/${values.str_id}`)
+            toast("Pipeline Geodetic Parameter created successfully")
+        })
+      }
     }
 
     if (error) return <div>failed to load</div>
@@ -73,7 +89,10 @@ export default function Spec2Pipeline () {
                     </ColWrap>
                 </RowWrap>
                 <div className="flex justify-end">
-                    <Button type="submit">Submit</Button>
+                    <Button type="submit">
+                      <Save />
+                      Save
+                    </Button>
                 </div>
             </form>
       </Form>

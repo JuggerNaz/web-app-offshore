@@ -644,7 +644,7 @@ export type Database = {
           pfield?: string | null
           pileint?: number | null
           pileskt?: number | null
-          plat_id: number
+          plat_id?: number
           plegs?: number | null
           process?: string | null
           ptype?: string | null
@@ -1116,7 +1116,7 @@ export type Database = {
           oper_press?: number | null
           pdesc?: string | null
           pfield?: string | null
-          pipe_id: number
+          pipe_id?: number
           plength?: number | null
           process?: string | null
           ptype?: string | null

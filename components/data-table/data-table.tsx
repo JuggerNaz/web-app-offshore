@@ -15,13 +15,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { usePathname, useRouter } from "next/navigation"
 
-interface DataTableProps<TData, TValue> {
+interface DataTableItem {
+  plat_id?: string
+  pipe_id?: string
+}
+
+interface DataTableProps<TData extends DataTableItem, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends DataTableItem, TValue>({
   columns,
   data,
 }: DataTableProps<TData, TValue>) {
@@ -30,6 +36,9 @@ export function DataTable<TData, TValue>({
     columns,
     getCoreRowModel: getCoreRowModel(),
   })
+
+  const pathname = usePathname()
+  const router = useRouter()
   
   return (
     <div className="rounded-md border">
@@ -58,6 +67,16 @@ export function DataTable<TData, TValue>({
               <TableRow
                 key={row.id}
                 data-state={row.getIsSelected() && "selected"}
+                onClick={() => {
+                    console.log(row.original)
+                    if (pathname.includes("pipeline")) {
+                      router.push(`/dashboard/structure/pipeline/${row.original.pipe_id}`)
+                    } else if (pathname.includes("platform")) {
+                      router.push(`/dashboard/structure/platform/${row.original.plat_id}`)
+                    }
+                  }
+                }
+                className="cursor-pointer hover:bg-muted"
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id}>

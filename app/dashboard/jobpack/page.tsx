@@ -1,8 +1,6 @@
 'use client'
 import { jobpacks } from "@/components/data-table/columns"
 import { DataTable } from "@/components/data-table/data-table"
-import { useFetchModules  } from "@/utils/hooks/module"
-import { useEffect, useState } from "react"
 import useSWR from "swr"
 import { fetcher } from "@/utils/utils"
 

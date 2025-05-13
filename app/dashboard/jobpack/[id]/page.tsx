@@ -1,13 +1,10 @@
 'use client'
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -30,10 +27,13 @@ import { JobpackSchema } from "@/utils/schemas/zod"
 import { useAtom } from "jotai";
 import { urlInspNo } from "@/utils/client-state";
 import { useParams } from "next/navigation";
-import useSWR from "swr"
+import useSWR, { mutate } from "swr"
 import { fetcher } from "@/utils/utils";
 import { FormFieldWrap } from "@/components/forms/form-field-wrap"
 import { ColWrap, RowWrap } from "@/components/forms/utils"
+import { DataTable } from "@/components/data-table/data-table"
+import { structure, extendStructureColumn } from "@/components/data-table/columns"
+import { toast } from "sonner"
 
 export default function JobPackPage() {
   const { id } = useParams();
@@ -41,19 +41,63 @@ export default function JobPackPage() {
   const [activeTab, setActiveTab] = useState(`step-${step}`);
   const [formData, setFormData] = useState<Partial<z.infer<typeof JobpackSchema>>>({})
   const [inspNo, setInspNo] = useAtom(urlInspNo)
+
   const { data, error, isLoading } = useSWR(`/api/jobpack/${id}`, fetcher)
   const { data : libData, error: libDataError, isLoading: libDataLoading } = useSWR(`/api/library/${'DIVETYP'}`, fetcher)
+  const { data: structures, error: structuresError, isLoading: structuresLoading } = useSWR(`/api/structure`, fetcher)
+  const { data: taskstr, error: taskstrError, isLoading: taskstrLoading } = useSWR(`/api/taskstr/${id}`, fetcher)
 
-  console.log(data)
+  const [selectedStructures, setSelectedStructures] = useState<number>(0)
+  const [structureList, setStructureList] = useState<any[]>([])
+  const [selectedStructuresList, setSelectedStructuresList] = useState<any[]>([])
+  const [removeSelectedStructure, setRemoveSelectedStructure] = useState<number>(0)
 
   useEffect(() => {
     if(data)
       form.reset(data?.data)
   }, [data])
 
-  const form = useForm<z.infer<typeof JobpackSchema>>({
-    resolver: zodResolver(JobpackSchema),
-  })
+  useEffect(() => {
+    if(structures && taskstr) {
+      // Extract the IDs of structures that are already in taskstr
+      const taskstrIds = taskstr.data.map((item: any) => item.str_id);
+
+      // Separate structures into selectedStructuresList and structureList
+      const selected = structures.data.filter((item: any) => taskstrIds.includes(item.str_id));
+      const remaining = structures.data.filter((item: any) => !taskstrIds.includes(item.str_id));
+
+      setSelectedStructuresList(
+        selected.map((item: any) => ({
+          str_id: item.str_id,
+          str_title: item.str_title,
+          str_field: item.str_field,
+          str_type: item.str_type,
+        }))
+      );
+
+      setStructureList(remaining);
+    } 
+  }, [structures, taskstr])
+
+  useEffect(() => {
+    if(selectedStructures > 0) {
+      setSelectedStructuresList(selectedStructuresList.concat(structures.data.filter((item: any) => item.str_id === selectedStructures)))
+      setStructureList(structureList.filter((item: any) => item.str_id !== selectedStructures))
+    }
+  }, [selectedStructures])
+
+  // useEffect(() => {
+  //   if(selectedStructuresList.length > 0) {
+  //     console.log('Selected Structures List:', selectedStructuresList)
+  //   }
+  // }, [selectedStructuresList])
+
+  useEffect(() => {
+    if(removeSelectedStructure > 0) {
+      setSelectedStructuresList(selectedStructuresList.filter((item: any) => item.str_id !== removeSelectedStructure))
+      setStructureList(structureList.concat(structures.data.filter((item: any) => item.str_id === removeSelectedStructure)))
+    }
+  }, [removeSelectedStructure])
 
   useEffect(() => {
     const resolvedInspNo = Array.isArray(id) ? id[0] : id;
@@ -66,7 +110,7 @@ export default function JobPackPage() {
   }, [step])
 
   const handleNext = () => {
-    const nextStep = Math.min(step + 1, 4);
+    const nextStep = Math.min(step + 1, 5);
     setStep(nextStep);
   }
 
@@ -82,15 +126,30 @@ export default function JobPackPage() {
     setActiveTab(value);
   }
 
-  const onSubmit = (data: z.infer<typeof JobpackSchema>) => {
-    setFormData(prev => ({ ...prev, ...data }))
-    console.log('Form data:', data)
-    alert("Job Pack created successfully!")
-    setStep(1)
+  const form = useForm<z.infer<typeof JobpackSchema>>({
+    resolver: zodResolver(JobpackSchema),
+  })
+
+  const onSubmit = (values: z.infer<typeof JobpackSchema>) => {
+    // setFormData(prev => ({ ...prev, ...data }))
+    // console.log('Form data:', data)
+    fetcher(`/api/jobpack/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(values)
+    })
+    .then((res) => {
+        mutate(`/api/jobpack/${id}`) //if want to mutate
+        toast(`Job Pack ${id} updated successfully`)
+        setStep(1)
+    })
+    .catch((err) => {
+        console.error(err)
+        toast.error("Failed to update Job Pack")
+    })
   }
 
-  if (error || libDataError) return <div>failed to load</div>
-  if (isLoading || libDataLoading) return <div>loading...</div>
+  if (error || libDataError || structuresError || taskstrError) return <div>failed to load</div>
+  if (isLoading || libDataLoading || structuresLoading || taskstrLoading) return <div>loading...</div>
 
   return (
     <div className="flex-1 w-full flex flex-col">
@@ -112,74 +171,48 @@ export default function JobPackPage() {
 
               {/* Step 1: Initial Selection */}
               <TabsContent value="step-1" className="space-y-4 mt-4">
-                {/* <Card>
-                  <CardHeader>
-                    <CardTitle>Action</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <FormField
-                      control={form.control}
-                      name="ACTION"
-                      render={({ field }) => (
-                        <FormItem className="space-y-4">
-                          <FormControl>
-                            <RadioGroup
-                              onValueChange={field.onChange}
-                              value={field.value}
-                              className="flex flex-col gap-2"
-                            >
-                              {[
-                                { value: 'createNew', label: 'Create New Jobpack' },
-                                // { value: 'modify', label: 'Modify Jobpack' },
-                                // { value: 'delete', label: 'Delete Jobpack' },
-                                { value: 'consolidate', label: 'Consolidate Jobpack' }
-                              ].map((action) => (
-                                <div key={action.value} className="flex items-center space-x-2">
-                                  <RadioGroupItem value={action.value} id={action.value} />
-                                  <Label htmlFor={action.value}>{action.label}</Label>
-                                </div>
-                              ))}
-                            </RadioGroup>
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                  </CardContent>
-                </Card> */}
-
                 <Card>
                   <CardHeader>
                     <CardTitle>Type</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <FormField
-                      control={form.control}
-                      name="TYPE"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <RadioGroup
-                              onValueChange={field.onChange}
-                              value={field.value}
-                              className="flex flex-col gap-2"
-                            >
-                              {[
-                                { value: 'structure', label: 'Structure' },
-                                { value: 'component', label: 'Component' }
-                              ].map((type) => (
-                                <div key={type.value} className="flex items-center space-x-2">
-                                  <RadioGroupItem value={type.value} id={type.value} />
-                                  <Label htmlFor={type.value}>{type.label}</Label>
-                                </div>
-                              ))}
-                            </RadioGroup>
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
+                    {
+                      <FormField
+                          control={form.control}
+                          name="tasktype"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <RadioGroup
+                                  onValueChange={field.onChange}
+                                  defaultValue={field?.value}
+                                  className="flex flex-col gap-2"
+                                >
+                                  {/* {[
+                                    { value: 'STRUCTURE', label: 'Structure' },
+                                    { value: 'COMPONENT', label: 'Component' }
+                                  ].map((type) => (
+                                    <div key={type.value} className="flex items-center space-x-2">
+                                      <RadioGroupItem value={type.value} id={type.value} />
+                                      <Label htmlFor={type.value}>{type.label}</Label>
+                                    </div>
+                                  ))} */}
+                                  <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="STRUCTURE" id="STRUCTURE" />
+                                    <Label htmlFor="option-one">Structure</Label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="COMPONENT" id="option-two" />
+                                    <Label htmlFor="option-two">Component</Label>
+                                  </div>
+                                </RadioGroup>
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                    }
                   </CardContent>
                 </Card>
-
                 <Card>
                   <CardHeader>
                     <CardTitle>Scope</CardTitle>
@@ -191,25 +224,10 @@ export default function JobPackPage() {
                     </RowWrap>
                   </CardContent>
                 </Card>
-
-                {formData.ACTION && (
-                  <Card>
-                    <CardContent className="pt-6">
-                      <p className="text-blue-500">
-                        {formData.ACTION === 'createNew' ? 'Create a new Jobpack' :
-                          formData.ACTION === 'modify' ? 'Modifying JobPack' :
-                            formData.ACTION === 'delete' ? 'Delete JobPack' :
-                              formData.ACTION === 'consolidate' ? 'Consolidate JobPack' : ''}
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-
                 <div className="flex justify-end">
                   <Button onClick={handleNext}>Next</Button>
                 </div>
               </TabsContent>
-
               {/* Step 2: JobPack Details */}
               <TabsContent value="step-2" className="space-y-4 mt-4">
                 <Card>
@@ -241,10 +259,10 @@ export default function JobPackPage() {
                           </ColWrap>
                           <ColWrap>
                             <FormFieldWrap label="Dive Type" name="divetyp" options={
-                                        libData.data.filter((x:any) => x.lib_code == 'DIVETYP').map((x:any) => {
-                                        return { label: x.lib_desc, value: x.lib_id
-                                    }
-                                })} form={form} ftype="vselect" 
+                                  libData.data.filter((x:any) => x.lib_code == 'DIVETYP').map((x:any) => {
+                                  return { label: x.lib_desc, value: x.lib_id
+                                }
+                              })} form={form} ftype="vselect" 
                             />
                           </ColWrap>
                         </RowWrap>
@@ -289,11 +307,8 @@ export default function JobPackPage() {
                         </div>
                       </div>
                     </RowWrap>
-                    
                     <div className="grid grid-cols-3 gap-4">
                       <div className="col-span-2 space-y-4">
-                       
-                        
                         <div className="space-y-2">
                           <Label htmlFor="comments">Comments</Label>
                           <textarea
@@ -303,18 +318,15 @@ export default function JobPackPage() {
                         </div>
                       </div>
                       <div>
-                        
                       </div>
                     </div>
                   </CardContent>
                 </Card>
-
                 <div className="flex justify-between">
                   <Button variant="outline" onClick={handlePrevious}>Previous</Button>
                   <Button onClick={handleNext}>Next</Button>
                 </div>
               </TabsContent>
-
               {/* Step 3: Structure Selection */}
               <TabsContent value="step-3" className="space-y-4 mt-4">
                 <Card>
@@ -322,96 +334,18 @@ export default function JobPackPage() {
                     <CardTitle>Selected Structure List</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="border rounded-md mb-4">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Title</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Field</TableHead>
-                            <TableHead className="text-right">Action</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell>BNDP-A</TableCell>
-                            <TableCell>PLATFORM</TableCell>
-                            <TableCell>BARONIA</TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Remove</Button>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>TKT-H</TableCell>
-                            <TableCell>PLATFORM</TableCell>
-                            <TableCell>TUKAU</TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Remove</Button>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </div>
-
-                    <p className="text-sm text-muted-foreground mb-2">
+                    <DataTable columns={extendStructureColumn({ setValue: setRemoveSelectedStructure, isRemove: true })} data={selectedStructuresList} />
+                    <p className="text-sm text-muted-foreground my-4">
                       Select the Structure and click to add to the list above
                     </p>
-
-                    <div className="border rounded-md">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Title</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Field</TableHead>
-                            <TableHead className="text-right">Action</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow className="cursor-pointer hover:bg-muted">
-                            <TableCell>BODP-C</TableCell>
-                            <TableCell>PLATFORM</TableCell>
-                            <TableCell>BOKOR</TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Add</Button>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow className="cursor-pointer hover:bg-muted">
-                            <TableCell>BNJT-H</TableCell>
-                            <TableCell>PLATFORM</TableCell>
-                            <TableCell>BARONIA</TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Add</Button>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow className="cursor-pointer hover:bg-muted">
-                            <TableCell>12" PC4DPA-B11DRA</TableCell>
-                            <TableCell>PIPELINE</TableCell>
-                            <TableCell>PC-4</TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Add</Button>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-
-                      <div className="flex justify-between p-2 border-t">
-                        <Button variant="outline">Delete</Button>
-                        <div className="flex gap-2">
-                          <Input placeholder="Search Structure Title" className="w-64" />
-                          <Button variant="outline">Refresh</Button>
-                        </div>
-                      </div>
-                    </div>
+                    <DataTable columns={extendStructureColumn({ setValue: setSelectedStructures })} data={structureList} />
                   </CardContent>
                 </Card>
-
                 <div className="flex justify-between">
                   <Button variant="outline" onClick={handlePrevious}>Previous</Button>
-                  <Button onClick={handleNext}>Next</Button>
+                  <Button type="button" onClick={handleNext}>Next</Button>
                 </div>
               </TabsContent>
-
               {/* Step 4: Inspection Types */}
               <TabsContent value="step-4" className="space-y-4 mt-4">
                 <Card>
@@ -449,11 +383,9 @@ export default function JobPackPage() {
                         </TableBody>
                       </Table>
                     </div>
-
                     <p className="text-sm text-muted-foreground mb-2">
                       Select inspection types to add to the job pack
                     </p>
-
                     <div className="border rounded-md">
                       <Table>
                         <TableHeader>
@@ -494,7 +426,6 @@ export default function JobPackPage() {
                     </div>
                   </CardContent>
                 </Card>
-
                 <Card>
                   <CardHeader>
                     <CardTitle>Job Pack Summary</CardTitle>
@@ -520,9 +451,8 @@ export default function JobPackPage() {
                     </div>
                   </CardContent>
                 </Card>
-
                 <div className="flex justify-between">
-                  <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+                  <Button type="button" variant="outline" onClick={handlePrevious}>Previous</Button>
                   <Button type="submit">Finish</Button>
                 </div>
               </TabsContent>
