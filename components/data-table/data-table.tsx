@@ -17,17 +17,12 @@ import {
 } from "@/components/ui/table"
 import { usePathname, useRouter } from "next/navigation"
 
-interface DataTableItem {
-  plat_id?: string
-  pipe_id?: string
-}
-
-interface DataTableProps<TData extends DataTableItem, TValue> {
+interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
 }
 
-export function DataTable<TData extends DataTableItem, TValue>({
+export function DataTable<TData, TValue>({
   columns,
   data,
 }: DataTableProps<TData, TValue>) {
@@ -68,11 +63,11 @@ export function DataTable<TData extends DataTableItem, TValue>({
                 key={row.id}
                 data-state={row.getIsSelected() && "selected"}
                 onClick={() => {
-                    console.log(row.original)
+                    const rowItem = row.original as unknown as any
                     if (pathname.includes("pipeline")) {
-                      router.push(`/dashboard/structure/pipeline/${row.original.pipe_id}`)
+                      router.push(`/dashboard/structure/pipeline/${rowItem.pipe_id}`)
                     } else if (pathname.includes("platform")) {
-                      router.push(`/dashboard/structure/platform/${row.original.plat_id}`)
+                      router.push(`/dashboard/structure/platform/${rowItem.plat_id}`)
                     }
                   }
                 }

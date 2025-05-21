@@ -39,8 +39,6 @@ export default function Spec2Pipeline () {
       resolver: zodResolver(PipeGeoSchema)
     })
 
-    console.log("data", data)
-
     const onSubmit = async (values: z.infer<typeof PipeGeoSchema>) => {
       if(!data.error && data.data) {
         await fetcher(`/api/pipeline/pipegeo/${values.str_id}`, {

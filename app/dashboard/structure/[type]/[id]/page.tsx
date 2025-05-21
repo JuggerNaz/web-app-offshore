@@ -51,6 +51,7 @@ export default function DetailPage() {
             <TabsTrigger className="grow" value="structure-image" disabled={id === 'new' ? true : false}>Structure Image</TabsTrigger>
             <TabsTrigger className="grow" value="comments" disabled={id === 'new' ? true : false}>Comments</TabsTrigger>
             <TabsTrigger className="grow" value="attachments" disabled={id === 'new' ? true : false}>Attachment</TabsTrigger>
+            <TabsTrigger className="grow" value="" disabled={id === 'new' ? true : false}>Components</TabsTrigger>
           </TabsList>
           <TabsContent value="spec1" className="py-2 px-1">
             <Suspense fallback={<Loading />}>
