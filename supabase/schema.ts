@@ -473,6 +473,65 @@ export type Database = {
           },
         ]
       }
+      planning2: {
+        Row: {
+          comp_id: number
+          compcode: string
+          cr_date: string | null
+          cr_user: string | null
+          freq: number | null
+          insp_prog: string
+          inspcode: string
+          inspno: string | null
+          next_date: string | null
+          status: string | null
+          str_id: number
+          subsea: number
+          topside: number
+          workunit: string | null
+        }
+        Insert: {
+          comp_id: number
+          compcode: string
+          cr_date?: string | null
+          cr_user?: string | null
+          freq?: number | null
+          insp_prog: string
+          inspcode: string
+          inspno?: string | null
+          next_date?: string | null
+          status?: string | null
+          str_id: number
+          subsea: number
+          topside: number
+          workunit?: string | null
+        }
+        Update: {
+          comp_id?: number
+          compcode?: string
+          cr_date?: string | null
+          cr_user?: string | null
+          freq?: number | null
+          insp_prog?: string
+          inspcode?: string
+          inspno?: string | null
+          next_date?: string | null
+          status?: string | null
+          str_id?: number
+          subsea?: number
+          topside?: number
+          workunit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_planning2"
+            columns: ["str_id"]
+            isOneToOne: false
+            referencedRelation: "structure"
+            referencedColumns: ["str_id"]
+          },
+        ]
+      }
       platform: {
         Row: {
           an_qty: number | null
@@ -585,7 +644,7 @@ export type Database = {
           pfield?: string | null
           pileint?: number | null
           pileskt?: number | null
-          plat_id: number
+          plat_id?: number
           plegs?: number | null
           process?: string | null
           ptype?: string | null
@@ -791,6 +850,128 @@ export type Database = {
         }
         Relationships: []
       }
+      taskcomp: {
+        Row: {
+          closed_by: string | null
+          closed_on: string | null
+          comp_id: number
+          inspno: string
+          status: string
+          str_id: number
+          workunit: string | null
+        }
+        Insert: {
+          closed_by?: string | null
+          closed_on?: string | null
+          comp_id: number
+          inspno: string
+          status: string
+          str_id: number
+          workunit?: string | null
+        }
+        Update: {
+          closed_by?: string | null
+          closed_on?: string | null
+          comp_id?: number
+          inspno?: string
+          status?: string
+          str_id?: number
+          workunit?: string | null
+        }
+        Relationships: []
+      }
+      taskinsp: {
+        Row: {
+          closed_by: string | null
+          closed_on: string | null
+          comp_id: number
+          compcode: string
+          insp_prog: string | null
+          inspcode: string
+          inspno: string
+          plantype: string | null
+          status: string | null
+          str_id: number
+          subsea: number
+          topside: number
+          workunit: string | null
+        }
+        Insert: {
+          closed_by?: string | null
+          closed_on?: string | null
+          comp_id: number
+          compcode: string
+          insp_prog?: string | null
+          inspcode: string
+          inspno: string
+          plantype?: string | null
+          status?: string | null
+          str_id: number
+          subsea: number
+          topside: number
+          workunit?: string | null
+        }
+        Update: {
+          closed_by?: string | null
+          closed_on?: string | null
+          comp_id?: number
+          compcode?: string
+          insp_prog?: string | null
+          inspcode?: string
+          inspno?: string
+          plantype?: string | null
+          status?: string | null
+          str_id?: number
+          subsea?: number
+          topside?: number
+          workunit?: string | null
+        }
+        Relationships: []
+      }
+      taskstr: {
+        Row: {
+          closed_by: string | null
+          closed_on: string | null
+          cr_date: string | null
+          cr_user: string | null
+          inspno: string
+          job_type: string | null
+          status: string | null
+          str_id: number
+          workunit: string | null
+        }
+        Insert: {
+          closed_by?: string | null
+          closed_on?: string | null
+          cr_date?: string | null
+          cr_user?: string | null
+          inspno: string
+          job_type?: string | null
+          status?: string | null
+          str_id: number
+          workunit?: string | null
+        }
+        Update: {
+          closed_by?: string | null
+          closed_on?: string | null
+          cr_date?: string | null
+          cr_user?: string | null
+          inspno?: string
+          job_type?: string | null
+          status?: string | null
+          str_id?: number
+          workunit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_taskstr"
+            columns: ["str_id"]
+            isOneToOne: false
+            referencedRelation: "structure"
+            referencedColumns: ["str_id"]
+          },
+        ]
+      }
       type: {
         Row: {
           created_at: string
@@ -935,7 +1116,7 @@ export type Database = {
           oper_press?: number | null
           pdesc?: string | null
           pfield?: string | null
-          pipe_id: number
+          pipe_id?: number
           plength?: number | null
           process?: string | null
           ptype?: string | null
@@ -993,6 +1174,93 @@ export type Database = {
           st_y?: string | null
           title?: string
           wall_thk?: number | null
+          workunit?: string | null
+        }
+        Relationships: []
+      }
+      workpl: {
+        Row: {
+          closed_by: string | null
+          closed_on: string | null
+          comprep: string | null
+          contrac: string | null
+          contrac_logo: string | null
+          contract_ref: string | null
+          contractor_ref: string | null
+          cr_date: string | null
+          cr_user: string | null
+          cursrc: string | null
+          divetyp: string | null
+          from_date: string | null
+          idesc: string | null
+          iend: string | null
+          inspno: string
+          istart: string | null
+          jobname: string | null
+          plantype: string | null
+          site_hrs: number | null
+          status: string | null
+          subsea: number
+          tasktype: string | null
+          to_date: string | null
+          topside: number
+          vessel: string | null
+          workunit: string | null
+        }
+        Insert: {
+          closed_by?: string | null
+          closed_on?: string | null
+          comprep?: string | null
+          contrac?: string | null
+          contrac_logo?: string | null
+          contract_ref?: string | null
+          contractor_ref?: string | null
+          cr_date?: string | null
+          cr_user?: string | null
+          cursrc?: string | null
+          divetyp?: string | null
+          from_date?: string | null
+          idesc?: string | null
+          iend?: string | null
+          inspno: string
+          istart?: string | null
+          jobname?: string | null
+          plantype?: string | null
+          site_hrs?: number | null
+          status?: string | null
+          subsea: number
+          tasktype?: string | null
+          to_date?: string | null
+          topside: number
+          vessel?: string | null
+          workunit?: string | null
+        }
+        Update: {
+          closed_by?: string | null
+          closed_on?: string | null
+          comprep?: string | null
+          contrac?: string | null
+          contrac_logo?: string | null
+          contract_ref?: string | null
+          contractor_ref?: string | null
+          cr_date?: string | null
+          cr_user?: string | null
+          cursrc?: string | null
+          divetyp?: string | null
+          from_date?: string | null
+          idesc?: string | null
+          iend?: string | null
+          inspno?: string
+          istart?: string | null
+          jobname?: string | null
+          plantype?: string | null
+          site_hrs?: number | null
+          status?: string | null
+          subsea?: number
+          tasktype?: string | null
+          to_date?: string | null
+          topside?: number
+          vessel?: string | null
           workunit?: string | null
         }
         Relationships: []

@@ -7,43 +7,62 @@ import {
   Form,
 } from "@/components/ui/form"
 import { PlatformSchema } from "@/utils/schemas/zod"
-import { useEffect, useState } from "react"
 import { RowWrap, ColWrap } from "@/components/forms/utils"
 import { CollapsibleField } from "@/components/forms/utils"
 import { FormFieldWrap } from "./form-field-wrap"
 import { fetcher } from "@/utils/utils";
 import useSWR, {mutate} from "swr";
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
+import { Save } from "lucide-react"
 
 type Props = {
     data?: any //TODO: use real type rather than any
 }
 
 export default function Spec1 ({data}: Props) {
+    const router = useRouter()
     const { data : libData, error, isLoading } = useSWR(`/api/library/${'PLAT_TYP,PLAT_FUNCT,PLAT_MAT,PLAT_CP,CORR_CTG,PLAT_CONT'}`, fetcher)
-
-    useEffect(() => {
-        form.reset(data)
-    }, [data])
     
     const form = useForm<z.infer<typeof PlatformSchema>>({
         resolver: zodResolver(PlatformSchema),
-        // defaultValues: {
-        //   TITLE: data?.Spec1.TITLE,
-        // },
+        defaultValues: data
     })
 
     const onSubmit = async (values: z.infer<typeof PlatformSchema>) => {
-        // Do something with the form values.
-        // ✅ This will be type-safe and validated.
-        await fetcher(`/api/platform/${values.plat_id}`, {
-            method: 'PUT',
-            body: JSON.stringify(values)
-        })
-        .then((res) => {
-            // mutate(`/api/comment/${pageId}`) //if want to mutate
-            toast("Platform updated successfully")
-        })
+        if(values.plat_id == 0) {
+            const res = await fetch(`/api/platform`, {
+                method: 'POST',
+                body: JSON.stringify(values),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            if (res.ok) {
+                const data = await res.json()
+                toast.success('Platform created')
+                mutate(`/api/platform/${values.plat_id}`)
+                router.push(`/dashboard/structure/platform/${data.data.plat_id}`)
+            } else {
+                toast.error('Failed to create platform')
+            }
+        }
+        else {
+            const res = await fetch(`/api/platform/${values.plat_id}`, {
+                method: 'PUT',
+                body: JSON.stringify(values),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            if (res.ok) {
+                const data = await res.json()
+                toast.success('Platform updated')
+                mutate(`/api/platform/${values.plat_id}`)
+            } else {
+                toast.error('Failed to update platform')
+            }
+        }
     }
 
     if (error) return <div>failed to load</div>
@@ -216,7 +235,10 @@ export default function Spec1 ({data}: Props) {
                     </div>
                 </RowWrap>
                 <div className="flex justify-end">
-                    <Button type="submit">Save</Button>
+                    <Button type="submit">
+                        <Save className="" size={16} />
+                        Save
+                    </Button>
                 </div>
             </form>
       </Form>

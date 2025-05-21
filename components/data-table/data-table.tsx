@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { usePathname, useRouter } from "next/navigation"
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
@@ -30,6 +31,9 @@ export function DataTable<TData, TValue>({
     columns,
     getCoreRowModel: getCoreRowModel(),
   })
+
+  const pathname = usePathname()
+  const router = useRouter()
   
   return (
     <div className="rounded-md border">
@@ -58,6 +62,16 @@ export function DataTable<TData, TValue>({
               <TableRow
                 key={row.id}
                 data-state={row.getIsSelected() && "selected"}
+                onClick={() => {
+                    const rowItem = row.original as unknown as any
+                    if (pathname.includes("pipeline")) {
+                      router.push(`/dashboard/structure/pipeline/${rowItem.pipe_id}`)
+                    } else if (pathname.includes("platform")) {
+                      router.push(`/dashboard/structure/platform/${rowItem.plat_id}`)
+                    }
+                  }
+                }
+                className="cursor-pointer hover:bg-muted"
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id}>

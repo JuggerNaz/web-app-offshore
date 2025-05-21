@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server";
 
-export async function GET(request: Request, context: any) {
-    const { filter } = await context.params;
-
+export async function POST(request: Request, context: any) {
+    const body = await request.json();
     const supabase = createClient();
-    const { data, error } = await supabase.from("u_lib_list").select().in("lib_code",[...filter.split(',')]);
+
+    console.log("body", body)
+
+    const { data, error } = await supabase.from("pipe_geo").insert(body).single();
 
     if (error) {
         if (error.code === 'PGRST116') {
@@ -15,7 +17,7 @@ export async function GET(request: Request, context: any) {
             return NextResponse.json({ error: error.message }, { status: 400 });
         }
         else
-            return NextResponse.json({ error: `Failed to fetch liblist` }, { status: 500 });
+            return NextResponse.json({ error: "Failed to insert pipeline geodetic parameters" }, { status: 500 });
     }
 
     return NextResponse.json({ data })

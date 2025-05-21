@@ -7,51 +7,62 @@ import {
   Form,
 } from "@/components/ui/form"
 import { PipelineSchema } from "@/utils/schemas/zod"
-import { useEffect, useState } from "react"
 import { RowWrap, ColWrap } from "@/components/forms/utils"
-import { CollapsibleField } from "@/components/forms/utils"
 import { FormFieldWrap } from "./form-field-wrap"
 import { fetcher } from "@/utils/utils";
 import {mutate} from "swr";
 import { toast } from "sonner"
 import { Separator } from "../ui/separator"
-
-const formSchema = z.object({
-    username: z.string().min(2, {
-      message: "Username must be at least 2 characters.",
-    }),
-})
+import { useRouter } from "next/navigation"
+import { Save } from "lucide-react";
 
 type Props = {
     data?: any //TODO: use real type rather than any
 }
 
 export default function Spec1Pipeline ({data}: Props) {
+
+    const router = useRouter()
+
     const form = useForm<z.infer<typeof PipelineSchema>>({
         resolver: zodResolver(PipelineSchema),
-        // defaultValues: {
-        //   TITLE: data?.Spec1.TITLE,
-        // },
+        defaultValues: data,
     })
 
     const onSubmit = async (values: z.infer<typeof PipelineSchema>) => {
-        // Do something with the form values.
-        // ✅ This will be type-safe and validated.
-        await fetcher(`/api/platform/${values.pipe_id}`, {
-            method: 'PUT',
-            body: JSON.stringify(values)
-        })
-        .then((res) => {
-            // mutate(`/api/comment/${pageId}`) //if want to mutate
-            toast("Platform updated successfully")
-        })
-
-        console.log(values)
+        if (values.pipe_id === 0) {
+            const res = await fetch('/api/pipeline', {
+                method: 'POST',
+                body: JSON.stringify(values),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            if (res.ok) {
+                const data = await res.json()
+                toast.success('Pipeline created')
+                mutate(`/api/platform/${values.pipe_id}`)
+                router.push(`/dashboard/structure/pipeline/${data.data.pipe_id}`)
+            } else {
+                toast.error('Failed to create pipeline')
+            }
+        } else {
+            const res = await fetch(`/api/pipeline/${values.pipe_id}`, {
+                method: 'PUT',
+                body: JSON.stringify(values),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            if (res.ok) {
+                const data = await res.json()
+                toast.success('Pipeline updated')
+                mutate(`/api/pipeline/${values.pipe_id}`)
+            } else {
+                toast.error('Failed to update pipeline')
+            }
+        }
     }
-    
-    useEffect(() => {
-        form.reset(data)
-    }, [data])
 
     return (
         <Form {...form}>
@@ -146,8 +157,12 @@ export default function Spec1Pipeline ({data}: Props) {
                         <FormFieldWrap label="" name="def_unit" form={form} placeholder="default unit" ftype="vertical" />
                     </div>
                 </RowWrap>
-                
-                <Button type="submit">Submit</Button>
+                <div className="flex justify-end">
+                    <Button type="submit">
+                        <Save className="" size={16} />
+                        Save
+                    </Button>
+                </div>
             </form>
       </Form>
     )

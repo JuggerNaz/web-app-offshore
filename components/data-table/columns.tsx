@@ -2,7 +2,7 @@
 
 import { ColumnDef } from "@tanstack/react-table"
 import { MoreHorizontal, MoreVertical } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -17,12 +17,21 @@ import Link from "next/link"
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner"
+import { Trash2, Edit2, Plus } from "lucide-react"
+import { number } from "zod"
 
 export type Platform = Database["public"]["Tables"]["platform"]["Row"]
 export type Comment = Database["public"]["Tables"]["comment"]["Row"]
 export type Pipeline = Database["public"]["Tables"]["u_pipeline"]["Row"]
 export type Levels = Database["public"]["Tables"]["str_level"]["Row"]
 export type Faces = Database["public"]["Tables"]["str_faces"]["Row"]
+export type Jobpack = Database["public"]["Tables"]["workpl"]["Row"]
+export type StructureSelect = {
+  str_id: number
+  str_title: string
+  str_field: string
+  str_type: string
+}
 
 export const columns: ColumnDef<Platform>[] = [
   {
@@ -336,3 +345,161 @@ export const faces: ColumnDef<Faces>[] = [
     },
   },
 ]
+
+export const jobpacks: ColumnDef<Jobpack>[] = [
+  {
+    accessorKey: "inspno",
+    header: "#",
+  },
+  {
+    accessorKey: "jobname",
+    header: "Name",
+  },
+  {
+    accessorKey: "plantype",
+    header: "Plan Type",
+  },
+  {
+    accessorKey: "tasktype",
+    header: "Task Type",
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original
+ 
+      return (
+        <div className="text-center">
+            <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreVertical className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+                <DropdownMenuItem
+                  className="cursor-pointer w-full"
+                  onClick={async() => {
+                    // await fetcher(`/api/platform/faces`, {
+                    //   method: 'DELETE',
+                    //   body: JSON.stringify(item)
+                    // })
+                    // .then((res) => {
+                    //   mutate(`/api/platform/faces/${item.inspno}`)
+                    //   toast("Faces deleted successfully")
+                    // })
+                  }}
+
+                >
+                  <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
+                    <Edit2 size={18} className="mr-2" /> Modify
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => {
+                    console.log(item)
+                  }}
+                >
+                  <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
+                    <Trash2 size={18} className="mr-2" /> Delete
+                  </Link>
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+      )
+    },
+  },
+]
+
+export const structure: ColumnDef<StructureSelect>[] = [
+  {
+    accessorKey: "str_title",
+    header: "Title",
+  },
+  {
+    accessorKey: "str_field",
+    header: "Field",
+  },
+  {
+    accessorKey: "str_type",
+    header: "Type",
+  },
+  {
+    header: "Actions",
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original
+      return (
+        <div className="text-center">
+           <Link 
+            className={buttonVariants({ variant: "outline" })} 
+            href={""}
+            onClick={() => {
+                console.log(item)
+              }
+            }
+           >
+            <Plus size={18} className="" /> Add
+           </Link>
+        </div>
+      )
+    },
+  },
+]
+
+export const extendStructureColumn = ({ setValue, isRemove }:{ setValue: React.Dispatch<React.SetStateAction<number>>, isRemove? : boolean }) : ColumnDef<StructureSelect>[] => {
+  return [
+    {
+      header: "#",
+      cell: ({ row }) => {
+        return Number(row.id) + 1
+      }
+    },
+    {
+      accessorKey: "str_title",
+      header: "Title",
+    },
+    {
+      accessorKey: "str_field",
+      header: "Field",
+    },
+    {
+      accessorKey: "str_type",
+      header: "Type",
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const item = row.original
+        return (
+          <Link 
+            className={buttonVariants({ variant: "outline" })} 
+            href={""}
+            onClick={() => {
+                setValue(item.str_id)
+              }
+            }
+            >
+            {
+              isRemove ?
+                <Trash2 size={18} className="" />
+              :
+                <Plus size={18} className="" />
+            }
+            {isRemove ? 'Remove' : 'Add'}
+          </Link>
+        )
+      },
+    },
+  ]
+}

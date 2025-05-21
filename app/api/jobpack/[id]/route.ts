@@ -5,7 +5,7 @@ export async function GET(request: Request, context: any) {
     const { id } = await context.params;
 
     const supabase = createClient();
-    const { data, error } = await supabase.from("pipe_geo").select("*").eq("str_id", id).single();
+    const { data, error } = await supabase.from("workpl").select("*").eq("inspno", id).single();
 
     if (error) {
         if (error.code === 'PGRST116') {
@@ -15,18 +15,20 @@ export async function GET(request: Request, context: any) {
             return NextResponse.json({ error: error.message }, { status: 400 });
         }
         else
-            return NextResponse.json({ error: "Failed to fetch pipeline pipegeo" }, { status: 500 });
+            return NextResponse.json({ error: "Failed to fetch jobpack" }, { status: 500 });
     }
 
     return NextResponse.json({ data })
 }
 
 export async function PUT(request: Request, context: any) {
-    const { id } = await context.params;
+    const { id } = context.params;
     const body = await request.json();
     const supabase = createClient();
 
-    const { data, error } = await supabase.from("pipe_geo").update(body).eq("str_id", id).single();
+    console.log(id, body)
+
+    const { data, error } = await supabase.from("workpl").update(body).eq("inspno", id).single();
 
     if (error) {
         if (error.code === 'PGRST116') {
@@ -36,7 +38,7 @@ export async function PUT(request: Request, context: any) {
             return NextResponse.json({ error: error.message }, { status: 400 });
         }
         else
-            return NextResponse.json({ error: "Failed to update pipeline geodetic parameters" }, { status: 500 });
+            return NextResponse.json({ error: "Failed to update jobpack" }, { status: 500 });
     }
 
     return NextResponse.json({ data })

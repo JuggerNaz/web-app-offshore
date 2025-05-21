@@ -13,21 +13,37 @@ export async function GET() {
     return NextResponse.json({ data })
 }
 
-export async function POST(request: Request) {
-    // const supabase = createClient();
-    // const { data, error } = await supabase.from("platform").insert([
-    //     { name: "Platform 4" },
-    //     { name: "Platform 5" },
-    // ]);
+export async function POST(request: Request, context: any) {
+    const body = await request.json();
+    const supabase = createClient();
+
+    delete body.plat_id
+
+    const { data, error } = await supabase.from("platform").insert(body).select().single();
+
+    const { data: structureData, error: structureError } = await supabase.from("structure").insert({ str_id: data?.plat_id!, str_type: "PLATFORM" });
     
-    // if (error) {
-    //     console.error(error.message);
-    //     return { error: "Failed to insert platform" };
-    // }
+    if (error) {
+        if (error.code === 'PGRST116') {
+            return NextResponse.json({ error: error.message }, { status: 404 });
+        }
+        else if (error.code === '22P02') {
+            return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        else
+            return NextResponse.json({ error: "Failed to insert platform" }, { status: 500 });
+    }
 
-    // console.log(data)
-
-    // return NextResponse.json({ platforms: data })
-    const data = await request.json()
+    if (structureError) {
+        if (structureError.code === 'PGRST116') {
+            return NextResponse.json({ error: structureError.message }, { status: 404 });
+        }
+        else if (structureError.code === '22P02') {
+            return NextResponse.json({ error: structureError.message }, { status: 400 });
+        }
+        else
+            return NextResponse.json({ error: "Failed to insert structure" }, { status: 500 });
+    }
+   
     return NextResponse.json({ data })
 }
