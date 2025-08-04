@@ -32,6 +32,7 @@ export type StructureSelect = {
   str_field: string
   str_type: string
 }
+export type Attachment = Database["public"]["Tables"]["attachment"]["Row"]
 
 export const columns: ColumnDef<Platform>[] = [
   {
@@ -503,3 +504,65 @@ export const extendStructureColumn = ({ setValue, isRemove }:{ setValue: React.D
     },
   ]
 }
+
+export const attachments: ColumnDef<Attachment>[] = [
+  {
+    accessorKey: "created_at",
+    header: "Created At",
+    cell: ({ row }) => {
+      const date: string = row.getValue("created_at")
+      return <div>{moment(date).format("MMMM Do, YYYY")}</div>
+    }
+  },
+  {
+    accessorKey: "name",
+    header: "Name",
+  },
+  {
+    accessorKey: "user_id",
+    header: "User",
+  },
+  {
+    accessorKey: "path",
+    header: "Url",
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original
+ 
+      return (
+        <div className="text-center">
+            <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreVertical className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                {/* <DropdownMenuItem
+                  onClick={() => navigator.clipboard.writeText(payment.id)}
+                >
+                Copy payment ID
+                </DropdownMenuItem> */}
+                <DropdownMenuSeparator />
+                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => {
+                    console.log(item)
+                  }}
+                >
+                  {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
+                  View Detail
+                  </Link> */}
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+      )
+    },
+  },
+]

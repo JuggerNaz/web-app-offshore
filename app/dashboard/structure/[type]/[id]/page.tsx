@@ -41,9 +41,6 @@ export default function DetailPage() {
 
     return (
       <div className="flex-1 w-full flex flex-col gap-3">
-        <div className="flex justify-end">
-          <Button type="submit">View Component</Button>
-        </div>
         <Tabs defaultValue="spec1">
           <TabsList className="w-full">
             <TabsTrigger className="grow" value="spec1">Specification</TabsTrigger>

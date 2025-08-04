@@ -34,6 +34,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      attachment: {
+        Row: {
+          created_at: string
+          id: number
+          meta: Json | null
+          name: string | null
+          path: string | null
+          source_id: number | null
+          source_type: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          meta?: Json | null
+          name?: string | null
+          path?: string | null
+          source_id?: number | null
+          source_type?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          meta?: Json | null
+          name?: string | null
+          path?: string | null
+          source_id?: number | null
+          source_type?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       comment: {
         Row: {
           created_at: string
@@ -172,6 +205,33 @@ export type Database = {
           qid?: string | null
           s_leg?: string | null
           s_node?: number | null
+        }
+        Relationships: []
+      }
+      deleted_record: {
+        Row: {
+          data: Json
+          deleted_at: string
+          id: string
+          object_id: string
+          table_name: string
+          updated_at: string
+        }
+        Insert: {
+          data: Json
+          deleted_at?: string
+          id?: string
+          object_id: string
+          table_name: string
+          updated_at?: string
+        }
+        Update: {
+          data?: Json
+          deleted_at?: string
+          id?: string
+          object_id?: string
+          table_name?: string
+          updated_at?: string
         }
         Relationships: []
       }

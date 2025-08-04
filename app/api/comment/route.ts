@@ -16,6 +16,7 @@ export async function GET() {
 export async function POST(request: Request, context: any) {
     const supabase = createClient();
     const body = await request.json();
+    console.log(body)
     const { data, error } = await supabase.from("comment").insert(body);
 
     if (error) {

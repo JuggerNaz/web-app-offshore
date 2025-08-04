@@ -15,6 +15,7 @@ import useSWR, {mutate} from "swr";
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { Save } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 
 type Props = {
     data?: any //TODO: use real type rather than any
@@ -71,36 +72,34 @@ export default function Spec1 ({data}: Props) {
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                <CollapsibleField title="Detail Head Platform">
-                    <RowWrap>
-                        <ColWrap>
-                            <FormFieldWrap label="Title" name="title" form={form} placeholder="title" />
-                            <FormFieldWrap label="Oil Field" name="pfield" form={form} placeholder="oil field" />
-                            <FormFieldWrap label="Inst. Date" name="inst_date" form={form} placeholder="instantiate date" />                            
-                        </ColWrap>
-                        <ColWrap>
-                            <FormFieldWrap label="Description" name="pdesc" form={form} placeholder="description" />
-                            <FormFieldWrap label="Depth (m)" name="depth" form={form} placeholder="depth" />
-                            <FormFieldWrap label="Design Life" name="desg_life" form={form} placeholder="design life" />
-                        </ColWrap>
-                        <ColWrap>
-                            {/* <FormFieldWrap label="Type" name="ptype" form={form} placeholder="type" /> */}
-                            <FormFieldWrap label="Type" name="ptype" options={
-                                        libData.data.filter((x:any) => x.lib_code == 'PLAT_TYP').map((x:any) => {
-                                        return { label: x.lib_desc, value: x.lib_id
-                                    }
-                                })} form={form} ftype="select" 
-                            />
-                            {/* <FormFieldWrap label="Function" name="ptype" form={form} placeholder="function" /> */}
-                            <FormFieldWrap label="Function" name="process" options={
-                                        libData.data.filter((x:any) => x.lib_code == 'PLAT_FUNCT').map((x:any) => {
-                                        return { label: x.lib_desc, value: x.lib_id
-                                    }
-                                })} form={form} ftype="select" 
-                            />
-                        </ColWrap>
-                    </RowWrap>
-                </CollapsibleField>
+                <RowWrap>
+                    <ColWrap>
+                        <FormFieldWrap label="Title" name="title" form={form} placeholder="title" />
+                        <FormFieldWrap label="Oil Field" name="pfield" form={form} placeholder="oil field" />
+                        <FormFieldWrap label="Inst. Date" name="inst_date" form={form} placeholder="instantiate date" />                            
+                    </ColWrap>
+                    <ColWrap>
+                        <FormFieldWrap label="Description" name="pdesc" form={form} placeholder="description" />
+                        <FormFieldWrap label="Depth (m)" name="depth" form={form} placeholder="depth" />
+                        <FormFieldWrap label="Design Life" name="desg_life" form={form} placeholder="design life" />
+                    </ColWrap>
+                    <ColWrap>
+                        {/* <FormFieldWrap label="Type" name="ptype" form={form} placeholder="type" /> */}
+                        <FormFieldWrap label="Type" name="ptype" options={
+                                    libData.data.filter((x:any) => x.lib_code == 'PLAT_TYP').map((x:any) => {
+                                    return { label: x.lib_desc, value: x.lib_id
+                                }
+                            })} form={form} ftype="select" 
+                        />
+                        {/* <FormFieldWrap label="Function" name="ptype" form={form} placeholder="function" /> */}
+                        <FormFieldWrap label="Function" name="process" options={
+                                    libData.data.filter((x:any) => x.lib_code == 'PLAT_FUNCT').map((x:any) => {
+                                    return { label: x.lib_desc, value: x.lib_id
+                                }
+                            })} form={form} ftype="select" 
+                        />
+                    </ColWrap>
+                </RowWrap>
                 <RowWrap>
                     <div className="w-1/5 space-y-2">
                         <FormFieldWrap label="Norting" name="st_north" form={form} placeholder="northing" ftype="vertical" description="m" />
@@ -206,33 +205,47 @@ export default function Spec1 ({data}: Props) {
                                 />
                             </ColWrap>
                         </RowWrap>
-                        <RowWrap className="border rounded p-5">
-                            <ColWrap>
-                                <FormFieldWrap label="Conductors" name="conduct" form={form} placeholder="0" ftype="vertical" type="number" />
-                                <FormFieldWrap label="Internal Piles" name="pileint" form={form} placeholder="0" ftype="vertical" />
-                            </ColWrap>
-                            <ColWrap>
-                                <FormFieldWrap label="Slots" name="cslota" form={form} placeholder="0" ftype="vertical" />
-                                <FormFieldWrap label="Fenders" name="fender" form={form} placeholder="0" ftype="vertical" />
-                            </ColWrap>
-                            <ColWrap>
-                                <FormFieldWrap label="Risers" name="riser" form={form} placeholder="0" ftype="vertical" />
-                                <FormFieldWrap label="Sumps" name="sump" form={form} placeholder="0" ftype="vertical" />
-                            </ColWrap>
-                            <ColWrap>
-                                <FormFieldWrap label="Skirt Piles" name="pileskt" form={form} placeholder="0" ftype="vertical" />
-                                <FormFieldWrap label="Caissons" name="caisson" form={form} placeholder="0" ftype="vertical" />
-                            </ColWrap>
-                            <ColWrap>
-                                <FormFieldWrap label="Anode" name="an_qty" form={form} placeholder="0" ftype="vertical" />
-                                <FormFieldWrap label="Crane" name="crane" form={form} placeholder="0" ftype="vertical" />
-                            </ColWrap>
-                        </RowWrap>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Number of</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <RowWrap className="">
+                                    <ColWrap>
+                                        <FormFieldWrap label="Conductors" name="conduct" form={form} placeholder="0" ftype="vertical" type="number" />
+                                        <FormFieldWrap label="Internal Piles" name="pileint" form={form} placeholder="0" ftype="vertical" />
+                                    </ColWrap>
+                                    <ColWrap>
+                                        <FormFieldWrap label="Slots" name="cslota" form={form} placeholder="0" ftype="vertical" />
+                                        <FormFieldWrap label="Fenders" name="fender" form={form} placeholder="0" ftype="vertical" />
+                                    </ColWrap>
+                                    <ColWrap>
+                                        <FormFieldWrap label="Risers" name="riser" form={form} placeholder="0" ftype="vertical" />
+                                        <FormFieldWrap label="Sumps" name="sump" form={form} placeholder="0" ftype="vertical" />
+                                    </ColWrap>
+                                    <ColWrap>
+                                        <FormFieldWrap label="Skirt Piles" name="pileskt" form={form} placeholder="0" ftype="vertical" />
+                                        <FormFieldWrap label="Caissons" name="caisson" form={form} placeholder="0" ftype="vertical" />
+                                    </ColWrap>
+                                    <ColWrap>
+                                        <FormFieldWrap label="Anode" name="an_qty" form={form} placeholder="0" ftype="vertical" />
+                                        <FormFieldWrap label="Crane" name="crane" form={form} placeholder="0" ftype="vertical" />
+                                    </ColWrap>
+                                </RowWrap>
+                            </CardContent>
+                        </Card>
                     </div>
-                    <div className="flex flex-col border rounded w-1/5 p-5 justify-between">
-                        <div>The default unit that to be applied for this platform, its components and inspections.</div>
-                        <FormFieldWrap label="" name="def_unit" form={form} placeholder="default unit" ftype="vertical" />
-                    </div>
+                    <Card className="w-1/5 flex flex-col">
+                        <CardHeader>
+                            <CardTitle>Default Unit</CardTitle>
+                        </CardHeader>
+                        <CardContent className="grow">
+                            <div>The default unit that to be applied for this platform, its components and inspections.</div>
+                        </CardContent>
+                        <CardFooter>
+                            <FormFieldWrap label="" name="def_unit" form={form} placeholder="default unit" ftype="vertical" />
+                        </CardFooter>
+                    </Card>
                 </RowWrap>
                 <div className="flex justify-end">
                     <Button type="submit">

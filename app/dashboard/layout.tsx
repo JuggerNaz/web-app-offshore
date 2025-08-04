@@ -24,7 +24,7 @@ export default async function Layout({
   return (
     <div className="flex-1 w-full flex flex-col overflow-hidden">
         <div className="flex">
-        <div className={`flex flex-col w-[250px] h-screen ${settings.bgHeaderNavClassCommon} border-r border-r-foreground/10`}>
+        <div className={`flex flex-col min-w-[250px] h-screen ${settings.bgHeaderNavClassCommon} border-r border-r-foreground/10`}>
             <div className="flex items-center font-semibold p-5">
                 <Link href={"/dashboard"}>Web App Offshore</Link>
                 <Menu size={24} className="ml-auto cursor-pointer" />

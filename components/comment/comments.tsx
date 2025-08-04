@@ -26,7 +26,7 @@ export default function Comments() {
                 <CommentDialog />
             </div>
             
-            <DataTable columns={comments} data={data?.data} />
+            <DataTable columns={comments} data={data?.data} disableRowClick={true} />
         </div>
     </TabsContent>
 }
