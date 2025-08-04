@@ -3,7 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 
 export async function GET() {
     const supabase = createClient();
-    const { data, error } = await supabase.from("platform").select("*");
+    const { data, error } = await supabase.from("platform").select("*").order('title');
     
     if (error) {
         console.error(error.message);

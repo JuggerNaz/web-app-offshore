@@ -20,11 +20,13 @@ import { usePathname, useRouter } from "next/navigation"
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
+  disableRowClick?: boolean
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData, TValue, disableRowClick>({
   columns,
   data,
+  disableRowClick = false
 }: DataTableProps<TData, TValue>) {
   const table = useReactTable({
     data,
@@ -63,11 +65,13 @@ export function DataTable<TData, TValue>({
                 key={row.id}
                 data-state={row.getIsSelected() && "selected"}
                 onClick={() => {
-                    const rowItem = row.original as unknown as any
-                    if (pathname.includes("pipeline")) {
-                      router.push(`/dashboard/structure/pipeline/${rowItem.pipe_id}`)
-                    } else if (pathname.includes("platform")) {
-                      router.push(`/dashboard/structure/platform/${rowItem.plat_id}`)
+                    if(!disableRowClick){
+                      const rowItem = row.original as unknown as any
+                      if (pathname.includes("pipeline")) {
+                        router.push(`/dashboard/structure/pipeline/${rowItem.pipe_id}`)
+                      } else if (pathname.includes("platform")) {
+                        router.push(`/dashboard/structure/platform/${rowItem.plat_id}`)
+                      }
                     }
                   }
                 }
