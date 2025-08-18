@@ -1,8 +1,9 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { MoreHorizontal, MoreVertical } from "lucide-react"
+import { MoreHorizontal, MoreVertical, ExternalLink } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { DataTableColumnHeader } from "./data-table-column-header"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -19,6 +20,7 @@ import { fetcher } from "@/utils/utils";
 import { toast } from "sonner"
 import { Trash2, Edit2, Plus } from "lucide-react"
 import { number } from "zod"
+import { processAttachmentUrl, truncateText } from "@/utils/storage"
 
 export type Platform = Database["public"]["Tables"]["platform"]["Row"]
 export type Comment = Database["public"]["Tables"]["comment"]["Row"]
@@ -37,15 +39,27 @@ export type Attachment = Database["public"]["Tables"]["attachment"]["Row"]
 export const columns: ColumnDef<Platform>[] = [
   {
     accessorKey: "title",
-    header: "Title",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Title" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     accessorKey: "pfield",
-    header: "Field",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Field" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     accessorKey: "ptype",
-    header: "Type",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Type" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   // {
   //   accessorKey: "created_at",
@@ -120,15 +134,27 @@ export const columns: ColumnDef<Platform>[] = [
 export const pipelines: ColumnDef<Pipeline>[] = [
   {
     accessorKey: "title",
-    header: "Title",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Title" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     accessorKey: "pfield",
-    header: "Field",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Field" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     accessorKey: "ptype",
-    header: "Type",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Type" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     id: "actions",
@@ -350,23 +376,43 @@ export const faces: ColumnDef<Faces>[] = [
 export const jobpacks: ColumnDef<Jobpack>[] = [
   {
     accessorKey: "inspno",
-    header: "#",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="#" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     accessorKey: "jobname",
-    header: "Name",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Name" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     accessorKey: "plantype",
-    header: "Plan Type",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Plan Type" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     accessorKey: "tasktype",
-    header: "Task Type",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Task Type" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Status" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
   },
   {
     id: "actions",
@@ -525,6 +571,33 @@ export const attachments: ColumnDef<Attachment>[] = [
   {
     accessorKey: "path",
     header: "Url",
+    cell: ({ row }) => {
+      const attachment: Attachment = row.original
+      const { fileUrl, fileName } = processAttachmentUrl(attachment)
+      
+      // Ensure we have a valid URL
+      if (!fileUrl) {
+        return <span className="text-gray-500">No file URL</span>
+      }
+      
+      // Truncate filename for display
+      const displayText = truncateText(fileName, 30)
+      
+      return (
+        <div className="flex items-center gap-2">
+          <a 
+            href={fileUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 max-w-[200px]"
+            title={fileUrl}
+          >
+            <span className="truncate">{displayText}</span>
+            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+          </a>
+        </div>
+      )
+    }
   },
   {
     id: "actions",
