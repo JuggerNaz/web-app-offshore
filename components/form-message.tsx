@@ -3,21 +3,23 @@ export type Message =
   | { error: string }
   | { message: string };
 
-export function FormMessage({ message }: { message: Promise<Message>}) {
+export async function FormMessage({ message }: { message: Promise<Message>}) {
+  const resolvedMessage = await message;
+  
   return (
     <div className="flex flex-col gap-2 w-full max-w-md text-sm">
-      {"success" in message && (
+      {"success" in resolvedMessage && (
         <div className="text-foreground border-l-2 border-foreground px-4">
-          {message.success as string}
+          {resolvedMessage.success as string}
         </div>
       )}
-      {"error" in message && (
+      {"error" in resolvedMessage && (
         <div className="text-destructive-foreground border-l-2 border-destructive-foreground px-4">
-          {message.error as string}
+          {resolvedMessage.error as string}
         </div>
       )}
-      {"message" in message && (
-        <div className="text-foreground border-l-2 px-4">{message.message as string}</div>
+      {"message" in resolvedMessage && (
+        <div className="text-foreground border-l-2 px-4">{resolvedMessage.message as string}</div>
       )}
     </div>
   );

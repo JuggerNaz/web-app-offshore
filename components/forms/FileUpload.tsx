@@ -41,8 +41,8 @@ export default function FileUpload() {
       
       // Generate unique filename
       const fileExt = file.name.split('.').pop()
-      const fileName = `${Math.random()}.${fileExt}`
-      const filePath = `${fileName}`
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`
+      const filePath = `uploads/${fileName}`
 
       // Create a custom upload function with progress tracking
       const uploadWithProgress = async () => {
@@ -97,11 +97,13 @@ export default function FileUpload() {
           source_id: urlId,
           source_type: urlType,
           meta: {
-            url: publicUrl,
-            size: file.size,
-            type: file.type
+            original_file_name: file.name,
+            file_url: publicUrl,
+            file_path: filePath,
+            file_size: file.size,
+            file_type: file.type
           },
-          path: filePath,
+          path: publicUrl, // Store the public URL for easy access
         }])
       
       if (dbError) throw dbError

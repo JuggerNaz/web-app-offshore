@@ -45,13 +45,20 @@ export async function POST(request: Request, context: any) {
         contentType: file.type
       })
 
-    if (uploadError) throw uploadError
+    if (uploadError) {
+      console.error('Storage upload error:', uploadError)
+      return NextResponse.json(
+        { error: `Failed to upload file: ${uploadError.message}` },
+        { status: 500 }
+      )
+    }
 
     // Get public URL
     const { data: { publicUrl } } = supabase.storage
       .from('attachments')
       .getPublicUrl(filePath)
 
+    console.log(publicUrl)
     
     const { data, error } = await supabase.from("attachment").insert([{
         name: name, //need to change or store filename randomize
