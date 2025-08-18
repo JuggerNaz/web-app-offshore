@@ -4,11 +4,25 @@
  * Script to verify and setup Supabase storage bucket for attachments
  */
 
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+const { createClient } = require('@supabase/supabase-js')
+const fs = require('fs')
+const path = require('path')
 
-// Load environment variables
-dotenv.config({ path: '.env.local' });
+// Load environment variables from .env.local
+function loadEnvFile() {
+  const envPath = path.join(process.cwd(), '.env.local')
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8')
+    envContent.split('\n').forEach(line => {
+      const [key, value] = line.split('=')
+      if (key && value) {
+        process.env[key.trim()] = value.trim().replace(/^["']|["']$/g, '')
+      }
+    })
+  }
+}
+
+loadEnvFile()
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
