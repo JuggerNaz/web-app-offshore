@@ -1,3 +1,11 @@
+---
+date: "2024-08-10"
+type: "Bug Fix"
+version: "0.1-beta"
+status: "Completed"
+author: "Development Team"
+---
+
 # Hamburger Menu Fix
 
 ## Overview

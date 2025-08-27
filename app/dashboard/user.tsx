@@ -52,6 +52,11 @@ export async function User() {
             Settings
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuItem>
+          <Link href={`/dashboard/system-updates`} className='w-full' >
+            System Updates
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {user ? (
           <DropdownMenuItem>

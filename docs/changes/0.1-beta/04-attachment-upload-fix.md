@@ -1,3 +1,11 @@
+---
+date: "2024-08-16"
+type: "Bug Fix"
+version: "0.1-beta"
+status: "Completed"
+author: "Development Team"
+---
+
 # Attachment Upload Fix - Supabase Storage
 
 ## Overview

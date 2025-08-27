@@ -1,6 +1,7 @@
 // components/breadcrumb.tsx
 'use client'
 
+import React from 'react'
 import { usePathname } from 'next/navigation'
 import {
   Breadcrumb,
@@ -36,18 +37,18 @@ export function DynamicBreadcrumb() {
       <BreadcrumbList>
        
         {breadcrumbs.map((breadcrumb, index) => (
-          <BreadcrumbItem key={breadcrumb.href}>
-            {
-                index > 0 && <BreadcrumbSeparator />
-            }
-            {breadcrumb.isCurrent ? (
-              <BreadcrumbPage className='font-bold text-lg'>{breadcrumb.label}</BreadcrumbPage>
-            ) : (
-              <BreadcrumbLink href={breadcrumb.href}>
-                {breadcrumb.label}
-              </BreadcrumbLink>
-            )}
-          </BreadcrumbItem>
+          <React.Fragment key={breadcrumb.href}>
+            {index > 0 && <BreadcrumbSeparator />}
+            <BreadcrumbItem>
+              {breadcrumb.isCurrent ? (
+                <BreadcrumbPage className='font-bold text-lg'>{breadcrumb.label}</BreadcrumbPage>
+              ) : (
+                <BreadcrumbLink href={breadcrumb.href}>
+                  {breadcrumb.label}
+                </BreadcrumbLink>
+              )}
+            </BreadcrumbItem>
+          </React.Fragment>
         ))}
       </BreadcrumbList>
     </Breadcrumb>
