@@ -35,6 +35,11 @@ export type StructureSelect = {
   str_type: string
 }
 export type Attachment = Database["public"]["Tables"]["attachment"]["Row"]
+export type Component = {
+  comp_id: string
+  description: string
+  component_type: string
+}
 
 export const columns: ColumnDef<Platform>[] = [
   {
@@ -246,6 +251,64 @@ export const comments: ColumnDef<Comment>[] = [
                   {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
                   View Detail
                   </Link> */}
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+      )
+    },
+  },
+]
+
+export const components: ColumnDef<Component>[] = [
+  {
+    accessorKey: "comp_id",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Comp ID" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
+  },
+  {
+    accessorKey: "description",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Description" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
+  },
+  {
+    accessorKey: "component_type",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Component Type" />
+    ),
+    enableSorting: true,
+    enableHiding: true,
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original
+ 
+      return (
+        <div className="text-center">
+            <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreVertical className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => {
+                    console.log(item)
+                  }}
+                >
+                  View Details
                 </DropdownMenuItem>
             </DropdownMenuContent>
             </DropdownMenu>

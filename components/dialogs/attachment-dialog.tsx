@@ -70,7 +70,10 @@ export function AttachmentDialog() {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button><Plus /> Attachment</Button>
+                <Button size="sm" variant="outline" className="h-8">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Attachment
+                </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>

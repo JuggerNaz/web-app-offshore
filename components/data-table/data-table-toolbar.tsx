@@ -12,6 +12,7 @@ interface DataTableToolbarProps<TData> {
   enableColumnFilters?: boolean
   enableViewOptions?: boolean
   searchPlaceholder?: string
+  toolbarActions?: React.ReactNode
 }
 
 export function DataTableToolbar<TData>({
@@ -19,7 +20,8 @@ export function DataTableToolbar<TData>({
   enableGlobalFilter = true,
   enableColumnFilters = true,
   enableViewOptions = true,
-  searchPlaceholder = "Search all columns..."
+  searchPlaceholder = "Search all columns...",
+  toolbarActions
 }: DataTableToolbarProps<TData>) {
   const isFiltered = table.getState().columnFilters.length > 0 || 
                      (enableGlobalFilter && table.getState().globalFilter)
@@ -57,6 +59,7 @@ export function DataTableToolbar<TData>({
       </div>
       
       <div className="flex items-center space-x-2">
+        {toolbarActions}
         {enableViewOptions && <DataTableViewOptions table={table} />}
       </div>
     </div>

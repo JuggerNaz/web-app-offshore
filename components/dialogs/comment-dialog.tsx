@@ -15,6 +15,7 @@ import React, {useState} from "react";
 import {mutate} from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner"
+import { Plus } from "lucide-react"
 
 export function CommentDialog() {
     const [pageId, setPageId] = useAtom(urlId)
@@ -43,7 +44,10 @@ export function CommentDialog() {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button>Add Comment</Button>
+                <Button size="sm" variant="outline" className="h-8">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Comment
+                </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>

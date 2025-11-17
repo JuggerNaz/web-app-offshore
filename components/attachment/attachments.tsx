@@ -19,13 +19,11 @@ export default function Attachments() {
     if (isLoading) return <div>loading...</div>
     
     return <TabsContent value="attachments" className="p-4">
-            <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                <h4 className="font-medium">Attachment History</h4>
-                    <AttachmentDialog />
-                </div>
-                
-                <DataTable columns={attachments} data={data?.data} disableRowClick={true} />
-            </div>
+            <DataTable 
+                columns={attachments} 
+                data={data?.data} 
+                disableRowClick={true} 
+                toolbarActions={<AttachmentDialog />}
+            />
         </TabsContent>
 }
