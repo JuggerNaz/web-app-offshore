@@ -5,6 +5,7 @@ import SpecHead from "@/components/forms/spec1";
 import { useEffect, useState, Suspense } from "react";
 import Comments from "@/components/comment/comments";
 import Attachments from "@/components/attachment/attachments";
+import Components from "@/components/component/components";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { useAtom } from "jotai";
@@ -48,7 +49,7 @@ export default function DetailPage() {
             <TabsTrigger className="grow" value="structure-image" disabled={id === 'new' ? true : false}>Structure Image</TabsTrigger>
             <TabsTrigger className="grow" value="comments" disabled={id === 'new' ? true : false}>Comments</TabsTrigger>
             <TabsTrigger className="grow" value="attachments" disabled={id === 'new' ? true : false}>Attachment</TabsTrigger>
-            <TabsTrigger className="grow" value="" disabled={id === 'new' ? true : false}>Components</TabsTrigger>
+            <TabsTrigger className="grow" value="components" disabled={id === 'new' ? true : false}>Components</TabsTrigger>
           </TabsList>
           <TabsContent value="spec1" className="py-2 px-1">
             <Suspense fallback={<Loading />}>
@@ -63,6 +64,7 @@ export default function DetailPage() {
           <TabsContent value="structure-image">Structure Image</TabsContent>
           <TabsContent value="comments"><Comments /></TabsContent>
           <TabsContent value="attachments"><Attachments /></TabsContent>
+          <TabsContent value="components"><Components /></TabsContent>
         </Tabs>
       </div>
     );

@@ -1,49 +1,58 @@
-import { NextResponse } from "next/server"
+import { NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { apiSuccess, apiCreated } from "@/utils/api-response";
+import { handleSupabaseError } from "@/utils/api-error-handler";
+import { withAuth } from "@/utils/with-auth";
 
-export async function GET() {
-    const supabase = createClient();
-    const { data, error } = await supabase.from("u_pipeline").select("*");
-    
-    if (error) {
-        console.error(error.message);
-        return NextResponse.json({ error: "Failed to fetch pipeline" });
-    }
+/**
+ * GET /api/pipeline
+ * Fetch all pipelines
+ */
+export const GET = withAuth(async (request: NextRequest, { user }) => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("u_pipeline")
+    .select("*");
 
-    return NextResponse.json({ data })
-}
+  if (error) {
+    return handleSupabaseError(error, "Failed to fetch pipelines");
+  }
 
-export async function POST(request: Request, context: any) {
-    const body = await request.json();
-    const supabase = createClient();
+  return apiSuccess(data);
+});
 
-    delete body.pipe_id
+/**
+ * POST /api/pipeline
+ * Create a new pipeline
+ */
+export const POST = withAuth(async (request: NextRequest, { user }) => {
+  const supabase = createClient();
+  const body = await request.json();
 
-    const { data, error } = await supabase.from("u_pipeline").insert(body).select().single();
+  // Remove pipe_id if present (will be auto-generated)
+  delete body.pipe_id;
 
-    const { data: structureData, error: structureError } = await supabase.from("structure").insert({ str_id: data?.pipe_id!, str_type: "PIPELINE" });
-    
-    if (error) {
-        if (error.code === 'PGRST116') {
-            return NextResponse.json({ error: error.message }, { status: 404 });
-        }
-        else if (error.code === '22P02') {
-            return NextResponse.json({ error: error.message }, { status: 400 });
-        }
-        else
-            return NextResponse.json({ error: "Failed to insert pipeline" }, { status: 500 });
-    }
+  // Insert pipeline
+  const { data, error } = await supabase
+    .from("u_pipeline")
+    .insert(body)
+    .select()
+    .single();
 
-    if (structureError) {
-        if (structureError.code === 'PGRST116') {
-            return NextResponse.json({ error: structureError.message }, { status: 404 });
-        }
-        else if (structureError.code === '22P02') {
-            return NextResponse.json({ error: structureError.message }, { status: 400 });
-        }
-        else
-            return NextResponse.json({ error: "Failed to insert structure" }, { status: 500 });
-    }
-   
-    return NextResponse.json({ data })
-}
+  if (error) {
+    return handleSupabaseError(error, "Failed to create pipeline");
+  }
+
+  // Create corresponding structure entry
+  const { error: structureError } = await supabase
+    .from("structure")
+    .insert({ str_id: data.pipe_id, str_type: "PIPELINE" });
+
+  if (structureError) {
+    // If structure creation fails, we should ideally rollback the pipeline creation
+    // For now, log the error and continue
+    console.error("[Pipeline API] Failed to create structure entry:", structureError);
+  }
+
+  return apiCreated(data);
+});

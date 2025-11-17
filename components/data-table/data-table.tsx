@@ -36,6 +36,7 @@ interface DataTableProps<TData, TValue> {
   enableGlobalFilter?: boolean
   enableColumnFilters?: boolean
   enableSorting?: boolean
+  toolbarActions?: React.ReactNode
 }
 
 export function DataTable<TData, TValue, disableRowClick>({
@@ -46,7 +47,8 @@ export function DataTable<TData, TValue, disableRowClick>({
   enablePagination = true,
   enableGlobalFilter = true,
   enableColumnFilters = true,
-  enableSorting = true
+  enableSorting = true,
+  toolbarActions
 }: DataTableProps<TData, TValue>) {
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -90,6 +92,7 @@ export function DataTable<TData, TValue, disableRowClick>({
         table={table} 
         enableGlobalFilter={enableGlobalFilter}
         enableColumnFilters={enableColumnFilters}
+        toolbarActions={toolbarActions}
       />
       <div className="rounded-md border">
         <Table>

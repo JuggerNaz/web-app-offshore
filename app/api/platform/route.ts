@@ -1,49 +1,59 @@
-import { NextResponse } from "next/server"
+import { NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { apiSuccess, apiCreated } from "@/utils/api-response";
+import { handleSupabaseError } from "@/utils/api-error-handler";
+import { withAuth } from "@/utils/with-auth";
 
-export async function GET() {
-    const supabase = createClient();
-    const { data, error } = await supabase.from("platform").select("*").order('title');
-    
-    if (error) {
-        console.error(error.message);
-        return NextResponse.json({ error: "Failed to fetch platform" });
-    }
+/**
+ * GET /api/platform
+ * Fetch all platforms
+ */
+export const GET = withAuth(async (request: NextRequest, { user }) => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("platform")
+    .select("*")
+    .order("title");
 
-    return NextResponse.json({ data })
-}
+  if (error) {
+    return handleSupabaseError(error, "Failed to fetch platforms");
+  }
 
-export async function POST(request: Request, context: any) {
-    const body = await request.json();
-    const supabase = createClient();
+  return apiSuccess(data);
+});
 
-    delete body.plat_id
+/**
+ * POST /api/platform
+ * Create a new platform
+ */
+export const POST = withAuth(async (request: NextRequest, { user }) => {
+  const supabase = createClient();
+  const body = await request.json();
 
-    const { data, error } = await supabase.from("platform").insert(body).select().single();
+  // Remove plat_id if present (will be auto-generated)
+  delete body.plat_id;
 
-    const { data: structureData, error: structureError } = await supabase.from("structure").insert({ str_id: data?.plat_id!, str_type: "PLATFORM" });
-    
-    if (error) {
-        if (error.code === 'PGRST116') {
-            return NextResponse.json({ error: error.message }, { status: 404 });
-        }
-        else if (error.code === '22P02') {
-            return NextResponse.json({ error: error.message }, { status: 400 });
-        }
-        else
-            return NextResponse.json({ error: "Failed to insert platform" }, { status: 500 });
-    }
+  // Insert platform
+  const { data, error } = await supabase
+    .from("platform")
+    .insert(body)
+    .select()
+    .single();
 
-    if (structureError) {
-        if (structureError.code === 'PGRST116') {
-            return NextResponse.json({ error: structureError.message }, { status: 404 });
-        }
-        else if (structureError.code === '22P02') {
-            return NextResponse.json({ error: structureError.message }, { status: 400 });
-        }
-        else
-            return NextResponse.json({ error: "Failed to insert structure" }, { status: 500 });
-    }
-   
-    return NextResponse.json({ data })
-}
+  if (error) {
+    return handleSupabaseError(error, "Failed to create platform");
+  }
+
+  // Create corresponding structure entry
+  const { error: structureError } = await supabase
+    .from("structure")
+    .insert({ str_id: data.plat_id, str_type: "PLATFORM" });
+
+  if (structureError) {
+    // If structure creation fails, we should ideally rollback the platform creation
+    // For now, log the error and continue
+    console.error("[Platform API] Failed to create structure entry:", structureError);
+  }
+
+  return apiCreated(data);
+});

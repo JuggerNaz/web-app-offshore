@@ -20,13 +20,11 @@ export default function Comments() {
     if (isLoading) return <div>loading...</div>
 
     return <TabsContent value="comments" className=" p-4 mt-4">
-        <div className="space-y-4">
-            <div className="flex justify-between items-center">
-            <h4 className="font-medium">Comments History</h4>
-                <CommentDialog />
-            </div>
-            
-            <DataTable columns={comments} data={data?.data} disableRowClick={true} />
-        </div>
+        <DataTable 
+            columns={comments} 
+            data={data?.data} 
+            disableRowClick={true} 
+            toolbarActions={<CommentDialog />}
+        />
     </TabsContent>
 }
