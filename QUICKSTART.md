@@ -49,6 +49,7 @@ yarn lint:fix
 ### Step 4: Try the New Utilities
 
 Check out the refactored routes:
+
 - `app/api/platform/route.ts`
 - `app/api/pipeline/route.ts`
 
@@ -56,16 +57,16 @@ These demonstrate the new patterns you should follow for all new API routes.
 
 ## 📝 Key Files Created
 
-| File | Purpose |
-|------|---------|
+| File                         | Purpose                    |
+| ---------------------------- | -------------------------- |
 | `utils/api-error-handler.ts` | Centralized error handling |
-| `utils/api-response.ts` | Standardized API responses |
-| `utils/with-auth.ts` | Authentication middleware |
-| `vitest.config.ts` | Test configuration |
-| `utils/storage.test.ts` | Example tests |
-| `.eslintrc.json` | Linting configuration |
-| `.prettierrc` | Code formatting rules |
-| `IMPROVEMENTS.md` | Detailed documentation |
+| `utils/api-response.ts`      | Standardized API responses |
+| `utils/with-auth.ts`         | Authentication middleware  |
+| `vitest.config.ts`           | Test configuration         |
+| `utils/storage.test.ts`      | Example tests              |
+| `.eslintrc.json`             | Linting configuration      |
+| `.prettierrc`                | Code formatting rules      |
+| `IMPROVEMENTS.md`            | Detailed documentation     |
 
 ## 🎯 Next Steps
 

@@ -1,14 +1,20 @@
-"use client"
+"use client";
 
-import { useState } from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Checkbox } from "@/components/ui/checkbox"
+import { useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -16,51 +22,51 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { UnifiedComponentSpec } from "@/utils/types/database-types"
-import Comments from '@/components/comment/comments'
-import Attachments from '@/components/attachment/attachments'
-import { cn } from "@/lib/utils"
+} from "@/components/ui/table";
+import { UnifiedComponentSpec } from "@/utils/types/database-types";
+import Comments from "@/components/comment/comments";
+import Attachments from "@/components/attachment/attachments";
+import { cn } from "@/lib/utils";
 
 type ComponentSpec = UnifiedComponentSpec;
 
 const defaultSpec: ComponentSpec = {
   // Base registration fields
-  componentId: '',
+  componentId: "",
   registrationDate: new Date().toISOString(),
   lastModified: new Date().toISOString(),
-  status: 'active',
-  componentType: 'PLATFORM',
+  status: "active",
+  componentType: "PLATFORM",
 
   // Common fields
-  qId: '',
-  description: '',
+  qId: "",
+  description: "",
   installDate: new Date().toISOString(),
   life: 0,
-  installedType: '',
-  material: '',
-  fitting: '',
-  part: '',
+  installedType: "",
+  material: "",
+  fitting: "",
+  part: "",
 
   // Location fields (both platform and pipeline)
-  level: '',
-  face: '',
-  structuralGroup: '',
-  position: '',
-  startNode: '',
-  startLeg: '',
-  endNode: '',
-  endLeg: '',
+  level: "",
+  face: "",
+  structuralGroup: "",
+  position: "",
+  startNode: "",
+  startLeg: "",
+  endNode: "",
+  endLeg: "",
   elevation1: 0,
   elevation2: 0,
   distance: 0,
-  clockPosition: '',
+  clockPosition: "",
 
   // Component-specific fields
-  anodeType: '',
+  anodeType: "",
   weight: 0,
-  currentOutput: 0
-}
+  currentOutput: 0,
+};
 
 const componentTypes = [
   "ALL COMPONENTS",
@@ -93,7 +99,7 @@ const componentTypes = [
   "HORIZONTAL DIAGONAL",
   "HORIZONTAL MEMBER",
   "HOSE / FLEXIBLE RISER",
-  "IMP. CURRENT ANODE"
+  "IMP. CURRENT ANODE",
 ];
 
 export default function ComponentPage() {
@@ -104,7 +110,7 @@ export default function ComponentPage() {
   const [showSpecForm, setShowSpecForm] = useState(false);
   const [currentSpec, setCurrentSpec] = useState<ComponentSpec>(defaultSpec);
 
-  const filteredComponents = componentTypes.filter(comp =>
+  const filteredComponents = componentTypes.filter((comp) =>
     comp.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -115,24 +121,24 @@ export default function ComponentPage() {
     // For now, we'll use dummy data
     setCurrentSpec({
       ...defaultSpec,
-      qId: 'BAN101',
-      description: 'BAN101',
-      startNode: '101A',
-      startLeg: 'B1',
-      endNode: '101B',
-      endLeg: 'A1',
-      elevation1: -27.000,
-      elevation2: -27.000,
-      distance: 0.00,
-      clockPosition: 'N/A',
-      level: 'Level 4',
-      face: 'Row 1',
-      part: 'SUBSEA',
-      componentId: 'AN/00101A-00101B/00000/00',
-      installedType: 'TYPE A',
-      material: 'ALUMIN',
-      anodeType: 'ANODE TYPE A',
-      fitting: 'BRACELET'
+      qId: "BAN101",
+      description: "BAN101",
+      startNode: "101A",
+      startLeg: "B1",
+      endNode: "101B",
+      endLeg: "A1",
+      elevation1: -27.0,
+      elevation2: -27.0,
+      distance: 0.0,
+      clockPosition: "N/A",
+      level: "Level 4",
+      face: "Row 1",
+      part: "SUBSEA",
+      componentId: "AN/00101A-00101B/00000/00",
+      installedType: "TYPE A",
+      material: "ALUMIN",
+      anodeType: "ANODE TYPE A",
+      fitting: "BRACELET",
     });
   };
 
@@ -151,7 +157,7 @@ export default function ComponentPage() {
 
   // Handle tab change
   const handleTabChange = (value: string) => {
-    const newStep = parseInt(value.split('-')[1]);
+    const newStep = parseInt(value.split("-")[1]);
     setStep(newStep);
     setActiveTab(value);
   };
@@ -159,7 +165,9 @@ export default function ComponentPage() {
   return (
     <div className="flex-1 w-full flex flex-col">
       <div className="flex flex-col items-start">
-        <h2 className="font-bold text-2xl">Components {step > 1 ? `Management - Step ${step}` : ""}</h2>
+        <h2 className="font-bold text-2xl">
+          Components {step > 1 ? `Management - Step ${step}` : ""}
+        </h2>
         <p className="text-muted-foreground">Create and manage inspection components</p>
       </div>
 
@@ -167,9 +175,15 @@ export default function ComponentPage() {
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="step-1">Component Selection</TabsTrigger>
-            <TabsTrigger value="step-2" disabled={step < 2}>Component Details</TabsTrigger>
-            <TabsTrigger value="step-3" disabled={step < 3}>Inspection History</TabsTrigger>
-            <TabsTrigger value="step-4" disabled={step < 4}>Attachments</TabsTrigger>
+            <TabsTrigger value="step-2" disabled={step < 2}>
+              Component Details
+            </TabsTrigger>
+            <TabsTrigger value="step-3" disabled={step < 3}>
+              Inspection History
+            </TabsTrigger>
+            <TabsTrigger value="step-4" disabled={step < 4}>
+              Attachments
+            </TabsTrigger>
           </TabsList>
 
           {/* Step 1: Component Selection */}
@@ -188,7 +202,9 @@ export default function ComponentPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {componentTypes.map((type) => (
-                          <SelectItem key={type} value={type}>{type}</SelectItem>
+                          <SelectItem key={type} value={type}>
+                            {type}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -225,14 +241,22 @@ export default function ComponentPage() {
                     </TableHeader>
                     <TableBody>
                       {filteredComponents.slice(0, 5).map((comp, index) => (
-                        <TableRow key={index} className="cursor-pointer hover:bg-muted" onClick={() => handleComponentSelect(comp)}>
+                        <TableRow
+                          key={index}
+                          className="cursor-pointer hover:bg-muted"
+                          onClick={() => handleComponentSelect(comp)}
+                        >
                           <TableCell className="font-medium">COMP-{index + 1}</TableCell>
                           <TableCell>{`Q${index + 100}`}</TableCell>
                           <TableCell>{comp}</TableCell>
                           <TableCell>{comp}</TableCell>
-                          <TableCell>{index % 2 === 0 ? 'TOPSIDE' : 'SUBSEA'}</TableCell>
+                          <TableCell>{index % 2 === 0 ? "TOPSIDE" : "SUBSEA"}</TableCell>
                           <TableCell className="text-right">
-                            <Button variant="outline" size="sm" onClick={() => handleComponentSelect(comp)}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleComponentSelect(comp)}
+                            >
                               Select
                             </Button>
                           </TableCell>
@@ -245,7 +269,9 @@ export default function ComponentPage() {
             </Card>
 
             <div className="flex justify-end">
-              <Button onClick={handleNext} disabled={!selectedComponent}>Next</Button>
+              <Button onClick={handleNext} disabled={!selectedComponent}>
+                Next
+              </Button>
             </div>
           </TabsContent>
 
@@ -262,7 +288,9 @@ export default function ComponentPage() {
                     <Input
                       id="componentId"
                       value={currentSpec.componentId}
-                      onChange={(e) => setCurrentSpec({ ...currentSpec, componentId: e.target.value })}
+                      onChange={(e) =>
+                        setCurrentSpec({ ...currentSpec, componentId: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -281,7 +309,9 @@ export default function ComponentPage() {
                     <Input
                       id="description"
                       value={currentSpec.description}
-                      onChange={(e) => setCurrentSpec({ ...currentSpec, description: e.target.value })}
+                      onChange={(e) =>
+                        setCurrentSpec({ ...currentSpec, description: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -316,7 +346,9 @@ export default function ComponentPage() {
                     <Input
                       id="installedType"
                       value={currentSpec.installedType}
-                      onChange={(e) => setCurrentSpec({ ...currentSpec, installedType: e.target.value })}
+                      onChange={(e) =>
+                        setCurrentSpec({ ...currentSpec, installedType: e.target.value })
+                      }
                     />
                   </div>
                 </div>
@@ -327,7 +359,9 @@ export default function ComponentPage() {
                     <Input
                       id="startNode"
                       value={currentSpec.startNode}
-                      onChange={(e) => setCurrentSpec({ ...currentSpec, startNode: e.target.value })}
+                      onChange={(e) =>
+                        setCurrentSpec({ ...currentSpec, startNode: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -347,7 +381,9 @@ export default function ComponentPage() {
                       id="elevation1"
                       type="number"
                       value={currentSpec.elevation1}
-                      onChange={(e) => setCurrentSpec({ ...currentSpec, elevation1: parseFloat(e.target.value) })}
+                      onChange={(e) =>
+                        setCurrentSpec({ ...currentSpec, elevation1: parseFloat(e.target.value) })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -356,7 +392,9 @@ export default function ComponentPage() {
                       id="elevation2"
                       type="number"
                       value={currentSpec.elevation2}
-                      onChange={(e) => setCurrentSpec({ ...currentSpec, elevation2: parseFloat(e.target.value) })}
+                      onChange={(e) =>
+                        setCurrentSpec({ ...currentSpec, elevation2: parseFloat(e.target.value) })
+                      }
                     />
                   </div>
                 </div>
@@ -364,7 +402,9 @@ export default function ComponentPage() {
             </Card>
 
             <div className="flex justify-between">
-              <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+              <Button variant="outline" onClick={handlePrevious}>
+                Previous
+              </Button>
               <Button onClick={handleNext}>Next</Button>
             </div>
           </TabsContent>
@@ -396,7 +436,9 @@ export default function ComponentPage() {
                         <TableCell>Completed</TableCell>
                         <TableCell>No anomalies</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="outline" size="sm">View</Button>
+                          <Button variant="outline" size="sm">
+                            View
+                          </Button>
                         </TableCell>
                       </TableRow>
                       <TableRow>
@@ -406,7 +448,9 @@ export default function ComponentPage() {
                         <TableCell>Completed</TableCell>
                         <TableCell>Minor corrosion</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="outline" size="sm">View</Button>
+                          <Button variant="outline" size="sm">
+                            View
+                          </Button>
                         </TableCell>
                       </TableRow>
                       <TableRow>
@@ -416,7 +460,9 @@ export default function ComponentPage() {
                         <TableCell>Completed</TableCell>
                         <TableCell>No anomalies</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="outline" size="sm">View</Button>
+                          <Button variant="outline" size="sm">
+                            View
+                          </Button>
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -426,7 +472,9 @@ export default function ComponentPage() {
             </Card>
 
             <div className="flex justify-between">
-              <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+              <Button variant="outline" onClick={handlePrevious}>
+                Previous
+              </Button>
               <Button onClick={handleNext}>Next</Button>
             </div>
           </TabsContent>
@@ -454,7 +502,9 @@ export default function ComponentPage() {
             </Card>
 
             <div className="flex justify-between">
-              <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+              <Button variant="outline" onClick={handlePrevious}>
+                Previous
+              </Button>
               <Button onClick={() => alert("Component data saved!")}>Save</Button>
             </div>
           </TabsContent>

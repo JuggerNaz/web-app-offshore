@@ -58,9 +58,8 @@ export default function FetchDataSteps() {
           >
             Table Editor
           </a>{" "}
-          for your Supabase project to create a table and insert some example
-          data. If you're stuck for creativity, you can copy and paste the
-          following into the{" "}
+          for your Supabase project to create a table and insert some example data. If you're stuck
+          for creativity, you can copy and paste the following into the{" "}
           <a
             href="https://supabase.com/dashboard/project/_/sql/new"
             className="font-bold hover:underline text-foreground/80"
@@ -76,8 +75,8 @@ export default function FetchDataSteps() {
 
       <TutorialStep title="Query Supabase data from Next.js">
         <p>
-          To create a Supabase client and query data from an Async Server
-          Component, create a new page.tsx file at{" "}
+          To create a Supabase client and query data from an Async Server Component, create a new
+          page.tsx file at{" "}
           <span className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-xs font-medium text-secondary-foreground border">
             /app/notes/page.tsx
           </span>{" "}

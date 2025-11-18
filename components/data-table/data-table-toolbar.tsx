@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { Table } from "@tanstack/react-table"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { DataTableViewOptions } from "./data-table-view-options"
-import { Search, X } from "lucide-react"
+import { Table } from "@tanstack/react-table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { DataTableViewOptions } from "./data-table-view-options";
+import { Search, X } from "lucide-react";
 
 interface DataTableToolbarProps<TData> {
-  table: Table<TData>
-  enableGlobalFilter?: boolean
-  enableColumnFilters?: boolean
-  enableViewOptions?: boolean
-  searchPlaceholder?: string
-  toolbarActions?: React.ReactNode
+  table: Table<TData>;
+  enableGlobalFilter?: boolean;
+  enableColumnFilters?: boolean;
+  enableViewOptions?: boolean;
+  searchPlaceholder?: string;
+  toolbarActions?: React.ReactNode;
 }
 
 export function DataTableToolbar<TData>({
@@ -21,10 +21,11 @@ export function DataTableToolbar<TData>({
   enableColumnFilters = true,
   enableViewOptions = true,
   searchPlaceholder = "Search all columns...",
-  toolbarActions
+  toolbarActions,
 }: DataTableToolbarProps<TData>) {
-  const isFiltered = table.getState().columnFilters.length > 0 || 
-                     (enableGlobalFilter && table.getState().globalFilter)
+  const isFiltered =
+    table.getState().columnFilters.length > 0 ||
+    (enableGlobalFilter && table.getState().globalFilter);
 
   return (
     <div className="flex items-center justify-between">
@@ -40,14 +41,14 @@ export function DataTableToolbar<TData>({
             />
           </div>
         )}
-        
+
         {isFiltered && (
           <Button
             variant="ghost"
             onClick={() => {
-              table.resetColumnFilters()
+              table.resetColumnFilters();
               if (enableGlobalFilter) {
-                table.setGlobalFilter("")
+                table.setGlobalFilter("");
               }
             }}
             className="h-8 px-2 lg:px-3"
@@ -57,11 +58,11 @@ export function DataTableToolbar<TData>({
           </Button>
         )}
       </div>
-      
+
       <div className="flex items-center space-x-2">
         {toolbarActions}
         {enableViewOptions && <DataTableViewOptions table={table} />}
       </div>
     </div>
-  )
+  );
 }

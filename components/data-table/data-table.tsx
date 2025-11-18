@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import {
   ColumnDef,
@@ -12,7 +12,7 @@ import {
   ColumnFiltersState,
   SortingState,
   VisibilityState,
-} from "@tanstack/react-table"
+} from "@tanstack/react-table";
 
 import {
   Table,
@@ -21,22 +21,22 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { usePathname, useRouter } from "next/navigation"
-import { useState } from "react"
-import { DataTablePagination } from "./data-table-pagination"
-import { DataTableToolbar } from "./data-table-toolbar"
+} from "@/components/ui/table";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
+import { DataTablePagination } from "./data-table-pagination";
+import { DataTableToolbar } from "./data-table-toolbar";
 
 interface DataTableProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[]
-  data: TData[]
-  disableRowClick?: boolean
-  pageSize?: number
-  enablePagination?: boolean
-  enableGlobalFilter?: boolean
-  enableColumnFilters?: boolean
-  enableSorting?: boolean
-  toolbarActions?: React.ReactNode
+  columns: ColumnDef<TData, TValue>[];
+  data: TData[];
+  disableRowClick?: boolean;
+  pageSize?: number;
+  enablePagination?: boolean;
+  enableGlobalFilter?: boolean;
+  enableColumnFilters?: boolean;
+  enableSorting?: boolean;
+  toolbarActions?: React.ReactNode;
 }
 
 export function DataTable<TData, TValue, disableRowClick>({
@@ -48,17 +48,17 @@ export function DataTable<TData, TValue, disableRowClick>({
   enableGlobalFilter = true,
   enableColumnFilters = true,
   enableSorting = true,
-  toolbarActions
+  toolbarActions,
 }: DataTableProps<TData, TValue>) {
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize,
-  })
-  const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
-  const [rowSelection, setRowSelection] = useState({})
-  const [globalFilter, setGlobalFilter] = useState("")
+  });
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [rowSelection, setRowSelection] = useState({});
+  const [globalFilter, setGlobalFilter] = useState("");
 
   const table = useReactTable({
     data,
@@ -66,7 +66,8 @@ export function DataTable<TData, TValue, disableRowClick>({
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: enablePagination ? getPaginationRowModel() : undefined,
     getSortedRowModel: enableSorting ? getSortedRowModel() : undefined,
-    getFilteredRowModel: (enableColumnFilters || enableGlobalFilter) ? getFilteredRowModel() : undefined,
+    getFilteredRowModel:
+      enableColumnFilters || enableGlobalFilter ? getFilteredRowModel() : undefined,
     onPaginationChange: setPagination,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
@@ -81,15 +82,15 @@ export function DataTable<TData, TValue, disableRowClick>({
       rowSelection,
       globalFilter: enableGlobalFilter ? globalFilter : undefined,
     },
-  })
+  });
 
-  const pathname = usePathname()
-  const router = useRouter()
-  
+  const pathname = usePathname();
+  const router = useRouter();
+
   return (
     <div className="space-y-4">
-      <DataTableToolbar 
-        table={table} 
+      <DataTableToolbar
+        table={table}
         enableGlobalFilter={enableGlobalFilter}
         enableColumnFilters={enableColumnFilters}
         toolbarActions={toolbarActions}
@@ -104,12 +105,9 @@ export function DataTable<TData, TValue, disableRowClick>({
                     <TableHead key={header.id}>
                       {header.isPlaceholder
                         ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
+                        : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableHead>
-                  )
+                  );
                 })}
               </TableRow>
             ))}
@@ -121,16 +119,15 @@ export function DataTable<TData, TValue, disableRowClick>({
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                   onClick={() => {
-                      if(!disableRowClick){
-                        const rowItem = row.original as unknown as any
-                        if (pathname.includes("pipeline")) {
-                          router.push(`/dashboard/structure/pipeline/${rowItem.pipe_id}`)
-                        } else if (pathname.includes("platform")) {
-                          router.push(`/dashboard/structure/platform/${rowItem.plat_id}`)
-                        }
+                    if (!disableRowClick) {
+                      const rowItem = row.original as unknown as any;
+                      if (pathname.includes("pipeline")) {
+                        router.push(`/dashboard/structure/pipeline/${rowItem.pipe_id}`);
+                      } else if (pathname.includes("platform")) {
+                        router.push(`/dashboard/structure/platform/${rowItem.plat_id}`);
                       }
                     }
-                  }
+                  }}
                   className="cursor-pointer hover:bg-muted"
                 >
                   {row.getVisibleCells().map((cell) => (
@@ -152,5 +149,5 @@ export function DataTable<TData, TValue, disableRowClick>({
       </div>
       {enablePagination && <DataTablePagination table={table} />}
     </div>
-  )
+  );
 }

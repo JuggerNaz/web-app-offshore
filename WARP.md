@@ -9,6 +9,7 @@ This is a Next.js offshore web application built on Supabase, managing offshore 
 ## Development Commands
 
 ### Running the Application
+
 ```bash
 yarn dev                # Start development server with Turbopack
 yarn build              # Build for production
@@ -16,6 +17,7 @@ yarn start              # Start production server
 ```
 
 ### Code Quality
+
 ```bash
 yarn lint               # Check for lint errors
 yarn lint:fix           # Fix lint errors automatically
@@ -25,6 +27,7 @@ yarn format:check       # Check code formatting
 ```
 
 ### Testing
+
 ```bash
 yarn test               # Run tests in watch mode
 yarn test:run           # Run tests once
@@ -33,13 +36,17 @@ yarn test:coverage      # Run tests with coverage
 ```
 
 ### Supabase Type Generation
+
 Generate TypeScript types from the Supabase database schema:
+
 ```bash
 npx supabase gen types typescript --db-url postgresql://postgres.zpsmxtdqlpbdwfzctqzd:yourpassword@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres > ./supabase/schema.ts
 ```
+
 Replace `yourpassword` with the actual database password from `.env.local`.
 
 ### Storage Setup
+
 ```bash
 npm run setup-storage    # Initialize Supabase storage buckets
 npm run test-storage     # Test storage URL generation
@@ -48,6 +55,7 @@ npm run test-storage     # Test storage URL generation
 ## Architecture
 
 ### Technology Stack
+
 - **Framework**: Next.js 15 with App Router
 - **Language**: TypeScript (strict mode)
 - **Backend**: Supabase (auth, database, storage)
@@ -62,11 +70,13 @@ npm run test-storage     # Test storage URL generation
 The application uses three different Supabase client patterns depending on the context:
 
 1. **Client Components** (`utils/supabase/client.ts`):
+
    ```typescript
    import { createClient } from "@/utils/supabase/client";
    ```
 
 2. **Server Components & Route Handlers** (`utils/supabase/server.ts`):
+
    ```typescript
    import { createClient } from "@/utils/supabase/server";
    ```
@@ -115,6 +125,7 @@ The application uses three different Supabase client patterns depending on the c
 ### Import Paths
 
 The project uses `@/*` path alias for absolute imports:
+
 ```typescript
 import { createClient } from "@/utils/supabase/server";
 import { Button } from "@/components/ui/button";
@@ -142,11 +153,11 @@ import { createClient } from "@/utils/supabase/server";
 export async function GET() {
   const supabase = createClient();
   const { data, error } = await supabase.from("table_name").select("*");
-  
+
   if (error) {
     return NextResponse.json({ error: "Error message" }, { status: 500 });
   }
-  
+
   return NextResponse.json({ data });
 }
 ```
@@ -185,6 +196,7 @@ File uploads use the `utils/storage.ts` utilities:
 4. Use standardized responses with `apiSuccess`, `apiCreated`, etc.
 
 **Example**:
+
 ```typescript
 import { NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
@@ -195,24 +207,24 @@ import { withAuth } from "@/utils/with-auth";
 export const GET = withAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const { data, error } = await supabase.from("table").select("*");
-  
+
   if (error) {
     return handleSupabaseError(error, "Failed to fetch data");
   }
-  
+
   return apiSuccess(data);
 });
 
 export const POST = withAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const body = await request.json();
-  
+
   const { data, error } = await supabase.from("table").insert(body).select().single();
-  
+
   if (error) {
     return handleSupabaseError(error, "Failed to create resource");
   }
-  
+
   return apiCreated(data);
 });
 ```
@@ -224,7 +236,9 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
 3. Access user via Supabase client:
    ```typescript
    const supabase = createClient();
-   const { data: { user } } = await supabase.auth.getUser();
+   const {
+     data: { user },
+   } = await supabase.auth.getUser();
    ```
 
 ### Working with Forms
@@ -237,6 +251,7 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
 ### Database Type Regeneration
 
 After database schema changes:
+
 1. Update schema in Supabase dashboard
 2. Run the type generation command (see Development Commands)
 3. Types in `supabase/schema.ts` will be updated
@@ -245,6 +260,7 @@ After database schema changes:
 ## Environment Variables
 
 Required variables in `.env.local`:
+
 ```
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key

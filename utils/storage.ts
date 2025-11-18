@@ -6,12 +6,12 @@
  * Get the Supabase URL from environment variables
  */
 export const getSupabaseUrl = (): string => {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     // Client-side: access from window object if set by Next.js
-    return process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    return process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   }
   // Server-side: access normally
-  return process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  return process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 };
 
 /**
@@ -22,8 +22,8 @@ export const getSupabaseUrl = (): string => {
  */
 export const getStoragePublicUrl = (bucketName: string, filePath: string): string => {
   const supabaseUrl = getSupabaseUrl();
-  if (!supabaseUrl || !filePath) return '';
-  
+  if (!supabaseUrl || !filePath) return "";
+
   return `${supabaseUrl}/storage/v1/object/public/${bucketName}/${filePath}`;
 };
 
@@ -33,7 +33,7 @@ export const getStoragePublicUrl = (bucketName: string, filePath: string): strin
  * @returns boolean indicating if it's a complete URL
  */
 export const isCompleteUrl = (url: string): boolean => {
-  return url.startsWith('http://') || url.startsWith('https://');
+  return url.startsWith("http://") || url.startsWith("https://");
 };
 
 /**
@@ -42,14 +42,14 @@ export const isCompleteUrl = (url: string): boolean => {
  * @returns The filename
  */
 export const extractFilename = (pathOrUrl: string): string => {
-  if (!pathOrUrl) return 'File';
-  
+  if (!pathOrUrl) return "File";
+
   // Remove query parameters and hash
-  const cleanPath = pathOrUrl.split('?')[0].split('#')[0];
-  
+  const cleanPath = pathOrUrl.split("?")[0].split("#")[0];
+
   // Extract filename
-  const parts = cleanPath.split('/');
-  return parts[parts.length - 1] || 'File';
+  const parts = cleanPath.split("/");
+  return parts[parts.length - 1] || "File";
 };
 
 /**
@@ -57,12 +57,14 @@ export const extractFilename = (pathOrUrl: string): string => {
  * @param attachment - The attachment object from the database
  * @returns Object containing the processed fileUrl and fileName
  */
-export const processAttachmentUrl = (attachment: any): { fileUrl: string | null; fileName: string } => {
+export const processAttachmentUrl = (
+  attachment: any
+): { fileUrl: string | null; fileName: string } => {
   let fileUrl = attachment.path;
-  let fileName = attachment.name || 'File';
+  let fileName = attachment.name || "File";
 
   // If meta exists, try to get URL and original filename from there
-  if (attachment.meta && typeof attachment.meta === 'object') {
+  if (attachment.meta && typeof attachment.meta === "object") {
     const meta = attachment.meta as any;
     if (meta.file_url) {
       fileUrl = meta.file_url;
@@ -74,7 +76,7 @@ export const processAttachmentUrl = (attachment: any): { fileUrl: string | null;
 
   // If path looks like a filename (no http/https), construct the proper URL
   if (fileUrl && !isCompleteUrl(fileUrl)) {
-    fileUrl = getStoragePublicUrl('attachments', fileUrl);
+    fileUrl = getStoragePublicUrl("attachments", fileUrl);
   }
 
   return { fileUrl, fileName };

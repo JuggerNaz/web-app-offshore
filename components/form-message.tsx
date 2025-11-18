@@ -1,11 +1,8 @@
-export type Message =
-  | { success: string }
-  | { error: string }
-  | { message: string };
+export type Message = { success: string } | { error: string } | { message: string };
 
-export async function FormMessage({ message }: { message: Promise<Message>}) {
+export async function FormMessage({ message }: { message: Promise<Message> }) {
   const resolvedMessage = await message;
-  
+
   return (
     <div className="flex flex-col gap-2 w-full max-w-md text-sm">
       {"success" in resolvedMessage && (

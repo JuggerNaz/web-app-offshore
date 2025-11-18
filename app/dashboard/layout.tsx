@@ -3,11 +3,7 @@ import { CollapsibleSidebar } from "@/components/collapsible-sidebar";
 import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
 
-export default async function Layout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function Layout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
   const {
@@ -19,17 +15,15 @@ export default async function Layout({
   }
   return (
     <div className="flex-1 w-full flex flex-col overflow-hidden">
-        <div className="flex">
+      <div className="flex">
         <CollapsibleSidebar />
         <div className="grow">
-            <div className="flex flex-col h-screen">
-                <DashboardNav />
-                <div className="grow flex-col p-5 z-10 overflow-y-scroll">
-                    {children}
-                </div>
-            </div>
+          <div className="flex flex-col h-screen">
+            <DashboardNav />
+            <div className="grow flex-col p-5 z-10 overflow-y-scroll">{children}</div>
+          </div>
         </div>
-        </div>
+      </div>
     </div>
   );
 }

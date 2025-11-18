@@ -13,7 +13,7 @@ type AuthenticatedHandler = (
 
 /**
  * Higher-order function to protect API routes with authentication
- * 
+ *
  * Usage:
  * ```typescript
  * export const GET = withAuth(async (request, { params, user }) => {
@@ -21,7 +21,7 @@ type AuthenticatedHandler = (
  *   return apiSuccess({ data: "protected data" });
  * });
  * ```
- * 
+ *
  * @param handler - The route handler function
  * @returns Protected route handler
  */
@@ -58,7 +58,7 @@ type OptionalAuthHandler = (
 /**
  * Similar to withAuth but allows unauthenticated access
  * User will be null if not authenticated
- * 
+ *
  * Usage:
  * ```typescript
  * export const GET = withOptionalAuth(async (request, { params, user }) => {
@@ -89,7 +89,7 @@ export function withOptionalAuth(handler: OptionalAuthHandler) {
 
 /**
  * Extract user from request (for use in route handlers that already have auth checks)
- * 
+ *
  * @returns User object or null
  */
 export async function getCurrentUser(): Promise<User | null> {

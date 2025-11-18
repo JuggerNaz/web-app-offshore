@@ -21,6 +21,7 @@ The original system updates page used hardcoded sample data, making it difficult
 ### 1. Installed Markdown Processing Dependencies
 
 Added necessary packages for markdown processing:
+
 - `react-markdown` - For rendering markdown content in React components
 - `gray-matter` - For parsing frontmatter from markdown files
 
@@ -81,17 +82,17 @@ yarn add react-markdown gray-matter
 
 ```typescript
 interface ChangelogEntry {
-  id: string;           // Filename without extension
-  title: string;        // Extracted from first H1 heading
-  content: string;      // Full markdown content
+  id: string; // Filename without extension
+  title: string; // Extracted from first H1 heading
+  content: string; // Full markdown content
   metadata: {
-    date?: string;      // Release date
-    type?: string;      // Update type (Feature, Bug Fix, etc.)
-    status?: string;    // Status (Completed, In Progress, etc.)
-    version?: string;   // Version number
+    date?: string; // Release date
+    type?: string; // Update type (Feature, Bug Fix, etc.)
+    status?: string; // Status (Completed, In Progress, etc.)
+    version?: string; // Version number
   };
-  filename: string;     // Original filename
-  order: number;        // Numeric prefix for ordering
+  filename: string; // Original filename
+  order: number; // Numeric prefix for ordering
 }
 ```
 
@@ -106,10 +107,12 @@ interface ChangelogEntry {
 ## Files Modified
 
 ### New Files Created:
+
 - `utils/changelog-server.ts` - Server-side file reading utilities
 - `app/dashboard/system-updates/changelog-card.tsx` - Expandable card component
 
 ### Modified Files:
+
 - `utils/changelog.ts` - Split into client-safe utilities only
 - `app/dashboard/system-updates/page.tsx` - Updated to use dynamic data
 - `package.json` - Added markdown processing dependencies
@@ -117,21 +120,25 @@ interface ChangelogEntry {
 ## Benefits
 
 ### 1. Maintainability
+
 - No code changes required for new updates
 - Simply add new `.md` files to automatically include them
 - Version control tracks all changes to documentation
 
 ### 2. Flexibility
+
 - Support for rich markdown formatting (code blocks, lists, links, etc.)
 - Frontmatter metadata for structured data
 - Custom styling through React components
 
 ### 3. Developer Experience
+
 - Write updates in familiar markdown format
 - Automatic parsing and rendering
 - Type-safe interfaces for data structure
 
 ### 4. User Experience
+
 - Expandable cards reduce visual clutter
 - Fast loading with server-side rendering
 - Consistent styling with existing UI components

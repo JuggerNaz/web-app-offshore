@@ -18,6 +18,7 @@ yarn add -D eslint eslint-config-next
 **Location**: `utils/api-error-handler.ts`
 
 **Usage**:
+
 ```typescript
 import { handleSupabaseError } from "@/utils/api-error-handler";
 
@@ -28,6 +29,7 @@ if (error) {
 ```
 
 **Benefits**:
+
 - Consistent error responses across all API routes
 - Automatic HTTP status code mapping
 - Reduced code duplication
@@ -37,6 +39,7 @@ if (error) {
 **Location**: `utils/api-response.ts`
 
 **Usage**:
+
 ```typescript
 import { apiSuccess, apiCreated, apiError } from "@/utils/api-response";
 
@@ -51,6 +54,7 @@ return apiError("Not found", 404);
 ```
 
 **Benefits**:
+
 - Consistent response structure
 - Type-safe responses
 - Semantic helper functions
@@ -60,6 +64,7 @@ return apiError("Not found", 404);
 **Location**: `utils/with-auth.ts`
 
 **Usage**:
+
 ```typescript
 import { withAuth } from "@/utils/with-auth";
 
@@ -70,6 +75,7 @@ export const GET = withAuth(async (request, { user, params }) => {
 ```
 
 **Benefits**:
+
 - Protected API routes with single line
 - Automatic authentication checking
 - Type-safe user context
@@ -79,6 +85,7 @@ export const GET = withAuth(async (request, { user, params }) => {
 **Location**: `vitest.config.ts`, `vitest.setup.ts`
 
 **Run tests**:
+
 ```bash
 yarn test          # Run tests in watch mode
 yarn test:run      # Run tests once
@@ -93,6 +100,7 @@ yarn test:coverage # Run with coverage
 **Configuration**: `.eslintrc.json`, `.prettierrc`
 
 **Run commands**:
+
 ```bash
 yarn lint          # Check for lint errors
 yarn lint:fix      # Fix lint errors automatically
@@ -109,30 +117,32 @@ yarn typecheck     # Check TypeScript types
 ## Refactored Examples
 
 ### Before (Old Pattern):
+
 ```typescript
 export async function GET() {
   const supabase = createClient();
   const { data, error } = await supabase.from("platform").select("*");
-  
+
   if (error) {
     console.error(error.message);
     return NextResponse.json({ error: "Failed to fetch" });
   }
-  
+
   return NextResponse.json({ data });
 }
 ```
 
 ### After (New Pattern):
+
 ```typescript
 export const GET = withAuth(async (request, { user }) => {
   const supabase = createClient();
   const { data, error } = await supabase.from("platform").select("*");
-  
+
   if (error) {
     return handleSupabaseError(error, "Failed to fetch platforms");
   }
-  
+
   return apiSuccess(data);
 });
 ```
@@ -142,6 +152,7 @@ export const GET = withAuth(async (request, { user }) => {
 ### Step 1: Update API Routes
 
 Migrate your API routes one by one using the new utilities. Examples:
+
 - ✅ `app/api/platform/route.ts` (already updated)
 - ✅ `app/api/pipeline/route.ts` (already updated)
 - ⏳ Remaining routes to update
@@ -149,6 +160,7 @@ Migrate your API routes one by one using the new utilities. Examples:
 ### Step 2: Add Tests
 
 Start adding tests for:
+
 1. Utility functions (high priority)
 2. API routes (medium priority)
 3. Components (as needed)
@@ -156,6 +168,7 @@ Start adding tests for:
 ### Step 3: Run Linting
 
 Fix linting issues gradually:
+
 ```bash
 yarn lint:fix
 ```
@@ -163,18 +176,21 @@ yarn lint:fix
 ## Best Practices Going Forward
 
 ### 1. All New API Routes Should:
+
 - Use `withAuth` for protected routes
 - Use `handleSupabaseError` for error handling
 - Use `apiSuccess`/`apiCreated` for responses
 - Include JSDoc comments
 
 ### 2. All New Code Should:
+
 - Pass TypeScript checks
 - Pass ESLint checks
 - Be formatted with Prettier
 - Include tests for business logic
 
 ### 3. Before Committing:
+
 ```bash
 yarn typecheck && yarn lint && yarn test:run
 ```
@@ -194,6 +210,7 @@ yarn typecheck && yarn lint && yarn test:run
 ## Questions?
 
 Refer to:
+
 - WARP.md for project architecture
 - Individual utility files for detailed documentation
 - Test files for usage examples

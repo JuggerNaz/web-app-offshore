@@ -1,9 +1,9 @@
-"use server"
+"use server";
 
-import { useState, useEffect, use } from 'react'
-import { ColumnDef } from '@tanstack/react-table'
+import { useState, useEffect, use } from "react";
+import { ColumnDef } from "@tanstack/react-table";
 import { createClient } from "@/utils/supabase/server";
-import { Server } from 'lucide-react';
+import { Server } from "lucide-react";
 
 // export function useFetchModules<TData, TValue>(
 //   fetcher: () => Promise<TData[]>,
