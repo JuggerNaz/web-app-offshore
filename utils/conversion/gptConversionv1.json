@@ -1,80 +1,79 @@
 {
-    "Spec1": {
-      "Platform": {
-        "Primary Key": "plat_id",
-        "Columns": [
-          { "Name": "PLAT_ID", "Null": "NOT NULL", "Type": "NUMBER(12)" },
-          { "Name": "TITLE", "Null": "NOT NULL", "Type": "VARCHAR2(20)" },
-          { "Name": "PFIELD", "Null": "", "Type": "VARCHAR2(20)" },
-          { "Name": "PDESC", "Null": "", "Type": "VARCHAR2(50)" },
-          { "Name": "PTYPE", "Null": "", "Type": "VARCHAR2(20)" },
-          { "Name": "INST_DATE", "Null": "", "Type": "DATE" },
-          { "Name": "DESG_LIFE", "Null": "", "Type": "NUMBER(3)" },
-          { "Name": "ST_NORTH", "Null": "", "Type": "VARCHAR2(10)" },
-          { "Name": "ST_EAST", "Null": "", "Type": "VARCHAR2(10)" },
-          { "Name": "DEPTH", "Null": "", "Type": "NUMBER(9,3)" },
-          { "Name": "AN_QTY", "Null": "", "Type": "NUMBER(4)" },
-          { "Name": "AN_TYPE", "Null": "", "Type": "VARCHAR2(20)" },
-          { "Name": "INST_CTR", "Null": "", "Type": "VARCHAR2(20)" },
-          { "Name": "WALL_THK", "Null": "", "Type": "NUMBER(9,3)" },
-          { "Name": "PROCESS", "Null": "", "Type": "VARCHAR2(20)" },
-          { "Name": "PLEGS", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "CR_USER", "Null": "", "Type": "VARCHAR2(30)" },
-          { "Name": "CR_DATE", "Null": "", "Type": "DATE" },
-          { "Name": "DEF_UNIT", "Null": "", "Type": "VARCHAR2(10)" },
-          { "Name": "WORKUNIT", "Null": "", "Type": "VARCHAR2(3)" },
-          { "Name": "DLEG", "Null": "", "Type": "NUMBER(9,3)" },
-          { "Name": "CONDUCT", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "CSLOT", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "PILEINT", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "PILESKT", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "RISER", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "FENDER", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "SUMP", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "CAISSON", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "CRANE", "Null": "", "Type": "NUMBER(2)" },
-          { "Name": "HELIPAD", "Null": "", "Type": "VARCHAR2(3)" },
-          { "Name": "MANNED", "Null": "", "Type": "VARCHAR2(3)" }
-        ]
-      }
+  "Spec1": {
+    "Platform": {
+      "Primary Key": "plat_id",
+      "Columns": [
+        { "Name": "PLAT_ID", "Null": "NOT NULL", "Type": "NUMBER(12)" },
+        { "Name": "TITLE", "Null": "NOT NULL", "Type": "VARCHAR2(20)" },
+        { "Name": "PFIELD", "Null": "", "Type": "VARCHAR2(20)" },
+        { "Name": "PDESC", "Null": "", "Type": "VARCHAR2(50)" },
+        { "Name": "PTYPE", "Null": "", "Type": "VARCHAR2(20)" },
+        { "Name": "INST_DATE", "Null": "", "Type": "DATE" },
+        { "Name": "DESG_LIFE", "Null": "", "Type": "NUMBER(3)" },
+        { "Name": "ST_NORTH", "Null": "", "Type": "VARCHAR2(10)" },
+        { "Name": "ST_EAST", "Null": "", "Type": "VARCHAR2(10)" },
+        { "Name": "DEPTH", "Null": "", "Type": "NUMBER(9,3)" },
+        { "Name": "AN_QTY", "Null": "", "Type": "NUMBER(4)" },
+        { "Name": "AN_TYPE", "Null": "", "Type": "VARCHAR2(20)" },
+        { "Name": "INST_CTR", "Null": "", "Type": "VARCHAR2(20)" },
+        { "Name": "WALL_THK", "Null": "", "Type": "NUMBER(9,3)" },
+        { "Name": "PROCESS", "Null": "", "Type": "VARCHAR2(20)" },
+        { "Name": "PLEGS", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "CR_USER", "Null": "", "Type": "VARCHAR2(30)" },
+        { "Name": "CR_DATE", "Null": "", "Type": "DATE" },
+        { "Name": "DEF_UNIT", "Null": "", "Type": "VARCHAR2(10)" },
+        { "Name": "WORKUNIT", "Null": "", "Type": "VARCHAR2(3)" },
+        { "Name": "DLEG", "Null": "", "Type": "NUMBER(9,3)" },
+        { "Name": "CONDUCT", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "CSLOT", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "PILEINT", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "PILESKT", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "RISER", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "FENDER", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "SUMP", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "CAISSON", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "CRANE", "Null": "", "Type": "NUMBER(2)" },
+        { "Name": "HELIPAD", "Null": "", "Type": "VARCHAR2(3)" },
+        { "Name": "MANNED", "Null": "", "Type": "VARCHAR2(3)" }
+      ]
+    }
+  },
+  "Spec2": {
+    "str_elv": {
+      "Primary Key": "plat_id",
+      "Columns": [
+        { "Name": "PLAT_ID", "Null": "NOT NULL", "Type": "NUMBER(12)" },
+        { "Name": "ELV", "Null": "NOT NULL", "Type": "NUMBER(8,3)" },
+        { "Name": "ORIENT", "Null": "", "Type": "VARCHAR2(5)" },
+        { "Name": "WORKUNIT", "Null": "", "Type": "VARCHAR2(3)" },
+        { "Name": "CR_USER", "Null": "", "Type": "VARCHAR2(30)" },
+        { "Name": "CR_DATE", "Null": "", "Type": "DATE" }
+      ]
     },
-    "Spec2": {
-      "str_elv": {
-        "Primary Key": "plat_id",
-        "Columns": [
-          { "Name": "PLAT_ID", "Null": "NOT NULL", "Type": "NUMBER(12)" },
-          { "Name": "ELV", "Null": "NOT NULL", "Type": "NUMBER(8,3)" },
-          { "Name": "ORIENT", "Null": "", "Type": "VARCHAR2(5)" },
-          { "Name": "WORKUNIT", "Null": "", "Type": "VARCHAR2(3)" },
-          { "Name": "CR_USER", "Null": "", "Type": "VARCHAR2(30)" },
-          { "Name": "CR_DATE", "Null": "", "Type": "DATE" }
-        ]
-      },
-      "str_level": {
-        "Primary Key": "plat_id",
-        "Columns": [
-          { "Name": "PLAT_ID", "Null": "NOT NULL", "Type": "NUMBER(12)" },
-          { "Name": "LEVEL_NAME", "Null": "NOT NULL", "Type": "VARCHAR2(20)" },
-          { "Name": "ELV_FROM", "Null": "", "Type": "NUMBER(7,2)" },
-          { "Name": "ELV_TO", "Null": "", "Type": "NUMBER(7,2)" },
-          { "Name": "CR_USER", "Null": "", "Type": "VARCHAR2(30)" },
-          { "Name": "CR_DATE", "Null": "", "Type": "DATE" },
-          { "Name": "WORKUNIT", "Null": "", "Type": "VARCHAR2(3)" }
-        ]
-      },
-      "str_faces": {
-        "Primary Key": "plat_id",
-        "Columns": [
-          { "Name": "PLAT_ID", "Null": "NOT NULL", "Type": "NUMBER(12)" },
-          { "Name": "FACE", "Null": "NOT NULL", "Type": "VARCHAR2(6)" },
-          { "Name": "FACE_DESC", "Null": "", "Type": "VARCHAR2(20)" },
-          { "Name": "CR_USER", "Null": "", "Type": "VARCHAR2(30)" },
-          { "Name": "CR_DATE", "Null": "", "Type": "DATE" },
-          { "Name": "WORKUNIT", "Null": "", "Type": "VARCHAR2(3)" },
-          { "Name": "FACE_FROM", "Null": "", "Type": "VARCHAR2(2)" },
-          { "Name": "FACE_TO", "Null": "", "Type": "VARCHAR2(2)" }
-        ]
-      }
+    "str_level": {
+      "Primary Key": "plat_id",
+      "Columns": [
+        { "Name": "PLAT_ID", "Null": "NOT NULL", "Type": "NUMBER(12)" },
+        { "Name": "LEVEL_NAME", "Null": "NOT NULL", "Type": "VARCHAR2(20)" },
+        { "Name": "ELV_FROM", "Null": "", "Type": "NUMBER(7,2)" },
+        { "Name": "ELV_TO", "Null": "", "Type": "NUMBER(7,2)" },
+        { "Name": "CR_USER", "Null": "", "Type": "VARCHAR2(30)" },
+        { "Name": "CR_DATE", "Null": "", "Type": "DATE" },
+        { "Name": "WORKUNIT", "Null": "", "Type": "VARCHAR2(3)" }
+      ]
+    },
+    "str_faces": {
+      "Primary Key": "plat_id",
+      "Columns": [
+        { "Name": "PLAT_ID", "Null": "NOT NULL", "Type": "NUMBER(12)" },
+        { "Name": "FACE", "Null": "NOT NULL", "Type": "VARCHAR2(6)" },
+        { "Name": "FACE_DESC", "Null": "", "Type": "VARCHAR2(20)" },
+        { "Name": "CR_USER", "Null": "", "Type": "VARCHAR2(30)" },
+        { "Name": "CR_DATE", "Null": "", "Type": "DATE" },
+        { "Name": "WORKUNIT", "Null": "", "Type": "VARCHAR2(3)" },
+        { "Name": "FACE_FROM", "Null": "", "Type": "VARCHAR2(2)" },
+        { "Name": "FACE_TO", "Null": "", "Type": "VARCHAR2(2)" }
+      ]
     }
   }
-  
+}

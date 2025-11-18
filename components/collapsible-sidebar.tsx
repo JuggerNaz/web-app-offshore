@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -17,15 +17,17 @@ export function CollapsibleSidebar() {
   };
 
   return (
-    <div className={cn(
-      "flex flex-col h-screen transition-all duration-300 ease-in-out border-r bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60",
-      isCollapsed ? "w-16" : "w-64"
-    )}>
+    <div
+      className={cn(
+        "flex flex-col h-screen transition-all duration-300 ease-in-out border-r bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60",
+        isCollapsed ? "w-16" : "w-64"
+      )}
+    >
       {/* Header */}
       <div className="flex items-center justify-between h-16 px-4 border-b">
         {!isCollapsed && (
-          <Link 
-            href="/dashboard" 
+          <Link
+            href="/dashboard"
             className="flex items-center gap-2 font-semibold text-lg transition-colors hover:text-primary"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -35,8 +37,8 @@ export function CollapsibleSidebar() {
           </Link>
         )}
         {isCollapsed && (
-          <Link 
-            href="/dashboard" 
+          <Link
+            href="/dashboard"
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 mx-auto"
           >
             <span className="text-sm font-bold">WA</span>

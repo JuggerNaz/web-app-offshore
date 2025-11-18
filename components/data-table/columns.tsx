@@ -1,68 +1,62 @@
-"use client"
+"use client";
 
-import { ColumnDef } from "@tanstack/react-table"
-import { MoreHorizontal, MoreVertical, ExternalLink } from "lucide-react"
-import { Button, buttonVariants } from "@/components/ui/button"
-import { DataTableColumnHeader } from "./data-table-column-header"
+import { ColumnDef } from "@tanstack/react-table";
+import { MoreHorizontal, MoreVertical, ExternalLink } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { DataTableColumnHeader } from "./data-table-column-header";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Database } from "@/supabase/schema"
-import moment from "moment"
-import Link from "next/link"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Database } from "@/supabase/schema";
+import moment from "moment";
+import Link from "next/link";
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
-import { toast } from "sonner"
-import { Trash2, Edit2, Plus } from "lucide-react"
-import { number } from "zod"
-import { processAttachmentUrl, truncateText } from "@/utils/storage"
+import { toast } from "sonner";
+import { Trash2, Edit2, Plus } from "lucide-react";
+import { number } from "zod";
+import { processAttachmentUrl, truncateText } from "@/utils/storage";
 
-export type Platform = Database["public"]["Tables"]["platform"]["Row"]
-export type Comment = Database["public"]["Tables"]["comment"]["Row"]
-export type Pipeline = Database["public"]["Tables"]["u_pipeline"]["Row"]
-export type Levels = Database["public"]["Tables"]["str_level"]["Row"]
-export type Faces = Database["public"]["Tables"]["str_faces"]["Row"]
-export type Jobpack = Database["public"]["Tables"]["workpl"]["Row"]
+export type Platform = Database["public"]["Tables"]["platform"]["Row"];
+export type Comment = Database["public"]["Tables"]["comment"]["Row"];
+export type Pipeline = Database["public"]["Tables"]["u_pipeline"]["Row"];
+export type Levels = Database["public"]["Tables"]["str_level"]["Row"];
+export type Faces = Database["public"]["Tables"]["str_faces"]["Row"];
+export type Jobpack = Database["public"]["Tables"]["workpl"]["Row"];
 export type StructureSelect = {
-  str_id: number
-  str_title: string
-  str_field: string
-  str_type: string
-}
-export type Attachment = Database["public"]["Tables"]["attachment"]["Row"]
+  str_id: number;
+  str_title: string;
+  str_field: string;
+  str_type: string;
+};
+export type Attachment = Database["public"]["Tables"]["attachment"]["Row"];
 export type Component = {
-  comp_id: string
-  description: string
-  component_type: string
-}
+  comp_id: string;
+  description: string;
+  component_type: string;
+};
 
 export const columns: ColumnDef<Platform>[] = [
   {
     accessorKey: "title",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Title" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "pfield",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Field" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Field" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "ptype",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Type" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Type" />,
     enableSorting: true,
     enableHiding: true,
   },
@@ -91,232 +85,216 @@ export const columns: ColumnDef<Platform>[] = [
   //       style: "currency",
   //       currency: "USD",
   //     }).format(amount)
- 
+
   //     return <div className="text-right font-medium">{formatted}</div>
   //   },
   // },
   {
     id: "actions",
     cell: ({ row }) => {
-      const item = row.original
- 
+      const item = row.original;
+
       return (
         <div className="text-center">
-            <DropdownMenu>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
                 <MoreVertical className="h-4 w-4" />
-                </Button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                {/* <DropdownMenuItem
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              {/* <DropdownMenuItem
                   onClick={() => navigator.clipboard.writeText(payment.id)}
                 >
                 Copy payment ID
                 </DropdownMenuItem> */}
-                <DropdownMenuSeparator />
-                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={() => {
-                    console.log(item)
-                  }}
-                >
-                  <Link href={`/dashboard/structure/platform/${item.plat_id}`}>
-                  View Detail
-                  </Link>
-                </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  console.log(item);
+                }}
+              >
+                <Link href={`/dashboard/structure/platform/${item.plat_id}`}>View Detail</Link>
+              </DropdownMenuItem>
             </DropdownMenuContent>
-            </DropdownMenu>
+          </DropdownMenu>
         </div>
-      )
+      );
     },
   },
-]
+];
 
 export const pipelines: ColumnDef<Pipeline>[] = [
   {
     accessorKey: "title",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Title" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "pfield",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Field" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Field" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "ptype",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Type" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Type" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     id: "actions",
     cell: ({ row }) => {
-      const item = row.original
- 
+      const item = row.original;
+
       return (
         <div className="text-center">
-            <DropdownMenu>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
                 <MoreVertical className="h-4 w-4" />
-                </Button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                {/* <DropdownMenuItem
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              {/* <DropdownMenuItem
                   onClick={() => navigator.clipboard.writeText(payment.id)}
                 >
                 Copy payment ID
                 </DropdownMenuItem> */}
-                <DropdownMenuSeparator />
-                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={() => {
-                    console.log(item)
-                  }}
-                >
-                  <Link href={`/dashboard/structure/pipeline/${item.pipe_id}`}>
-                  View Detail
-                  </Link>
-                </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  console.log(item);
+                }}
+              >
+                <Link href={`/dashboard/structure/pipeline/${item.pipe_id}`}>View Detail</Link>
+              </DropdownMenuItem>
             </DropdownMenuContent>
-            </DropdownMenu>
+          </DropdownMenu>
         </div>
-      )
+      );
     },
   },
-]
+];
 
 export const comments: ColumnDef<Comment>[] = [
   {
     accessorKey: "created_at",
     header: "Created At",
     cell: ({ row }) => {
-      const date: string = row.getValue("created_at")
-      return <div>{moment(date).format("MMMM Do, YYYY")}</div>
-    }
+      const date: string = row.getValue("created_at");
+      return <div>{moment(date).format("MMMM Do, YYYY")}</div>;
+    },
   },
   {
     accessorKey: "text",
     header: "Text",
   },
   {
-    accessorKey: "user_id",
+    accessorKey: "user_name",
     header: "User",
   },
   {
     id: "actions",
     cell: ({ row }) => {
-      const item = row.original
- 
+      const item = row.original;
+
       return (
         <div className="text-center">
-            <DropdownMenu>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
                 <MoreVertical className="h-4 w-4" />
-                </Button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                {/* <DropdownMenuItem
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              {/* <DropdownMenuItem
                   onClick={() => navigator.clipboard.writeText(payment.id)}
                 >
                 Copy payment ID
                 </DropdownMenuItem> */}
-                <DropdownMenuSeparator />
-                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={() => {
-                    console.log(item)
-                  }}
-                >
-                  {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
+              <DropdownMenuSeparator />
+              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  console.log(item);
+                }}
+              >
+                {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
                   View Detail
                   </Link> */}
-                </DropdownMenuItem>
+              </DropdownMenuItem>
             </DropdownMenuContent>
-            </DropdownMenu>
+          </DropdownMenu>
         </div>
-      )
+      );
     },
   },
-]
+];
 
 export const components: ColumnDef<Component>[] = [
   {
     accessorKey: "comp_id",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Comp ID" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Comp ID" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "description",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Description" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Description" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "component_type",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Component Type" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Component Type" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     id: "actions",
     cell: ({ row }) => {
-      const item = row.original
- 
+      const item = row.original;
+
       return (
         <div className="text-center">
-            <DropdownMenu>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
                 <MoreVertical className="h-4 w-4" />
-                </Button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={() => {
-                    console.log(item)
-                  }}
-                >
-                  View Details
-                </DropdownMenuItem>
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  console.log(item);
+                }}
+              >
+                View Details
+              </DropdownMenuItem>
             </DropdownMenuContent>
-            </DropdownMenu>
+          </DropdownMenu>
         </div>
-      )
+      );
     },
   },
-]
+];
 
 export const levels: ColumnDef<Levels>[] = [
   {
@@ -334,48 +312,47 @@ export const levels: ColumnDef<Levels>[] = [
   {
     id: "actions",
     cell: ({ row }) => {
-      const item = row.original
- 
+      const item = row.original;
+
       return (
         <div className="text-center">
-            <DropdownMenu>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
                 <MoreVertical className="h-4 w-4" />
-                </Button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                {/* <DropdownMenuItem
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              {/* <DropdownMenuItem
                   onClick={() => navigator.clipboard.writeText(payment.id)}
                 >
                 Copy payment ID
                 </DropdownMenuItem> */}
-                <DropdownMenuSeparator />
-                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={async() => {
-                    await fetcher(`/api/platform/level`, {
-                      method: 'DELETE',
-                      body: JSON.stringify(item)
-                    })
-                    .then((res) => {
-                      mutate(`/api/platform/level/${item.plat_id}`)
-                      toast("Level deleted successfully")
-                    })
-                  }}
-                >
-                  Remove
-                </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={async () => {
+                  await fetcher(`/api/platform/level`, {
+                    method: "DELETE",
+                    body: JSON.stringify(item),
+                  }).then((res) => {
+                    mutate(`/api/platform/level/${item.plat_id}`);
+                    toast("Level deleted successfully");
+                  });
+                }}
+              >
+                Remove
+              </DropdownMenuItem>
             </DropdownMenuContent>
-            </DropdownMenu>
+          </DropdownMenu>
         </div>
-      )
+      );
     },
   },
-]
+];
 
 export const faces: ColumnDef<Faces>[] = [
   {
@@ -393,143 +370,131 @@ export const faces: ColumnDef<Faces>[] = [
   {
     id: "actions",
     cell: ({ row }) => {
-      const item = row.original
- 
+      const item = row.original;
+
       return (
         <div className="text-center">
-            <DropdownMenu>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
                 <MoreVertical className="h-4 w-4" />
-                </Button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                {/* <DropdownMenuItem
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              {/* <DropdownMenuItem
                   onClick={() => navigator.clipboard.writeText(payment.id)}
                 >
                 Copy payment ID
                 </DropdownMenuItem> */}
-                <DropdownMenuSeparator />
-                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={async() => {
-                    await fetcher(`/api/platform/faces`, {
-                      method: 'DELETE',
-                      body: JSON.stringify(item)
-                    })
-                    .then((res) => {
-                      mutate(`/api/platform/faces/${item.plat_id}`)
-                      toast("Faces deleted successfully")
-                    })
-                  }}
-                >
-                  Remove
-                </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={async () => {
+                  await fetcher(`/api/platform/faces`, {
+                    method: "DELETE",
+                    body: JSON.stringify(item),
+                  }).then((res) => {
+                    mutate(`/api/platform/faces/${item.plat_id}`);
+                    toast("Faces deleted successfully");
+                  });
+                }}
+              >
+                Remove
+              </DropdownMenuItem>
             </DropdownMenuContent>
-            </DropdownMenu>
+          </DropdownMenu>
         </div>
-      )
+      );
     },
   },
-]
+];
 
 export const jobpacks: ColumnDef<Jobpack>[] = [
   {
     accessorKey: "inspno",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="#" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="#" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "jobname",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "plantype",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Plan Type" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Plan Type" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "tasktype",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Task Type" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Task Type" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "status",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Status" />
-    ),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     id: "actions",
     cell: ({ row }) => {
-      const item = row.original
- 
+      const item = row.original;
+
       return (
         <div className="text-center">
-            <DropdownMenu>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
                 <MoreVertical className="h-4 w-4" />
-                </Button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-                <DropdownMenuItem
-                  className="cursor-pointer w-full"
-                  onClick={async() => {
-                    // await fetcher(`/api/platform/faces`, {
-                    //   method: 'DELETE',
-                    //   body: JSON.stringify(item)
-                    // })
-                    // .then((res) => {
-                    //   mutate(`/api/platform/faces/${item.inspno}`)
-                    //   toast("Faces deleted successfully")
-                    // })
-                  }}
-
-                >
-                  <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
-                    <Edit2 size={18} className="mr-2" /> Modify
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={() => {
-                    console.log(item)
-                  }}
-                >
-                  <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
-                    <Trash2 size={18} className="mr-2" /> Delete
-                  </Link>
-                </DropdownMenuItem>
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+              <DropdownMenuItem
+                className="cursor-pointer w-full"
+                onClick={async () => {
+                  // await fetcher(`/api/platform/faces`, {
+                  //   method: 'DELETE',
+                  //   body: JSON.stringify(item)
+                  // })
+                  // .then((res) => {
+                  //   mutate(`/api/platform/faces/${item.inspno}`)
+                  //   toast("Faces deleted successfully")
+                  // })
+                }}
+              >
+                <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
+                  <Edit2 size={18} className="mr-2" /> Modify
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  console.log(item);
+                }}
+              >
+                <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
+                  <Trash2 size={18} className="mr-2" /> Delete
+                </Link>
+              </DropdownMenuItem>
             </DropdownMenuContent>
-            </DropdownMenu>
+          </DropdownMenu>
         </div>
-      )
+      );
     },
   },
-]
+];
 
 export const structure: ColumnDef<StructureSelect>[] = [
   {
@@ -548,32 +513,37 @@ export const structure: ColumnDef<StructureSelect>[] = [
     header: "Actions",
     id: "actions",
     cell: ({ row }) => {
-      const item = row.original
+      const item = row.original;
       return (
         <div className="text-center">
-           <Link 
-            className={buttonVariants({ variant: "outline" })} 
+          <Link
+            className={buttonVariants({ variant: "outline" })}
             href={""}
             onClick={() => {
-                console.log(item)
-              }
-            }
-           >
+              console.log(item);
+            }}
+          >
             <Plus size={18} className="" /> Add
-           </Link>
+          </Link>
         </div>
-      )
+      );
     },
   },
-]
+];
 
-export const extendStructureColumn = ({ setValue, isRemove }:{ setValue: React.Dispatch<React.SetStateAction<number>>, isRemove? : boolean }) : ColumnDef<StructureSelect>[] => {
+export const extendStructureColumn = ({
+  setValue,
+  isRemove,
+}: {
+  setValue: React.Dispatch<React.SetStateAction<number>>;
+  isRemove?: boolean;
+}): ColumnDef<StructureSelect>[] => {
   return [
     {
       header: "#",
       cell: ({ row }) => {
-        return Number(row.id) + 1
-      }
+        return Number(row.id) + 1;
+      },
     },
     {
       accessorKey: "str_title",
@@ -590,67 +560,61 @@ export const extendStructureColumn = ({ setValue, isRemove }:{ setValue: React.D
     {
       id: "actions",
       cell: ({ row }) => {
-        const item = row.original
+        const item = row.original;
         return (
-          <Link 
-            className={buttonVariants({ variant: "outline" })} 
+          <Link
+            className={buttonVariants({ variant: "outline" })}
             href={""}
             onClick={() => {
-                setValue(item.str_id)
-              }
-            }
-            >
-            {
-              isRemove ?
-                <Trash2 size={18} className="" />
-              :
-                <Plus size={18} className="" />
-            }
-            {isRemove ? 'Remove' : 'Add'}
+              setValue(item.str_id);
+            }}
+          >
+            {isRemove ? <Trash2 size={18} className="" /> : <Plus size={18} className="" />}
+            {isRemove ? "Remove" : "Add"}
           </Link>
-        )
+        );
       },
     },
-  ]
-}
+  ];
+};
 
 export const attachments: ColumnDef<Attachment>[] = [
   {
     accessorKey: "created_at",
     header: "Created At",
     cell: ({ row }) => {
-      const date: string = row.getValue("created_at")
-      return <div>{moment(date).format("MMMM Do, YYYY")}</div>
-    }
+      const date: string = row.getValue("created_at");
+      return <div>{moment(date).format("MMMM Do, YYYY")}</div>;
+    },
   },
   {
     accessorKey: "name",
     header: "Name",
   },
   {
-    accessorKey: "user_id",
+    accessorKey: "user_name",
     header: "User",
   },
   {
     accessorKey: "path",
     header: "Url",
     cell: ({ row }) => {
-      const attachment: Attachment = row.original
-      const { fileUrl, fileName } = processAttachmentUrl(attachment)
-      
+      const attachment: Attachment = row.original;
+      const { fileUrl, fileName } = processAttachmentUrl(attachment);
+
       // Ensure we have a valid URL
       if (!fileUrl) {
-        return <span className="text-gray-500">No file URL</span>
+        return <span className="text-gray-500">No file URL</span>;
       }
-      
+
       // Truncate filename for display
-      const displayText = truncateText(fileName, 30)
-      
+      const displayText = truncateText(fileName, 30);
+
       return (
         <div className="flex items-center gap-2">
-          <a 
-            href={fileUrl} 
-            target="_blank" 
+          <a
+            href={fileUrl}
+            target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 max-w-[200px]"
             title={fileUrl}
@@ -659,46 +623,46 @@ export const attachments: ColumnDef<Attachment>[] = [
             <ExternalLink className="h-3 w-3 flex-shrink-0" />
           </a>
         </div>
-      )
-    }
+      );
+    },
   },
   {
     id: "actions",
     cell: ({ row }) => {
-      const item = row.original
- 
+      const item = row.original;
+
       return (
         <div className="text-center">
-            <DropdownMenu>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
                 <MoreVertical className="h-4 w-4" />
-                </Button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                {/* <DropdownMenuItem
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              {/* <DropdownMenuItem
                   onClick={() => navigator.clipboard.writeText(payment.id)}
                 >
                 Copy payment ID
                 </DropdownMenuItem> */}
-                <DropdownMenuSeparator />
-                {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={() => {
-                    console.log(item)
-                  }}
-                >
-                  {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
+              <DropdownMenuSeparator />
+              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  console.log(item);
+                }}
+              >
+                {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
                   View Detail
                   </Link> */}
-                </DropdownMenuItem>
+              </DropdownMenuItem>
             </DropdownMenuContent>
-            </DropdownMenu>
+          </DropdownMenu>
         </div>
-      )
+      );
     },
   },
-]
+];

@@ -14,7 +14,7 @@ const ERROR_CODE_MAP: Record<string, number> = {
 
 /**
  * Handles Supabase/Postgres errors and returns appropriate NextResponse
- * 
+ *
  * @param error - The error object from Supabase
  * @param defaultMessage - Fallback error message
  * @param defaultStatus - Default HTTP status code (default: 500)

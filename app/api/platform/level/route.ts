@@ -1,37 +1,41 @@
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 export async function POST(request: Request, context: any) {
-    const supabase = createClient();
-    const body = await request.json();
-    
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+  const supabase = createClient();
+  const body = await request.json();
 
-    body.cr_user= user?.id
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    const { data, error } = await supabase.from("str_level").insert(body);
+  body.cr_user = user?.id;
 
-    if (error) {
-        console.error(error.message);
-        return NextResponse.json({ error: "Failed to insert level" });
-    }
+  const { data, error } = await supabase.from("str_level").insert(body);
 
-    return NextResponse.json({ comment: data })
+  if (error) {
+    console.error(error.message);
+    return NextResponse.json({ error: "Failed to insert level" });
+  }
+
+  return NextResponse.json({ comment: data });
 }
 
-export async function DELETE(request: Request, context: any){
-    const body = await request.json();
+export async function DELETE(request: Request, context: any) {
+  const body = await request.json();
 
-    const supabase = createClient();
+  const supabase = createClient();
 
-    const { data, error } = await supabase.from("str_level").delete().eq("plat_id", body.plat_id).eq("level_name", body.level_name);
+  const { data, error } = await supabase
+    .from("str_level")
+    .delete()
+    .eq("plat_id", body.plat_id)
+    .eq("level_name", body.level_name);
 
-    if (error) {
-        console.error(error.message);
-        return NextResponse.json({ error: "Failed to delete level" });
-    }
+  if (error) {
+    console.error(error.message);
+    return NextResponse.json({ error: "Failed to delete level" });
+  }
 
-    return NextResponse.json({ comment: data })
+  return NextResponse.json({ comment: data });
 }

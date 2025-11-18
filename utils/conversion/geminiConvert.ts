@@ -1,4 +1,4 @@
-import * as z from 'zod';
+import * as z from "zod";
 
 const Spec1Schema = z.object({
   PLAT_ID: z.number(),
@@ -104,5 +104,7 @@ const RootSchema = z.object({
 });
 
 // To use the schema:
-const jsonData = { /* Your JSON data */ };
+const jsonData = {
+  /* Your JSON data */
+};
 const parsedData = RootSchema.parse(jsonData);

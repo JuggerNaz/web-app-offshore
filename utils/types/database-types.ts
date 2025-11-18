@@ -1,42 +1,42 @@
 //this is just temporary types until can generate them from supabase
 
 export type User = {
-    id: string
-    email: string
-    first_name: string
-    last_name: string
-    role: string
-    created_at: string
-}
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  created_at: string;
+};
 
 export type Module = {
-    id: string
-    name: string
-    data: {}
-    created_at: string
-}
+  id: string;
+  name: string;
+  data: {};
+  created_at: string;
+};
 
 export type Module_Category = {
-    id: string
-    name: string
-    created_at: string
-}
+  id: string;
+  name: string;
+  created_at: string;
+};
 
 export type Module_Type = {
-    id: string
-    name: string
-    created_at: string
-}
+  id: string;
+  name: string;
+  created_at: string;
+};
 
 // Component Registration and Location Types
-export type ComponentType = 'PLATFORM' | 'PIPELINE';
+export type ComponentType = "PLATFORM" | "PIPELINE";
 
 // Base component registration fields
 export interface BaseComponentRegistration {
   componentId: string;
   registrationDate: string;
   lastModified: string;
-  status: 'active' | 'inactive';
+  status: "active" | "inactive";
 }
 
 // Platform-specific location fields
@@ -97,8 +97,8 @@ export interface UnifiedComponentSpec extends BaseComponentRegistration, CommonC
 // View interface for ALLCOMPID
 export interface AllComponentID {
   componentId: string;
-  componentType: 'ANODE_PLAT' | 'PIPE_PLAT' | 'ANODE_PIPE' | 'PIPE_PIPE';
-  structureType: 'PLATFORM' | 'PIPELINE';
+  componentType: "ANODE_PLAT" | "PIPE_PLAT" | "ANODE_PIPE" | "PIPE_PIPE";
+  structureType: "PLATFORM" | "PIPELINE";
   location: PlatformLocation | PipelineLocation;
-  status: 'active' | 'inactive';
+  status: "active" | "inactive";
 }

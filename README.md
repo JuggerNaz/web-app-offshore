@@ -15,12 +15,12 @@
   <a href="#feedback-and-issues"><strong>Feedback and issues</strong></a>
   <a href="#more-supabase-examples"><strong>More Examples</strong></a>
 </p>
-<br/> 
+<br/>
 
 ## Development for Web App Offshore Nasquest
 
 - Run type gen
- - npx supabase gen types typescript --db-url postgresql://postgres.zpsmxtdqlpbdwfzctqzd:yourpassword@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres > ./supabase/schema.ts
+- npx supabase gen types typescript --db-url postgresql://postgres.zpsmxtdqlpbdwfzctqzd:yourpassword@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres > ./supabase/schema.ts
 
 ## Features
 

@@ -1,105 +1,105 @@
-import * as z from 'zod';
+import * as z from "zod";
 
 export const Spec1Schema = z.object({
-    PLAT_ID: z.coerce.number().optional(),
-    TITLE: z.string().optional(),
-    PFIELD: z.string().optional(),
-    PDESC: z.string().optional(),
-    PTYPE: z.string().optional(),
-    INST_DATE: z.string().optional(),
-    DESG_LIFE: z.coerce.number().optional(),
-    ST_NORTH: z.string().optional(),
-    ST_EAST: z.string().optional(),
-    DEPTH: z.coerce.number().optional(),
-    AN_QTY: z.coerce.number().optional(),
-    AN_TYPE: z.string().optional(),
-    INST_CTR: z.string().optional(),
-    WALL_THK: z.coerce.number().optional(),
-    PROCESS: z.string().optional(),
-    PLEGS: z.coerce.number().optional(),
-    CR_USER: z.string().optional(),
-    CR_DATE: z.string().optional(),
-    DEF_UNIT: z.string().optional(),
-    WORKUNIT: z.string().optional(),
-    DLEG: z.coerce.number().optional(),
-    CONDUCT: z.coerce.number().optional(),
-    CSLOT: z.coerce.number().optional(),
-    PILEINT: z.coerce.number().optional(),
-    PILESKT: z.coerce.number().optional(),
-    RISER: z.coerce.number().optional(),
-    FENDER: z.coerce.number().optional(),
-    SUMP: z.coerce.number().optional(),
-    CAISSON: z.coerce.number().optional(),
-    CRANE: z.coerce.number().optional(),
-    HELIPAD: z.string().optional(),
-    MANNED: z.string().optional(),
-    LEG_T1: z.string().optional(),
-    LEG_T2: z.string().optional(),
-    LEG_T3: z.string().optional(),
-    LEG_T4: z.string().optional(),
-    LEG_T5: z.string().optional(),
-    LEG_T6: z.string().optional(),
-    LEG_T7: z.coerce.number().optional(),
-    LEG_T8: z.string().optional(),
-    LEG_T9: z.string().optional(),
-    LEG_T10: z.coerce.number().optional(),
-    LEG_T11: z.coerce.number().optional(),
-    LEG_T12: z.string().optional(),
-    LEG_T13: z.string().optional(),
-    LEG_T14: z.coerce.number().optional(),
-    LEG_T15: z.string().optional(),
-    LEG_T16: z.coerce.number().optional(),
-    LEG_T17: z.string().optional(),
-    LEG_T18: z.string().optional(),
-    LEG_T19: z.string().optional(),
-    LEG_T20: z.string().optional(),
-    SENT: z.coerce.number().optional(),
-    MATERIAL: z.coerce.number().optional(),
-    CP_SYSTEM: z.coerce.number().optional(),
-    CORR_CTC: z.coerce.number().optional(),
-    NORTH_ANGLE: z.coerce.number().optional(),
-    NORTH_SIDE: z.string().optional(),
-    NLEG_T1: z.string().optional(),
+  PLAT_ID: z.coerce.number().optional(),
+  TITLE: z.string().optional(),
+  PFIELD: z.string().optional(),
+  PDESC: z.string().optional(),
+  PTYPE: z.string().optional(),
+  INST_DATE: z.string().optional(),
+  DESG_LIFE: z.coerce.number().optional(),
+  ST_NORTH: z.string().optional(),
+  ST_EAST: z.string().optional(),
+  DEPTH: z.coerce.number().optional(),
+  AN_QTY: z.coerce.number().optional(),
+  AN_TYPE: z.string().optional(),
+  INST_CTR: z.string().optional(),
+  WALL_THK: z.coerce.number().optional(),
+  PROCESS: z.string().optional(),
+  PLEGS: z.coerce.number().optional(),
+  CR_USER: z.string().optional(),
+  CR_DATE: z.string().optional(),
+  DEF_UNIT: z.string().optional(),
+  WORKUNIT: z.string().optional(),
+  DLEG: z.coerce.number().optional(),
+  CONDUCT: z.coerce.number().optional(),
+  CSLOT: z.coerce.number().optional(),
+  PILEINT: z.coerce.number().optional(),
+  PILESKT: z.coerce.number().optional(),
+  RISER: z.coerce.number().optional(),
+  FENDER: z.coerce.number().optional(),
+  SUMP: z.coerce.number().optional(),
+  CAISSON: z.coerce.number().optional(),
+  CRANE: z.coerce.number().optional(),
+  HELIPAD: z.string().optional(),
+  MANNED: z.string().optional(),
+  LEG_T1: z.string().optional(),
+  LEG_T2: z.string().optional(),
+  LEG_T3: z.string().optional(),
+  LEG_T4: z.string().optional(),
+  LEG_T5: z.string().optional(),
+  LEG_T6: z.string().optional(),
+  LEG_T7: z.coerce.number().optional(),
+  LEG_T8: z.string().optional(),
+  LEG_T9: z.string().optional(),
+  LEG_T10: z.coerce.number().optional(),
+  LEG_T11: z.coerce.number().optional(),
+  LEG_T12: z.string().optional(),
+  LEG_T13: z.string().optional(),
+  LEG_T14: z.coerce.number().optional(),
+  LEG_T15: z.string().optional(),
+  LEG_T16: z.coerce.number().optional(),
+  LEG_T17: z.string().optional(),
+  LEG_T18: z.string().optional(),
+  LEG_T19: z.string().optional(),
+  LEG_T20: z.string().optional(),
+  SENT: z.coerce.number().optional(),
+  MATERIAL: z.coerce.number().optional(),
+  CP_SYSTEM: z.coerce.number().optional(),
+  CORR_CTC: z.coerce.number().optional(),
+  NORTH_ANGLE: z.coerce.number().optional(),
+  NORTH_SIDE: z.string().optional(),
+  NLEG_T1: z.string().optional(),
 });
-  
- export const StrElvSchema = z.object({
-    PLAT_ID: z.coerce.number().optional(),
-    ELV: z.coerce.number().optional(),
-    ORIENT: z.string().optional(),
-    WORKUNIT: z.string().optional(),
-    CR_USER: z.string().optional(),
-    CR_DATE: z.string().optional(),
+
+export const StrElvSchema = z.object({
+  PLAT_ID: z.coerce.number().optional(),
+  ELV: z.coerce.number().optional(),
+  ORIENT: z.string().optional(),
+  WORKUNIT: z.string().optional(),
+  CR_USER: z.string().optional(),
+  CR_DATE: z.string().optional(),
 });
-  
+
 export const StrLevelSchema = z.object({
-    PLAT_ID: z.coerce.number().optional(),
-    LEVEL_NAME: z.string().optional(),
-    ELV_FROM: z.coerce.number().optional(),
-    ELV_TO: z.coerce.number().optional(),
-    CR_USER: z.string().optional(),
-    CR_DATE: z.string().optional(),
-    WORKUNIT: z.string().optional(),
+  PLAT_ID: z.coerce.number().optional(),
+  LEVEL_NAME: z.string().optional(),
+  ELV_FROM: z.coerce.number().optional(),
+  ELV_TO: z.coerce.number().optional(),
+  CR_USER: z.string().optional(),
+  CR_DATE: z.string().optional(),
+  WORKUNIT: z.string().optional(),
 });
-  
+
 export const StrFacesSchema = z.object({
-    PLAT_ID: z.coerce.number().optional(),
-    FACE: z.string().optional(),
-    FACE_DESC: z.string().optional(),
-    CR_USER: z.string().optional(),
-    CR_DATE: z.string().optional(),
-    WORKUNIT: z.string().optional(),
-    FACE_FROM: z.string().optional(),
-    FACE_TO: z.string().optional(),
+  PLAT_ID: z.coerce.number().optional(),
+  FACE: z.string().optional(),
+  FACE_DESC: z.string().optional(),
+  CR_USER: z.string().optional(),
+  CR_DATE: z.string().optional(),
+  WORKUNIT: z.string().optional(),
+  FACE_FROM: z.string().optional(),
+  FACE_TO: z.string().optional(),
 });
-  
+
 export const JobPackSchema = z.object({
   ACTION: z.enum(["createNew", "modify", "delete", "consolidate"]),
   TYPE: z.enum(["structure", "component", "componentType"]),
   SCOPE: z.object({
     TOPSIDE: z.boolean(),
-    SUBSEA: z.boolean()
-  })
-})
+    SUBSEA: z.boolean(),
+  }),
+});
 
 // https://transform.tools/typescript-to-zod
 // TODO: have an engine to auto convert from schema ts generated by supabase to zod type
@@ -164,8 +164,8 @@ export const PlatformSchema = z.object({
   sump: z.coerce.number().optional().nullable(),
   title: z.string().min(1),
   wall_thk: z.coerce.number().optional().nullable(),
-  workunit: z.string().optional().nullable()
-})
+  workunit: z.string().optional().nullable(),
+});
 
 export const PipelineSchema = z.object({
   an_qty: z.coerce.number().nullable().optional(),
@@ -208,241 +208,84 @@ export const PipelineSchema = z.object({
   st_y: z.string().nullable().optional(),
   title: z.string().min(1),
   wall_thk: z.coerce.number().nullable().optional(),
-  workunit: z.string().nullable().optional()
-})
+  workunit: z.string().nullable().optional(),
+});
 
 export const ElevationSchema = z.object({
-  cr_date: z
-    .string()
-    .optional()
-    .nullable(),
-  cr_user: z
-    .string()
-    .optional()
-    .nullable(),
+  cr_date: z.string().optional().nullable(),
+  cr_user: z.string().optional().nullable(),
   elv: z.coerce.number().optional(),
-  orient: z
-    .string()
-    .optional()
-    .nullable(),
+  orient: z.string().optional().nullable(),
   plat_id: z.coerce.number().optional(),
-  workunit: z
-    .string()
-    .optional()
-    .nullable()
-})
+  workunit: z.string().optional().nullable(),
+});
 
 export const LevelSchema = z.object({
-  cr_date: z
-    .string()
-    .optional()
-    .nullable(),
-  cr_user: z
-    .string()
-    .optional()
-    .nullable(),
-  elv_from: z
-    .coerce
-    .number()
-    .optional()
-    .nullable(),
-  elv_to: z
-    .coerce
-    .number()
-    .optional()
-    .nullable(),
+  cr_date: z.string().optional().nullable(),
+  cr_user: z.string().optional().nullable(),
+  elv_from: z.coerce.number().optional().nullable(),
+  elv_to: z.coerce.number().optional().nullable(),
   level_name: z.string().optional(),
   plat_id: z.number().optional(),
-  workunit: z
-    .string()
-    .optional()
-    .nullable()
-})
+  workunit: z.string().optional().nullable(),
+});
 
 export const FacesSchema = z.object({
-  cr_date: z
-    .string()
-    .optional()
-    .nullable(),
-  cr_user: z
-    .string()
-    .optional()
-    .nullable(),
+  cr_date: z.string().optional().nullable(),
+  cr_user: z.string().optional().nullable(),
   face: z.string().optional(),
-  face_desc: z
-    .string()
-    .optional()
-    .nullable(),
-  face_from: z
-    .string()
-    .optional()
-    .nullable(),
-  face_to: z
-    .string()
-    .optional()
-    .nullable(),
+  face_desc: z.string().optional().nullable(),
+  face_from: z.string().optional().nullable(),
+  face_to: z.string().optional().nullable(),
   plat_id: z.number().optional(),
-  workunit: z
-    .string()
-    .optional()
-    .nullable()
-})
+  workunit: z.string().optional().nullable(),
+});
 
 export const PipeGeoSchema = z.object({
-  cr_date: z
-    .string()
-    .optional()
-    .nullable(),
-  cr_user: z
-    .string()
-    .optional()
-    .nullable(),
-  geo_datum: z
-    .string()
-    .optional()
-    .nullable(),
-  geo_dir: z
-    .string()
-    .optional()
-    .nullable(),
-  geo_dx: z
-    .coerce
-    .number()
-    .optional()
-    .nullable(),
-  geo_dx_u: z
-    .string()
-    .optional()
-    .nullable(),
-  geo_dy: z
-    .coerce
-    .number()
-    .optional()
-    .nullable(),
-  geo_dy_u: z
-    .string()
-    .optional()
-    .nullable(),
-  geo_dz: z
-    .coerce
-    .number()
-    .optional()
-    .nullable(),
-  geo_dz_u: z
-    .string()
-    .optional()
-    .nullable(),
-  geo_elli_sph: z
-    .string()
-    .optional()
-    .nullable(),
+  cr_date: z.string().optional().nullable(),
+  cr_user: z.string().optional().nullable(),
+  geo_datum: z.string().optional().nullable(),
+  geo_dir: z.string().optional().nullable(),
+  geo_dx: z.coerce.number().optional().nullable(),
+  geo_dx_u: z.string().optional().nullable(),
+  geo_dy: z.coerce.number().optional().nullable(),
+  geo_dy_u: z.string().optional().nullable(),
+  geo_dz: z.coerce.number().optional().nullable(),
+  geo_dz_u: z.string().optional().nullable(),
+  geo_elli_sph: z.string().optional().nullable(),
   geo_proj_nam: z.string().optional(),
-  geo_units: z
-    .string()
-    .optional()
-    .nullable(),
+  geo_units: z.string().optional().nullable(),
   str_id: z.coerce.number().optional(),
-  workunit: z
-    .string()
-    .optional()
-    .nullable()
-})
+  workunit: z.string().optional().nullable(),
+});
 
 export const JobpackSchema = z.object({
-  closed_by: z
-    .string()
-    .optional()
-    .nullable(),
-  closed_on: z
-    .string()
-    .optional()
-    .nullable(),
-  comprep: z
-    .string()
-    .optional()
-    .nullable(),
-  contrac: z
-    .string()
-    .optional()
-    .nullable(),
-  contrac_logo: z
-    .string()
-    .optional()
-    .nullable(),
-  contract_ref: z
-    .string()
-    .optional()
-    .nullable(),
-  contractor_ref: z
-    .string()
-    .optional()
-    .nullable(),
-  cr_date: z
-    .string()
-    .optional()
-    .nullable(),
-  cr_user: z
-    .string()
-    .optional()
-    .nullable(),
-  cursrc: z
-    .string()
-    .optional()
-    .nullable(),
-  divetyp: z
-    .string()
-    .optional()
-    .nullable(),
-  from_date: z
-    .string()
-    .optional()
-    .nullable(),
-  idesc: z
-    .string()
-    .optional()
-    .nullable(),
-  iend: z
-    .string()
-    .optional()
-    .nullable(),
+  closed_by: z.string().optional().nullable(),
+  closed_on: z.string().optional().nullable(),
+  comprep: z.string().optional().nullable(),
+  contrac: z.string().optional().nullable(),
+  contrac_logo: z.string().optional().nullable(),
+  contract_ref: z.string().optional().nullable(),
+  contractor_ref: z.string().optional().nullable(),
+  cr_date: z.string().optional().nullable(),
+  cr_user: z.string().optional().nullable(),
+  cursrc: z.string().optional().nullable(),
+  divetyp: z.string().optional().nullable(),
+  from_date: z.string().optional().nullable(),
+  idesc: z.string().optional().nullable(),
+  iend: z.string().optional().nullable(),
   inspno: z.string().optional(),
-  istart: z
-    .string()
-    .optional()
-    .nullable(),
-  jobname: z
-    .string()
-    .optional()
-    .nullable(),
-  plantype: z
-    .string()
-    .optional()
-    .nullable(),
-  site_hrs: z
-    .coerce
-    .number()
-    .optional()
-    .nullable(),
-  status: z
-    .string()
-    .optional()
-    .nullable(),
+  istart: z.string().optional().nullable(),
+  jobname: z.string().optional().nullable(),
+  plantype: z.string().optional().nullable(),
+  site_hrs: z.coerce.number().optional().nullable(),
+  status: z.string().optional().nullable(),
   subsea: z.coerce.number().optional(),
-  tasktype: z
-    .string(),
-    // .optional()
-    // .nullable(),
-  to_date: z
-    .string()
-    .optional()
-    .nullable(),
+  tasktype: z.string(),
+  // .optional()
+  // .nullable(),
+  to_date: z.string().optional().nullable(),
   topside: z.coerce.number().optional(),
-  vessel: z
-    .string()
-    .optional()
-    .nullable(),
-  workunit: z
-    .string()
-    .optional()
-    .nullable()
-})
+  vessel: z.string().optional().nullable(),
+  workunit: z.string().optional().nullable(),
+});

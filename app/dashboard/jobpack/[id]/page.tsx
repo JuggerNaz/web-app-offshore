@@ -1,10 +1,10 @@
-'use client'
-import { useState, useEffect, use } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+"use client";
+import { useState, useEffect, use } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Table,
   TableBody,
@@ -12,53 +12,58 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-} from "@/components/ui/form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import * as z from "zod"
-import { JobpackSchema } from "@/utils/schemas/zod"
+} from "@/components/ui/table";
+import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
+import { JobpackSchema } from "@/utils/schemas/zod";
 import { useAtom } from "jotai";
 import { urlInspNo } from "@/utils/client-state";
 import { useParams } from "next/navigation";
-import useSWR, { mutate } from "swr"
+import useSWR, { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
-import { FormFieldWrap } from "@/components/forms/form-field-wrap"
-import { ColWrap, RowWrap } from "@/components/forms/utils"
-import { DataTable } from "@/components/data-table/data-table"
-import { structure, extendStructureColumn } from "@/components/data-table/columns"
-import { toast } from "sonner"
+import { FormFieldWrap } from "@/components/forms/form-field-wrap";
+import { ColWrap, RowWrap } from "@/components/forms/utils";
+import { DataTable } from "@/components/data-table/data-table";
+import { structure, extendStructureColumn } from "@/components/data-table/columns";
+import { toast } from "sonner";
 
 export default function JobPackPage() {
   const { id } = useParams();
   const [step, setStep] = useState(1);
   const [activeTab, setActiveTab] = useState(`step-${step}`);
-  const [formData, setFormData] = useState<Partial<z.infer<typeof JobpackSchema>>>({})
-  const [inspNo, setInspNo] = useAtom(urlInspNo)
+  const [formData, setFormData] = useState<Partial<z.infer<typeof JobpackSchema>>>({});
+  const [inspNo, setInspNo] = useAtom(urlInspNo);
 
-  const { data, error, isLoading } = useSWR(`/api/jobpack/${id}`, fetcher)
-  const { data : libData, error: libDataError, isLoading: libDataLoading } = useSWR(`/api/library/${'DIVETYP'}`, fetcher)
-  const { data: structures, error: structuresError, isLoading: structuresLoading } = useSWR(`/api/structure`, fetcher)
-  const { data: taskstr, error: taskstrError, isLoading: taskstrLoading } = useSWR(`/api/taskstr/${id}`, fetcher)
+  const { data, error, isLoading } = useSWR(`/api/jobpack/${id}`, fetcher);
+  const {
+    data: libData,
+    error: libDataError,
+    isLoading: libDataLoading,
+  } = useSWR(`/api/library/${"DIVETYP"}`, fetcher);
+  const {
+    data: structures,
+    error: structuresError,
+    isLoading: structuresLoading,
+  } = useSWR(`/api/structure`, fetcher);
+  const {
+    data: taskstr,
+    error: taskstrError,
+    isLoading: taskstrLoading,
+  } = useSWR(`/api/taskstr/${id}`, fetcher);
 
-  const [selectedStructures, setSelectedStructures] = useState<number>(0)
-  const [structureList, setStructureList] = useState<any[]>([])
-  const [selectedStructuresList, setSelectedStructuresList] = useState<any[]>([])
-  const [removeSelectedStructure, setRemoveSelectedStructure] = useState<number>(0)
+  const [selectedStructures, setSelectedStructures] = useState<number>(0);
+  const [structureList, setStructureList] = useState<any[]>([]);
+  const [selectedStructuresList, setSelectedStructuresList] = useState<any[]>([]);
+  const [removeSelectedStructure, setRemoveSelectedStructure] = useState<number>(0);
 
   useEffect(() => {
-    if(data)
-      form.reset(data?.data)
-  }, [data])
+    if (data) form.reset(data?.data);
+  }, [data]);
 
   useEffect(() => {
-    if(structures && taskstr) {
+    if (structures && taskstr) {
       // Extract the IDs of structures that are already in taskstr
       const taskstrIds = taskstr.data.map((item: any) => item.str_id);
 
@@ -76,15 +81,19 @@ export default function JobPackPage() {
       );
 
       setStructureList(remaining);
-    } 
-  }, [structures, taskstr])
+    }
+  }, [structures, taskstr]);
 
   useEffect(() => {
-    if(selectedStructures > 0) {
-      setSelectedStructuresList(selectedStructuresList.concat(structures.data.filter((item: any) => item.str_id === selectedStructures)))
-      setStructureList(structureList.filter((item: any) => item.str_id !== selectedStructures))
+    if (selectedStructures > 0) {
+      setSelectedStructuresList(
+        selectedStructuresList.concat(
+          structures.data.filter((item: any) => item.str_id === selectedStructures)
+        )
+      );
+      setStructureList(structureList.filter((item: any) => item.str_id !== selectedStructures));
     }
-  }, [selectedStructures])
+  }, [selectedStructures]);
 
   // useEffect(() => {
   //   if(selectedStructuresList.length > 0) {
@@ -93,11 +102,17 @@ export default function JobPackPage() {
   // }, [selectedStructuresList])
 
   useEffect(() => {
-    if(removeSelectedStructure > 0) {
-      setSelectedStructuresList(selectedStructuresList.filter((item: any) => item.str_id !== removeSelectedStructure))
-      setStructureList(structureList.concat(structures.data.filter((item: any) => item.str_id === removeSelectedStructure)))
+    if (removeSelectedStructure > 0) {
+      setSelectedStructuresList(
+        selectedStructuresList.filter((item: any) => item.str_id !== removeSelectedStructure)
+      );
+      setStructureList(
+        structureList.concat(
+          structures.data.filter((item: any) => item.str_id === removeSelectedStructure)
+        )
+      );
     }
-  }, [removeSelectedStructure])
+  }, [removeSelectedStructure]);
 
   useEffect(() => {
     const resolvedInspNo = Array.isArray(id) ? id[0] : id;
@@ -106,55 +121,58 @@ export default function JobPackPage() {
 
   // Update activeTab when step changes
   useEffect(() => {
-    setActiveTab(`step-${step}`)
-  }, [step])
+    setActiveTab(`step-${step}`);
+  }, [step]);
 
   const handleNext = () => {
     const nextStep = Math.min(step + 1, 5);
     setStep(nextStep);
-  }
+  };
 
   const handlePrevious = () => {
     const prevStep = Math.max(step - 1, 1);
     setStep(prevStep);
-  }
+  };
 
   // Handle tab change
   const handleTabChange = (value: string) => {
-    const newStep = parseInt(value.split('-')[1]);
+    const newStep = parseInt(value.split("-")[1]);
     setStep(newStep);
     setActiveTab(value);
-  }
+  };
 
   const form = useForm<z.infer<typeof JobpackSchema>>({
     resolver: zodResolver(JobpackSchema),
-  })
+  });
 
   const onSubmit = (values: z.infer<typeof JobpackSchema>) => {
     // setFormData(prev => ({ ...prev, ...data }))
     // console.log('Form data:', data)
     fetcher(`/api/jobpack/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(values)
+      method: "PUT",
+      body: JSON.stringify(values),
     })
-    .then((res) => {
-        mutate(`/api/jobpack/${id}`) //if want to mutate
-        toast(`Job Pack ${id} updated successfully`)
-        setStep(1)
-    })
-    .catch((err) => {
-        console.error(err)
-        toast.error("Failed to update Job Pack")
-    })
-  }
+      .then((res) => {
+        mutate(`/api/jobpack/${id}`); //if want to mutate
+        toast(`Job Pack ${id} updated successfully`);
+        setStep(1);
+      })
+      .catch((err) => {
+        console.error(err);
+        toast.error("Failed to update Job Pack");
+      });
+  };
 
-  if (error || libDataError || structuresError || taskstrError) return <div>failed to load</div>
-  if (isLoading || libDataLoading || structuresLoading || taskstrLoading) return <div>loading...</div>
+  if (error || libDataError || structuresError || taskstrError) return <div>failed to load</div>;
+  if (isLoading || libDataLoading || structuresLoading || taskstrLoading)
+    return <div>loading...</div>;
 
   return (
     <div className="flex-1 w-full flex flex-col">
       <div className="flex flex-col items-start">
-        <h2 className="font-bold text-2xl">Job Pack {`(${id})`} {step > 1 ? `Creation - Step ${step}` : ""}</h2>
+        <h2 className="font-bold text-2xl">
+          Job Pack {`(${id})`} {step > 1 ? `Creation - Step ${step}` : ""}
+        </h2>
         <p className="text-muted-foreground">Create and manage inspection job packs</p>
       </div>
 
@@ -164,9 +182,15 @@ export default function JobPackPage() {
             <Tabs value={activeTab} onValueChange={handleTabChange}>
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="step-1">Initial Selection</TabsTrigger>
-                <TabsTrigger value="step-2" disabled={step < 2}>Job Pack Details</TabsTrigger>
-                <TabsTrigger value="step-3" disabled={step < 3}>Structure Selection</TabsTrigger>
-                <TabsTrigger value="step-4" disabled={step < 4}>Inspection Types</TabsTrigger>
+                <TabsTrigger value="step-2" disabled={step < 2}>
+                  Job Pack Details
+                </TabsTrigger>
+                <TabsTrigger value="step-3" disabled={step < 3}>
+                  Structure Selection
+                </TabsTrigger>
+                <TabsTrigger value="step-4" disabled={step < 4}>
+                  Inspection Types
+                </TabsTrigger>
               </TabsList>
 
               {/* Step 1: Initial Selection */}
@@ -178,17 +202,17 @@ export default function JobPackPage() {
                   <CardContent>
                     {
                       <FormField
-                          control={form.control}
-                          name="tasktype"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <RadioGroup
-                                  onValueChange={field.onChange}
-                                  defaultValue={field?.value}
-                                  className="flex flex-col gap-2"
-                                >
-                                  {/* {[
+                        control={form.control}
+                        name="tasktype"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <RadioGroup
+                                onValueChange={field.onChange}
+                                defaultValue={field?.value}
+                                className="flex flex-col gap-2"
+                              >
+                                {/* {[
                                     { value: 'STRUCTURE', label: 'Structure' },
                                     { value: 'COMPONENT', label: 'Component' }
                                   ].map((type) => (
@@ -197,19 +221,19 @@ export default function JobPackPage() {
                                       <Label htmlFor={type.value}>{type.label}</Label>
                                     </div>
                                   ))} */}
-                                  <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="STRUCTURE" id="STRUCTURE" />
-                                    <Label htmlFor="option-one">Structure</Label>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="COMPONENT" id="option-two" />
-                                    <Label htmlFor="option-two">Component</Label>
-                                  </div>
-                                </RadioGroup>
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
+                                <div className="flex items-center space-x-2">
+                                  <RadioGroupItem value="STRUCTURE" id="STRUCTURE" />
+                                  <Label htmlFor="option-one">Structure</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <RadioGroupItem value="COMPONENT" id="option-two" />
+                                  <Label htmlFor="option-two">Component</Label>
+                                </div>
+                              </RadioGroup>
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
                     }
                   </CardContent>
                 </Card>
@@ -219,8 +243,20 @@ export default function JobPackPage() {
                   </CardHeader>
                   <CardContent>
                     <RowWrap>
-                      <FormFieldWrap label="Topside" name="topside" form={form} placeholder="" ftype="checkbox" />
-                      <FormFieldWrap label="Subsea" name="subsea" form={form} placeholder="" ftype="checkbox" />
+                      <FormFieldWrap
+                        label="Topside"
+                        name="topside"
+                        form={form}
+                        placeholder=""
+                        ftype="checkbox"
+                      />
+                      <FormFieldWrap
+                        label="Subsea"
+                        name="subsea"
+                        form={form}
+                        placeholder=""
+                        ftype="checkbox"
+                      />
                     </RowWrap>
                   </CardContent>
                 </Card>
@@ -239,52 +275,122 @@ export default function JobPackPage() {
                       <div className="flex-col w-2/3 space-y-6">
                         <RowWrap>
                           <ColWrap>
-                            <FormFieldWrap label="Job Name" name="jobname" form={form} placeholder="Jobpack Name" ftype="vertical" />
-                            <FormFieldWrap label="Start Date" name="istart" form={form} placeholder="" type="datetime-local" ftype="vertical" />
+                            <FormFieldWrap
+                              label="Job Name"
+                              name="jobname"
+                              form={form}
+                              placeholder="Jobpack Name"
+                              ftype="vertical"
+                            />
+                            <FormFieldWrap
+                              label="Start Date"
+                              name="istart"
+                              form={form}
+                              placeholder=""
+                              type="datetime-local"
+                              ftype="vertical"
+                            />
                           </ColWrap>
                           <ColWrap>
-                            <FormFieldWrap label="Plan Type" name="plantype" form={form} placeholder="" ftype="vertical" />
-                            <FormFieldWrap label="End Date" name="iend" form={form} placeholder="" type="datetime-local" ftype="vertical" />
-                          </ColWrap>
-                        </RowWrap>
-                        <RowWrap>
-                          <ColWrap>
-                            <FormFieldWrap label="Contractor" name="contrac" form={form} placeholder="" ftype="vertical" />
-                            <FormFieldWrap label="Company Rep" name="comprep" form={form} placeholder="" ftype="vertical" />
-                          </ColWrap>
-                        </RowWrap>
-                        <RowWrap>
-                          <ColWrap>
-                            <FormFieldWrap label="Vessel" name="vesel" form={form} placeholder="" ftype="vertical" />
-                          </ColWrap>
-                          <ColWrap>
-                            <FormFieldWrap label="Dive Type" name="divetyp" options={
-                                  libData.data.filter((x:any) => x.lib_code == 'DIVETYP').map((x:any) => {
-                                  return { label: x.lib_desc, value: x.lib_id
-                                }
-                              })} form={form} ftype="vselect" 
+                            <FormFieldWrap
+                              label="Plan Type"
+                              name="plantype"
+                              form={form}
+                              placeholder=""
+                              ftype="vertical"
+                            />
+                            <FormFieldWrap
+                              label="End Date"
+                              name="iend"
+                              form={form}
+                              placeholder=""
+                              type="datetime-local"
+                              ftype="vertical"
                             />
                           </ColWrap>
                         </RowWrap>
                         <RowWrap>
                           <ColWrap>
-                            <FormFieldWrap label="Contract Ref#" name="contract_ref" form={form} placeholder="" ftype="vertical" />
-                          </ColWrap>
-                          <ColWrap>
-                            <FormFieldWrap label="Contractor Ref#" name="contractor_ref" form={form} placeholder="" ftype="vertical" />
+                            <FormFieldWrap
+                              label="Contractor"
+                              name="contrac"
+                              form={form}
+                              placeholder=""
+                              ftype="vertical"
+                            />
+                            <FormFieldWrap
+                              label="Company Rep"
+                              name="comprep"
+                              form={form}
+                              placeholder=""
+                              ftype="vertical"
+                            />
                           </ColWrap>
                         </RowWrap>
                         <RowWrap>
                           <ColWrap>
-                            <FormFieldWrap label="Estimated Time" name="site_hrs" form={form} placeholder="" ftype="vertical" />
+                            <FormFieldWrap
+                              label="Vessel"
+                              name="vesel"
+                              form={form}
+                              placeholder=""
+                              ftype="vertical"
+                            />
                           </ColWrap>
                           <ColWrap>
-                            <FormFieldWrap label="Status" name="status" options={
-                             [
-                                { label: 'OPEN', value: 'OPEN' },
-                                { label: 'CLOSED', value: 'CLOSED' }
-                             ] 
-                            } form={form} ftype="vselect" 
+                            <FormFieldWrap
+                              label="Dive Type"
+                              name="divetyp"
+                              options={libData.data
+                                .filter((x: any) => x.lib_code == "DIVETYP")
+                                .map((x: any) => {
+                                  return { label: x.lib_desc, value: x.lib_id };
+                                })}
+                              form={form}
+                              ftype="vselect"
+                            />
+                          </ColWrap>
+                        </RowWrap>
+                        <RowWrap>
+                          <ColWrap>
+                            <FormFieldWrap
+                              label="Contract Ref#"
+                              name="contract_ref"
+                              form={form}
+                              placeholder=""
+                              ftype="vertical"
+                            />
+                          </ColWrap>
+                          <ColWrap>
+                            <FormFieldWrap
+                              label="Contractor Ref#"
+                              name="contractor_ref"
+                              form={form}
+                              placeholder=""
+                              ftype="vertical"
+                            />
+                          </ColWrap>
+                        </RowWrap>
+                        <RowWrap>
+                          <ColWrap>
+                            <FormFieldWrap
+                              label="Estimated Time"
+                              name="site_hrs"
+                              form={form}
+                              placeholder=""
+                              ftype="vertical"
+                            />
+                          </ColWrap>
+                          <ColWrap>
+                            <FormFieldWrap
+                              label="Status"
+                              name="status"
+                              options={[
+                                { label: "OPEN", value: "OPEN" },
+                                { label: "CLOSED", value: "CLOSED" },
+                              ]}
+                              form={form}
+                              ftype="vselect"
                             />
                           </ColWrap>
                         </RowWrap>
@@ -293,15 +399,20 @@ export default function JobPackPage() {
                         <div className="border rounded-md p-4 mb-4">
                           <div className="text-center mb-4">Contractor Logo:</div>
                           <div className="w-32 h-32 mx-auto border flex items-center justify-center">
-                            <Button variant="outline" size="sm">Upload</Button>
+                            <Button variant="outline" size="sm">
+                              Upload
+                            </Button>
                           </div>
                         </div>
                         <div className="border rounded-md p-4">
                           <div className="mb-2 font-medium">Contractor Address:</div>
                           <div className="text-sm text-muted-foreground">
-                            ALAM MARITIM (M) SDN BHD<br />
-                            No. 38F, Level 3, Jalan Radin Anum,<br />
-                            Bandar Baru Sri Petaling,<br />
+                            ALAM MARITIM (M) SDN BHD
+                            <br />
+                            No. 38F, Level 3, Jalan Radin Anum,
+                            <br />
+                            Bandar Baru Sri Petaling,
+                            <br />
                             57000 Kuala Lumpur
                           </div>
                         </div>
@@ -317,13 +428,14 @@ export default function JobPackPage() {
                           />
                         </div>
                       </div>
-                      <div>
-                      </div>
+                      <div></div>
                     </div>
                   </CardContent>
                 </Card>
                 <div className="flex justify-between">
-                  <Button variant="outline" onClick={handlePrevious}>Previous</Button>
+                  <Button variant="outline" onClick={handlePrevious}>
+                    Previous
+                  </Button>
                   <Button onClick={handleNext}>Next</Button>
                 </div>
               </TabsContent>
@@ -334,16 +446,29 @@ export default function JobPackPage() {
                     <CardTitle>Selected Structure List</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <DataTable columns={extendStructureColumn({ setValue: setRemoveSelectedStructure, isRemove: true })} data={selectedStructuresList} />
+                    <DataTable
+                      columns={extendStructureColumn({
+                        setValue: setRemoveSelectedStructure,
+                        isRemove: true,
+                      })}
+                      data={selectedStructuresList}
+                    />
                     <p className="text-sm text-muted-foreground my-4">
                       Select the Structure and click to add to the list above
                     </p>
-                    <DataTable columns={extendStructureColumn({ setValue: setSelectedStructures })} data={structureList} />
+                    <DataTable
+                      columns={extendStructureColumn({ setValue: setSelectedStructures })}
+                      data={structureList}
+                    />
                   </CardContent>
                 </Card>
                 <div className="flex justify-between">
-                  <Button variant="outline" onClick={handlePrevious}>Previous</Button>
-                  <Button type="button" onClick={handleNext}>Next</Button>
+                  <Button variant="outline" onClick={handlePrevious}>
+                    Previous
+                  </Button>
+                  <Button type="button" onClick={handleNext}>
+                    Next
+                  </Button>
                 </div>
               </TabsContent>
               {/* Step 4: Inspection Types */}
@@ -369,7 +494,9 @@ export default function JobPackPage() {
                             <TableCell>General Visual Inspection</TableCell>
                             <TableCell>SUBSEA</TableCell>
                             <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Remove</Button>
+                              <Button variant="outline" size="sm">
+                                Remove
+                              </Button>
                             </TableCell>
                           </TableRow>
                           <TableRow>
@@ -377,7 +504,9 @@ export default function JobPackPage() {
                             <TableCell>Close Visual Inspection</TableCell>
                             <TableCell>SUBSEA</TableCell>
                             <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Remove</Button>
+                              <Button variant="outline" size="sm">
+                                Remove
+                              </Button>
                             </TableCell>
                           </TableRow>
                         </TableBody>
@@ -402,7 +531,9 @@ export default function JobPackPage() {
                             <TableCell>Flooded Member Detection</TableCell>
                             <TableCell>SUBSEA</TableCell>
                             <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Add</Button>
+                              <Button variant="outline" size="sm">
+                                Add
+                              </Button>
                             </TableCell>
                           </TableRow>
                           <TableRow className="cursor-pointer hover:bg-muted">
@@ -410,7 +541,9 @@ export default function JobPackPage() {
                             <TableCell>Cathodic Protection</TableCell>
                             <TableCell>SUBSEA</TableCell>
                             <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Add</Button>
+                              <Button variant="outline" size="sm">
+                                Add
+                              </Button>
                             </TableCell>
                           </TableRow>
                           <TableRow className="cursor-pointer hover:bg-muted">
@@ -418,7 +551,9 @@ export default function JobPackPage() {
                             <TableCell>Ultrasonic Testing</TableCell>
                             <TableCell>SUBSEA</TableCell>
                             <TableCell className="text-right">
-                              <Button variant="outline" size="sm">Add</Button>
+                              <Button variant="outline" size="sm">
+                                Add
+                              </Button>
                             </TableCell>
                           </TableRow>
                         </TableBody>
@@ -452,7 +587,9 @@ export default function JobPackPage() {
                   </CardContent>
                 </Card>
                 <div className="flex justify-between">
-                  <Button type="button" variant="outline" onClick={handlePrevious}>Previous</Button>
+                  <Button type="button" variant="outline" onClick={handlePrevious}>
+                    Previous
+                  </Button>
                   <Button type="submit">Finish</Button>
                 </div>
               </TabsContent>
@@ -461,5 +598,5 @@ export default function JobPackPage() {
         </Form>
       </div>
     </div>
-  )
+  );
 }

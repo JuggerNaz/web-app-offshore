@@ -16,7 +16,8 @@ export default async function SystemUpdatesPage() {
           <h1 className="text-3xl font-bold">System Updates</h1>
         </div>
         <p className="text-muted-foreground text-lg">
-          Stay informed about the latest system updates, new features, and improvements to the Web App Offshore platform.
+          Stay informed about the latest system updates, new features, and improvements to the Web
+          App Offshore platform.
         </p>
       </div>
 
@@ -30,17 +31,16 @@ export default async function SystemUpdatesPage() {
         <div className="text-center py-12">
           <FileTextIcon className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-2">No Updates Available</h3>
-          <p className="text-muted-foreground">
-            No system updates found. Please check back later.
-          </p>
+          <p className="text-muted-foreground">No system updates found. Please check back later.</p>
         </div>
       )}
 
       <div className="mt-12 p-6 bg-muted/30 rounded-lg">
         <h3 className="font-semibold mb-2">Stay Updated</h3>
         <p className="text-sm text-muted-foreground">
-          System updates are released regularly to improve functionality, security, and user experience. 
-          Check this page periodically for the latest information about platform changes and new features.
+          System updates are released regularly to improve functionality, security, and user
+          experience. Check this page periodically for the latest information about platform changes
+          and new features.
         </p>
       </div>
     </div>

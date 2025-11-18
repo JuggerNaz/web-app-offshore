@@ -1,5 +1,5 @@
-import { atom } from "jotai"
+import { atom } from "jotai";
 
-export const urlId = atom<number>(0)
-export const urlType = atom<string>('')
-export const urlInspNo = atom<string>('')
+export const urlId = atom<number>(0);
+export const urlType = atom<string>("");
+export const urlInspNo = atom<string>("");

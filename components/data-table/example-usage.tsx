@@ -1,7 +1,7 @@
 // Example usage of DataTable with pagination, search, and filtering
 
-import { DataTable } from './data-table';
-import { columns } from './columns';
+import { DataTable } from "./data-table";
+import { columns } from "./columns";
 
 // Basic usage with all features enabled (default)
 export function BasicTable({ data }: { data: any[] }) {
@@ -10,34 +10,22 @@ export function BasicTable({ data }: { data: any[] }) {
 
 // Custom page size with search
 export function SearchableTable({ data }: { data: any[] }) {
-  return (
-    <DataTable 
-      columns={columns} 
-      data={data} 
-      pageSize={20}
-      enableGlobalFilter={true}
-    />
-  );
+  return <DataTable columns={columns} data={data} pageSize={20} enableGlobalFilter={true} />;
 }
 
 // Table without search but with sorting
 export function SortableOnlyTable({ data }: { data: any[] }) {
   return (
-    <DataTable 
-      columns={columns} 
-      data={data} 
-      enableGlobalFilter={false}
-      enableSorting={true}
-    />
+    <DataTable columns={columns} data={data} enableGlobalFilter={false} enableSorting={true} />
   );
 }
 
 // Minimal table (no pagination, no search, no sorting)
 export function MinimalTable({ data }: { data: any[] }) {
   return (
-    <DataTable 
-      columns={columns} 
-      data={data} 
+    <DataTable
+      columns={columns}
+      data={data}
       enablePagination={false}
       enableGlobalFilter={false}
       enableSorting={false}

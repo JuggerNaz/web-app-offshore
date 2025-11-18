@@ -1,14 +1,32 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
+import { apiPaginated } from "@/utils/api-response";
+import { handleSupabaseError } from "@/utils/api-error-handler";
 
-export async function GET() {
-    const supabase = createClient();
-    const { data, error } = await supabase.from("u_lib_list").select("*");
-    
-    if (error) {
-        console.error(error.message);
-        return NextResponse.json({ error: "Failed to fetch pipeline" });
-    }
+/**
+ * GET /api/library
+ * Fetch all library items with pagination
+ * Query params: ?page=1&pageSize=50
+ */
+export async function GET(request: NextRequest) {
+  const supabase = createClient();
+  const paginationParams = getPaginationParams(request);
 
-    return NextResponse.json({ data })
+  // Build query with count for pagination metadata
+  let query = supabase.from("u_lib_list").select("*", { count: "exact" });
+
+  // Apply pagination
+  query = applyPagination(query, paginationParams);
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    return handleSupabaseError(error, "Failed to fetch library");
+  }
+
+  // Create pagination metadata
+  const pagination = createPaginationMeta(paginationParams, count || 0);
+
+  return apiPaginated(data || [], pagination);
 }
