@@ -19,7 +19,7 @@ export async function GET(request: Request, context: any) {
 }
 
 export async function PUT(request: Request, context: any) {
-  const { id } = context.params;
+  const { id } = await context.params;
   const body = await request.json();
   const supabase = createClient();
 
