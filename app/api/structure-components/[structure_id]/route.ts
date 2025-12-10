@@ -19,11 +19,13 @@ export const GET = withAuth(
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
 
+    const structureIdNumber = Number(structure_id);
+
     // Build query
     let query = supabase
       .from("structure_components")
       .select("*")
-      .eq("structure_id", structure_id)
+      .eq("structure_id", structureIdNumber)
       .order("q_id");
 
     // Apply code filter if provided and not "ALL COMPONENTS"
