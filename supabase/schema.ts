@@ -150,6 +150,7 @@ export type Database = {
       }
       comment: {
         Row: {
+          component_id: number | null
           created_at: string
           id: number
           is_deleted: boolean | null
@@ -159,6 +160,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          component_id?: number | null
           created_at?: string
           id?: number
           is_deleted?: boolean | null
@@ -168,6 +170,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          component_id?: number | null
           created_at?: string
           id?: number
           is_deleted?: boolean | null
