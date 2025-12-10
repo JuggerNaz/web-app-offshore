@@ -990,6 +990,7 @@ export type Database = {
       }
       structure_components: {
         Row: {
+          code: string | null
           comp_id: number
           created_at: string | null
           created_by: string | null
@@ -1002,6 +1003,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          code?: string | null
           comp_id: number
           created_at?: string | null
           created_by?: string | null
@@ -1014,6 +1016,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          code?: string | null
           comp_id?: number
           created_at?: string | null
           created_by?: string | null
