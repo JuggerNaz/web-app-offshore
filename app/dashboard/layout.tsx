@@ -20,7 +20,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
         <div className="grow">
           <div className="flex flex-col h-screen">
             <DashboardNav />
-            <div className="grow flex-col p-5 z-10 overflow-y-scroll">{children}</div>
+            <div className="grow flex-col p-5 z-10 overflow-x-hidden overflow-y-scroll">{children}</div>
           </div>
         </div>
       </div>
