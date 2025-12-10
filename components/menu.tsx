@@ -93,15 +93,6 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
           </MenuGroup>
         )}
 
-        {/* Components */}
-        <MenuLink
-          href="/dashboard/components"
-          isCollapsed={isCollapsed}
-          label="Components"
-          icon={<Package className="h-4 w-4" />}
-          text="Components"
-        />
-
         {/* Job Pack */}
         <MenuLink
           href="/dashboard/jobpack"
