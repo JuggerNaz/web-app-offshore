@@ -54,7 +54,6 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
   const [formData, setFormData] = useState({
     q_id: "",
     id_no: "",
-    comp_id: "",
     code: "",
     description: "",
     s_node: "",
@@ -110,7 +109,8 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
       const componentData = {
         id_no: formData.id_no,
         q_id: formData.q_id,
-        comp_id: parseInt(formData.comp_id) || 0,
+        comp_id: 0,
+        structure_id: structureId,
         code: formData.code,
         metadata: metadata,
       };
@@ -131,7 +131,6 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
       setFormData({
         q_id: "",
         id_no: "",
-        comp_id: "",
         code: defaultCode || "",
         description: "",
         s_node: "",
@@ -233,22 +232,6 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                 />
               </div>
 
-              {/* Row 3: Comp ID, Structure ID */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="compId">Comp ID:</Label>
-                  <Input 
-                    id="compId" 
-                    value={isCreateMode ? formData.comp_id : (component?.comp_id || "")} 
-                    onChange={(e) => handleInputChange("comp_id", e.target.value)}
-                    readOnly={!isCreateMode} 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="structureId">Structure ID:</Label>
-                  <Input id="structureId" value={component?.structure_id || structureId || ""} readOnly />
-                </div>
-              </div>
 
               {/* Row 4: Start Node, End Node */}
               <div className="grid grid-cols-3 gap-4">
