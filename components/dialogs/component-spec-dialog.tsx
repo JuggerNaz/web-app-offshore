@@ -7,6 +7,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -178,6 +179,11 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
             <span className="text-blue-500">🔧</span>
             {isCreateMode ? "Create New Component" : `${component?.code || "Component"} Specifications [${component?.id_no}]`}
           </DialogTitle>
+          {!isCreateMode && component && (
+            <DialogDescription className="text-xs text-muted-foreground">
+              {`Created: ${component.created_at ? new Date(component.created_at).toLocaleString() : "N/A"} • Updated: ${component.updated_at ? new Date(component.updated_at).toLocaleString() : "N/A"} • Created by: ${component.created_by || "N/A"} • Modified by: ${component.modified_by || "N/A"}`}
+            </DialogDescription>
+          )}
         </DialogHeader>
 
         <Tabs defaultValue="specifications" className="w-full">
@@ -221,15 +227,24 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                 </div>
               </div>
 
-              {/* Row 2: Description (full width) */}
+              {/* Row 2: Description (full width, floating label) */}
               <div className="space-y-2">
-                <Label htmlFor="description">Description:</Label>
-                <Input 
-                  id="description" 
-                  value={isCreateMode ? formData.description : (component?.metadata?.description ?? "")} 
-                  onChange={(e) => handleInputChange("description", e.target.value)}
-                  readOnly={!isCreateMode} 
-                />
+                <div className="relative">
+                  <Input
+                    id="description"
+                    placeholder=" "
+                    className="peer pt-4"
+                    value={isCreateMode ? formData.description : (component?.metadata?.description ?? "")}
+                    onChange={(e) => handleInputChange("description", e.target.value)}
+                    readOnly={!isCreateMode}
+                  />
+                  <Label
+                    htmlFor="description"
+                    className="pointer-events-none absolute left-3 top-0 -translate-y-1/2 bg-background px-1 text-xs text-muted-foreground transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:-translate-y-1/2 peer-focus:top-0 peer-focus:-translate-y-1/2 peer-focus:text-xs"
+                  >
+                    Description
+                  </Label>
+                </div>
               </div>
 
 
@@ -370,42 +385,6 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                   readOnly={!isCreateMode} 
                 />
               </div>
-
-              {/* Row 9: Created At, Updated At - Only show in view mode */}
-              {!isCreateMode && (
-                <>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="createdAt">Created At:</Label>
-                      <Input 
-                        id="createdAt" 
-                        value={component?.created_at ? new Date(component.created_at).toLocaleString() : ""} 
-                        readOnly 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="updatedAt">Updated At:</Label>
-                      <Input 
-                        id="updatedAt" 
-                        value={component?.updated_at ? new Date(component.updated_at).toLocaleString() : ""} 
-                        readOnly 
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 10: Created By, Modified By */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="createdBy">Created By:</Label>
-                      <Input id="createdBy" value={component?.created_by || ""} readOnly />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="modifiedBy">Modified By:</Label>
-                      <Input id="modifiedBy" value={component?.modified_by || ""} readOnly />
-                    </div>
-                  </div>
-                </>
-              )}
 
               {/* Metadata */}
               {component?.metadata && (

@@ -5,7 +5,9 @@ import { cn } from "@/lib/utils";
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, value, ...props }, ref) => {
+    const inputValue = value === null ? "" : value;
+
     return (
       <input
         type={type}
@@ -14,6 +16,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className
         )}
         ref={ref}
+        {...(inputValue !== undefined ? { value: inputValue } : {})}
         {...props}
       />
     );

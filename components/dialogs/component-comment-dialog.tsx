@@ -14,6 +14,8 @@ import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
+import { useAtom } from "jotai";
+import { urlId, urlType } from "@/utils/client-state";
 
 type ComponentCommentDialogProps = {
   componentId: number;
@@ -22,13 +24,22 @@ type ComponentCommentDialogProps = {
 export function ComponentCommentDialog({ componentId }: ComponentCommentDialogProps) {
   const [comment, setComment] = useState("");
   const [open, setOpen] = useState(false);
+  const [structureId] = useAtom(urlId);
+  const [structureType] = useAtom(urlType);
 
   const SubmitComment = async (e: any) => {
     e.preventDefault();
-    
+
+    if (!structureId) {
+      toast("No structure selected. Cannot add comment.");
+      return;
+    }
+
     await fetcher(`/api/comment`, {
       method: "POST",
       body: JSON.stringify({
+        structure_id: structureId,
+        structure_type: structureType,
         component_id: componentId,
         text: comment,
       }),

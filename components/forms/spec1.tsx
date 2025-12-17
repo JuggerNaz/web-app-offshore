@@ -21,16 +21,32 @@ type Props = {
 
 export default function Spec1({ data }: Props) {
   const router = useRouter();
+
+  const normalizeDate = (value: string | null | undefined) => {
+    if (!value) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  };
+
+  const initialData = data
+    ? { ...data, inst_date: normalizeDate((data as any).inst_date) }
+    : data;
+
   const {
     data: libData,
     error,
     isLoading,
-  } = useSWR(`/api/library/${"PLAT_TYP,PLAT_FUNCT,PLAT_MAT,PLAT_CP,CORR_CTG,PLAT_CONT"}`, fetcher);
+  } = useSWR(`/api/library/${"PLAT_TYP,PLAT_FUNCT,PLAT_MAT,PLAT_CP,CORR_CTG,PLAT_CONT,OILFIELD"}`, fetcher);
 
   const form = useForm<z.infer<typeof PlatformSchema>>({
     resolver: zodResolver(PlatformSchema),
-    defaultValues: data,
+    defaultValues: initialData,
   });
+
+  const legsCountRaw = form.watch("plegs");
+  const legsCount = Number(legsCountRaw) || 0;
+  const isLegDisabled = (legNumber: number) => legNumber > legsCount;
 
   const onSubmit = async (values: z.infer<typeof PlatformSchema>) => {
     if (values.plat_id == 0) {
@@ -76,12 +92,23 @@ export default function Spec1({ data }: Props) {
         <RowWrap>
           <ColWrap>
             <FormFieldWrap label="Title" name="title" form={form} placeholder="title" />
-            <FormFieldWrap label="Oil Field" name="pfield" form={form} placeholder="oil field" />
+            <FormFieldWrap
+              label="Oil Field"
+              name="pfield"
+              options={libData.data
+                .filter((x: any) => x.lib_code == "OILFIELD")
+                .map((x: any) => {
+                  return { label: x.lib_desc, value: x.lib_id };
+                })}
+              form={form}
+              ftype="select"
+            />
             <FormFieldWrap
               label="Inst. Date"
               name="inst_date"
               form={form}
               placeholder="instantiate date"
+              type="date"
             />
           </ColWrap>
           <ColWrap>
@@ -92,6 +119,8 @@ export default function Spec1({ data }: Props) {
               name="desg_life"
               form={form}
               placeholder="design life"
+              ftype="normal"
+              description="year"
             />
           </ColWrap>
           <ColWrap>
@@ -154,110 +183,32 @@ export default function Spec1({ data }: Props) {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <FormFieldWrap label="1:" name="leg_t1" form={form} placeholder="" ftype="small" />
-                <FormFieldWrap
-                  label="11:"
-                  name="leg_t11"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <FormFieldWrap label="2:" name="leg_t2" form={form} placeholder="" ftype="small" />
-                <FormFieldWrap
-                  label="12:"
-                  name="leg_t12"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <FormFieldWrap label="3:" name="leg_t3" form={form} placeholder="" ftype="small" />
-                <FormFieldWrap
-                  label="13:"
-                  name="leg_t13"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <FormFieldWrap label="4:" name="leg_t4" form={form} placeholder="" ftype="small" />
-                <FormFieldWrap
-                  label="14:"
-                  name="leg_t14"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <FormFieldWrap label="5:" name="leg_t5" form={form} placeholder="" ftype="small" />
-                <FormFieldWrap
-                  label="15:"
-                  name="leg_t15"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <FormFieldWrap label="6:" name="leg_t6" form={form} placeholder="" ftype="small" />
-                <FormFieldWrap
-                  label="16:"
-                  name="leg_t16"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <FormFieldWrap label="7:" name="leg_t7" form={form} placeholder="" ftype="small" />
-                <FormFieldWrap
-                  label="17:"
-                  name="leg_t17"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <FormFieldWrap label="8:" name="leg_t8" form={form} placeholder="" ftype="small" />
-                <FormFieldWrap
-                  label="18:"
-                  name="leg_t18"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <FormFieldWrap label="9:" name="leg_t9" form={form} placeholder="" ftype="small" />
-                <FormFieldWrap
-                  label="19:"
-                  name="leg_t19"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <FormFieldWrap
-                  label="10:"
-                  name="leg_t10"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
-                <FormFieldWrap
-                  label="20:"
-                  name="leg_t20"
-                  form={form}
-                  placeholder=""
-                  ftype="small"
-                />
+                {/* Top row: legs 1-10 */}
+                <div className="flex gap-2">
+                  <FormFieldWrap label="1:" name="leg_t1" form={form} placeholder="" ftype="small" disabled={isLegDisabled(1)} />
+                  <FormFieldWrap label="2:" name="leg_t2" form={form} placeholder="" ftype="small" disabled={isLegDisabled(2)} />
+                  <FormFieldWrap label="3:" name="leg_t3" form={form} placeholder="" ftype="small" disabled={isLegDisabled(3)} />
+                  <FormFieldWrap label="4:" name="leg_t4" form={form} placeholder="" ftype="small" disabled={isLegDisabled(4)} />
+                  <FormFieldWrap label="5:" name="leg_t5" form={form} placeholder="" ftype="small" disabled={isLegDisabled(5)} />
+                  <FormFieldWrap label="6:" name="leg_t6" form={form} placeholder="" ftype="small" disabled={isLegDisabled(6)} />
+                  <FormFieldWrap label="7:" name="leg_t7" form={form} placeholder="" ftype="small" disabled={isLegDisabled(7)} />
+                  <FormFieldWrap label="8:" name="leg_t8" form={form} placeholder="" ftype="small" disabled={isLegDisabled(8)} />
+                  <FormFieldWrap label="9:" name="leg_t9" form={form} placeholder="" ftype="small" disabled={isLegDisabled(9)} />
+                  <FormFieldWrap label="10:" name="leg_t10" form={form} placeholder="" ftype="small" disabled={isLegDisabled(10)} />
+                </div>
+                {/* Bottom row: legs 11-20 */}
+                <div className="flex gap-2">
+                  <FormFieldWrap label="11:" name="leg_t11" form={form} placeholder="" ftype="small" disabled={isLegDisabled(11)} />
+                  <FormFieldWrap label="12:" name="leg_t12" form={form} placeholder="" ftype="small" disabled={isLegDisabled(12)} />
+                  <FormFieldWrap label="13:" name="leg_t13" form={form} placeholder="" ftype="small" disabled={isLegDisabled(13)} />
+                  <FormFieldWrap label="14:" name="leg_t14" form={form} placeholder="" ftype="small" disabled={isLegDisabled(14)} />
+                  <FormFieldWrap label="15:" name="leg_t15" form={form} placeholder="" ftype="small" disabled={isLegDisabled(15)} />
+                  <FormFieldWrap label="16:" name="leg_t16" form={form} placeholder="" ftype="small" disabled={isLegDisabled(16)} />
+                  <FormFieldWrap label="17:" name="leg_t17" form={form} placeholder="" ftype="small" disabled={isLegDisabled(17)} />
+                  <FormFieldWrap label="18:" name="leg_t18" form={form} placeholder="" ftype="small" disabled={isLegDisabled(18)} />
+                  <FormFieldWrap label="19:" name="leg_t19" form={form} placeholder="" ftype="small" disabled={isLegDisabled(19)} />
+                  <FormFieldWrap label="20:" name="leg_t20" form={form} placeholder="" ftype="small" disabled={isLegDisabled(20)} />
+                </div>
               </div>
             </div>
           </div>
