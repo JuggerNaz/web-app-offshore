@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import useSWR, { mutate } from "swr";
@@ -48,9 +49,13 @@ type ComponentSpecDialogProps = {
 
 export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'view', defaultCode }: ComponentSpecDialogProps) {
   const isCreateMode = mode === 'create';
+  const isEditMode = false; // edit handled by separate dialog
   const [structureId] = useAtom(urlId);
   const [isSaving, setIsSaving] = useState(false);
-  
+
+  // Clock position options (POSITION library)
+  const { data: positionLib } = useSWR(`/api/library/${"POSITION"}`, fetcher);
+
   // Form state for create mode
   const [formData, setFormData] = useState({
     q_id: "",
@@ -78,8 +83,40 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
     }
   }, [defaultCode, isCreateMode]);
 
+  // When entering edit mode, initialize formData from existing component
+  useEffect(() => {
+    if (isEditMode && component) {
+      setFormData({
+        q_id: component.q_id || "",
+        id_no: component.id_no || "",
+        code: component.code || defaultCode || "",
+        description: component.metadata?.description ?? "",
+        s_node: component.metadata?.s_node ?? "",
+        f_node: component.metadata?.f_node ?? "",
+        s_leg: component.metadata?.s_leg ?? "",
+        f_leg: component.metadata?.f_leg ?? "",
+        dist: component.metadata?.dist ?? "",
+        elv_1: component.metadata?.elv_1 ?? "",
+        elv_2: component.metadata?.elv_2 ?? "",
+        clk_pos: component.metadata?.clk_pos ?? "",
+        lvl: component.metadata?.lvl ?? "",
+        face: component.metadata?.face ?? "",
+        top_und: component.metadata?.top_und ?? "",
+        comp_group: component.metadata?.comp_group ?? "",
+      });
+    } else if (isCreateMode) {
+      // Ensure a clean slate when switching back to create mode
+      setFormData((prev) => ({
+        ...prev,
+        q_id: "",
+        id_no: "",
+        code: defaultCode || "",
+      }));
+    }
+  }, [isEditMode, isCreateMode, component, defaultCode]);
+
   const handleInputChange = (field: string, value: string) => {
-    if (isCreateMode) {
+    if (isCreateMode || isEditMode) {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
   };
@@ -106,29 +143,28 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         comp_group: formData.comp_group,
       };
 
-      // Prepare the component data
-      const componentData = {
-        id_no: formData.id_no,
-        q_id: formData.q_id,
-        comp_id: 0,
-        structure_id: structureId,
-        code: formData.code,
-        metadata: metadata,
-      };
+      // Prepare the component data for create
+        const componentData = {
+          id_no: formData.id_no,
+          q_id: formData.q_id,
+          comp_id: 0,
+          structure_id: structureId,
+          code: formData.code,
+          metadata: metadata,
+        };
 
-      // Post to API
-      await fetcher(`/api/structure-components/${structureId}`, {
-        method: "POST",
-        body: JSON.stringify(componentData),
-      });
-
+        // Post to API
+        await fetcher(`/api/structure-components/${structureId}`, {
+          method: "POST",
+          body: JSON.stringify(componentData),
+        });
       // Refresh the components list
       mutate(`/api/structure-components/${structureId}`);
       
       toast("Component created successfully");
       onOpenChange(false);
       
-      // Reset form
+      // Reset form after create
       setFormData({
         q_id: "",
         id_no: "",
@@ -168,8 +204,8 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
     fetcher
   );
 
-  // Early return after all hooks have been called
-  if (!component && !isCreateMode) return null;
+  // Note: always render Dialog so Radix can fully clean up its portal/overlay
+  // even when there is no selected component.
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -207,18 +243,18 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                   <Label htmlFor="qId">Q Id:</Label>
                   <Input 
                     id="qId" 
-                    value={isCreateMode ? formData.q_id : (component?.q_id || "")} 
+                    value={isCreateMode || isEditMode ? formData.q_id : (component?.q_id || "")} 
                     onChange={(e) => handleInputChange("q_id", e.target.value)}
-                    readOnly={!isCreateMode} 
+                    readOnly={!(isCreateMode || isEditMode)} 
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="idNo">ID No:</Label>
                   <Input 
                     id="idNo" 
-                    value={isCreateMode ? formData.id_no : (component?.id_no || "")} 
+                    value={isCreateMode || isEditMode ? formData.id_no : (component?.id_no || "")} 
                     onChange={(e) => handleInputChange("id_no", e.target.value)}
-                    readOnly={!isCreateMode} 
+                    readOnly={!(isCreateMode || isEditMode)} 
                   />
                 </div>
                 <div className="space-y-2">
@@ -230,13 +266,13 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
               {/* Row 2: Description (full width, floating label) */}
               <div className="space-y-2">
                 <div className="relative">
-                  <Input
-                    id="description"
+                  <Input 
+                    id="description" 
                     placeholder=" "
                     className="peer pt-4"
-                    value={isCreateMode ? formData.description : (component?.metadata?.description ?? "")}
+                    value={isCreateMode || isEditMode ? formData.description : (component?.metadata?.description ?? "")} 
                     onChange={(e) => handleInputChange("description", e.target.value)}
-                    readOnly={!isCreateMode}
+                    readOnly={!(isCreateMode || isEditMode)} 
                   />
                   <Label
                     htmlFor="description"
@@ -254,18 +290,18 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                   <Label htmlFor="sNode">Start Node:</Label>
                   <Input 
                     id="sNode" 
-                    value={isCreateMode ? formData.s_node : (component?.metadata?.s_node ?? "")} 
+                    value={isCreateMode || isEditMode ? formData.s_node : (component?.metadata?.s_node ?? "")} 
                     onChange={(e) => handleInputChange("s_node", e.target.value)}
-                    readOnly={!isCreateMode} 
+                    readOnly={!(isCreateMode || isEditMode)} 
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="eNode">End Node:</Label>
                   <Input 
                     id="eNode" 
-                    value={isCreateMode ? formData.f_node : (component?.metadata?.f_node ?? "")} 
+                    value={isCreateMode || isEditMode ? formData.f_node : (component?.metadata?.f_node ?? "")} 
                     onChange={(e) => handleInputChange("f_node", e.target.value)}
-                    readOnly={!isCreateMode} 
+                    readOnly={!(isCreateMode || isEditMode)} 
                   />
                 </div>
               </div>
@@ -295,9 +331,9 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                   <div className="flex items-center gap-2">
                     <Input 
                       id="distance" 
-                      value={isCreateMode ? formData.dist : (component?.metadata?.dist ?? "")} 
+                      value={isCreateMode || isEditMode ? formData.dist : (component?.metadata?.dist ?? "")} 
                       onChange={(e) => handleInputChange("dist", e.target.value)}
-                      readOnly={!isCreateMode}
+                      readOnly={!(isCreateMode || isEditMode)}
                       className="flex-1"
                     />
                     <span className="text-sm text-muted-foreground">m</span>
@@ -312,9 +348,9 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                   <div className="flex items-center gap-2">
                     <Input 
                       id="elevation1" 
-                      value={isCreateMode ? formData.elv_1 : (component?.metadata?.elv_1 ?? "")} 
+                      value={isCreateMode || isEditMode ? formData.elv_1 : (component?.metadata?.elv_1 ?? "")} 
                       onChange={(e) => handleInputChange("elv_1", e.target.value)}
-                      readOnly={!isCreateMode}
+                      readOnly={!(isCreateMode || isEditMode)}
                       className="flex-1"
                     />
                     <span className="text-sm text-muted-foreground">m</span>
@@ -325,9 +361,9 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                   <div className="flex items-center gap-2">
                     <Input 
                       id="elevation2" 
-                      value={isCreateMode ? formData.elv_2 : (component?.metadata?.elv_2 ?? "")} 
+                      value={isCreateMode || isEditMode ? formData.elv_2 : (component?.metadata?.elv_2 ?? "")} 
                       onChange={(e) => handleInputChange("elv_2", e.target.value)}
-                      readOnly={!isCreateMode}
+                      readOnly={!(isCreateMode || isEditMode)}
                       className="flex-1"
                     />
                     <span className="text-sm text-muted-foreground">m</span>
@@ -335,12 +371,28 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="clockPos">Clock Position:</Label>
-                  <Input 
-                    id="clockPos" 
-                    value={isCreateMode ? formData.clk_pos : (component?.metadata?.clk_pos ?? "")} 
-                    onChange={(e) => handleInputChange("clk_pos", e.target.value)}
-                    readOnly={!isCreateMode} 
-                  />
+                  <Select
+                    value={
+                      (isCreateMode || isEditMode)
+                        ? formData.clk_pos
+                        : (component?.metadata?.clk_pos ?? "")
+                    }
+                    onValueChange={(val) => handleInputChange("clk_pos", val)}
+                    disabled={!isCreateMode || !positionLib}
+                  >
+                    <SelectTrigger id="clockPos">
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {positionLib?.data
+                        ?.filter((x: any) => x.lib_code === "POSITION")
+                        .map((x: any) => (
+                          <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                            {x.lib_id}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -350,27 +402,27 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                   <Label htmlFor="level">Level:</Label>
                   <Input 
                     id="level" 
-                    value={isCreateMode ? formData.lvl : (component?.metadata?.lvl ?? "")} 
+                    value={isCreateMode || isEditMode ? formData.lvl : (component?.metadata?.lvl ?? "")} 
                     onChange={(e) => handleInputChange("lvl", e.target.value)}
-                    readOnly={!isCreateMode} 
+                    readOnly={!(isCreateMode || isEditMode)} 
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="face">Face:</Label>
                   <Input 
                     id="face" 
-                    value={isCreateMode ? formData.face : (component?.metadata?.face ?? "")} 
+                    value={isCreateMode || isEditMode ? formData.face : (component?.metadata?.face ?? "")} 
                     onChange={(e) => handleInputChange("face", e.target.value)}
-                    readOnly={!isCreateMode} 
+                    readOnly={!(isCreateMode || isEditMode)} 
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="part">Part:</Label>
                   <Input 
                     id="part" 
-                    value={isCreateMode ? formData.top_und : (component?.metadata?.top_und ?? "")} 
+                    value={isCreateMode || isEditMode ? formData.top_und : (component?.metadata?.top_und ?? "")} 
                     onChange={(e) => handleInputChange("top_und", e.target.value)}
-                    readOnly={!isCreateMode} 
+                    readOnly={!(isCreateMode || isEditMode)} 
                   />
                 </div>
               </div>
@@ -380,9 +432,9 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                 <Label htmlFor="structuralGroup">Structural Group:</Label>
                 <Input 
                   id="structuralGroup" 
-                  value={isCreateMode ? formData.comp_group : (component?.metadata?.comp_group ?? "")} 
+                  value={isCreateMode || isEditMode ? formData.comp_group : (component?.metadata?.comp_group ?? "")} 
                   onChange={(e) => handleInputChange("comp_group", e.target.value)}
-                  readOnly={!isCreateMode} 
+                  readOnly={!(isCreateMode || isEditMode)} 
                 />
               </div>
 
@@ -449,9 +501,9 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          {isCreateMode ? (
+          {isCreateMode || isEditMode ? (
             <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save"}
+              {isSaving ? "Saving..." : isCreateMode ? "Save" : "Save Changes"}
             </Button>
           ) : (
             <Button onClick={() => onOpenChange(false)}>

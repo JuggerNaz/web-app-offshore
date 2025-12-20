@@ -18,6 +18,7 @@ export const GET = withAuth(
     const { structure_id } = await context.params;
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
+    const archived = searchParams.get("archived");
 
     const structureIdNumber = Number(structure_id);
 
@@ -27,6 +28,14 @@ export const GET = withAuth(
       .select("*")
       .eq("structure_id", structureIdNumber)
       .order("q_id");
+
+    // Filter by archived / active
+    if (archived === "true") {
+      query = query.eq("is_deleted", true);
+    } else {
+      // Default: only non-deleted (treat null as not deleted)
+      query = query.or("is_deleted.is.null,is_deleted.eq.false");
+    }
 
     // Apply code filter if provided and not "ALL COMPONENTS"
     if (code && code !== "ALL COMPONENTS") {
