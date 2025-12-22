@@ -33,12 +33,37 @@ interface ComponentEditDialogProps {
   listKey?: string | null; // SWR key for revalidation (e.g., /api/structure-components/...)
 }
 
+// Helper to build ID No in the same format as in ComponentSpecDialog
+const padNumericStringEdit = (value: string | null | undefined, length: number) => {
+  const digits = (value ?? "").toString().replace(/\D/g, "");
+  const base = digits === "" ? "0" : digits;
+  const padded = base.padStart(length, "0");
+  return padded.slice(-length);
+};
+
+const buildIdNoEdit = (
+  code: string | null | undefined,
+  s_node: string,
+  f_node: string,
+  dist: string,
+  clk_pos: string
+): string => {
+  if (!code) return "";
+  const startNode = padNumericStringEdit(s_node, 6);
+  const endNode = padNumericStringEdit(f_node, 6);
+  const distance = padNumericStringEdit(dist, 5);
+  const clockPos = padNumericStringEdit(clk_pos, 2);
+  return `${code}/${startNode}-${endNode}/${distance}/${clockPos}`;
+};
+
 export function ComponentEditDialog({ component, open, onOpenChange, listKey }: ComponentEditDialogProps) {
   const [structureId] = useAtom(urlId);
   const [isSaving, setIsSaving] = useState(false);
 
   // POSITION options
   const { data: positionLib } = useSWR(`/api/library/${"POSITION"}`, fetcher);
+  // Structural group options
+  const { data: compGroupLib } = useSWR(`/api/library/${"COMPGRP"}`, fetcher);
 
   const [formData, setFormData] = useState({
     q_id: "",
@@ -90,6 +115,19 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
   const handleSave = async () => {
     if (!component) return;
 
+    const generatedIdNo = buildIdNoEdit(
+      formData.code || component.code || "",
+      formData.s_node,
+      formData.f_node,
+      formData.dist,
+      formData.clk_pos
+    );
+
+    if (!generatedIdNo) {
+      toast("ID No is invalid. Please ensure component type is set.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const metadata = {
@@ -109,7 +147,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
       };
 
       const updateData = {
-        id_no: formData.id_no,
+        id_no: generatedIdNo,
         q_id: formData.q_id,
         code: formData.code,
         metadata,
@@ -182,8 +220,14 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
               <Label htmlFor="edit-idNo">ID No</Label>
               <Input
                 id="edit-idNo"
-                value={formData.id_no}
-                onChange={(e) => handleChange("id_no", e.target.value)}
+                value={buildIdNoEdit(
+                  formData.code || component.code || "",
+                  formData.s_node,
+                  formData.f_node,
+                  formData.dist,
+                  formData.clk_pos
+                ) || component.id_no || ""}
+                readOnly
               />
             </div>
             <div className="space-y-2">
@@ -222,6 +266,26 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                 id="edit-eNode"
                 value={formData.f_node}
                 onChange={(e) => handleChange("f_node", e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Start/End Leg */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-sLeg">Start Leg</Label>
+              <Input
+                id="edit-sLeg"
+                value={formData.s_leg}
+                onChange={(e) => handleChange("s_leg", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-eLeg">End Leg</Label>
+              <Input
+                id="edit-eLeg"
+                value={formData.f_leg}
+                onChange={(e) => handleChange("f_leg", e.target.value)}
               />
             </div>
           </div>
@@ -295,19 +359,39 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-part">Part</Label>
-              <Input
-                id="edit-part"
+              <Select
                 value={formData.top_und}
-                onChange={(e) => handleChange("top_und", e.target.value)}
-              />
+                onValueChange={(val) => handleChange("top_und", val)}
+              >
+                <SelectTrigger id="edit-part">
+                  <SelectValue placeholder="Select part" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TOPSIDE">TOPSIDE</SelectItem>
+                  <SelectItem value="SUBSEA">SUBSEA</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-group">Structural Group</Label>
-              <Input
-                id="edit-group"
+              <Select
                 value={formData.comp_group}
-                onChange={(e) => handleChange("comp_group", e.target.value)}
-              />
+                onValueChange={(val) => handleChange("comp_group", val)}
+                disabled={!compGroupLib}
+              >
+                <SelectTrigger id="edit-group">
+                  <SelectValue placeholder="Select structural group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {compGroupLib?.data
+                    ?.filter((x: any) => x.lib_code === "COMPGRP")
+                    .map((x: any) => (
+                      <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                        {x.lib_desc}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>

@@ -37,9 +37,36 @@ type Component = {
   updated_at: string | null;
   created_by: string | null;
   modified_by: string | null;
+  created_by_name?: string | null;
+  modified_by_name?: string | null;
 };
 
-type ComponentSpecDialogProps = {
+// Helper to build ID No in the format:
+// code/[start node-end node (6 digit)]/[distance (5 digit)]/[clock position (2 digit)]
+// Example: AN/006025-006015/00000/00
+const padNumericString = (value: string | null | undefined, length: number) => {
+  const digits = (value ?? "").toString().replace(/\D/g, "");
+  const base = digits === "" ? "0" : digits;
+  const padded = base.padStart(length, "0");
+  return padded.slice(-length);
+};
+
+const buildIdNo = (
+  code: string | null | undefined,
+  s_node: string,
+  f_node: string,
+  dist: string,
+  clk_pos: string
+): string => {
+  if (!code) return "";
+  const startNode = padNumericString(s_node, 6);
+  const endNode = padNumericString(f_node, 6);
+  const distance = padNumericString(dist, 5);
+  const clockPos = padNumericString(clk_pos, 2);
+  return `${code}/${startNode}-${endNode}/${distance}/${clockPos}`;
+};
+
+ type ComponentSpecDialogProps = {
   component: Component | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -53,8 +80,12 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
   const [structureId] = useAtom(urlId);
   const [isSaving, setIsSaving] = useState(false);
 
+  const effectiveCode = (isCreateMode ? ("" + (defaultCode || "")).trim() : component?.code || null) || null;
+
   // Clock position options (POSITION library)
   const { data: positionLib } = useSWR(`/api/library/${"POSITION"}`, fetcher);
+  // Structural group options (COMPGRP library)
+  const { data: compGroupLib } = useSWR(`/api/library/${"COMPGRP"}`, fetcher);
 
   // Form state for create mode
   const [formData, setFormData] = useState({
@@ -123,6 +154,19 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
 
   const handleSave = async () => {
     if (!isCreateMode) return;
+
+    const id_no = buildIdNo(
+      formData.code || defaultCode || "",
+      formData.s_node,
+      formData.f_node,
+      formData.dist,
+      formData.clk_pos
+    );
+
+    if (!id_no) {
+      toast("ID No is invalid. Please ensure component type is selected.");
+      return;
+    }
     
     setIsSaving(true);
     try {
@@ -145,11 +189,11 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
 
       // Prepare the component data for create
         const componentData = {
-          id_no: formData.id_no,
+          id_no,
           q_id: formData.q_id,
           comp_id: 0,
           structure_id: structureId,
-          code: formData.code,
+          code: formData.code || defaultCode,
           metadata: metadata,
         };
 
@@ -217,7 +261,11 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
           </DialogTitle>
           {!isCreateMode && component && (
             <DialogDescription className="text-xs text-muted-foreground">
-              {`Created: ${component.created_at ? new Date(component.created_at).toLocaleString() : "N/A"} • Updated: ${component.updated_at ? new Date(component.updated_at).toLocaleString() : "N/A"} • Created by: ${component.created_by || "N/A"} • Modified by: ${component.modified_by || "N/A"}`}
+              {`Created: ${component.created_at ? new Date(component.created_at).toLocaleString() : "N/A"} • Updated: ${component.updated_at ? new Date(component.updated_at).toLocaleString() : "N/A"} • Created by: ${
+                component.created_by_name || component.created_by || "N/A"
+              } • Modified by: ${
+                component.modified_by_name || component.modified_by || "N/A"
+              }`}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -252,9 +300,18 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                   <Label htmlFor="idNo">ID No:</Label>
                   <Input 
                     id="idNo" 
-                    value={isCreateMode || isEditMode ? formData.id_no : (component?.id_no || "")} 
-                    onChange={(e) => handleInputChange("id_no", e.target.value)}
-                    readOnly={!(isCreateMode || isEditMode)} 
+                    value={
+                      isCreateMode
+                        ? buildIdNo(
+                            formData.code || defaultCode || "",
+                            formData.s_node,
+                            formData.f_node,
+                            formData.dist,
+                            formData.clk_pos
+                          )
+                        : (component?.id_no || "")
+                    }
+                    readOnly
                   />
                 </div>
                 <div className="space-y-2">
@@ -418,24 +475,51 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="part">Part:</Label>
-                  <Input 
-                    id="part" 
-                    value={isCreateMode || isEditMode ? formData.top_und : (component?.metadata?.top_und ?? "")} 
-                    onChange={(e) => handleInputChange("top_und", e.target.value)}
-                    readOnly={!(isCreateMode || isEditMode)} 
-                  />
+                  <Select
+                    value={
+                      (isCreateMode || isEditMode)
+                        ? formData.top_und
+                        : (component?.metadata?.top_und ?? "")
+                    }
+                    onValueChange={(val) => handleInputChange("top_und", val)}
+                    disabled={!isCreateMode}
+                  >
+                    <SelectTrigger id="part">
+                      <SelectValue placeholder="Select part" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TOPSIDE">TOPSIDE</SelectItem>
+                      <SelectItem value="SUBSEA">SUBSEA</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               {/* Row 8: Structural Group (full width) */}
               <div className="space-y-2">
                 <Label htmlFor="structuralGroup">Structural Group:</Label>
-                <Input 
-                  id="structuralGroup" 
-                  value={isCreateMode || isEditMode ? formData.comp_group : (component?.metadata?.comp_group ?? "")} 
-                  onChange={(e) => handleInputChange("comp_group", e.target.value)}
-                  readOnly={!(isCreateMode || isEditMode)} 
-                />
+                <Select
+                  value={
+                    (isCreateMode || isEditMode)
+                      ? formData.comp_group
+                      : (component?.metadata?.comp_group ?? "")
+                  }
+                  onValueChange={(val) => handleInputChange("comp_group", val)}
+                  disabled={!isCreateMode || !compGroupLib}
+                >
+                  <SelectTrigger id="structuralGroup">
+                    <SelectValue placeholder="Select structural group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {compGroupLib?.data
+                      ?.filter((x: any) => x.lib_code === "COMPGRP")
+                      .map((x: any) => (
+                        <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                          {x.lib_desc}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Metadata */}
