@@ -8,7 +8,7 @@ import { PipelineSchema } from "@/utils/schemas/zod";
 import { RowWrap, ColWrap } from "@/components/forms/utils";
 import { FormFieldWrap } from "./form-field-wrap";
 import { fetcher } from "@/utils/utils";
-import { mutate } from "swr";
+import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { Separator } from "../ui/separator";
 import { useRouter } from "next/navigation";
@@ -21,9 +21,26 @@ type Props = {
 export default function Spec1Pipeline({ data }: Props) {
   const router = useRouter();
 
+  const {
+    data: libData,
+    error: libError,
+    isLoading: libLoading,
+  } = useSWR(`/api/library/${"OILFIELD"}`, fetcher);
+
+  const normalizeDate = (value: string | null | undefined) => {
+    if (!value) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  };
+
+  const initialData = data
+    ? { ...data, inst_date: normalizeDate((data as any).inst_date) }
+    : data;
+
   const form = useForm<z.infer<typeof PipelineSchema>>({
     resolver: zodResolver(PipelineSchema),
-    defaultValues: data,
+    defaultValues: initialData,
   });
 
   const onSubmit = async (values: z.infer<typeof PipelineSchema>) => {
@@ -39,7 +56,7 @@ export default function Spec1Pipeline({ data }: Props) {
         const data = await res.json();
         toast.success("Pipeline created");
         mutate(`/api/platform/${values.pipe_id}`);
-        router.push(`/dashboard/structure/pipeline/${data.data.pipe_id}`);
+        router.push(`/dashboard/field/pipeline/${data.data.pipe_id}`);
       } else {
         toast.error("Failed to create pipeline");
       }
@@ -61,18 +78,32 @@ export default function Spec1Pipeline({ data }: Props) {
     }
   };
 
+  if (libError) return <div>failed to load</div>;
+  if (libLoading) return <div>loading...</div>;
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
         <RowWrap>
           <ColWrap>
             <FormFieldWrap label="Title" name="title" form={form} placeholder="title" />
-            <FormFieldWrap label="Oil Field" name="pfield" form={form} placeholder="oil field" />
+            <FormFieldWrap
+              label="Oil Field"
+              name="pfield"
+              options={libData.data
+                .filter((x: any) => x.lib_code == "OILFIELD")
+                .map((x: any) => {
+                  return { label: x.lib_desc, value: x.lib_id };
+                })}
+              form={form}
+              ftype="select"
+            />
             <FormFieldWrap
               label="Inst. Date"
               name="inst_date"
               form={form}
               placeholder="instantiate date"
+              type="date"
             />
           </ColWrap>
           <ColWrap>

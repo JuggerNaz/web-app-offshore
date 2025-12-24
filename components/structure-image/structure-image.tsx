@@ -9,6 +9,13 @@ import { getStoragePublicUrl } from "@/utils/storage";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import Image from "next/image";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 interface StructureImageData {
   id: number;
@@ -30,8 +37,8 @@ export default function StructureImage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [currentImage, setCurrentImage] = useState<StructureImageData | null>(null);
+
+  const [images, setImages] = useState<StructureImageData[]>([]);
 
   const supabase = createClient();
   const sourceType = `${pageType}_structure_image`;
@@ -43,24 +50,12 @@ export default function StructureImage() {
     { revalidateOnFocus: true }
   );
 
-  // Load existing image on mount or data change
+  // Load existing images on mount or data change
   useEffect(() => {
-    if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-      const existingImage = data.data[0];
-      setCurrentImage(existingImage);
-      
-      // Get the image URL
-      if (existingImage.meta?.file_url) {
-        setImageUrl(existingImage.meta.file_url);
-      } else if (existingImage.path) {
-        const url = existingImage.path.startsWith("http")
-          ? existingImage.path
-          : getStoragePublicUrl("attachments", existingImage.path);
-        setImageUrl(url);
-      }
+    if (data?.data && Array.isArray(data.data)) {
+      setImages(data.data);
     } else {
-      setCurrentImage(null);
-      setImageUrl(null);
+      setImages([]);
     }
   }, [data]);
 
@@ -115,10 +110,10 @@ export default function StructureImage() {
         throw new Error("Only image files (JPEG, PNG, WEBP, GIF) are allowed");
       }
 
-      // Delete existing structure image if any
-      if (currentImage) {
-        await deleteImage(currentImage.id, false);
-      }
+      // Delete existing structure image if any -- REMOVED for multiple support
+      // if (currentImage) {
+      //   await deleteImage(currentImage.id, false);
+      // }
 
       // Generate unique filename
       const fileExt = file.name.split(".").pop();
@@ -165,9 +160,8 @@ export default function StructureImage() {
       if (dbError) throw dbError;
 
       // Update state
-      setCurrentImage(dbData);
-      setImageUrl(publicUrl);
-      
+      setImages((prev) => [...prev, dbData]);
+
       // Revalidate data
       mutate();
     } catch (err: any) {
@@ -179,16 +173,16 @@ export default function StructureImage() {
     }
   };
 
-  const deleteImage = async (imageId?: number, shouldMutate: boolean = true) => {
+  const deleteImage = async (imageId: number) => {
     try {
-      const idToDelete = imageId || currentImage?.id;
-      if (!idToDelete) return;
+      const imageToDelete = images.find((img) => img.id === imageId);
+      if (!imageToDelete) return;
 
       setError(null);
 
       // Delete from storage if path exists
-      if (currentImage?.path || currentImage?.meta?.file_path) {
-        const pathToDelete = currentImage.meta?.file_path || currentImage.path;
+      if (imageToDelete.path || imageToDelete.meta?.file_path) {
+        const pathToDelete = imageToDelete.meta?.file_path || imageToDelete.path;
         await supabase.storage.from("attachments").remove([pathToDelete]);
       }
 
@@ -196,18 +190,15 @@ export default function StructureImage() {
       const { error: deleteError } = await supabase
         .from("attachment")
         .delete()
-        .eq("id", idToDelete);
+        .eq("id", imageId);
 
       if (deleteError) throw deleteError;
 
       // Clear state
-      setCurrentImage(null);
-      setImageUrl(null);
-      
+      setImages((prev) => prev.filter((img) => img.id !== imageId));
+
       // Revalidate data
-      if (shouldMutate) {
-        mutate();
-      }
+      mutate();
     } catch (err: any) {
       setError(err.message || "Failed to delete image");
       console.error("Delete error:", err);
@@ -220,17 +211,7 @@ export default function StructureImage() {
         <h2 className="text-2xl font-bold">
           {pageType === "platform" ? "Platform" : "Pipeline"} Structure Image
         </h2>
-        {currentImage && (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => deleteImage()}
-            disabled={uploading}
-          >
-            <X className="w-4 h-4 mr-2" />
-            Delete Image
-          </Button>
-        )}
+        {/* Delete button moved to individual carousel items */}
       </div>
 
       {error && (
@@ -239,40 +220,67 @@ export default function StructureImage() {
         </div>
       )}
 
-      {/* Image Display Area */}
-      {imageUrl && !uploading ? (
-        <div className="relative border rounded-lg overflow-hidden bg-gray-50">
-          <div className="relative w-full" style={{ minHeight: "400px" }}>
-            <Image
-              src={imageUrl}
-              alt="Structure diagram"
-              fill
-              className="object-contain"
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 1200px"
-              priority
-            />
-          </div>
-          <div className="p-2 bg-white border-t">
-            <p className="text-sm text-gray-600">
-              {currentImage?.meta?.original_file_name || currentImage?.name}
-            </p>
-            {currentImage?.meta?.file_size && (
-              <p className="text-xs text-gray-500">
-                {(currentImage.meta.file_size / 1024 / 1024).toFixed(2)} MB
-              </p>
-            )}
-          </div>
+      {/* Carousel Display Area */}
+      {images.length > 0 && (
+        <div className="flex justify-center w-full">
+          <Carousel className="w-full max-w-4xl">
+            <CarouselContent>
+              {images.map((img) => {
+                const url = img.meta?.file_url || (img.path.startsWith("http") ? img.path : getStoragePublicUrl("attachments", img.path));
+
+                return (
+                  <CarouselItem key={img.id}>
+                    <div className="relative border rounded-lg overflow-hidden bg-gray-50">
+                      <div className="relative w-full" style={{ minHeight: "400px" }}>
+                        <Image
+                          src={url}
+                          alt="Structure diagram"
+                          fill
+                          className="object-contain"
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 1200px"
+                          priority
+                        />
+                        <div className="absolute top-2 right-2 z-10">
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="h-8 w-8 rounded-full opacity-80 hover:opacity-100"
+                            onClick={() => deleteImage(img.id)}
+                            disabled={uploading}
+                            title="Delete Image"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="p-2 bg-white border-t">
+                        <p className="text-sm text-gray-600">
+                          {img.meta?.original_file_name || img.name}
+                        </p>
+                        {img.meta?.file_size && (
+                          <p className="text-xs text-gray-500">
+                            {(img.meta.file_size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CarouselItem>
+                );
+              })}
+            </CarouselContent>
+            <CarouselPrevious />
+            <CarouselNext />
+          </Carousel>
         </div>
-      ) : null}
+      )}
 
       {/* Upload Area */}
-      {!imageUrl || uploading ? (
+      {!uploading && (
         <div
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-            isDragging
-              ? "border-blue-500 bg-blue-50"
-              : "border-gray-300 bg-gray-50 hover:border-gray-400"
-          } ${uploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragging
+            ? "border-blue-500 bg-blue-50"
+            : "border-gray-300 bg-gray-50 hover:border-gray-400"
+            } ${uploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -293,7 +301,9 @@ export default function StructureImage() {
           ) : (
             <>
               <ImageIcon className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-              <h3 className="text-lg font-semibold mb-2">Drop your structure image here</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                {images.length > 0 ? "Add another image" : "Drop your structure image here"}
+              </h3>
               <p className="text-gray-600 mb-4">
                 or click to browse files
               </p>
@@ -319,31 +329,9 @@ export default function StructureImage() {
             </>
           )}
         </div>
-      ) : null}
-
-      {/* Replace Image Button when image exists */}
-      {imageUrl && !uploading && (
-        <div className="flex justify-center">
-          <div>
-            <input
-              type="file"
-              accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
-              onChange={handleFileSelect}
-              className="hidden"
-              id="structure-image-replace"
-              disabled={uploading}
-            />
-            <label htmlFor="structure-image-replace">
-              <Button asChild variant="outline">
-                <span>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Replace Image
-                </span>
-              </Button>
-            </label>
-          </div>
-        </div>
       )}
+
+      {/* Replace Image Button removed as upload area is always visible */}
     </div>
   );
 }

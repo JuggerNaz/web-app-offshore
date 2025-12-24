@@ -8,12 +8,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ChevronRight, ChevronDown, MoreVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
+import { ComponentEditDialog, EditableComponent } from "@/components/dialogs/component-edit-dialog";
 import { useAtom } from "jotai";
 import { urlId } from "@/utils/client-state";
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 
 type Component = {
@@ -28,6 +30,7 @@ type Component = {
   updated_at: string | null;
   created_by: string | null;
   modified_by: string | null;
+  is_deleted?: boolean | null;
 };
 
 type ComponentType = {
@@ -44,10 +47,13 @@ export default function ComponentContent() {
   const [selectedType, setSelectedType] = useState("ALL COMPONENTS");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [isListOpen, setIsListOpen] = useState(true);
+  const [viewArchived, setViewArchived] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<'view' | 'create'>('view');
   const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingComponent, setEditingComponent] = useState<EditableComponent | null>(null);
   const [isLoadingTypes, setIsLoadingTypes] = useState(true);
 
   // Fetch component types
@@ -72,9 +78,13 @@ export default function ComponentContent() {
 
   // Fetch structure components based on structure_id and selected code
   const apiUrl = structureId
-    ? `/api/structure-components/${structureId}${
-        selectedCode ? `?code=${encodeURIComponent(selectedCode)}` : ""
-      }`
+    ? (() => {
+        const params = new URLSearchParams();
+        if (selectedCode) params.set("code", selectedCode);
+        if (viewArchived) params.set("archived", "true");
+        const query = params.toString();
+        return `/api/structure-components/${structureId}${query ? `?${query}` : ""}`;
+      })()
     : null;
 
   const {
@@ -104,7 +114,22 @@ export default function ComponentContent() {
     setDialogOpen(true);
   };
 
+  const handleEditComponent = (component: Component) => {
+    setEditingComponent(component as EditableComponent);
+    setEditDialogOpen(true);
+  };
+
+  const handleDialogOpenChange = (isOpen: boolean) => {
+    setDialogOpen(isOpen);
+    if (!isOpen) {
+      // Reset mode and selected component when dialog fully closes
+      setDialogMode('view');
+      setSelectedComponent(null);
+    }
+  };
+
   const handleTypeClick = (typeName: string | null, typeCode: string | null) => {
+    setViewArchived(false);
     setSelectedType(typeName || "ALL COMPONENTS");
     setSelectedCode(typeCode);
   };
@@ -116,13 +141,29 @@ export default function ComponentContent() {
         <div className="p-4 border-b flex-shrink-0">
           <h3 className="font-semibold text-sm mb-2">Components List</h3>
           <button
-            onClick={() => handleTypeClick("ALL COMPONENTS", null)}
+            onClick={() => {
+              setViewArchived(false);
+              handleTypeClick("ALL COMPONENTS", null);
+            }}
             className={cn(
-              "w-full text-left text-sm py-1 px-2 rounded hover:bg-muted mb-2",
-              selectedType === "ALL COMPONENTS" && "bg-muted font-medium"
+              "w-full text-left text-sm py-1 px-2 rounded hover:bg-muted mb-1",
+              !viewArchived && selectedType === "ALL COMPONENTS" && "bg-muted font-medium"
             )}
           >
             ALL COMPONENTS
+          </button>
+          <button
+            onClick={() => {
+              setViewArchived(true);
+              setSelectedType("ARCHIVED");
+              setSelectedCode(null);
+            }}
+            className={cn(
+              "w-full text-left text-sm py-1 px-2 rounded hover:bg-muted mb-2",
+              viewArchived && selectedType === "ARCHIVED" && "bg-muted font-medium"
+            )}
+          >
+            ARCHIVED
           </button>
           <Collapsible open={isListOpen} onOpenChange={setIsListOpen}>
             <CollapsibleTrigger className="flex items-center w-full text-sm hover:bg-muted p-1 rounded">
@@ -201,6 +242,7 @@ export default function ComponentContent() {
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[80px] min-w-[80px]">Distance</th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[90px] min-w-[90px]">Clock Pos</th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[150px] min-w-[150px]">Created At</th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[100px] min-w-[100px]">Actions</th>
               </tr>
             </thead>
             <tbody className="[&_tr:last-child]:border-0">
@@ -250,6 +292,96 @@ export default function ComponentContent() {
                   <td className="p-4 align-middle text-sm">{comp.metadata?.dist ?? "-"}</td>
                   <td className="p-4 align-middle text-sm">{comp.metadata?.clk_pos ?? "-"}</td>
                   <td className="p-4 align-middle text-sm">{comp.created_at ? new Date(comp.created_at).toLocaleDateString() : "-"}</td>
+                  <td className="p-4 align-middle text-sm">
+                    {/* Active components: Edit + Archive */}
+                    {!viewArchived && !comp.is_deleted && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="sr-only">Open menu</span>
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditComponent(comp);
+                            }}
+                          >
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer text-destructive focus:text-destructive"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await fetcher(`/api/structure-components/item/${comp.id}`, {
+                                  method: "PATCH",
+                                  body: JSON.stringify({ is_deleted: true }),
+                                });
+                                if (apiUrl) {
+                                  mutate(apiUrl);
+                                }
+                              } catch (error) {
+                                console.error("Failed to archive component", error);
+                              }
+                            }}
+                          >
+                            Archive
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+
+                    {/* Archived view: Unarchive */}
+                    {viewArchived && comp.is_deleted && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="sr-only">Open menu</span>
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Archived Actions</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await fetcher(`/api/structure-components/item/${comp.id}`, {
+                                  method: "PATCH",
+                                  body: JSON.stringify({ is_deleted: false }),
+                                });
+                                if (apiUrl) {
+                                  mutate(apiUrl);
+                                }
+                              } catch (error) {
+                                console.error("Failed to unarchive component", error);
+                              }
+                            }}
+                          >
+                            Unarchive
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -258,14 +390,26 @@ export default function ComponentContent() {
         </div>
       </div>
 
-      {/* Component Specification Dialog */}
-      <ComponentSpecDialog 
-        component={selectedComponent}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        mode={dialogMode}
-        defaultCode={selectedCode}
-      />
+      {/* Component Specification Dialog - view/create only */}
+      {dialogOpen && (
+        <ComponentSpecDialog 
+          component={selectedComponent}
+          open={dialogOpen}
+          onOpenChange={handleDialogOpenChange}
+          mode={dialogMode}
+          defaultCode={selectedCode}
+        />
+      )}
+
+      {/* Separate dialog for editing existing components */}
+      {editDialogOpen && (
+        <ComponentEditDialog
+          component={editingComponent}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          listKey={apiUrl}
+        />
+      )}
     </div>
   );
 }

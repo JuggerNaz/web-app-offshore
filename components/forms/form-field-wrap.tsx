@@ -32,6 +32,7 @@ export function FormFieldWrap({
   type = "text",
   options,
   maxLength,
+  disabled,
 }: {
   label: string;
   name: string;
@@ -44,6 +45,7 @@ export function FormFieldWrap({
   type?: "text" | "number" | "email" | "password" | "date" | "datetime-local";
   options?: { label: string; value: string }[];
   maxLength?: string;
+  disabled?: boolean;
 }) {
   return (
     <FormField
@@ -58,6 +60,7 @@ export function FormFieldWrap({
             field={field}
             type={type}
             maxLength={maxLength}
+            disabled={disabled}
           />
         ) : ftype === "small" ? (
           <FormItemSmall
@@ -67,6 +70,7 @@ export function FormFieldWrap({
             field={field}
             type={type}
             maxLength={maxLength}
+            disabled={disabled}
           />
         ) : ftype === "checkbox" ? (
           <FormCheckbox label={label} field={field} />
@@ -84,6 +88,7 @@ export function FormFieldWrap({
             formLabelClass={formLabelClass}
             type={type}
             maxLength={maxLength}
+            disabled={disabled}
           />
         )
       }
@@ -98,6 +103,7 @@ export function FormItemNormal({
   field,
   type,
   maxLength,
+  disabled,
 }: {
   label: string;
   description?: string;
@@ -105,12 +111,19 @@ export function FormItemNormal({
   field: any;
   type: "text" | "number" | "email" | "password" | "date" | "datetime-local";
   maxLength?: string;
+  disabled?: boolean;
 }) {
   return (
     <FormItem>
       {label && <FormLabel>{label}</FormLabel>}
       <FormControl>
-        <Input placeholder={placeholder ?? "N/A"} {...field} type={type} maxLength={maxLength} />
+        <Input
+          placeholder={placeholder ?? "N/A"}
+          {...field}
+          type={type}
+          maxLength={maxLength}
+          disabled={disabled}
+        />
       </FormControl>
       {description && <FormDescription>{description}</FormDescription>}
       <FormMessage />
@@ -127,6 +140,7 @@ export function FormItemVertical({
   formLabelClass,
   type,
   maxLength,
+  disabled,
 }: {
   label: string;
   description?: string;
@@ -136,13 +150,20 @@ export function FormItemVertical({
   formLabelClass?: string;
   type?: "text" | "number" | "email" | "password" | "date" | "datetime-local";
   maxLength?: string;
+  disabled?: boolean;
 }) {
   return (
     <FormItem className="flex flex-col gap-2">
       <div className={`w-full text-sm font-medium ${formLabelClass}`}>{label}</div>
       <div className="flex items-center justify-center gap-3 w-full">
         <FormControl className={formControlClass}>
-          <Input placeholder={placeholder ?? "N/A"} {...field} type={type} maxLength={maxLength} />
+          <Input
+            placeholder={placeholder ?? "N/A"}
+            {...field}
+            type={type}
+            maxLength={maxLength}
+            disabled={disabled}
+          />
         </FormControl>
         {description && <FormDescription>{description}</FormDescription>}
       </div>
@@ -158,6 +179,7 @@ export function FormItemSmall({
   field,
   type,
   maxLength,
+  disabled,
 }: {
   label: string;
   description?: string;
@@ -165,12 +187,19 @@ export function FormItemSmall({
   field: any;
   type?: "text" | "number" | "email" | "password" | "date" | "datetime-local";
   maxLength?: string;
+  disabled?: boolean;
 }) {
   return (
     <FormItem className="flex flex-col w-11 gap-2">
       <FormLabel>{label}</FormLabel>
       <FormControl>
-        <Input placeholder={placeholder ?? "N/A"} {...field} type={type} maxLength={maxLength} />
+        <Input
+          placeholder={placeholder ?? "N/A"}
+          {...field}
+          type={type}
+          maxLength={maxLength}
+          disabled={disabled}
+        />
       </FormControl>
       {description && <FormDescription>{description}</FormDescription>}
       <FormMessage />

@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
+  MapPin,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -48,47 +49,48 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
           text="Dashboard"
         />
 
-        {/* Structure with nested items */}
+
+
+        {/* Field */}
         {isCollapsed ? (
           <MenuLink
-            href="/dashboard/structure"
+            href="/dashboard/field"
             isCollapsed={isCollapsed}
-            label="Structure"
-            icon={<BrickWall className="h-4 w-4" />}
-            text="Structure"
+            label="Field"
+            icon={<MapPin className="h-4 w-4" />}
+            text="Field"
           />
         ) : (
           <MenuGroup
-            label="Structure"
-            icon={<BrickWall className="h-4 w-4" />}
+            label="Field"
+            icon={<MapPin className="h-4 w-4" />}
             isCollapsed={isCollapsed}
-            defaultOpen={true}
           >
             <MenuLink
-              href="/dashboard/structure"
+              href="/dashboard/field"
               isCollapsed={isCollapsed}
               label="Overview"
-              icon={<Layers2 className="h-4 w-4" />}
+              icon={<MapPin className="h-4 w-4" />}
               text="Overview"
               isChild
             />
             <MenuLink
-              href="/dashboard/structure/platform"
+              href="/dashboard/field/platform"
               isCollapsed={isCollapsed}
               label="Platform"
               icon={<Layers2 className="h-4 w-4" />}
               text="Platform"
               isChild
-              actionHref="/dashboard/structure/platform/new"
+              actionHref="/dashboard/field/platform/new"
             />
             <MenuLink
-              href="/dashboard/structure/pipeline"
+              href="/dashboard/field/pipeline"
               isCollapsed={isCollapsed}
               label="Pipeline"
               icon={<Layers2 className="h-4 w-4" />}
               text="Pipeline"
               isChild
-              actionHref="/dashboard/structure/pipeline/new"
+              actionHref="/dashboard/field/pipeline/new"
             />
           </MenuGroup>
         )}
@@ -110,6 +112,8 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
           icon={<Calendar className="h-4 w-4" />}
           text="Inspection Planning"
         />
+
+
       </nav>
     </TooltipProvider>
   );
