@@ -19,7 +19,7 @@ export function DynamicBreadcrumb() {
 
   const paths = pathname.split("/").filter((path) => path !== "");
 
-  // Detect structure detail pages like /dashboard/structure/platform/123
+  // Detect structure detail pages like /dashboard/field/platform/123
   const isStructureDetail =
     paths.length >= 4 &&
     paths[0] === "dashboard" &&

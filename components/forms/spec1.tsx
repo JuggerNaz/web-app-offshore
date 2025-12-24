@@ -61,7 +61,7 @@ export default function Spec1({ data }: Props) {
         const data = await res.json();
         toast.success("Platform created");
         mutate(`/api/platform/${values.plat_id}`);
-        router.push(`/dashboard/structure/platform/${data.data.plat_id}`);
+        router.push(`/dashboard/field/platform/${data.data.plat_id}`);
       } else {
         toast.error("Failed to create platform");
       }

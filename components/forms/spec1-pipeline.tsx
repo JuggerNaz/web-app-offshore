@@ -56,7 +56,7 @@ export default function Spec1Pipeline({ data }: Props) {
         const data = await res.json();
         toast.success("Pipeline created");
         mutate(`/api/platform/${values.pipe_id}`);
-        router.push(`/dashboard/structure/pipeline/${data.data.pipe_id}`);
+        router.push(`/dashboard/field/pipeline/${data.data.pipe_id}`);
       } else {
         toast.error("Failed to create pipeline");
       }

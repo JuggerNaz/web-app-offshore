@@ -28,6 +28,7 @@ export type Pipeline = Database["public"]["Tables"]["u_pipeline"]["Row"];
 export type Levels = Database["public"]["Tables"]["str_level"]["Row"];
 export type Faces = Database["public"]["Tables"]["str_faces"]["Row"];
 export type Jobpack = Database["public"]["Tables"]["workpl"]["Row"];
+export type Field = Database["public"]["Tables"]["u_lib_list"]["Row"];
 export type StructureSelect = {
   str_id: number;
   str_title: string;
@@ -118,7 +119,7 @@ export const columns: ColumnDef<Platform>[] = [
                   console.log(item);
                 }}
               >
-                <Link href={`/dashboard/structure/platform/${item.plat_id}`}>View Detail</Link>
+                <Link href={`/dashboard/field/platform/${item.plat_id}`}>View Detail</Link>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -176,7 +177,7 @@ export const pipelines: ColumnDef<Pipeline>[] = [
                   console.log(item);
                 }}
               >
-                <Link href={`/dashboard/structure/pipeline/${item.pipe_id}`}>View Detail</Link>
+                <Link href={`/dashboard/field/pipeline/${item.pipe_id}`}>View Detail</Link>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -486,6 +487,64 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
               >
                 <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
                   <Trash2 size={18} className="mr-2" /> Delete
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      );
+    },
+  },
+];
+
+export const fields: ColumnDef<Field>[] = [
+  {
+    accessorKey: "lib_id",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Code" />,
+    enableSorting: true,
+    enableHiding: true,
+  },
+  {
+    accessorKey: "lib_desc",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Description" />,
+    enableSorting: true,
+    enableHiding: true,
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original;
+
+      return (
+        <div className="text-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  console.log(item);
+                }}
+              >
+                <Link href={`/dashboard/field/platform?field=${item.lib_id}`}>
+                  View Platform
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  console.log(item);
+                }}
+              >
+                <Link href={`/dashboard/field/pipeline?field=${item.lib_id}`}>
+                  View Pipeline
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuContent>

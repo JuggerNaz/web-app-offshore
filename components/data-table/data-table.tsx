@@ -37,6 +37,7 @@ interface DataTableProps<TData, TValue> {
   enableColumnFilters?: boolean;
   enableSorting?: boolean;
   toolbarActions?: React.ReactNode;
+  initialColumnFilters?: ColumnFiltersState;
 }
 
 export function DataTable<TData, TValue, disableRowClick>({
@@ -49,13 +50,14 @@ export function DataTable<TData, TValue, disableRowClick>({
   enableColumnFilters = true,
   enableSorting = true,
   toolbarActions,
+  initialColumnFilters = [],
 }: DataTableProps<TData, TValue>) {
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize,
   });
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(initialColumnFilters);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState({});
   const [globalFilter, setGlobalFilter] = useState("");
@@ -122,9 +124,9 @@ export function DataTable<TData, TValue, disableRowClick>({
                     if (!disableRowClick) {
                       const rowItem = row.original as unknown as any;
                       if (pathname.includes("pipeline")) {
-                        router.push(`/dashboard/structure/pipeline/${rowItem.pipe_id}`);
+                        router.push(`/dashboard/field/pipeline/${rowItem.pipe_id}`);
                       } else if (pathname.includes("platform")) {
-                        router.push(`/dashboard/structure/platform/${rowItem.plat_id}`);
+                        router.push(`/dashboard/field/platform/${rowItem.plat_id}`);
                       }
                     }
                   }}

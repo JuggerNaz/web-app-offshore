@@ -54,7 +54,7 @@ components/
 
 ### Integration
 The component is integrated into:
-- `app/dashboard/structure/[type]/[id]/page.tsx`
+- `app/dashboard/field/[type]/[id]/page.tsx`
 - Appears as the "Structure Image" tab in platform and pipeline detail pages
 
 ## Usage

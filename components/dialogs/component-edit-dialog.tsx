@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAtom } from "jotai";
-import { urlId } from "@/utils/client-state";
+import { urlId, urlType } from "@/utils/client-state";
 import { fetcher } from "@/utils/utils";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
@@ -58,12 +58,25 @@ const buildIdNoEdit = (
 
 export function ComponentEditDialog({ component, open, onOpenChange, listKey }: ComponentEditDialogProps) {
   const [structureId] = useAtom(urlId);
+  const [pageType] = useAtom(urlType);
   const [isSaving, setIsSaving] = useState(false);
 
   // POSITION options
   const { data: positionLib } = useSWR(`/api/library/${"POSITION"}`, fetcher);
   // Structural group options
   const { data: compGroupLib } = useSWR(`/api/library/${"COMPGRP"}`, fetcher);
+
+  // Platform details for legs
+  const { data: platformData } = useSWR(
+    pageType === "platform" && structureId ? `/api/platform/${structureId}` : null,
+    fetcher
+  );
+
+  const legOptions = platformData?.data ? Array.from({ length: 20 }, (_, i) => {
+    const key = `leg_t${i + 1}`;
+    const val = platformData.data[key];
+    return val ? { value: val, label: val } : null;
+  }).filter(Boolean) : [];
 
   const [formData, setFormData] = useState({
     q_id: "",
@@ -193,15 +206,13 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
             Edit Component [{component.id_no}] {component.code ? `- ${component.code}` : ""}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {`Created: ${
-              component.created_at
+            {`Created: ${component.created_at
                 ? new Date(component.created_at).toLocaleString()
                 : "N/A"
-            } • Updated: ${
-              component.updated_at
+              } • Updated: ${component.updated_at
                 ? new Date(component.updated_at).toLocaleString()
                 : "N/A"
-            }`}
+              }`}
           </p>
         </div>
 
@@ -274,19 +285,49 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="edit-sLeg">Start Leg</Label>
-              <Input
-                id="edit-sLeg"
-                value={formData.s_leg}
-                onChange={(e) => handleChange("s_leg", e.target.value)}
-              />
+              {pageType === "platform" ? (
+                <Select
+                  value={formData.s_leg}
+                  onValueChange={(val) => handleChange("s_leg", val)}
+                  disabled={legOptions.length === 0}
+                >
+                  <SelectTrigger id="edit-sLeg">
+                    <SelectValue placeholder="Select start leg" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {legOptions.map((opt: any) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-eLeg">End Leg</Label>
-              <Input
-                id="edit-eLeg"
-                value={formData.f_leg}
-                onChange={(e) => handleChange("f_leg", e.target.value)}
-              />
+              {pageType === "platform" ? (
+                <Select
+                  value={formData.f_leg}
+                  onValueChange={(val) => handleChange("f_leg", val)}
+                  disabled={legOptions.length === 0}
+                >
+                  <SelectTrigger id="edit-eLeg">
+                    <SelectValue placeholder="Select end leg" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {legOptions.map((opt: any) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+              )}
             </div>
           </div>
 
