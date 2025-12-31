@@ -24,6 +24,7 @@ import { useState, useEffect } from "react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { toast } from "sonner";
+import specAdditionalDetails from "@/utils/spec-additional-details.json";
 
 type Component = {
   id: number;
@@ -100,6 +101,34 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
     return val ? { value: val, label: val } : null;
   }).filter(Boolean) : [];
 
+  // All components for association
+  const { data: allComponents } = useSWR(
+    structureId ? `/api/structure-components/${structureId}` : null,
+    fetcher
+  );
+
+  const [selectorOpen, setSelectorOpen] = useState(false);
+
+  // Level options
+  const { data: levelData } = useSWR(
+    pageType === "platform" && structureId ? `/api/platform/level/${structureId}` : null,
+    fetcher
+  );
+  const levelOptions = levelData?.data ? levelData.data.map((x: any) => ({
+    value: x.level_name,
+    label: x.level_name
+  })) : [];
+
+  // Face options
+  const { data: faceData } = useSWR(
+    pageType === "platform" && structureId ? `/api/platform/faces/${structureId}` : null,
+    fetcher
+  );
+  const faceOptions = faceData?.data ? faceData.data.map((x: any) => ({
+    value: x.face,
+    label: x.face
+  })) : [];
+
   // Form state for create mode
   const [formData, setFormData] = useState({
     q_id: "",
@@ -118,7 +147,29 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
     face: "",
     top_und: "",
     comp_group: "",
+    associated_comp_id: null as number | null,
+    additionalInfo: {} as Record<string, any>,
   });
+
+  const getTemplate = (code: string | null, type: string) => {
+    if (!code) return {};
+    const lowerCode = code.toLowerCase();
+    if (lowerCode === "an") {
+      const compType = type === "platform" ? "an_comp_plat" : "an_comp_pipe";
+      return specAdditionalDetails.data.find(d => d.componentType === compType)?.additionalDataTemplate || {};
+    }
+    return specAdditionalDetails.data.find(d => d.code === lowerCode)?.additionalDataTemplate || {};
+  };
+
+  useEffect(() => {
+    if (isCreateMode && effectiveCode) {
+      const template = getTemplate(effectiveCode, pageType);
+      setFormData(prev => ({
+        ...prev,
+        additionalInfo: { ...template }
+      }));
+    }
+  }, [effectiveCode, isCreateMode, pageType]);
 
   // Update code when defaultCode changes (when switching component types)
   useEffect(() => {
@@ -127,9 +178,9 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
     }
   }, [defaultCode, isCreateMode]);
 
-  // When entering edit mode, initialize formData from existing component
+  // Initialize formData from existing component (view mode) or switching back to create mode
   useEffect(() => {
-    if (isEditMode && component) {
+    if (component && !isCreateMode) {
       setFormData({
         q_id: component.q_id || "",
         id_no: component.id_no || "",
@@ -147,6 +198,8 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         face: component.metadata?.face ?? "",
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
+        associated_comp_id: component.metadata?.associated_comp_id ?? null,
+        additionalInfo: component.metadata?.additionalInfo ?? getTemplate(component.code, pageType),
       });
     } else if (isCreateMode) {
       // Ensure a clean slate when switching back to create mode
@@ -155,13 +208,26 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         q_id: "",
         id_no: "",
         code: defaultCode || "",
+        additionalInfo: getTemplate(defaultCode || "", pageType),
       }));
     }
-  }, [isEditMode, isCreateMode, component, defaultCode]);
+  }, [isCreateMode, component, defaultCode, pageType]);
 
   const handleInputChange = (field: string, value: string) => {
     if (isCreateMode || isEditMode) {
       setFormData(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
+  const handleAdditionalInfoChange = (field: string, value: any) => {
+    if (isCreateMode || isEditMode) {
+      setFormData(prev => ({
+        ...prev,
+        additionalInfo: {
+          ...prev.additionalInfo,
+          [field]: value
+        }
+      }));
     }
   };
 
@@ -198,6 +264,8 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         face: formData.face,
         top_und: formData.top_und,
         comp_group: formData.comp_group,
+        associated_comp_id: formData.associated_comp_id,
+        additionalInfo: formData.additionalInfo,
       };
 
       // Prepare the component data for create
@@ -239,6 +307,8 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         face: "",
         top_und: "",
         comp_group: "",
+        associated_comp_id: null,
+        additionalInfo: {},
       });
     } catch (error) {
       console.error("Error creating component:", error);
@@ -496,21 +566,49 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="level">Level:</Label>
-                  <Input
-                    id="level"
-                    value={isCreateMode || isEditMode ? formData.lvl : (component?.metadata?.lvl ?? "")}
-                    onChange={(e) => handleInputChange("lvl", e.target.value)}
-                    readOnly={!(isCreateMode || isEditMode)}
-                  />
+                  {pageType === "platform" ? (
+                    <Select
+                      value={isCreateMode || isEditMode ? formData.lvl : (component?.metadata?.lvl ?? "")}
+                      onValueChange={(val) => handleInputChange("lvl", val)}
+                      disabled={!(isCreateMode || isEditMode) || levelOptions.length === 0}
+                    >
+                      <SelectTrigger id="level">
+                        <SelectValue placeholder="Select level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {levelOptions.map((opt: any) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="face">Face:</Label>
-                  <Input
-                    id="face"
-                    value={isCreateMode || isEditMode ? formData.face : (component?.metadata?.face ?? "")}
-                    onChange={(e) => handleInputChange("face", e.target.value)}
-                    readOnly={!(isCreateMode || isEditMode)}
-                  />
+                  {pageType === "platform" ? (
+                    <Select
+                      value={isCreateMode || isEditMode ? formData.face : (component?.metadata?.face ?? "")}
+                      onValueChange={(val) => handleInputChange("face", val)}
+                      disabled={!(isCreateMode || isEditMode) || faceOptions.length === 0}
+                    >
+                      <SelectTrigger id="face">
+                        <SelectValue placeholder="Select face" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {faceOptions.map((opt: any) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="part">Part:</Label>
@@ -561,9 +659,43 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                 </Select>
               </div>
 
+              {/* Dynamic Additional Details */}
+              {Object.keys(formData.additionalInfo).length > 0 ? (
+                <div className="pt-4 border-t space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider italic">Additional Details</h3>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                    {Object.entries(formData.additionalInfo).map(([key, value]) => {
+                      if (key === 'del') return null;
+                      const label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                      return (
+                        <div key={key} className="flex items-center gap-4">
+                          <Label htmlFor={key} className="text-xs font-medium min-w-[100px] text-right">{label}:</Label>
+                          {typeof value === 'boolean' ? (
+                            <Checkbox
+                              id={key}
+                              checked={!!value}
+                              onCheckedChange={(checked: boolean) => handleAdditionalInfoChange(key, checked)}
+                              disabled={!(isCreateMode || isEditMode)}
+                            />
+                          ) : (
+                            <Input
+                              id={key}
+                              value={value || ""}
+                              onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                              className="h-8 text-xs text-cyan-600 dark:text-cyan-400 font-mono shadow-sm"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
               {/* Metadata */}
               {component?.metadata && (
-                <div className="space-y-2">
+                <div className="space-y-2 mt-4 pt-4 border-t">
                   <Label htmlFor="metadata">Metadata:</Label>
                   <textarea
                     id="metadata"
@@ -580,9 +712,71 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
             <>
               {/* Specifications 2 Tab */}
               <TabsContent value="specifications2" className="space-y-4 mt-4">
-                <div className="border rounded-lg p-6">
-                  <p className="text-muted-foreground">Additional specifications content here...</p>
+                <div className="border rounded-lg p-8 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 space-y-8 min-h-[400px]">
+                  <div className="space-y-6">
+                    <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                      Associate Component to other Component:
+                    </h3>
+
+                    <div className="flex items-center space-x-4">
+                      <Label className="text-sm font-medium min-w-[120px]">Associated to:</Label>
+                      <div className="flex items-center space-x-2 flex-1">
+                        <div className="min-w-[200px] h-10 px-3 flex items-center bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-md">
+                          <span className="text-sm font-mono text-cyan-600 dark:text-cyan-400">
+                            {allComponents?.data?.find((c: any) => c.id === (isCreateMode ? formData.associated_comp_id : component?.metadata?.associated_comp_id))?.id_no || "None"}
+                          </span>
+                        </div>
+                        {(isCreateMode || isEditMode) && (
+                          <Button
+                            variant="secondary"
+                            className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 px-4 h-10 font-bold"
+                            onClick={() => setSelectorOpen(true)}
+                          >
+                            ...
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
+
+                <Dialog open={selectorOpen} onOpenChange={setSelectorOpen}>
+                  <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+                    <DialogHeader>
+                      <DialogTitle>Select Component to Associate</DialogTitle>
+                      <DialogDescription>
+                        Choose a component from the same structure ({structureId}) to associate with this component.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-y-auto mt-4 border rounded-md">
+                      <DataTable
+                        columns={[
+                          { accessorKey: "id_no", header: "ID No" },
+                          { accessorKey: "q_id", header: "Q ID" },
+                          { accessorKey: "code", header: "Code" },
+                          {
+                            id: "actions",
+                            header: "Action",
+                            cell: ({ row }) => (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  handleInputChange("associated_comp_id", (row.original as any).id);
+                                  setSelectorOpen(false);
+                                }}
+                              >
+                                Select
+                              </Button>
+                            ),
+                          },
+                        ]}
+                        data={allComponents?.data?.filter((c: any) => c.id !== component?.id) || []}
+                        disableRowClick={true}
+                      />
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </TabsContent>
 
               {/* Comments Tab */}

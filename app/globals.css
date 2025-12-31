@@ -63,6 +63,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -70,11 +71,43 @@
 
 
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
+@layer utilities {
+  .app-viewport {
+    @apply fixed inset-0 flex flex-col overflow-hidden h-screen w-screen selection:bg-blue-100 dark:selection:bg-blue-900/30;
   }
-  body {
-    @apply bg-background text-foreground;
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-200 dark:bg-slate-800 rounded-full transition-colors;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-300 dark:bg-slate-700;
+  }
+}
+
+/* Global viewport lock for Dashboard */
+html:has(.app-viewport),
+body:has(.app-viewport) {
+  overflow: hidden !important;
+  height: 100% !important;
+  position: fixed;
+  width: 100%;
 }

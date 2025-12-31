@@ -27,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
-          <main className="min-h-screen flex flex-col items-center">{children}</main>
+          {children}
           <Toaster />
         </ThemeProvider>
       </body>
