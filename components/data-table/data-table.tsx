@@ -26,6 +26,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { DataTablePagination } from "./data-table-pagination";
 import { DataTableToolbar } from "./data-table-toolbar";
+import { cn } from "@/lib/utils";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -40,7 +41,7 @@ interface DataTableProps<TData, TValue> {
   initialColumnFilters?: ColumnFiltersState;
 }
 
-export function DataTable<TData, TValue, disableRowClick>({
+export function DataTable<TData, TValue>({
   columns,
   data,
   disableRowClick = false,
@@ -90,21 +91,21 @@ export function DataTable<TData, TValue, disableRowClick>({
   const router = useRouter();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <DataTableToolbar
         table={table}
         enableGlobalFilter={enableGlobalFilter}
         enableColumnFilters={enableColumnFilters}
         toolbarActions={toolbarActions}
       />
-      <div className="rounded-md border">
+      <div className="rounded-[2rem] border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/50 shadow-xl shadow-slate-200/50 dark:shadow-black/20 overflow-hidden">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-slate-50/50 dark:bg-slate-900/80">
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow key={headerGroup.id} className="hover:bg-transparent border-b">
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead key={header.id} className="h-14 font-black text-[10px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
                       {header.isPlaceholder
                         ? null
                         : flexRender(header.column.columnDef.header, header.getContext())}
@@ -130,10 +131,13 @@ export function DataTable<TData, TValue, disableRowClick>({
                       }
                     }
                   }}
-                  className="cursor-pointer hover:bg-muted"
+                  className={cn(
+                    "group transition-all duration-200",
+                    !disableRowClick && "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                  )}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="h-16 font-medium text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -141,15 +145,21 @@ export function DataTable<TData, TValue, disableRowClick>({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No results.
+                <TableCell colSpan={columns.length} className="h-32 text-center text-slate-400 font-medium">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <p>No results found matching your criteria</p>
+                  </div>
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
-      {enablePagination && <DataTablePagination table={table} />}
+      {enablePagination && (
+        <div className="pt-2">
+          <DataTablePagination table={table} />
+        </div>
+      )}
     </div>
   );
 }

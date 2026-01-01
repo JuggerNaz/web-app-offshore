@@ -33,19 +33,26 @@ export function FormFieldWrap({
   options,
   maxLength,
   disabled,
+  min,
+  max,
+  step,
 }: {
+
   label: string;
   name: string;
   form: any;
   description?: string;
   placeholder?: string;
-  ftype?: "normal" | "small" | "vertical" | "checkbox" | "select" | "vselect";
+  ftype?: "normal" | "small" | "vertical" | "checkbox" | "select" | "vselect" | "slider";
   formControlClass?: string;
   formLabelClass?: string;
   type?: "text" | "number" | "email" | "password" | "date" | "datetime-local";
   options?: { label: string; value: string }[];
   maxLength?: string;
   disabled?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
 }) {
   return (
     <FormField
@@ -78,6 +85,15 @@ export function FormFieldWrap({
           <FormSelect label={label} options={options} field={field} />
         ) : ftype === "vselect" ? (
           <FormSelectVertical label={label} options={options} field={field} />
+        ) : ftype === "slider" ? (
+          <FormItemSlider
+            label={label}
+            field={field}
+            min={min}
+            max={max}
+            step={step}
+            description={description}
+          />
         ) : (
           <FormItemVertical
             label={label}
@@ -293,6 +309,53 @@ export function FormSelectVertical({
           </SelectGroup>
         </SelectContent>
       </Select>
+    </FormItem>
+  );
+}
+
+export function FormItemSlider({
+  label,
+  field,
+  min = 0,
+  max = 100,
+  step = 1,
+  description,
+}: {
+  label: string;
+  field: any;
+  min?: number;
+  max?: number;
+  step?: number;
+  description?: string;
+}) {
+  return (
+    <FormItem className="space-y-4">
+      <div className="flex justify-between items-center">
+        <FormLabel>{label}</FormLabel>
+        <span className="text-sm text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded">
+          {field.value}
+        </span>
+      </div>
+      <FormControl>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-muted-foreground w-8 text-right">{min}</span>
+          <Input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={field.value || 0}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              field.onChange(isNaN(val) ? 0 : val);
+            }}
+            className="flex-1"
+          />
+          <span className="text-xs text-muted-foreground w-8">{max}</span>
+        </div>
+      </FormControl>
+      {description && <FormDescription>{description}</FormDescription>}
+      <FormMessage />
     </FormItem>
   );
 }

@@ -5,15 +5,15 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
 import { PlatformSchema } from "@/utils/schemas/zod";
-import { RowWrap, ColWrap } from "@/components/forms/utils";
-import { CollapsibleField } from "@/components/forms/utils";
 import { FormFieldWrap } from "./form-field-wrap";
 import { fetcher } from "@/utils/utils";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Save } from "lucide-react";
+import { Save, Info, Settings, MapPin, Ruler, Layers, Package, Globe } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 
 type Props = {
   data?: any; //TODO: use real type rather than any
@@ -74,7 +74,6 @@ export default function Spec1({ data }: Props) {
         },
       });
       if (res.ok) {
-        const data = await res.json();
         toast.success("Platform updated");
         mutate(`/api/platform/${values.plat_id}`);
       } else {
@@ -88,354 +87,262 @@ export default function Spec1({ data }: Props) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        <RowWrap>
-          <ColWrap>
-            <FormFieldWrap label="Title" name="title" form={form} placeholder="title" />
-            <FormFieldWrap
-              label="Oil Field"
-              name="pfield"
-              options={libData.data
-                .filter((x: any) => x.lib_code == "OILFIELD")
-                .map((x: any) => {
-                  return { label: x.lib_desc, value: x.lib_id };
-                })}
-              form={form}
-              ftype="select"
-            />
-            <FormFieldWrap
-              label="Inst. Date"
-              name="inst_date"
-              form={form}
-              placeholder="instantiate date"
-              type="date"
-            />
-          </ColWrap>
-          <ColWrap>
-            <FormFieldWrap label="Description" name="pdesc" form={form} placeholder="description" />
-            <FormFieldWrap label="Depth (m)" name="depth" form={form} placeholder="depth" />
-            <FormFieldWrap
-              label="Design Life"
-              name="desg_life"
-              form={form}
-              placeholder="design life"
-              ftype="normal"
-              description="year"
-            />
-          </ColWrap>
-          <ColWrap>
-            {/* <FormFieldWrap label="Type" name="ptype" form={form} placeholder="type" /> */}
-            <FormFieldWrap
-              label="Type"
-              name="ptype"
-              options={libData.data
-                .filter((x: any) => x.lib_code == "PLAT_TYP")
-                .map((x: any) => {
-                  return { label: x.lib_desc, value: x.lib_id };
-                })}
-              form={form}
-              ftype="select"
-            />
-            {/* <FormFieldWrap label="Function" name="ptype" form={form} placeholder="function" /> */}
-            <FormFieldWrap
-              label="Function"
-              name="process"
-              options={libData.data
-                .filter((x: any) => x.lib_code == "PLAT_FUNCT")
-                .map((x: any) => {
-                  return { label: x.lib_desc, value: x.lib_id };
-                })}
-              form={form}
-              ftype="select"
-            />
-          </ColWrap>
-        </RowWrap>
-        <RowWrap>
-          <div className="w-1/5 space-y-2">
-            <FormFieldWrap
-              label="Norting"
-              name="st_north"
-              form={form}
-              placeholder="northing"
-              ftype="vertical"
-              description="m"
-            />
-            <FormFieldWrap
-              label="Easting"
-              name="st_east"
-              form={form}
-              placeholder="easting"
-              ftype="vertical"
-              description="m"
-            />
-          </div>
-          <div className="">
-            <div className="flex gap-3">
-              <div className="flex flex-col justify-center gap-2">
-                <FormFieldWrap
-                  label="No. of Legs"
-                  name="plegs"
-                  form={form}
-                  placeholder=""
-                  ftype="vertical"
-                  formControlClass="w-1/2 text-center"
-                  formLabelClass="text-center"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                {/* Top row: legs 1-10 */}
-                <div className="flex gap-2">
-                  <FormFieldWrap label="1:" name="leg_t1" form={form} placeholder="" ftype="small" disabled={isLegDisabled(1)} />
-                  <FormFieldWrap label="2:" name="leg_t2" form={form} placeholder="" ftype="small" disabled={isLegDisabled(2)} />
-                  <FormFieldWrap label="3:" name="leg_t3" form={form} placeholder="" ftype="small" disabled={isLegDisabled(3)} />
-                  <FormFieldWrap label="4:" name="leg_t4" form={form} placeholder="" ftype="small" disabled={isLegDisabled(4)} />
-                  <FormFieldWrap label="5:" name="leg_t5" form={form} placeholder="" ftype="small" disabled={isLegDisabled(5)} />
-                  <FormFieldWrap label="6:" name="leg_t6" form={form} placeholder="" ftype="small" disabled={isLegDisabled(6)} />
-                  <FormFieldWrap label="7:" name="leg_t7" form={form} placeholder="" ftype="small" disabled={isLegDisabled(7)} />
-                  <FormFieldWrap label="8:" name="leg_t8" form={form} placeholder="" ftype="small" disabled={isLegDisabled(8)} />
-                  <FormFieldWrap label="9:" name="leg_t9" form={form} placeholder="" ftype="small" disabled={isLegDisabled(9)} />
-                  <FormFieldWrap label="10:" name="leg_t10" form={form} placeholder="" ftype="small" disabled={isLegDisabled(10)} />
+      <form
+        id="asset-form"
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="space-y-6 max-w-7xl mx-auto p-4 sm:p-6"
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Column - Main Info */}
+          <div className="lg:col-span-8 space-y-6">
+            {/* General Information */}
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
+                <Info className="h-5 w-5 text-blue-500" />
+                <CardTitle className="text-lg">General Information</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 pt-2">
+                <div className="md:col-span-2">
+                  <FormFieldWrap label="Title" name="title" form={form} placeholder="Enter platform title" />
                 </div>
-                {/* Bottom row: legs 11-20 */}
-                <div className="flex gap-2">
-                  <FormFieldWrap label="11:" name="leg_t11" form={form} placeholder="" ftype="small" disabled={isLegDisabled(11)} />
-                  <FormFieldWrap label="12:" name="leg_t12" form={form} placeholder="" ftype="small" disabled={isLegDisabled(12)} />
-                  <FormFieldWrap label="13:" name="leg_t13" form={form} placeholder="" ftype="small" disabled={isLegDisabled(13)} />
-                  <FormFieldWrap label="14:" name="leg_t14" form={form} placeholder="" ftype="small" disabled={isLegDisabled(14)} />
-                  <FormFieldWrap label="15:" name="leg_t15" form={form} placeholder="" ftype="small" disabled={isLegDisabled(15)} />
-                  <FormFieldWrap label="16:" name="leg_t16" form={form} placeholder="" ftype="small" disabled={isLegDisabled(16)} />
-                  <FormFieldWrap label="17:" name="leg_t17" form={form} placeholder="" ftype="small" disabled={isLegDisabled(17)} />
-                  <FormFieldWrap label="18:" name="leg_t18" form={form} placeholder="" ftype="small" disabled={isLegDisabled(18)} />
-                  <FormFieldWrap label="19:" name="leg_t19" form={form} placeholder="" ftype="small" disabled={isLegDisabled(19)} />
-                  <FormFieldWrap label="20:" name="leg_t20" form={form} placeholder="" ftype="small" disabled={isLegDisabled(20)} />
+                <div className="md:col-span-2">
+                  <FormFieldWrap label="Description" name="pdesc" form={form} placeholder="Detailed platform description" />
                 </div>
-              </div>
-            </div>
-          </div>
-          <div className="w-1/5 space-y-2">
-            <FormFieldWrap
-              label="True North"
-              name="north_angle"
-              form={form}
-              placeholder="true north"
-              ftype="vertical"
-              description="Deg."
-            />
-            <FormFieldWrap
-              label="Platform North"
-              name="north_side"
-              form={form}
-              placeholder="north side"
-              ftype="vertical"
-            />
-          </div>
-        </RowWrap>
-        <RowWrap>
-          <div className="flex-col w-4/5 space-y-5">
-            <RowWrap>
-              <ColWrap>
                 <FormFieldWrap
-                  label="Max Leg Diameter"
-                  name="dleg"
+                  label="Oil Field"
+                  name="pfield"
+                  options={libData.data
+                    .filter((x: any) => x.lib_code == "OILFIELD")
+                    .map((x: any) => ({ label: x.lib_desc, value: x.lib_id }))}
                   form={form}
-                  placeholder="0"
-                  ftype="vertical"
-                  description="mm"
+                  ftype="select"
                 />
                 <FormFieldWrap
-                  label="Helipad?"
-                  name="helipad"
+                  label="Inst. Date"
+                  name="inst_date"
                   form={form}
-                  placeholder=""
-                  ftype="checkbox"
+                  type="date"
                 />
-              </ColWrap>
-              <ColWrap>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="Depth" name="depth" form={form} placeholder="0" type="number" />
+                  </div>
+                  <span className="mb-2 text-sm text-muted-foreground font-medium">m</span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="Design Life" name="desg_life" form={form} placeholder="0" type="number" />
+                  </div>
+                  <span className="mb-2 text-sm text-muted-foreground font-medium">years</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Classification & Configuration */}
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
+                <Settings className="h-5 w-5 text-orange-500" />
+                <CardTitle className="text-lg">Configuration</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 pt-2">
                 <FormFieldWrap
-                  label="Max Wall Thickness"
-                  name="wall_thk"
+                  label="Type"
+                  name="ptype"
+                  options={libData.data
+                    .filter((x: any) => x.lib_code == "PLAT_TYP")
+                    .map((x: any) => ({ label: x.lib_desc, value: x.lib_id }))}
                   form={form}
-                  placeholder="0"
-                  ftype="vertical"
-                  description="mm"
+                  ftype="select"
                 />
                 <FormFieldWrap
-                  label="Manned?"
-                  name="manned"
+                  label="Function"
+                  name="process"
+                  options={libData.data
+                    .filter((x: any) => x.lib_code == "PLAT_FUNCT")
+                    .map((x: any) => ({ label: x.lib_desc, value: x.lib_id }))}
                   form={form}
-                  placeholder=""
-                  ftype="checkbox"
+                  ftype="select"
                 />
-              </ColWrap>
-              <ColWrap>
-                {/* <FormFieldWrap label="Material" name="material" form={form} placeholder="material" ftype="vertical" /> */}
                 <FormFieldWrap
                   label="Material"
                   name="material"
                   options={libData.data
                     .filter((x: any) => x.lib_code == "PLAT_MAT")
-                    .map((x: any) => {
-                      return { label: x.lib_desc, value: x.lib_id };
-                    })}
+                    .map((x: any) => ({ label: x.lib_desc, value: x.lib_id }))}
                   form={form}
-                  ftype="vselect"
+                  ftype="select"
                 />
-                {/* <FormFieldWrap label="Corrosion Coating" name="corr_ctc" form={form} placeholder="corrosion coating" ftype="vertical" /> */}
-                <FormFieldWrap
-                  label="Corrosion Coating"
-                  name="corr_ctg"
-                  options={libData.data
-                    .filter((x: any) => x.lib_code == "CORR_CTG")
-                    .map((x: any) => {
-                      return { label: x.lib_desc, value: x.lib_id };
-                    })}
-                  form={form}
-                  ftype="vselect"
-                />
-              </ColWrap>
-              <ColWrap>
-                {/* <FormFieldWrap label="CP System" name="cp_system" form={form} placeholder="cp system" ftype="vertical" /> */}
                 <FormFieldWrap
                   label="CP System"
                   name="cp_system"
                   options={libData.data
                     .filter((x: any) => x.lib_code == "PLAT_CP")
-                    .map((x: any) => {
-                      return { label: x.lib_desc, value: x.lib_id };
-                    })}
+                    .map((x: any) => ({ label: x.lib_desc, value: x.lib_id }))}
                   form={form}
-                  ftype="vselect"
+                  ftype="select"
                 />
-                {/* <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="installation contractor" ftype="vertical" /> */}
+                <FormFieldWrap
+                  label="Corrosion Coating"
+                  name="corr_ctg"
+                  options={libData.data
+                    .filter((x: any) => x.lib_code == "CORR_CTG")
+                    .map((x: any) => ({ label: x.lib_desc, value: x.lib_id }))}
+                  form={form}
+                  ftype="select"
+                />
                 <FormFieldWrap
                   label="Installation Contractor"
                   name="inst_ctr"
                   options={libData.data
                     .filter((x: any) => x.lib_code == "PLAT_CONT")
-                    .map((x: any) => {
-                      return { label: x.lib_desc, value: x.lib_id };
-                    })}
+                    .map((x: any) => ({ label: x.lib_desc, value: x.lib_id }))}
                   form={form}
-                  ftype="vselect"
+                  ftype="select"
                 />
-              </ColWrap>
-            </RowWrap>
-            <Card>
-              <CardHeader>
-                <CardTitle>Number of</CardTitle>
+              </CardContent>
+            </Card>
+
+            {/* Inventory & Counts */}
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row justify-between items-center py-4">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-5 w-5 text-purple-500" />
+                  <CardTitle className="text-lg">Inventory Statistics</CardTitle>
+                </div>
               </CardHeader>
-              <CardContent>
-                <RowWrap className="">
-                  <ColWrap>
-                    <FormFieldWrap
-                      label="Conductors"
-                      name="conduct"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                      type="number"
-                    />
-                    <FormFieldWrap
-                      label="Internal Piles"
-                      name="pileint"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                    />
-                  </ColWrap>
-                  <ColWrap>
-                    <FormFieldWrap
-                      label="Slots"
-                      name="cslota"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                    />
-                    <FormFieldWrap
-                      label="Fenders"
-                      name="fender"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                    />
-                  </ColWrap>
-                  <ColWrap>
-                    <FormFieldWrap
-                      label="Risers"
-                      name="riser"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                    />
-                    <FormFieldWrap
-                      label="Sumps"
-                      name="sump"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                    />
-                  </ColWrap>
-                  <ColWrap>
-                    <FormFieldWrap
-                      label="Skirt Piles"
-                      name="pileskt"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                    />
-                    <FormFieldWrap
-                      label="Caissons"
-                      name="caisson"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                    />
-                  </ColWrap>
-                  <ColWrap>
-                    <FormFieldWrap
-                      label="Anode"
-                      name="an_qty"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                    />
-                    <FormFieldWrap
-                      label="Crane"
-                      name="crane"
-                      form={form}
-                      placeholder="0"
-                      ftype="vertical"
-                    />
-                  </ColWrap>
-                </RowWrap>
+              <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
+                <FormFieldWrap label="Conductors" name="conduct" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Internal Piles" name="pileint" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Slots" name="cslota" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Fenders" name="fender" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Risers" name="riser" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Sumps" name="sump" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Skirt Piles" name="pileskt" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Caissons" name="caisson" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Anodes" name="an_qty" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Cranes" name="crane" form={form} ftype="vertical" type="number" />
               </CardContent>
             </Card>
           </div>
-          <Card className="w-1/5 flex flex-col">
-            <CardHeader>
-              <CardTitle>Default Unit</CardTitle>
-            </CardHeader>
-            <CardContent className="grow">
-              <div>
-                The default unit that to be applied for this platform, its components and
-                inspections.
-              </div>
-            </CardContent>
-            <CardFooter>
-              <FormFieldWrap
-                label=""
-                name="def_unit"
-                form={form}
-                placeholder="default unit"
-                ftype="vertical"
-              />
-            </CardFooter>
-          </Card>
-        </RowWrap>
-        <div className="flex justify-end">
-          <Button type="submit">
-            <Save className="" size={16} />
-            Save
+
+          {/* Right Column - Logistics & Metadata */}
+          <div className="lg:col-span-4 space-y-6">
+            {/* Location & Orientation */}
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
+                <MapPin className="h-5 w-5 text-red-500" />
+                <CardTitle className="text-lg">Location & Coordinates</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <FormFieldWrap label="Northing" name="st_north" form={form} type="number" />
+                    </div>
+                    <span className="mb-2 text-xs text-muted-foreground">m</span>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <FormFieldWrap label="Easting" name="st_east" form={form} type="number" />
+                    </div>
+                    <span className="mb-2 text-xs text-muted-foreground">m</span>
+                  </div>
+                </div>
+                <Separator className="my-2" />
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="True North Angle" name="north_angle" form={form} type="number" />
+                  </div>
+                  <span className="mb-2 text-xs text-muted-foreground font-medium">Deg.</span>
+                </div>
+                <FormFieldWrap label="Platform North Side" name="north_side" form={form} placeholder="N/A" />
+              </CardContent>
+            </Card>
+
+            {/* Dimensions & Status */}
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4 border-b">
+                <Ruler className="h-5 w-5 text-emerald-500" />
+                <CardTitle className="text-lg">Dimensions & Status</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="grid grid-cols-2">
+                  <div className="p-4 border-r border-b">
+                    <FormFieldWrap label="Max Leg Dia." name="dleg" form={form} type="number" />
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Unit: mm</span>
+                  </div>
+                  <div className="p-4 border-b">
+                    <FormFieldWrap label="Max Wall Thk." name="wall_thk" form={form} type="number" />
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Unit: mm</span>
+                  </div>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-4">
+                  <FormFieldWrap label="Helipad?" name="helipad" form={form} ftype="checkbox" />
+                  <FormFieldWrap label="Manned?" name="manned" form={form} ftype="checkbox" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Units & Settings */}
+            <Card className="shadow-sm border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
+              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
+                <Globe className="h-5 w-5 text-blue-600" />
+                <CardTitle className="text-lg">Reporting Units</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-2">
+                <p className="text-xs text-muted-foreground italic">
+                  Defines the default measurement system for this platform and all its associated components and inspections.
+                </p>
+                <FormFieldWrap label="Unit System" name="def_unit" form={form} placeholder="e.g. SI / Metric" />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Leg Management - Full Width Bottom Section */}
+          <div className="lg:col-span-12">
+            <Card className="shadow-sm overflow-hidden">
+              <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-5 w-5 text-indigo-500" />
+                    <CardTitle className="text-lg">Platform Legs Configuration</CardTitle>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Label className="text-xs font-semibold uppercase text-muted-foreground">Total Active Legs:</Label>
+                    <div className="w-20">
+                      <FormFieldWrap label="" name="plegs" form={form} ftype="normal" type="number" />
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-10 gap-x-4 gap-y-6">
+                  {Array.from({ length: 20 }).map((_, i) => {
+                    const legNum = i + 1;
+                    return (
+                      <div key={legNum} className={`transition-opacity duration-200 ${isLegDisabled(legNum) ? 'opacity-30' : 'opacity-100'}`}>
+                        <FormFieldWrap
+                          label={`Leg ${legNum}`}
+                          name={`leg_t${legNum}`}
+                          form={form}
+                          ftype="normal"
+                          disabled={isLegDisabled(legNum)}
+                          formControlClass="h-9 px-2 text-center font-bold"
+                          placeholder="ID"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Floating Mobile Submit Area */}
+        <div className="fixed bottom-6 right-6 lg:hidden z-50">
+          <Button type="submit" size="lg" className="rounded-full h-14 w-14 shadow-2xl">
+            <Save className="h-6 w-6" />
           </Button>
         </div>
       </form>

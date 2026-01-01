@@ -43,7 +43,7 @@ export function FacesDialog() {
 
   const onSubmit = async (values: z.infer<typeof FacesSchema>) => {
     const facesObject = values;
-    facesObject.plat_id = pageId;
+    facesObject.plat_id = Number(pageId);
     facesObject.cr_user = "";
     console.log(facesObject);
 
@@ -51,10 +51,17 @@ export function FacesDialog() {
       method: "POST",
       body: JSON.stringify(facesObject),
     }).then((res) => {
+      if (res.error) {
+        toast.error("Failed to insert faces: " + res.error);
+        return;
+      }
       mutate(`/api/platform/faces/${pageId}`);
       toast("Faces insert successfully");
       setOpen(false);
       form.reset();
+    }).catch((err) => {
+      console.error(err);
+      toast.error("Failed to insert faces");
     });
   };
 
@@ -84,7 +91,7 @@ export function FacesDialog() {
                     />
                     <FormFieldWrap
                       label="Description"
-                      name="description"
+                      name="face_desc"
                       form={form}
                       placeholder=""
                       ftype="normal"
