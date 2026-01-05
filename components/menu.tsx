@@ -34,6 +34,7 @@ interface MenuGroupProps {
   isCollapsed?: boolean;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  href?: string;
 }
 
 const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
@@ -65,15 +66,9 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             label="Field"
             icon={<MapPin className="h-4 w-4" />}
             isCollapsed={isCollapsed}
+            defaultOpen={true}
+            href="/dashboard/field"
           >
-            <MenuLink
-              href="/dashboard/field"
-              isCollapsed={isCollapsed}
-              label="Overview"
-              icon={<MapPin className="h-4 w-4" />}
-              text="Overview"
-              isChild
-            />
             <MenuLink
               href="/dashboard/field/platform"
               isCollapsed={isCollapsed}
@@ -119,34 +114,49 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
   );
 };
 
-const MenuGroup = ({ label, icon, isCollapsed, children, defaultOpen = false }: MenuGroupProps) => {
+const MenuGroup = ({ label, icon, isCollapsed, children, defaultOpen = false, href }: MenuGroupProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const pathname = usePathname();
+  const router = useRouter();
   const isActive = pathname?.startsWith(`/dashboard/${label.toLowerCase()}`);
 
   if (isCollapsed) {
     return null;
   }
 
+  const handleLabelClick = () => {
+    if (href) {
+      router.push(href);
+    }
+  };
+
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger
-        className={cn(
-          "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
-          "hover:bg-accent hover:text-accent-foreground",
-          isActive && "bg-accent text-accent-foreground"
-        )}
-      >
-        <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1">
+        <button
+          onClick={handleLabelClick}
+          className={cn(
+            "flex flex-1 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            "hover:bg-accent hover:text-accent-foreground",
+            isActive && pathname === href && "bg-primary text-primary-foreground hover:bg-primary/90"
+          )}
+        >
           {icon}
           <span>{label}</span>
-        </div>
-        {isOpen ? (
-          <ChevronDown className="h-4 w-4 transition-transform" />
-        ) : (
-          <ChevronRight className="h-4 w-4 transition-transform" />
-        )}
-      </CollapsibleTrigger>
+        </button>
+        <CollapsibleTrigger
+          className={cn(
+            "flex items-center justify-center rounded-md p-2 text-sm font-medium transition-colors",
+            "hover:bg-accent hover:text-accent-foreground"
+          )}
+        >
+          {isOpen ? (
+            <ChevronDown className="h-4 w-4 transition-transform" />
+          ) : (
+            <ChevronRight className="h-4 w-4 transition-transform" />
+          )}
+        </CollapsibleTrigger>
+      </div>
       <CollapsibleContent className="mt-1 space-y-1 pl-6">{children}</CollapsibleContent>
     </Collapsible>
   );
