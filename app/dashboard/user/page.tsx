@@ -63,7 +63,7 @@ export default async function UserPage() {
   };
 
   return (
-    <div className="flex-1 w-full max-w-6xl mx-auto space-y-8">
+    <div className="flex-1 w-full max-w-6xl mx-auto space-y-8 overflow-y-auto overflow-x-hidden custom-scrollbar p-8">
       {/* Header */}
       <div className="flex flex-col space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">Account Settings</h1>

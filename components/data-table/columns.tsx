@@ -725,3 +725,86 @@ export const attachments: ColumnDef<Attachment>[] = [
     },
   },
 ];
+
+export type InspectionPlanning = Database["public"]["Tables"]["inspection_planning"]["Row"] & { metadata?: any };
+
+export const inspectionPlanningColumns: ColumnDef<InspectionPlanning>[] = [
+  {
+    accessorKey: "name",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Protocol Name" />,
+    cell: ({ row }) => (
+      <div className="font-black text-xs uppercase tracking-tight text-slate-900 dark:text-white">
+        {row.getValue("name") || "Unnamed Protocol"}
+      </div>
+    ),
+  },
+  {
+    accessorKey: "metadata",
+    header: "Program Code",
+    cell: ({ row }) => {
+      const metadata = row.original.metadata as any;
+      const code = metadata?.inspectionProgram || "N/A";
+      return (
+        <span className="text-[10px] font-black px-2 py-1 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 uppercase tracking-widest">
+          {code}
+        </span>
+      );
+    },
+  },
+  {
+    accessorKey: "created_at",
+    header: "Registration Date",
+    cell: ({ row }) => (
+      <div className="text-[10px] font-bold text-slate-500 uppercase">
+        {moment(row.getValue("created_at")).format("DD MMM YYYY")}
+      </div>
+    ),
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original;
+
+      const onDelete = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (confirm("Are you sure you want to delete this inspection plan?")) {
+          try {
+            await fetcher(`/api/inspection-planning?id=${item.id}`, { method: "DELETE" });
+            mutate("/api/inspection-planning");
+            toast.success("Inspection plan decommissioned");
+          } catch (err) {
+            toast.error("Failed to delete plan");
+          }
+        }
+      };
+
+      return (
+        <div className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                <MoreVertical className="h-4 w-4 text-slate-400" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
+              <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-4 py-2">Operations</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer rounded-xl m-1 py-2 font-bold text-xs gap-2 focus:bg-slate-50 dark:focus:bg-slate-900">
+                <Edit2 className="h-3.5 w-3.5 text-blue-500" />
+                <Link href={`/dashboard/planning/form?id=${item.id}`}>Modify Parameters</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={onDelete}
+                className="cursor-pointer rounded-xl m-1 py-2 font-bold text-xs gap-2 text-rose-500 focus:bg-rose-50 dark:focus:bg-rose-950/30"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Decommission Plan
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      );
+    },
+  },
+];
+
