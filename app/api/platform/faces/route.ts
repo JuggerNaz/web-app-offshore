@@ -11,11 +11,11 @@ export async function POST(request: Request, context: any) {
 
   body.cr_user = user?.id;
 
-  const { data, error } = await supabase.from("str_faces").insert(body);
+  const { data, error } = await supabase.from("str_faces").insert(body).select();
 
   if (error) {
     console.error(error.message);
-    return NextResponse.json({ error: "Failed to face level" });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   return NextResponse.json({ comment: data });

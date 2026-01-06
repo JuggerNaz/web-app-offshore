@@ -4,7 +4,7 @@ import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { createClient } from "@/utils/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Loader2, ImageIcon } from "lucide-react";
+import { Upload, X, Loader2, ImageIcon, Plus, Maximize2, Trash2, ShieldCheck, Activity } from "lucide-react";
 import { getStoragePublicUrl } from "@/utils/storage";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
@@ -16,6 +16,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import { cn } from "@/lib/utils";
 
 interface StructureImageData {
   id: number;
@@ -37,20 +38,17 @@ export default function StructureImage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-
   const [images, setImages] = useState<StructureImageData[]>([]);
 
   const supabase = createClient();
   const sourceType = `${pageType}_structure_image`;
 
-  // Fetch existing structure image
   const { data, error: fetchError, mutate } = useSWR(
     `/api/attachment/${sourceType}/${pageId}`,
     fetcher,
     { revalidateOnFocus: true }
   );
 
-  // Load existing images on mount or data change
   useEffect(() => {
     if (data?.data && Array.isArray(data.data)) {
       setImages(data.data);
@@ -73,11 +71,8 @@ export default function StructureImage() {
     async (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
-
       const files = Array.from(e.dataTransfer.files);
-      if (files.length > 0) {
-        await uploadImage(files[0]);
-      }
+      if (files.length > 0) await uploadImage(files[0]);
     },
     [pageId, pageType, sourceType]
   );
@@ -85,9 +80,7 @@ export default function StructureImage() {
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
-      if (files && files.length > 0) {
-        await uploadImage(files[0]);
-      }
+      if (files && files.length > 0) await uploadImage(files[0]);
     },
     [pageId, pageType, sourceType]
   );
@@ -96,242 +89,196 @@ export default function StructureImage() {
     try {
       setUploading(true);
       setError(null);
-      setUploadProgress(0);
+      const MAX_FILE_SIZE = 15 * 1024 * 1024;
+      const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
-      // File validation
-      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-      const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
+      if (file.size > MAX_FILE_SIZE) throw new Error("File exceeds 15MB limit");
+      if (!ALLOWED_TYPES.includes(file.type)) throw new Error("Format not supported");
 
-      if (file.size > MAX_FILE_SIZE) {
-        throw new Error("File size exceeds 10MB limit");
-      }
-
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        throw new Error("Only image files (JPEG, PNG, WEBP, GIF) are allowed");
-      }
-
-      // Delete existing structure image if any -- REMOVED for multiple support
-      // if (currentImage) {
-      //   await deleteImage(currentImage.id, false);
-      // }
-
-      // Generate unique filename
       const fileExt = file.name.split(".").pop();
-      const fileName = `structure-${pageType}-${pageId}-${Date.now()}.${fileExt}`;
+      const fileName = `${pageId}-${Date.now()}.${fileExt}`;
       const filePath = `structure-images/${fileName}`;
 
-      // Upload to storage with progress
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from("attachments")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
+        .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
-      setUploadProgress(100);
-
-      // Get public URL
       const { data: urlData } = supabase.storage.from("attachments").getPublicUrl(filePath);
       const publicUrl = urlData.publicUrl;
 
-      // Store metadata in database
       const { data: dbData, error: dbError } = await supabase
         .from("attachment")
-        .insert([
-          {
-            name: file.name,
-            source_id: pageId,
-            source_type: sourceType,
-            path: filePath,
-            meta: {
-              original_file_name: file.name,
-              file_url: publicUrl,
-              file_path: filePath,
-              file_size: file.size,
-              file_type: file.type,
-            },
+        .insert([{
+          name: file.name,
+          source_id: pageId,
+          source_type: sourceType,
+          path: filePath,
+          meta: {
+            original_file_name: file.name,
+            file_url: publicUrl,
+            file_path: filePath,
+            file_size: file.size,
+            file_type: file.type,
           },
-        ])
-        .select()
-        .single();
+        }])
+        .select().single();
 
       if (dbError) throw dbError;
-
-      // Update state
       setImages((prev) => [...prev, dbData]);
-
-      // Revalidate data
       mutate();
     } catch (err: any) {
-      setError(err.message || "Failed to upload image");
-      console.error("Upload error:", err);
+      setError(err.message || "Upload failed");
     } finally {
       setUploading(false);
-      setUploadProgress(0);
     }
   };
 
   const deleteImage = async (imageId: number) => {
     try {
-      const imageToDelete = images.find((img) => img.id === imageId);
-      if (!imageToDelete) return;
-
-      setError(null);
-
-      // Delete from storage if path exists
-      if (imageToDelete.path || imageToDelete.meta?.file_path) {
-        const pathToDelete = imageToDelete.meta?.file_path || imageToDelete.path;
-        await supabase.storage.from("attachments").remove([pathToDelete]);
-      }
-
-      // Delete from database
-      const { error: deleteError } = await supabase
-        .from("attachment")
-        .delete()
-        .eq("id", imageId);
-
-      if (deleteError) throw deleteError;
-
-      // Clear state
-      setImages((prev) => prev.filter((img) => img.id !== imageId));
-
-      // Revalidate data
+      const img = images.find((i) => i.id === imageId);
+      if (!img) return;
+      const path = img.meta?.file_path || img.path;
+      await supabase.storage.from("attachments").remove([path]);
+      await supabase.from("attachment").delete().eq("id", imageId);
+      setImages((prev) => prev.filter((i) => i.id !== imageId));
       mutate();
     } catch (err: any) {
-      setError(err.message || "Failed to delete image");
-      console.error("Delete error:", err);
+      setError("Deletion failed");
     }
   };
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">
-          {pageType === "platform" ? "Platform" : "Pipeline"} Structure Image
-        </h2>
-        {/* Delete button moved to individual carousel items */}
+    <div className="flex flex-col gap-8 p-6 max-w-7xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+
+      {/* Header Info */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-l-4 border-blue-600 pl-6 py-2">
+        <div>
+          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Visual Documentation</h3>
+          <p className="text-xl font-black tracking-tight text-slate-900 dark:text-white">Engineering Library</p>
+        </div>
+        <div className="flex gap-3">
+          <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+            <ShieldCheck className="h-4 w-4 text-blue-600" />
+            <span className="text-[10px] font-black uppercase text-blue-600 tracking-wider font-mono">Verified Records</span>
+          </div>
+        </div>
       </div>
 
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-800">
+        <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-2xl text-red-600 text-xs font-bold animate-shake">
+          <Activity className="h-4 w-4" />
           {error}
         </div>
       )}
 
-      {/* Carousel Display Area */}
-      {images.length > 0 && (
-        <div className="flex justify-center w-full">
-          <Carousel className="w-full max-w-4xl">
+      {/* Main Display Viewport */}
+      {images.length > 0 ? (
+        <div className="relative group w-full bg-slate-50 dark:bg-slate-900/30 rounded-[3rem] border border-slate-100 dark:border-slate-800 p-8 shadow-inner overflow-hidden">
+          <Carousel className="w-full">
             <CarouselContent>
-              {images.map((img) => {
-                const url = img.meta?.file_url || (img.path.startsWith("http") ? img.path : getStoragePublicUrl("attachments", img.path));
+              {images.map((img) => (
+                <CarouselItem key={img.id} className="flex flex-col items-center">
+                  <div className="relative w-full aspect-[16/10] md:aspect-[21/9] rounded-[2rem] overflow-hidden bg-white dark:bg-slate-950 shadow-2xl border border-slate-100 dark:border-slate-800">
+                    <Image
+                      src={img.meta?.file_url || getStoragePublicUrl("attachments", img.path)}
+                      alt={img.name}
+                      fill
+                      className="object-contain p-4"
+                      priority
+                    />
 
-                return (
-                  <CarouselItem key={img.id}>
-                    <div className="relative border rounded-lg overflow-hidden bg-gray-50">
-                      <div className="relative w-full" style={{ minHeight: "400px" }}>
-                        <Image
-                          src={url}
-                          alt="Structure diagram"
-                          fill
-                          className="object-contain"
-                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 1200px"
-                          priority
-                        />
-                        <div className="absolute top-2 right-2 z-10">
-                          <Button
-                            variant="destructive"
-                            size="icon"
-                            className="h-8 w-8 rounded-full opacity-80 hover:opacity-100"
-                            onClick={() => deleteImage(img.id)}
-                            disabled={uploading}
-                            title="Delete Image"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="p-2 bg-white border-t">
-                        <p className="text-sm text-gray-600">
-                          {img.meta?.original_file_name || img.name}
-                        </p>
-                        {img.meta?.file_size && (
-                          <p className="text-xs text-gray-500">
-                            {(img.meta.file_size / 1024 / 1024).toFixed(2)} MB
-                          </p>
-                        )}
+                    {/* Floating Overlay Controls */}
+                    <div className="absolute top-6 right-6 flex gap-2">
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="h-10 w-10 rounded-full shadow-lg hover:scale-110 active:scale-90 transition-all"
+                        onClick={() => deleteImage(img.id)}
+                        disabled={uploading}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {/* Bottom Meta Bar */}
+                    <div className="absolute bottom-0 inset-x-0 h-16 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-8">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 font-mono truncate max-w-xs">{img.meta?.original_file_name || img.name}</span>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] font-bold text-slate-400 capitalize">Format: {img.meta?.file_type?.split('/')[1] || 'Unknown'}</span>
+                        <div className="h-4 w-px bg-slate-200 dark:bg-slate-800" />
+                        <span className="text-[10px] font-bold text-slate-400">Size: {(img.meta?.file_size || 0 / 1024 / 1024).toFixed(2)} MB</span>
                       </div>
                     </div>
-                  </CarouselItem>
-                );
-              })}
+                  </div>
+                </CarouselItem>
+              ))}
             </CarouselContent>
-            <CarouselPrevious />
-            <CarouselNext />
+            <CarouselPrevious className="left-[-20px] h-12 w-12 rounded-full border-none bg-white dark:bg-slate-900 shadow-xl shadow-black/10 hover:bg-slate-50" />
+            <CarouselNext className="right-[-20px] h-12 w-12 rounded-full border-none bg-white dark:bg-slate-900 shadow-xl shadow-black/10 hover:bg-slate-50" />
           </Carousel>
         </div>
-      )}
-
-      {/* Upload Area */}
-      {!uploading && (
-        <div
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragging
-            ? "border-blue-500 bg-blue-50"
-            : "border-gray-300 bg-gray-50 hover:border-gray-400"
-            } ${uploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {uploading ? (
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="w-12 h-12 animate-spin text-blue-500" />
-              <p className="text-gray-600">Uploading image...</p>
-              {uploadProgress > 0 && (
-                <div className="w-full max-w-xs bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              <ImageIcon className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-              <h3 className="text-lg font-semibold mb-2">
-                {images.length > 0 ? "Add another image" : "Drop your structure image here"}
-              </h3>
-              <p className="text-gray-600 mb-4">
-                or click to browse files
-              </p>
-              <input
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="structure-image-input"
-                disabled={uploading}
-              />
-              <label htmlFor="structure-image-input">
-                <Button asChild disabled={uploading}>
-                  <span>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Select Image
-                  </span>
-                </Button>
-              </label>
-              <p className="text-xs text-gray-500 mt-4">
-                Supported formats: JPEG, PNG, WEBP, GIF (max 10MB)
-              </p>
-            </>
-          )}
+      ) : (
+        <div className="w-full aspect-[21/9] bg-slate-50 dark:bg-slate-900/30 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center gap-4 text-slate-400">
+          <ImageIcon className="h-12 w-12 opacity-20" />
+          <p className="text-xs font-black uppercase tracking-widest">No Visual Records Found</p>
         </div>
       )}
 
-      {/* Replace Image Button removed as upload area is always visible */}
+      {/* Modern Upload Zone */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2 relative group cursor-pointer"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelect}
+            className="hidden"
+            id="premium-upload"
+            disabled={uploading}
+          />
+          <label htmlFor="premium-upload" className="block h-full cursor-pointer">
+            <div className={cn(
+              "h-48 rounded-[2rem] border-2 border-dashed transition-all duration-300 flex flex-col items-center justify-center gap-3",
+              isDragging ? "border-blue-500 bg-blue-50/50" : "border-slate-200 dark:border-slate-800 bg-slate-50 group-hover:bg-slate-100 hover:border-slate-300"
+            )}>
+              {uploading ? (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Transmitting Image Data...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="h-12 w-12 rounded-2xl bg-white dark:bg-slate-900 shadow-lg flex items-center justify-center text-slate-400 group-hover:scale-110 transition-transform">
+                    <Upload className="h-5 w-5" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-black tracking-tight text-slate-900 dark:text-white">Drag & Drop Visuals</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">or Click to Select Files</p>
+                  </div>
+                </>
+              )}
+            </div>
+          </label>
+        </div>
+
+        <div className="bg-slate-900 dark:bg-white rounded-[2rem] p-8 flex flex-col justify-between shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform duration-700">
+            <Plus className="h-32 w-32 text-white dark:text-slate-900" />
+          </div>
+          <div className="relative z-10">
+            <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em] mb-4">Pro Tip</h4>
+            <p className="text-white dark:text-slate-900 font-bold leading-relaxed">
+              Upload your engineering diagrams and site photos to build a comprehensive digital twin.
+            </p>
+          </div>
+          <p className="text-[10px] font-black uppercase text-slate-500 relative z-10">Max payload: 15MB/File</p>
+        </div>
+      </div>
+
     </div>
   );
 }

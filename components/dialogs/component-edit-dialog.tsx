@@ -10,6 +10,21 @@ import { urlId, urlType } from "@/utils/client-state";
 import { fetcher } from "@/utils/utils";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
+import specAdditionalDetails from "@/utils/spec-additional-details.json";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DataTable } from "@/components/data-table/data-table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { comments, attachments } from "@/components/data-table/columns";
+import { ComponentCommentDialog } from "./component-comment-dialog";
+import { ComponentAttachmentDialog } from "./component-attachment-dialog";
 
 // Keep in sync with other component types
 export type EditableComponent = {
@@ -78,6 +93,34 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
     return val ? { value: val, label: val } : null;
   }).filter(Boolean) : [];
 
+  // All components for association
+  const { data: allComponents } = useSWR(
+    structureId ? `/api/structure-components/${structureId}` : null,
+    fetcher
+  );
+
+  const [selectorOpen, setSelectorOpen] = useState(false);
+
+  // Level options
+  const { data: levelData } = useSWR(
+    pageType === "platform" && structureId ? `/api/platform/level/${structureId}` : null,
+    fetcher
+  );
+  const levelOptions = levelData?.data ? levelData.data.map((x: any) => ({
+    value: x.level_name,
+    label: x.level_name
+  })) : [];
+
+  // Face options
+  const { data: faceData } = useSWR(
+    pageType === "platform" && structureId ? `/api/platform/faces/${structureId}` : null,
+    fetcher
+  );
+  const faceOptions = faceData?.data ? faceData.data.map((x: any) => ({
+    value: x.face,
+    label: x.face
+  })) : [];
+
   const [formData, setFormData] = useState({
     q_id: "",
     id_no: "",
@@ -95,7 +138,19 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
     face: "",
     top_und: "",
     comp_group: "",
+    associated_comp_id: null as number | null,
+    additionalInfo: {} as Record<string, any>,
   });
+
+  const getTemplate = (code: string | null, type: string) => {
+    if (!code) return {};
+    const lowerCode = code.toLowerCase();
+    if (lowerCode === "an") {
+      const compType = type === "platform" ? "an_comp_plat" : "an_comp_pipe";
+      return specAdditionalDetails.data.find((d: any) => d.componentType === compType)?.additionalDataTemplate || {};
+    }
+    return specAdditionalDetails.data.find((d: any) => d.code === lowerCode)?.additionalDataTemplate || {};
+  };
 
   // Initialize form from component when opened
   useEffect(() => {
@@ -117,24 +172,36 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
         face: component.metadata?.face ?? "",
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
+        associated_comp_id: component.metadata?.associated_comp_id ?? null,
+        additionalInfo: component.metadata?.additionalInfo ?? getTemplate(component.code, pageType),
       });
     }
   }, [open, component]);
 
-  const handleChange = (field: keyof typeof formData, value: string) => {
+  const handleChange = (field: keyof typeof formData, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleAdditionalInfoChange = (field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      additionalInfo: {
+        ...prev.additionalInfo,
+        [field]: value
+      }
+    }));
+  };
+
+  const generatedIdNo = buildIdNoEdit(
+    formData.code || component?.code || "",
+    formData.s_node,
+    formData.f_node,
+    formData.dist,
+    formData.clk_pos
+  );
+
   const handleSave = async () => {
     if (!component) return;
-
-    const generatedIdNo = buildIdNoEdit(
-      formData.code || component.code || "",
-      formData.s_node,
-      formData.f_node,
-      formData.dist,
-      formData.clk_pos
-    );
 
     if (!generatedIdNo) {
       toast("ID No is invalid. Please ensure component type is set.");
@@ -157,6 +224,8 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
         face: formData.face,
         top_und: formData.top_und,
         comp_group: formData.comp_group,
+        associated_comp_id: formData.associated_comp_id,
+        additionalInfo: formData.additionalInfo,
       };
 
       const updateData = {
@@ -188,264 +257,466 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
     }
   };
 
+  // Fetch comments and attachments for the tabs
+  const { data: commentsData, isLoading: commentsLoading } = useSWR(
+    component && component.id ? `/api/comment/component/${component.id}` : null,
+    fetcher
+  );
+
+  const { data: attachmentsData, isLoading: attachmentsLoading } = useSWR(
+    component && component.id ? `/api/attachment/component/${component.id}` : null,
+    fetcher
+  );
+
   if (!open || !component) return null;
 
-  // Simple inline modal implementation (no Radix Portal) to avoid any
-  // interaction with global overlays / aria-hidden behavior.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/60 pointer-events-auto"
-        onClick={() => onOpenChange(false)}
-      />
-      {/* Modal content */}
-      <div className="relative z-10 max-w-4xl max-h-[90vh] w-full bg-background border rounded-lg shadow-lg overflow-y-auto p-6 pointer-events-auto">
-        <div className="flex flex-col gap-1 mb-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            Edit Component [{component.id_no}] {component.code ? `- ${component.code}` : ""}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {`Created: ${component.created_at
-                ? new Date(component.created_at).toLocaleString()
-                : "N/A"
-              } • Updated: ${component.updated_at
-                ? new Date(component.updated_at).toLocaleString()
-                : "N/A"
-              }`}
-          </p>
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="text-blue-500">🔧</span>
+            Edit Component Spec [{component?.id_no}]
+          </DialogTitle>
+          {component && (
+            <DialogDescription className="text-xs text-muted-foreground">
+              {`Created: ${component.created_at ? new Date(component.created_at).toLocaleString() : "N/A"
+                } • Updated: ${component.updated_at ? new Date(component.updated_at).toLocaleString() : "N/A"
+                }`}
+            </DialogDescription>
+          )}
+        </DialogHeader>
 
-        <div className="space-y-4 mt-2">
-          {/* Row 1: Q ID, ID No, Code */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-qId">Q Id</Label>
-              <Input
-                id="edit-qId"
-                value={formData.q_id}
-                onChange={(e) => handleChange("q_id", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-idNo">ID No</Label>
-              <Input
-                id="edit-idNo"
-                value={buildIdNoEdit(
-                  formData.code || component.code || "",
-                  formData.s_node,
-                  formData.f_node,
-                  formData.dist,
-                  formData.clk_pos
-                ) || component.id_no || ""}
-                readOnly
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-code">Code</Label>
-              <Input
-                id="edit-code"
-                value={formData.code}
-                onChange={(e) => handleChange("code", e.target.value)}
-              />
-            </div>
-          </div>
+        <Tabs defaultValue="specifications" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="specifications">Specifications</TabsTrigger>
+            <TabsTrigger value="specifications2">Specifications 2</TabsTrigger>
+            <TabsTrigger value="comments">Comments</TabsTrigger>
+            <TabsTrigger value="attachments">Attachments</TabsTrigger>
+          </TabsList>
 
-          {/* Description */}
-          <div className="space-y-2">
-            <Label htmlFor="edit-description">Description</Label>
-            <Input
-              id="edit-description"
-              value={formData.description}
-              onChange={(e) => handleChange("description", e.target.value)}
-            />
-          </div>
+          <TabsContent value="specifications" className="space-y-4 mt-4">
+            <div className="border rounded-lg p-6 space-y-4 bg-slate-50 dark:bg-slate-900">
+              {/* Row 1: Q ID, ID No, Code */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-qId">Q Id:</Label>
+                  <Input
+                    id="edit-qId"
+                    value={formData.q_id}
+                    onChange={(e) => handleChange("q_id", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-idNo">ID No:</Label>
+                  <Input
+                    id="edit-idNo"
+                    value={generatedIdNo || component?.id_no || ""}
+                    readOnly
+                    className="bg-muted font-mono text-cyan-600 dark:text-cyan-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-code">Code:</Label>
+                  <Input
+                    id="edit-code"
+                    value={formData.code}
+                    onChange={(e) => handleChange("code", e.target.value)}
+                  />
+                </div>
+              </div>
 
-          {/* Start/End Node */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-sNode">Start Node</Label>
-              <Input
-                id="edit-sNode"
-                value={formData.s_node}
-                onChange={(e) => handleChange("s_node", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-eNode">End Node</Label>
-              <Input
-                id="edit-eNode"
-                value={formData.f_node}
-                onChange={(e) => handleChange("f_node", e.target.value)}
-              />
-            </div>
-          </div>
+              {/* Row 2: Description (full width, floating label style) */}
+              <div className="space-y-2 pt-2">
+                <div className="relative">
+                  <Input
+                    id="edit-description"
+                    placeholder=" "
+                    className="peer pt-4"
+                    value={formData.description}
+                    onChange={(e) => handleChange("description", e.target.value)}
+                  />
+                  <Label
+                    htmlFor="edit-description"
+                    className="pointer-events-none absolute left-3 top-0 -translate-y-1/2 bg-background px-1 text-xs text-muted-foreground transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:-translate-y-1/2 peer-focus:top-0 peer-focus:-translate-y-1/2 peer-focus:text-xs"
+                  >
+                    Description
+                  </Label>
+                </div>
+              </div>
 
-          {/* Start/End Leg */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-sLeg">Start Leg</Label>
-              {pageType === "platform" ? (
+              {/* Row 3: Nodes */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-sNode">Start Node:</Label>
+                  <Input
+                    id="edit-sNode"
+                    value={formData.s_node}
+                    onChange={(e) => handleChange("s_node", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-eNode">End Node:</Label>
+                  <Input
+                    id="edit-eNode"
+                    value={formData.f_node}
+                    onChange={(e) => handleChange("f_node", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: Legs */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-sLeg">Start Leg:</Label>
+                  {pageType === "platform" ? (
+                    <Select
+                      value={formData.s_leg}
+                      onValueChange={(val) => handleChange("s_leg", val)}
+                      disabled={legOptions.length === 0}
+                    >
+                      <SelectTrigger id="edit-sLeg">
+                        <SelectValue placeholder="Select start leg" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {legOptions.map((opt: any) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-eLeg">End Leg:</Label>
+                  {pageType === "platform" ? (
+                    <Select
+                      value={formData.f_leg}
+                      onValueChange={(val) => handleChange("f_leg", val)}
+                      disabled={legOptions.length === 0}
+                    >
+                      <SelectTrigger id="edit-eLeg">
+                        <SelectValue placeholder="Select end leg" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {legOptions.map((opt: any) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-dist">Distance:</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="edit-dist"
+                      value={formData.dist}
+                      onChange={(e) => handleChange("dist", e.target.value)}
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-muted-foreground">m</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 5: elevations and clock pos */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-elv1">Elevation 1:</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="edit-elv1"
+                      value={formData.elv_1}
+                      onChange={(e) => handleChange("elv_1", e.target.value)}
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-muted-foreground">m</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-elv2">Elevation 2:</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="edit-elv2"
+                      value={formData.elv_2}
+                      onChange={(e) => handleChange("elv_2", e.target.value)}
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-muted-foreground">m</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-clockPos">Clock Position:</Label>
+                  <Select
+                    value={formData.clk_pos}
+                    onValueChange={(val) => handleChange("clk_pos", val)}
+                    disabled={!positionLib}
+                  >
+                    <SelectTrigger id="edit-clockPos">
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {positionLib?.data
+                        ?.filter((x: any) => x.lib_code === "POSITION")
+                        .map((x: any) => (
+                          <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                            {x.lib_id}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Row 6: Level / Face / Part */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-level">Level:</Label>
+                  {pageType === "platform" ? (
+                    <Select
+                      value={formData.lvl}
+                      onValueChange={(val) => handleChange("lvl", val)}
+                      disabled={levelOptions.length === 0}
+                    >
+                      <SelectTrigger id="edit-level">
+                        <SelectValue placeholder="Select level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {levelOptions.map((opt: any) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-face">Face:</Label>
+                  {pageType === "platform" ? (
+                    <Select
+                      value={formData.face}
+                      onValueChange={(val) => handleChange("face", val)}
+                      disabled={faceOptions.length === 0}
+                    >
+                      <SelectTrigger id="edit-face">
+                        <SelectValue placeholder="Select face" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {faceOptions.map((opt: any) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-part">Part:</Label>
+                  <Select
+                    value={formData.top_und}
+                    onValueChange={(val) => handleChange("top_und", val)}
+                  >
+                    <SelectTrigger id="edit-part">
+                      <SelectValue placeholder="Select part" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TOPSIDE">TOPSIDE</SelectItem>
+                      <SelectItem value="SUBSEA">SUBSEA</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Row 7: Group */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-group">Structural Group:</Label>
                 <Select
-                  value={formData.s_leg}
-                  onValueChange={(val) => handleChange("s_leg", val)}
-                  disabled={legOptions.length === 0}
+                  value={formData.comp_group}
+                  onValueChange={(val) => handleChange("comp_group", val)}
+                  disabled={!compGroupLib}
                 >
-                  <SelectTrigger id="edit-sLeg">
-                    <SelectValue placeholder="Select start leg" />
+                  <SelectTrigger id="edit-group">
+                    <SelectValue placeholder="Select structural group" />
                   </SelectTrigger>
                   <SelectContent>
-                    {legOptions.map((opt: any) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
+                    {compGroupLib?.data
+                      ?.filter((x: any) => x.lib_code === "COMPGRP")
+                      .map((x: any) => (
+                        <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                          {x.lib_desc}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
-              ) : (
-                <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+              </div>
+
+              {/* Additional Details */}
+              {Object.keys(formData.additionalInfo).length > 0 && (
+                <div className="pt-4 border-t space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider italic">Additional Details</h3>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                    {Object.entries(formData.additionalInfo).map(([key, value]) => {
+                      if (key === 'del') return null;
+                      const label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                      return (
+                        <div key={key} className="flex items-center gap-4">
+                          <Label htmlFor={`edit-${key}`} className="text-xs font-medium min-w-[100px] text-right">{label}:</Label>
+                          {typeof value === 'boolean' ? (
+                            <Checkbox
+                              id={`edit-${key}`}
+                              checked={!!value}
+                              onCheckedChange={(checked: boolean) => handleAdditionalInfoChange(key, checked)}
+                            />
+                          ) : (
+                            <Input
+                              id={`edit-${key}`}
+                              value={value || ""}
+                              onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
+                              className="h-8 text-xs text-cyan-600 dark:text-cyan-400 font-mono shadow-sm"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Metadata */}
+              {component?.metadata && (
+                <div className="space-y-2 mt-4 pt-4 border-t">
+                  <Label htmlFor="metadata">Metadata:</Label>
+                  <textarea
+                    id="metadata"
+                    value={JSON.stringify(component.metadata, null, 2)}
+                    readOnly
+                    className="w-full p-2 border rounded-md font-mono text-xs bg-muted min-h-[100px]"
+                  />
+                </div>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-eLeg">End Leg</Label>
-              {pageType === "platform" ? (
-                <Select
-                  value={formData.f_leg}
-                  onValueChange={(val) => handleChange("f_leg", val)}
-                  disabled={legOptions.length === 0}
-                >
-                  <SelectTrigger id="edit-eLeg">
-                    <SelectValue placeholder="Select end leg" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {legOptions.map((opt: any) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          </TabsContent>
+
+          <TabsContent value="specifications2" className="space-y-4 mt-4">
+            <div className="border rounded-lg p-8 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 space-y-8 min-h-[400px]">
+              <div className="space-y-6">
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 italic">
+                  Associate Component to other Component:
+                </h3>
+
+                <div className="flex items-center space-x-4">
+                  <Label className="text-sm font-medium min-w-[120px]">Associated to:</Label>
+                  <div className="flex items-center space-x-2 flex-1">
+                    <div className="min-w-[200px] h-10 px-3 flex items-center bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-md">
+                      <span className="text-sm font-mono text-cyan-600 dark:text-cyan-400">
+                        {allComponents?.data?.find((c: any) => c.id === formData.associated_comp_id)?.id_no || "None"}
+                      </span>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 px-4 h-10 font-bold"
+                      onClick={() => setSelectorOpen(true)}
+                    >
+                      ...
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Dialog open={selectorOpen} onOpenChange={setSelectorOpen}>
+              <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+                <DialogHeader>
+                  <DialogTitle>Select Component to Associate</DialogTitle>
+                  <DialogDescription>
+                    Choose a component from the same structure ({structureId}) to associate with this component.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex-1 overflow-y-auto mt-4 border rounded-md">
+                  <DataTable
+                    columns={[
+                      { accessorKey: "id_no", header: "ID No" },
+                      { accessorKey: "q_id", header: "Q ID" },
+                      { accessorKey: "code", header: "Code" },
+                      {
+                        id: "actions",
+                        header: "Action",
+                        cell: ({ row }: { row: any }) => (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              handleChange("associated_comp_id", (row.original as any).id);
+                              setSelectorOpen(false);
+                            }}
+                          >
+                            Select
+                          </Button>
+                        ),
+                      },
+                    ]}
+                    data={allComponents?.data?.filter((c: any) => c.id !== component?.id) || []}
+                    disableRowClick={true}
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          <TabsContent value="comments" className="space-y-4 mt-4">
+            <div className="p-4">
+              {commentsLoading ? (
+                <div>Loading comments...</div>
               ) : (
-                <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                <DataTable
+                  columns={comments}
+                  data={commentsData?.data || []}
+                  disableRowClick={true}
+                  toolbarActions={<ComponentCommentDialog componentId={component?.id || 0} />}
+                />
               )}
             </div>
-          </div>
+          </TabsContent>
 
-          {/* Distance, Elevations, Clock Pos */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-dist">Distance</Label>
-              <Input
-                id="edit-dist"
-                value={formData.dist}
-                onChange={(e) => handleChange("dist", e.target.value)}
-              />
+          <TabsContent value="attachments" className="space-y-4 mt-4">
+            <div className="p-4">
+              {attachmentsLoading ? (
+                <div>Loading attachments...</div>
+              ) : (
+                <DataTable
+                  columns={attachments}
+                  data={attachmentsData?.data || []}
+                  disableRowClick={true}
+                  toolbarActions={<ComponentAttachmentDialog componentId={component?.id || 0} />}
+                />
+              )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-elv1">Elevation 1</Label>
-              <Input
-                id="edit-elv1"
-                value={formData.elv_1}
-                onChange={(e) => handleChange("elv_1", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-elv2">Elevation 2</Label>
-              <Input
-                id="edit-elv2"
-                value={formData.elv_2}
-                onChange={(e) => handleChange("elv_2", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-clockPos">Clock Position</Label>
-              <Select
-                value={formData.clk_pos}
-                onValueChange={(val) => handleChange("clk_pos", val)}
-                disabled={!positionLib}
-              >
-                <SelectTrigger id="edit-clockPos">
-                  <SelectValue placeholder="Select position" />
-                </SelectTrigger>
-                <SelectContent>
-                  {positionLib?.data
-                    ?.filter((x: any) => x.lib_code === "POSITION")
-                    .map((x: any) => (
-                      <SelectItem key={x.lib_id} value={String(x.lib_id)}>
-                        {x.lib_id}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          </TabsContent>
+        </Tabs>
 
-          {/* Level / Face / Part / Group */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-level">Level</Label>
-              <Input
-                id="edit-level"
-                value={formData.lvl}
-                onChange={(e) => handleChange("lvl", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-face">Face</Label>
-              <Input
-                id="edit-face"
-                value={formData.face}
-                onChange={(e) => handleChange("face", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-part">Part</Label>
-              <Select
-                value={formData.top_und}
-                onValueChange={(val) => handleChange("top_und", val)}
-              >
-                <SelectTrigger id="edit-part">
-                  <SelectValue placeholder="Select part" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TOPSIDE">TOPSIDE</SelectItem>
-                  <SelectItem value="SUBSEA">SUBSEA</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-group">Structural Group</Label>
-              <Select
-                value={formData.comp_group}
-                onValueChange={(val) => handleChange("comp_group", val)}
-                disabled={!compGroupLib}
-              >
-                <SelectTrigger id="edit-group">
-                  <SelectValue placeholder="Select structural group" />
-                </SelectTrigger>
-                <SelectContent>
-                  {compGroupLib?.data
-                    ?.filter((x: any) => x.lib_code === "COMPGRP")
-                    .map((x: any) => (
-                      <SelectItem key={x.lib_id} value={String(x.lib_id)}>
-                        {x.lib_desc}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-2 mt-4 justify-end">
+        <DialogFooter className="flex gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={isSaving}>
             {isSaving ? "Saving..." : "Save Changes"}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

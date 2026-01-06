@@ -8,25 +8,46 @@ import { SmtpMessage } from "../smtp-message";
 
 export default async function ForgotPassword({ searchParams }: { searchParams: Promise<Message> }) {
   return (
-    <>
-      <form className="flex-1 flex flex-col w-full gap-2 text-foreground [&>input]:mb-6 min-w-64 max-w-64 mx-auto">
-        <div>
-          <h1 className="text-2xl font-medium">Reset Password</h1>
-          <p className="text-sm text-secondary-foreground">
-            Already have an account?{" "}
-            <Link className="text-primary underline" href="/sign-in">
-              Sign in
-            </Link>
-          </p>
+    <div className="flex flex-col gap-6">
+      <div className="space-y-1">
+        <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">Reset Password</h1>
+        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          Enter your email to receive recovery instructions.
+        </p>
+      </div>
+
+      <form className="flex flex-col gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="email" className="text-xs font-bold uppercase tracking-wider text-slate-400">Email Address</Label>
+          <Input
+            name="email"
+            placeholder="you@company.com"
+            required
+            className="h-12 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 focus:ring-2 focus:ring-blue-500/20"
+          />
         </div>
-        <div className="flex flex-col gap-2 [&>input]:mb-3 mt-8">
-          <Label htmlFor="email">Email</Label>
-          <Input name="email" placeholder="you@example.com" required />
-          <SubmitButton formAction={forgotPasswordAction}>Reset Password</SubmitButton>
-          <FormMessage message={searchParams} />
-        </div>
+
+        <SubmitButton
+          pendingText="Sending Link..."
+          formAction={forgotPasswordAction}
+          className="h-12 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold shadow-lg hover:opacity-90 transition-all mt-2"
+        >
+          Send Reset Link
+        </SubmitButton>
+
+        <FormMessage message={searchParams} />
       </form>
+
+      <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-center">
+        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          Remembered your password?{" "}
+          <Link className="text-blue-600 font-bold hover:underline" href="/sign-in">
+            Go back to Log In
+          </Link>
+        </p>
+      </div>
+
       <SmtpMessage />
-    </>
+    </div>
   );
 }

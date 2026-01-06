@@ -9,7 +9,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronRight, ChevronDown, MoreVertical } from "lucide-react";
+import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { ComponentEditDialog, EditableComponent } from "@/components/dialogs/component-edit-dialog";
@@ -79,12 +79,12 @@ export default function ComponentContent() {
   // Fetch structure components based on structure_id and selected code
   const apiUrl = structureId
     ? (() => {
-        const params = new URLSearchParams();
-        if (selectedCode) params.set("code", selectedCode);
-        if (viewArchived) params.set("archived", "true");
-        const query = params.toString();
-        return `/api/structure-components/${structureId}${query ? `?${query}` : ""}`;
-      })()
+      const params = new URLSearchParams();
+      if (selectedCode) params.set("code", selectedCode);
+      if (viewArchived) params.set("archived", "true");
+      const query = params.toString();
+      return `/api/structure-components/${structureId}${query ? `?${query}` : ""}`;
+    })()
     : null;
 
   const {
@@ -108,7 +108,6 @@ export default function ComponentContent() {
   };
 
   const handleAddNewComponent = () => {
-    // Create an empty component object for create mode
     setSelectedComponent(null);
     setDialogMode('create');
     setDialogOpen(true);
@@ -122,7 +121,6 @@ export default function ComponentContent() {
   const handleDialogOpenChange = (isOpen: boolean) => {
     setDialogOpen(isOpen);
     if (!isOpen) {
-      // Reset mode and selected component when dialog fully closes
       setDialogMode('view');
       setSelectedComponent(null);
     }
@@ -135,264 +133,238 @@ export default function ComponentContent() {
   };
 
   return (
-    <div className="flex w-full gap-4 h-[calc(100vh-12rem)] max-w-full">
+    <div className="flex w-full gap-8 min-h-[70vh]">
       {/* Left Sidebar - Component Types List */}
-      <div className="w-64 flex-shrink-0 border rounded-md bg-muted/10 flex flex-col overflow-y-auto">
-        <div className="p-4 border-b flex-shrink-0">
-          <h3 className="font-semibold text-sm mb-2">Components List</h3>
-          <button
-            onClick={() => {
-              setViewArchived(false);
-              handleTypeClick("ALL COMPONENTS", null);
-            }}
-            className={cn(
-              "w-full text-left text-sm py-1 px-2 rounded hover:bg-muted mb-1",
-              !viewArchived && selectedType === "ALL COMPONENTS" && "bg-muted font-medium"
-            )}
-          >
-            ALL COMPONENTS
-          </button>
-          <button
-            onClick={() => {
-              setViewArchived(true);
-              setSelectedType("ARCHIVED");
-              setSelectedCode(null);
-            }}
-            className={cn(
-              "w-full text-left text-sm py-1 px-2 rounded hover:bg-muted mb-2",
-              viewArchived && selectedType === "ARCHIVED" && "bg-muted font-medium"
-            )}
-          >
-            ARCHIVED
-          </button>
-          <Collapsible open={isListOpen} onOpenChange={setIsListOpen}>
-            <CollapsibleTrigger className="flex items-center w-full text-sm hover:bg-muted p-1 rounded">
-              {isListOpen ? (
-                <ChevronDown className="h-4 w-4 mr-1" />
+      <div className="w-72 flex-shrink-0 flex flex-col gap-6">
+        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 flex flex-col gap-6 h-full shadow-sm">
+          <div className="space-y-4">
+            <h3 className="px-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Library Sections</h3>
+            <div className="flex flex-col gap-1">
+              <FilterButton
+                active={!viewArchived && selectedType === "ALL COMPONENTS"}
+                onClick={() => handleTypeClick("ALL COMPONENTS", null)}
+                icon={<Box className="h-4 w-4" />}
+                label="All Components"
+              />
+              <FilterButton
+                active={viewArchived}
+                onClick={() => {
+                  setViewArchived(true);
+                  setSelectedType("ARCHIVED");
+                  setSelectedCode(null);
+                }}
+                icon={<Archive className="h-4 w-4" />}
+                label="Archived Items"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="px-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Component Categories</h3>
+            <div className="flex flex-col gap-1 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+              {isLoadingTypes ? (
+                <div className="px-2 py-4 space-y-3">
+                  {[1, 2, 3, 4].map(i => <div key={i} className="h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse w-full" />)}
+                </div>
               ) : (
-                <ChevronRight className="h-4 w-4 mr-1" />
+                componentTypes.map((type) => (
+                  <button
+                    key={type.id}
+                    onClick={() => handleTypeClick(type.name, type.code)}
+                    className={cn(
+                      "flex items-center gap-3 w-full text-left text-xs font-bold py-2.5 px-3 rounded-xl transition-all",
+                      selectedType === type.name && !viewArchived
+                        ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                        : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                    )}
+                  >
+                    <div className={cn(
+                      "h-2 w-2 rounded-full",
+                      selectedType === type.name && !viewArchived ? "bg-white" : "bg-slate-300 dark:bg-slate-700"
+                    )} />
+                    <span className="truncate">{type.name}</span>
+                  </button>
+                ))
               )}
-              Component Types
-            </CollapsibleTrigger>
-            <CollapsibleContent className="mt-1">
-              <div className="pl-5 space-y-1 max-h-[60vh] overflow-y-auto">
-                {isLoadingTypes ? (
-                  <div className="text-xs text-muted-foreground py-2 px-2">Loading...</div>
-                ) : componentTypes.length === 0 ? (
-                  <div className="text-xs text-muted-foreground py-2 px-2">No active components</div>
-                ) : (
-                  componentTypes.map((type) => (
-                    <button
-                      key={type.id}
-                      onClick={() => handleTypeClick(type.name, type.code)}
-                      className={cn(
-                        "w-full text-left text-xs py-1 px-2 rounded hover:bg-muted",
-                        selectedType === type.name && "bg-muted font-medium"
-                      )}
-                    >
-                      {type.name}
-                    </button>
-                  ))
-                )}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 border rounded-md overflow-hidden">
-        {/* Search Bar */}
-        <div className="p-4 border-b flex-shrink-0 bg-background">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-            <div className="w-64">
+      <div className="flex-1 flex flex-col gap-6 min-w-0">
+        {/* Header & Controls */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-80 group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
               <Input
-                placeholder="Search Q ID"
+                placeholder="Search by Q ID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full"
+                className="h-11 pl-10 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
               />
             </div>
-            <Button variant="outline" size="sm" onClick={handleAddNewComponent}>
-              Add new Component
+            <Button
+              onClick={handleAddNewComponent}
+              className="h-11 px-6 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold shadow-lg hover:opacity-90 transition-all gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Add Component</span>
             </Button>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Showing {filteredComponents.length} component{filteredComponents.length !== 1 ? 's' : ''}
-            </div>
+          </div>
+          <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 rounded-full">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+              Listing {filteredComponents.length} Data Points
+            </span>
           </div>
         </div>
 
-        {/* Data Table */}
-        <div className="flex-1 bg-background relative">
-          <div className="absolute inset-0 overflow-auto">
-            <table className="w-full caption-bottom text-sm">
-            <thead className="[&_tr]:border-b sticky top-0 bg-background z-10">
-              <tr className="border-b">
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[180px] min-w-[180px]">ID No</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[120px] min-w-[120px]">Q ID</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[100px] min-w-[100px]">Code</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[80px] min-w-[80px]">S Node</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[80px] min-w-[80px]">E Node</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[70px] min-w-[70px]">S Leg</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[70px] min-w-[70px]">E Leg</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[100px] min-w-[100px]">Elevation 1</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[100px] min-w-[100px]">Elevation 2</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[80px] min-w-[80px]">Distance</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[90px] min-w-[90px]">Clock Pos</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[150px] min-w-[150px]">Created At</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[100px] min-w-[100px]">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="[&_tr:last-child]:border-0">
-              {/* Loading state */}
-              {isLoadingComponents && (
-                <tr>
-                  <td colSpan={12} className="p-8 text-center text-muted-foreground">
-                    Loading components...
-                  </td>
+        {/* Data Table Container */}
+        <div className="bg-white dark:bg-slate-900/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-black/20 overflow-hidden relative">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 dark:bg-slate-900/80 border-b border-slate-100 dark:border-slate-800">
+                  <TableTh className="w-[200px]">System ID No</TableTh>
+                  <TableTh className="w-[140px]">Q ID</TableTh>
+                  <TableTh className="w-[100px]">Type</TableTh>
+                  <TableTh className="w-[180px]">Node Path (S/E)</TableTh>
+                  <TableTh className="w-[160px]">Platform Leg (S/E)</TableTh>
+                  <TableTh className="w-[160px]">Elevation (1/2)</TableTh>
+                  <TableTh className="w-[120px]">Timestamp</TableTh>
+                  <TableTh className="w-[80px] text-center">Actions</TableTh>
                 </tr>
-              )}
-
-              {/* Error state */}
-              {componentsError && (
-                <tr>
-                  <td colSpan={12} className="p-8 text-center text-destructive">
-                    Failed to load components
-                  </td>
-                </tr>
-              )}
-
-              {/* Empty state */}
-              {!isLoadingComponents && !componentsError && filteredComponents.length === 0 && (
-                <tr>
-                  <td colSpan={12} className="p-8 text-center text-muted-foreground">
-                    {structureId ? "No components found" : "Please select a structure to view components"}
-                  </td>
-                </tr>
-              )}
-
-              {/* Data rows */}
-              {!isLoadingComponents && !componentsError && filteredComponents.map((comp: Component) => (
-                <tr 
-                  key={comp.id} 
-                  className="border-b transition-colors cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleRowClick(comp)}
-                >
-                  <td className="p-4 align-middle font-mono text-xs">{comp.id_no}</td>
-                  <td className="p-4 align-middle text-sm">{comp.q_id}</td>
-                  <td className="p-4 align-middle text-sm">{comp.code || "-"}</td>
-                  <td className="p-4 align-middle text-sm">{comp.metadata?.s_node ?? "-"}</td>
-                  <td className="p-4 align-middle text-sm">{comp.metadata?.f_node ?? "-"}</td>
-                  <td className="p-4 align-middle text-sm">{comp.metadata?.s_leg ?? "-"}</td>
-                  <td className="p-4 align-middle text-sm">{comp.metadata?.f_leg ?? "-"}</td>
-                  <td className="p-4 align-middle text-sm">{comp.metadata?.elv_1 ?? "-"}</td>
-                  <td className="p-4 align-middle text-sm">{comp.metadata?.elv_2 ?? "-"}</td>
-                  <td className="p-4 align-middle text-sm">{comp.metadata?.dist ?? "-"}</td>
-                  <td className="p-4 align-middle text-sm">{comp.metadata?.clk_pos ?? "-"}</td>
-                  <td className="p-4 align-middle text-sm">{comp.created_at ? new Date(comp.created_at).toLocaleDateString() : "-"}</td>
-                  <td className="p-4 align-middle text-sm">
-                    {/* Active components: Edit + Archive */}
-                    {!viewArchived && !comp.is_deleted && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 p-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <span className="sr-only">Open menu</span>
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditComponent(comp);
-                            }}
-                          >
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="cursor-pointer text-destructive focus:text-destructive"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                await fetcher(`/api/structure-components/item/${comp.id}`, {
-                                  method: "PATCH",
-                                  body: JSON.stringify({ is_deleted: true }),
-                                });
-                                if (apiUrl) {
-                                  mutate(apiUrl);
+              </thead>
+              <tbody>
+                {isLoadingComponents ? (
+                  <tr className="animate-pulse">
+                    <td colSpan={8} className="p-20 text-center text-slate-400 font-bold uppercase tracking-widest">Initialising Database...</td>
+                  </tr>
+                ) : filteredComponents.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-20 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <Activity className="h-8 w-8 text-slate-200 mb-2" />
+                        <p className="font-black text-slate-400 uppercase tracking-widest text-xs">No Records Found</p>
+                        <p className="text-slate-400 text-sm">Try adjusting your filters or search query.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredComponents.map((comp: Component) => (
+                    <tr
+                      key={comp.id}
+                      className="group border-b border-slate-50 dark:border-slate-800 transition-all hover:bg-slate-50/50 dark:hover:bg-slate-800/30 cursor-pointer"
+                      onClick={() => handleRowClick(comp)}
+                    >
+                      <td className="px-4 py-4 align-middle">
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:text-blue-500 transition-colors">
+                            <Hash className="h-4 w-4" />
+                          </div>
+                          <span className="font-mono text-[11px] font-bold text-slate-500 leading-tight">{comp.id_no}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-middle">
+                        <span className="font-black text-slate-900 dark:text-white tracking-tight">{comp.q_id}</span>
+                      </td>
+                      <td className="px-4 py-4 align-middle">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
+                          {comp.code || "---"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 align-middle text-slate-500 font-medium">
+                        <div className="flex items-center gap-2">
+                          <span>{comp.metadata?.s_node || "-"}</span>
+                          <ChevronRight className="h-3 w-3 text-slate-300" />
+                          <span>{comp.metadata?.f_node || "-"}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-middle text-slate-500 font-medium whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">{comp.metadata?.s_leg || "-"}</span>
+                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">{comp.metadata?.f_leg || "-"}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-middle text-slate-500 font-medium">
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold">Base</span>
+                            <span className="text-slate-900 dark:text-white font-black">{comp.metadata?.elv_1 || "0"}</span>
+                          </div>
+                          <div className="h-6 w-px bg-slate-100 dark:bg-slate-800" />
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold">Top</span>
+                            <span className="text-slate-900 dark:text-white font-black">{comp.metadata?.elv_2 || "0"}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-middle">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-900 dark:text-white text-xs">{comp.created_at ? new Date(comp.created_at).toLocaleDateString() : "-"}</span>
+                          <span className="text-[10px] text-slate-400 font-medium uppercase">{comp.created_at ? new Date(comp.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-middle text-center">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4 text-slate-400" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-[180px] rounded-[1.2rem] p-2 shadow-2xl">
+                            <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-3 py-2">Management</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="rounded-lg py-2.5 font-bold cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditComponent(comp);
+                              }}
+                            >
+                              Edit Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className={cn(
+                                "rounded-lg py-2.5 font-bold cursor-pointer transition-colors",
+                                comp.is_deleted ? "text-blue-600 focus:text-blue-600" : "text-red-500 focus:text-red-500"
+                              )}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await fetcher(`/api/structure-components/item/${comp.id}`, {
+                                    method: "PATCH",
+                                    body: JSON.stringify({ is_deleted: !comp.is_deleted }),
+                                  });
+                                  if (apiUrl) mutate(apiUrl);
+                                } catch (error) {
+                                  console.error("Action failed", error);
                                 }
-                              } catch (error) {
-                                console.error("Failed to archive component", error);
-                              }
-                            }}
-                          >
-                            Archive
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-
-                    {/* Archived view: Unarchive */}
-                    {viewArchived && comp.is_deleted && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 p-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <span className="sr-only">Open menu</span>
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Archived Actions</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                await fetcher(`/api/structure-components/item/${comp.id}`, {
-                                  method: "PATCH",
-                                  body: JSON.stringify({ is_deleted: false }),
-                                });
-                                if (apiUrl) {
-                                  mutate(apiUrl);
-                                }
-                              } catch (error) {
-                                console.error("Failed to unarchive component", error);
-                              }
-                            }}
-                          >
-                            Unarchive
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                              }}
+                            >
+                              {comp.is_deleted ? "Unarchive Record" : "Archive Record"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      {/* Component Specification Dialog - view/create only */}
+      {/* Dialogs */}
       {dialogOpen && (
-        <ComponentSpecDialog 
+        <ComponentSpecDialog
           component={selectedComponent}
           open={dialogOpen}
           onOpenChange={handleDialogOpenChange}
@@ -400,8 +372,6 @@ export default function ComponentContent() {
           defaultCode={selectedCode}
         />
       )}
-
-      {/* Separate dialog for editing existing components */}
       {editDialogOpen && (
         <ComponentEditDialog
           component={editingComponent}
@@ -411,5 +381,33 @@ export default function ComponentContent() {
         />
       )}
     </div>
+  );
+}
+
+function FilterButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-3 w-full text-left text-xs font-bold py-3 px-4 rounded-2xl transition-all",
+        active
+          ? "bg-slate-900 text-white shadow-xl dark:bg-white dark:text-slate-900 shadow-slate-200 dark:shadow-black/40"
+          : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+      )}
+    >
+      <span className={cn("shrink-0", active ? "text-blue-500" : "text-slate-400")}>{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function TableTh({ children, className }: { children: React.ReactNode, className?: string }) {
+  return (
+    <th className={cn(
+      "h-14 px-4 text-left align-middle font-black text-[10px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500",
+      className
+    )}>
+      {children}
+    </th>
   );
 }
