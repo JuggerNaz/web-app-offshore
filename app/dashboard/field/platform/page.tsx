@@ -2,7 +2,7 @@
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import Link from "next/link";
-import { Building2, ArrowRight, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Building2, ArrowRight, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useState, useMemo } from "react";
@@ -105,7 +105,11 @@ export default function PlatformPage() {
 
   // Generate random image selection for platforms with multiple images
   useEffect(() => {
+    if (!platformsData?.data) return;
+
     const imageMap = new Map<number, string>();
+    const platforms: Platform[] = platformsData.data;
+
     platforms.forEach((platform) => {
       if (platform.images && platform.images.length > 0) {
         const randomIndex = Math.floor(Math.random() * platform.images.length);
@@ -115,7 +119,7 @@ export default function PlatformPage() {
       }
     });
     setRandomImages(imageMap);
-  }, [platforms]);
+  }, [platformsData]);
 
   // Persist view mode
   useEffect(() => {
@@ -245,6 +249,14 @@ export default function PlatformPage() {
             <List className="w-4 h-4" />
           </Button>
         </div>
+
+        {/* Create New Button */}
+        <Link href="/dashboard/field/platform/new">
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+            <Plus className="w-4 h-4" />
+            New Platform
+          </Button>
+        </Link>
       </div>
 
       {/* Card View */}

@@ -2,7 +2,7 @@
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import Link from "next/link";
-import { Waves, ArrowRight, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Waves, ArrowRight, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
@@ -204,6 +204,14 @@ export default function PipelinePage() {
             <List className="w-4 h-4" />
           </Button>
         </div>
+
+        {/* Create New Button */}
+        <Link href="/dashboard/field/pipeline/new">
+          <Button className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
+            <Plus className="w-4 h-4" />
+            New Pipeline
+          </Button>
+        </Link>
       </div>
 
       {/* Card View */}

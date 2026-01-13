@@ -10,6 +10,10 @@ import {
   ChevronRight,
   Plus,
   MapPin,
+  Settings,
+  FileText,
+  Compass,
+  Database,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -39,81 +43,121 @@ interface MenuGroupProps {
 const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
   return (
     <TooltipProvider>
-      <nav className="space-y-1 px-2">
-        {/* Dashboard */}
-        <MenuLink
-          href="/dashboard"
-          isCollapsed={isCollapsed}
-          label="Dashboard"
-          icon={<Home className="h-4 w-4" />}
-          text="Dashboard"
-        />
-
-
-
-        {/* Field */}
-        {isCollapsed ? (
+      <nav className="space-y-4 px-2">
+        {/* OVERVIEW */}
+        <div className="space-y-1">
+          {!isCollapsed && (
+            <h4 className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+              Overview
+            </h4>
+          )}
           <MenuLink
-            href="/dashboard/field"
+            href="/dashboard"
             isCollapsed={isCollapsed}
-            label="Field"
-            icon={<MapPin className="h-4 w-4" />}
-            text="Field"
+            label="Analytics"
+            icon={<Layers2 className="h-4 w-4" />}
+            text="Analytics"
           />
-        ) : (
-          <MenuGroup
-            label="Field"
-            icon={<MapPin className="h-4 w-4" />}
-            isCollapsed={isCollapsed}
-          >
+        </div>
+
+        {/* ASSET MANAGEMENT */}
+        <div className="space-y-1">
+          {!isCollapsed && (
+            <h4 className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 mt-4">
+              Asset Management
+            </h4>
+          )}
+
+          {isCollapsed ? (
             <MenuLink
               href="/dashboard/field"
               isCollapsed={isCollapsed}
-              label="Overview"
+              label="Field Assets"
               icon={<MapPin className="h-4 w-4" />}
-              text="Overview"
-              isChild
+              text="Field Assets"
             />
-            <MenuLink
-              href="/dashboard/field/platform"
+          ) : (
+            <MenuGroup
+              label="Field Assets"
+              icon={<MapPin className="h-4 w-4" />}
               isCollapsed={isCollapsed}
-              label="Platform"
-              icon={<Layers2 className="h-4 w-4" />}
-              text="Platform"
-              isChild
-              actionHref="/dashboard/field/platform/new"
-            />
-            <MenuLink
-              href="/dashboard/field/pipeline"
-              isCollapsed={isCollapsed}
-              label="Pipeline"
-              icon={<Layers2 className="h-4 w-4" />}
-              text="Pipeline"
-              isChild
-              actionHref="/dashboard/field/pipeline/new"
-            />
-          </MenuGroup>
-        )}
+              defaultOpen={true}
+            >
+              <MenuLink
+                href="/dashboard/field"
+                isCollapsed={isCollapsed}
+                label="Map Overview"
+                icon={<Compass className="h-4 w-4" />}
+                text="Map Overview"
+                isChild
+              />
+              <MenuLink
+                href="/dashboard/field/platform"
+                isCollapsed={isCollapsed}
+                label="Platforms"
+                icon={<Layers2 className="h-4 w-4" />}
+                text="Platforms"
+                isChild
+                actionHref="/dashboard/field/platform/new"
+              />
+              <MenuLink
+                href="/dashboard/field/pipeline"
+                isCollapsed={isCollapsed}
+                label="Pipelines"
+                icon={<FileText className="h-4 w-4" />}
+                text="Pipelines"
+                isChild
+                actionHref="/dashboard/field/pipeline/new"
+              />
+            </MenuGroup>
+          )}
+        </div>
 
-        {/* Job Pack */}
-        <MenuLink
-          href="/dashboard/jobpack"
-          isCollapsed={isCollapsed}
-          label="Job Pack"
-          icon={<Package className="h-4 w-4" />}
-          text="Job Pack"
-        />
+        {/* EXECUTION */}
+        <div className="space-y-1">
+          {!isCollapsed && (
+            <h4 className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 mt-4">
+              Execution
+            </h4>
+          )}
+          <MenuLink
+            href="/dashboard/jobpack"
+            isCollapsed={isCollapsed}
+            label="Work Packages"
+            icon={<Package className="h-4 w-4" />}
+            text="Work Packages"
+          />
+          <MenuLink
+            href="/dashboard/planning"
+            isCollapsed={isCollapsed}
+            label="Planning"
+            icon={<Calendar className="h-4 w-4" />}
+            text="Planning"
+          />
+          <MenuLink
+            href="/dashboard/reports"
+            isCollapsed={isCollapsed}
+            label="Reports"
+            icon={<FileText className="h-4 w-4" />}
+            text="Reports"
+          />
+        </div>
 
-        {/* Inspection Planning */}
-        <MenuLink
-          href="/dashboard/planning"
-          isCollapsed={isCollapsed}
-          label="Inspection Planning"
-          icon={<Calendar className="h-4 w-4" />}
-          text="Inspection Planning"
-        />
-
-
+        {/* UTILITIES */}
+        <div className="space-y-1">
+          {!isCollapsed && (
+            <h4 className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 mt-4">
+              Utilities
+            </h4>
+          )}
+          <MenuLink
+            href="/dashboard/utilities/library"
+            isCollapsed={isCollapsed}
+            label="Library"
+            icon={<Database className="h-4 w-4" />}
+            text="Library"
+          />
+        </div>
       </nav>
     </TooltipProvider>
   );

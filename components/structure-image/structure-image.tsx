@@ -139,13 +139,31 @@ export default function StructureImage() {
     try {
       const img = images.find((i) => i.id === imageId);
       if (!img) return;
-      const path = img.meta?.file_path || img.path;
-      await supabase.storage.from("attachments").remove([path]);
-      await supabase.from("attachment").delete().eq("id", imageId);
+
+      // 1. Remove from Storage
+      if (img.meta?.file_path || img.path) {
+        const path = img.meta?.file_path || img.path;
+        const { error: storageError } = await supabase.storage.from("attachments").remove([path]);
+        if (storageError) {
+          console.error("Storage delete error:", storageError);
+          // We might continue to delete DB record even if storage fails, strictly speaking
+        }
+      }
+
+      // 2. Remove from DB
+      const { error: dbError } = await supabase.from("attachment").delete().eq("id", imageId);
+
+      if (dbError) {
+        console.error("DB delete error:", dbError);
+        throw dbError;
+      }
+
+      // 3. Update UI only on success
       setImages((prev) => prev.filter((i) => i.id !== imageId));
-      mutate();
+      mutate(); // Sync SWR
     } catch (err: any) {
-      setError("Deletion failed");
+      console.error("Delete exception:", err);
+      setError("Deletion failed: " + (err.message || "Unknown error"));
     }
   };
 

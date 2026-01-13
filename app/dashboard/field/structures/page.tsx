@@ -2,7 +2,7 @@
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import Link from "next/link";
-import { Building2, Waves, ArrowRight, LayoutGrid, List, Search } from "lucide-react";
+import { Building2, Waves, ArrowRight, LayoutGrid, List, Search, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useState } from "react";
@@ -207,6 +207,22 @@ export default function StructuresPage() {
                     >
                         <List className="w-4 h-4" />
                     </Button>
+                </div>
+
+                {/* Create New Actions */}
+                <div className="flex gap-2">
+                    <Link href="/dashboard/field/platform/new">
+                        <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2" title="New Platform">
+                            <Plus className="w-4 h-4" />
+                            <span className="hidden sm:inline">New Platform</span>
+                        </Button>
+                    </Link>
+                    <Link href="/dashboard/field/pipeline/new">
+                        <Button className="bg-teal-600 hover:bg-teal-700 text-white gap-2" title="New Pipeline">
+                            <Plus className="w-4 h-4" />
+                            <span className="hidden sm:inline">New Pipeline</span>
+                        </Button>
+                    </Link>
                 </div>
             </div>
 
