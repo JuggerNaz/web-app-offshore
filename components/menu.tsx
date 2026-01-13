@@ -133,6 +133,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             label="Inspection Planning"
             icon={<Calendar className="h-[18px] w-[18px]" />}
             text="Planning"
+            actionHref="/dashboard/planning/form"
           />
         </div>
       </nav>
