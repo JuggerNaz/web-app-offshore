@@ -7,15 +7,22 @@ import { getPaginationParams, createPaginationMeta, applyPagination } from "@/ut
 
 /**
  * GET /api/platform
- * Fetch all platforms with pagination
- * Query params: ?page=1&pageSize=50
+ * Fetch all platforms with pagination and optional field filtering
+ * Query params: ?page=1&pageSize=50&field=fieldId
  */
 export const GET = withAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
+  const { searchParams } = new URL(request.url);
+  const fieldId = searchParams.get("field");
 
   // Build query with count for pagination metadata
   let query = supabase.from("platform").select("*", { count: "exact" }).order("title");
+
+  // Filter by field if provided
+  if (fieldId) {
+    query = query.eq("pfield", fieldId);
+  }
 
   // Apply pagination
   query = applyPagination(query, paginationParams);
@@ -26,10 +33,26 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
     return handleSupabaseError(error, "Failed to fetch platforms");
   }
 
+  // Fetch structure images for each platform
+  const platformsWithImages = await Promise.all(
+    (data || []).map(async (platform) => {
+      const { data: images } = await supabase
+        .from("attachment")
+        .select("id, path, meta")
+        .eq("source_type", "platform_structure_image")
+        .eq("source_id", platform.plat_id);
+
+      return {
+        ...platform,
+        images: images || [],
+      };
+    })
+  );
+
   // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
-  return apiPaginated(data || [], pagination);
+  return apiPaginated(platformsWithImages, pagination);
 });
 
 /**

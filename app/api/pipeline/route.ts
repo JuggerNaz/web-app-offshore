@@ -7,15 +7,22 @@ import { getPaginationParams, createPaginationMeta, applyPagination } from "@/ut
 
 /**
  * GET /api/pipeline
- * Fetch all pipelines with pagination
- * Query params: ?page=1&pageSize=50
+ * Fetch all pipelines with pagination and optional field filtering
+ * Query params: ?page=1&pageSize=50&field=fieldId
  */
 export const GET = withAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
+  const { searchParams } = new URL(request.url);
+  const fieldId = searchParams.get("field");
 
   // Build query with count for pagination metadata
-  let query = supabase.from("u_pipeline").select("*", { count: "exact" });
+  let query = supabase.from("u_pipeline").select("*", { count: "exact" }).order("title");
+
+  // Filter by field if provided
+  if (fieldId) {
+    query = query.eq("pfield", fieldId);
+  }
 
   // Apply pagination
   query = applyPagination(query, paginationParams);
