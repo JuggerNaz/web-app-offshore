@@ -1,9 +1,8 @@
-﻿"use client";
+"use client";
 
 import {
   Home,
   Package,
-  BrickWall,
   Layers2,
   Calendar,
   ChevronDown,
@@ -14,10 +13,11 @@ import {
   FileText,
   Compass,
   Database,
+  LayoutDashboard,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ interface MenuLinkProps {
   text: string;
   isChild?: boolean;
   actionHref?: string;
+  badge?: string | number;
 }
 
 interface MenuGroupProps {
@@ -43,43 +44,42 @@ interface MenuGroupProps {
 const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
   return (
     <TooltipProvider>
-      <nav className="space-y-4 px-2">
-        {/* OVERVIEW */}
+      <nav className="space-y-6 px-3 py-4">
+        {/* Main Section */}
         <div className="space-y-1">
           {!isCollapsed && (
-            <h4 className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+            <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
               Overview
-            </h4>
+            </p>
           )}
           <MenuLink
             href="/dashboard"
             isCollapsed={isCollapsed}
             label="Analytics"
-            icon={<Layers2 className="h-4 w-4" />}
+            icon={<LayoutDashboard className="h-[18px] w-[18px]" />}
             text="Analytics"
           />
         </div>
 
-        {/* ASSET MANAGEMENT */}
+        {/* Assets Section */}
         <div className="space-y-1">
           {!isCollapsed && (
-            <h4 className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 mt-4">
+            <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
               Asset Management
-            </h4>
+            </p>
           )}
-
           {isCollapsed ? (
             <MenuLink
               href="/dashboard/field"
               isCollapsed={isCollapsed}
               label="Field Assets"
-              icon={<MapPin className="h-4 w-4" />}
-              text="Field Assets"
+              icon={<MapPin className="h-[18px] w-[18px]" />}
+              text="Field"
             />
           ) : (
             <MenuGroup
               label="Field Assets"
-              icon={<MapPin className="h-4 w-4" />}
+              icon={<MapPin className="h-[18px] w-[18px]" />}
               isCollapsed={isCollapsed}
               defaultOpen={true}
             >
@@ -113,32 +113,33 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
           )}
         </div>
 
-        {/* EXECUTION */}
+        {/* EXECUTION / OPERATIONS */}
         <div className="space-y-1">
           {!isCollapsed && (
-            <h4 className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 mt-4">
+            <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
               Execution
-            </h4>
+            </p>
           )}
           <MenuLink
             href="/dashboard/jobpack"
             isCollapsed={isCollapsed}
             label="Work Packages"
-            icon={<Package className="h-4 w-4" />}
+            icon={<Package className="h-[18px] w-[18px]" />}
             text="Work Packages"
           />
           <MenuLink
             href="/dashboard/planning"
             isCollapsed={isCollapsed}
             label="Planning"
-            icon={<Calendar className="h-4 w-4" />}
+            icon={<Calendar className="h-[18px] w-[18px]" />}
             text="Planning"
+            actionHref="/dashboard/planning/form"
           />
           <MenuLink
             href="/dashboard/reports"
             isCollapsed={isCollapsed}
             label="Reports"
-            icon={<FileText className="h-4 w-4" />}
+            icon={<FileText className="h-[18px] w-[18px]" />}
             text="Reports"
           />
         </div>
@@ -146,18 +147,19 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
         {/* UTILITIES */}
         <div className="space-y-1">
           {!isCollapsed && (
-            <h4 className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 mt-4">
+            <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
               Utilities
-            </h4>
+            </p>
           )}
           <MenuLink
             href="/dashboard/utilities/library"
             isCollapsed={isCollapsed}
             label="Library"
-            icon={<Database className="h-4 w-4" />}
+            icon={<Database className="h-[18px] w-[18px]" />}
             text="Library"
           />
         </div>
+
       </nav>
     </TooltipProvider>
   );
@@ -166,32 +168,50 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
 const MenuGroup = ({ label, icon, isCollapsed, children, defaultOpen = false }: MenuGroupProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const pathname = usePathname();
-  const isActive = pathname?.startsWith(`/dashboard/${label.toLowerCase()}`);
+  const isActive = useMemo(() => {
+    // If we are in field related pages
+    if (label === "Field Assets") {
+      return pathname?.includes("/dashboard/field");
+    }
+    return pathname?.startsWith(`/dashboard/${label.toLowerCase()}`);
+  }, [pathname, label]);
 
   if (isCollapsed) {
     return null;
   }
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
       <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
-          "hover:bg-accent hover:text-accent-foreground",
-          isActive && "bg-accent text-accent-foreground"
+          "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-semibold transition-all duration-200 group",
+          "hover:bg-slate-50 dark:hover:bg-slate-900/40",
+          isActive ? "text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10" : "text-muted-foreground hover:text-foreground"
         )}
       >
         <div className="flex items-center gap-3">
-          {icon}
-          <span>{label}</span>
+          <div className={cn(
+            "p-1.5 rounded-md transition-colors",
+            isActive ? "bg-blue-600/10 text-blue-600 dark:text-blue-400" : "bg-muted group-hover:bg-muted-foreground/10"
+          )}>
+            {icon}
+          </div>
+          <span className="truncate">{label}</span>
         </div>
-        {isOpen ? (
-          <ChevronDown className="h-4 w-4 transition-transform" />
-        ) : (
-          <ChevronRight className="h-4 w-4 transition-transform" />
-        )}
+        <div className="flex items-center">
+          {isOpen ? (
+            <ChevronDown className="h-4 w-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+          ) : (
+            <ChevronRight className="h-4 w-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+          )}
+        </div>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 space-y-1 pl-6">{children}</CollapsibleContent>
+      <CollapsibleContent className="mt-1 relative overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+        <div className="absolute left-6 top-0 bottom-2 w-px bg-border/60" />
+        <div className="space-y-1 pl-4 mt-1">
+          {children}
+        </div>
+      </CollapsibleContent>
     </Collapsible>
   );
 };
@@ -210,35 +230,50 @@ const MenuLink = (props: MenuLinkProps) => {
   };
 
   const linkContent = (
-    <div className="relative group">
+    <div className="relative group/link px-1">
       <Link
         href={props.href}
         className={cn(
-          "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-          "hover:bg-accent hover:text-accent-foreground",
+          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 relative",
           isActive
-            ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
-            : "text-muted-foreground",
-          props.isCollapsed && "justify-center",
-          props.isChild && "py-1.5 text-xs",
-          props.actionHref && !props.isCollapsed && "pr-8"
+            ? "bg-blue-600/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.15)] ring-1 ring-blue-600/10"
+            : "text-muted-foreground hover:text-foreground hover:bg-slate-100 dark:hover:bg-slate-800/60",
+          props.isCollapsed && "justify-center p-2.5",
+          props.isChild && "py-2 text-[13px] font-normal",
+          props.actionHref && !props.isCollapsed && "pr-10"
         )}
       >
-        {props.icon}
-        {!props.isCollapsed && <span>{props.text}</span>}
+        <div className={cn(
+          "transition-colors",
+          isActive ? "text-inherit" : "text-muted-foreground group-hover/link:text-foreground"
+        )}>
+          {props.icon}
+        </div>
+        {!props.isCollapsed && <span className="truncate">{props.text}</span>}
+
+        {isActive && !props.isCollapsed && (
+          <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-1.5 h-6 bg-blue-600 dark:bg-blue-400 rounded-full shadow-[0_0_8px_rgba(37,99,235,0.5)]" />
+        )}
+
+        {props.badge && !props.isCollapsed && (
+          <span className="ml-auto bg-primary/10 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+            {props.badge}
+          </span>
+        )}
       </Link>
+
       {props.actionHref && !props.isCollapsed && (
         <button
           onClick={handleActionClick}
           className={cn(
-            "absolute right-1 top-1/2 -translate-y-1/2 rounded-sm p-0.5",
-            "opacity-0 group-hover:opacity-100 transition-opacity",
-            "hover:bg-accent/50",
-            isActive && "hover:bg-primary-foreground/20"
+            "absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-md",
+            "opacity-0 group-hover/link:opacity-100 transition-all duration-200",
+            "hover:bg-primary hover:text-white",
+            isActive ? "text-white/70 hover:bg-white hover:text-slate-900" : "text-muted-foreground"
           )}
           aria-label={`Add new ${props.label.toLowerCase()}`}
         >
-          <Plus className="h-3 w-3" />
+          <Plus className="h-4 w-4" />
         </button>
       )}
     </div>
@@ -246,10 +281,10 @@ const MenuLink = (props: MenuLinkProps) => {
 
   if (props.isCollapsed) {
     return (
-      <Tooltip delayDuration={300}>
+      <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-        <TooltipContent side="right" sideOffset={10}>
-          <p className="font-medium">{props.label}</p>
+        <TooltipContent side="right" sideOffset={18} className="bg-slate-900 text-white border-none shadow-xl">
+          <p className="font-semibold text-xs">{props.label}</p>
         </TooltipContent>
       </Tooltip>
     );
