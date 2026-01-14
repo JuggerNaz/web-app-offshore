@@ -111,7 +111,7 @@ export default function DetailPage() {
 
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-slate-50/30 dark:bg-transparent">
-          <div className="max-w-7xl mx-auto w-full pt-2 px-8 pb-8">
+          <div className="max-w-7xl mx-auto w-full pt-4 px-4 pb-8">
             <TabsContent value="spec1" className="focus-visible:outline-none m-0">
               <Suspense fallback={<Loading />}>
                 {type === "platform" ? (
