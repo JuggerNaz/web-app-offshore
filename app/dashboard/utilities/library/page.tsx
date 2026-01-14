@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import useSWR, { mutate } from "swr"; // mutate for revalidation
 import { fetcher } from "@/utils/utils";
+import { LibraryComboDetails } from "./combo-library";
 import {
     Building2,
     Search,
@@ -155,6 +156,15 @@ export default function LibraryPage() {
 }
 
 function LibraryDetails({ master }: { master: LibMaster }) {
+    // Check if this is a combo library
+    const COMBO_LIBRARIES = ['AMLYCODFND', 'ANMLYCLR', 'ANMTRGINSP', 'ANMALTDAYS'];
+    const isComboLibrary = COMBO_LIBRARIES.includes(master.lib_code);
+
+    // Route to combo interface if needed
+    if (isComboLibrary) {
+        return <LibraryComboDetails master={master} />;
+    }
+
     const [searchTerm, setSearchTerm] = useState("");
     const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -182,7 +192,6 @@ function LibraryDetails({ master }: { master: LibMaster }) {
                     <h2 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
                         {master.lib_name || master.lib_desc}
                     </h2>
-                    <p className="text-xs text-muted-foreground font-mono mt-1">{master.lib_code}</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="relative w-60">
@@ -211,9 +220,9 @@ function LibraryDetails({ master }: { master: LibMaster }) {
                     <div className="grid gap-3">
                         {filteredItems.map(item => (
                             <LibraryItemRow
-                                key={item.id}
+                                key={`${master.lib_code}-${item.id || item.lib_id || item.lib_val || Math.random()}`}
                                 item={item}
-                                masterCode={master.lib_code}
+                                master={master}
                                 onRefresh={refreshItems}
                             />
                         ))}
@@ -229,14 +238,14 @@ function LibraryDetails({ master }: { master: LibMaster }) {
             <CreateItemDialog
                 open={isCreateOpen}
                 onOpenChange={setIsCreateOpen}
-                masterCode={master.lib_code}
+                master={master}
                 onSuccess={refreshItems}
             />
         </div>
     );
 }
 
-function LibraryItemRow({ item, masterCode, onRefresh }: { item: LibItem, masterCode: string, onRefresh: () => void }) {
+function LibraryItemRow({ item, master, onRefresh }: { item: LibItem, master: LibMaster, onRefresh: () => void }) {
     const isDeleted = item.lib_delete === 1;
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -250,7 +259,7 @@ function LibraryItemRow({ item, masterCode, onRefresh }: { item: LibItem, master
             // So if deleted, we undelete (lib_delete = 0 or null). If not, we delete (lib_delete = 1).
             const newStatus = isDeleted ? 0 : 1;
 
-            const res = await fetch(`/api/library/${encodeURIComponent(masterCode)}/${encodeURIComponent(String(item.lib_id || item.lib_val))}`, {
+            const res = await fetch(`/api/library/${encodeURIComponent(master.lib_code)}/${encodeURIComponent(String(item.lib_id || item.lib_val))}`, {
                 method: "PUT",
                 body: JSON.stringify({ lib_delete: newStatus }),
             });
@@ -270,11 +279,17 @@ function LibraryItemRow({ item, masterCode, onRefresh }: { item: LibItem, master
 
     return (
         <div className={`
-            group flex items-center justify-between p-4 rounded-lg border transition-all
+            relative group flex items-center justify-between p-4 rounded-lg border-2 transition-all cursor-pointer
             ${isDeleted
-                ? "bg-red-50 dark:bg-red-950/10 border-red-100 dark:border-red-900/30"
-                : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:shadow-sm"}
+                ? "bg-red-50 dark:bg-red-950/10 border-red-200 dark:border-red-900/30 hover:border-red-300"
+                : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-blue-400 hover:shadow-md hover:bg-blue-50/30 dark:hover:bg-blue-950/20"}
+            ${isEditOpen ? "border-blue-500 shadow-lg ring-2 ring-blue-200 dark:ring-blue-900/50" : ""}
         `}>
+            {/* Left border indicator */}
+            <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg transition-all ${isEditOpen
+                ? "bg-blue-500"
+                : "bg-transparent group-hover:bg-blue-400"
+                }`} />
             <div className="flex-1 grid grid-cols-12 gap-4 items-center">
                 <div className="col-span-3 flex flex-col">
                     <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">ID (Code)</span>
@@ -296,7 +311,7 @@ function LibraryItemRow({ item, masterCode, onRefresh }: { item: LibItem, master
                 </div>
             </div>
 
-            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-2 opacity-100 transition-opacity">
                 <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-blue-600" onClick={() => setIsEditOpen(true)} disabled={isLoading}>
                     <Edit className="w-4 h-4" />
                 </Button>
@@ -317,7 +332,7 @@ function LibraryItemRow({ item, masterCode, onRefresh }: { item: LibItem, master
                 open={isEditOpen}
                 onOpenChange={setIsEditOpen}
                 item={item}
-                masterCode={masterCode}
+                master={master}
                 onSuccess={onRefresh}
             />
         </div>
@@ -325,7 +340,7 @@ function LibraryItemRow({ item, masterCode, onRefresh }: { item: LibItem, master
 }
 
 // Dialogs for Create/Edit
-function CreateItemDialog({ open, onOpenChange, masterCode, onSuccess }: { open: boolean, onOpenChange: (open: boolean) => void, masterCode: string, onSuccess: () => void }) {
+function CreateItemDialog({ open, onOpenChange, master, onSuccess }: { open: boolean, onOpenChange: (open: boolean) => void, master: LibMaster, onSuccess: () => void }) {
     const [loading, setLoading] = useState(false);
     // Assuming fields based on typical library data: Val, Desc
     // We can allow dynamic fields if we scanned schema, but standardized Val/Desc is safer for now.
@@ -341,7 +356,7 @@ function CreateItemDialog({ open, onOpenChange, masterCode, onSuccess }: { open:
         };
 
         try {
-            const res = await fetch(`/api/library/${encodeURIComponent(masterCode)}`, {
+            const res = await fetch(`/api/library/${encodeURIComponent(master.lib_code)}`, {
                 method: "POST",
                 body: JSON.stringify(payload),
             });
@@ -363,8 +378,8 @@ function CreateItemDialog({ open, onOpenChange, masterCode, onSuccess }: { open:
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Add New Item</DialogTitle>
-                    <DialogDescription>Create a new entry for this library category.</DialogDescription>
+                    <DialogTitle>Add New Item - {master.lib_name || master.lib_desc}</DialogTitle>
+                    <DialogDescription>Create a new entry for the <strong>{master.lib_name || master.lib_desc}</strong> category.</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={onSubmit} className="space-y-4">
                     <div className="space-y-2">
@@ -389,21 +404,21 @@ function CreateItemDialog({ open, onOpenChange, masterCode, onSuccess }: { open:
     );
 }
 
-function EditItemDialog({ open, onOpenChange, item, masterCode, onSuccess }: { open: boolean, onOpenChange: (open: boolean) => void, item: LibItem, masterCode: string, onSuccess: () => void }) {
+function EditItemDialog({ open, onOpenChange, item, master, onSuccess }: { open: boolean, onOpenChange: (open: boolean) => void, item: LibItem, master: LibMaster, onSuccess: () => void }) {
     const [loading, setLoading] = useState(false);
 
     async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         setLoading(true);
         const formData = new FormData(e.currentTarget);
+        // Only send description and comments - do NOT update lib_id/code
         const payload = {
-            lib_id: formData.get("lib_val"), // Map to lib_id (schema)
             lib_desc: formData.get("lib_desc"),
             lib_com: formData.get("lib_com"),
         };
 
         try {
-            const res = await fetch(`/api/library/${encodeURIComponent(masterCode)}/${encodeURIComponent(String(item.lib_id || item.lib_val))}`, {
+            const res = await fetch(`/api/library/${encodeURIComponent(master.lib_code)}/${encodeURIComponent(String(item.lib_id || item.lib_val))}`, {
                 method: "PUT",
                 body: JSON.stringify(payload),
             });
@@ -425,12 +440,21 @@ function EditItemDialog({ open, onOpenChange, item, masterCode, onSuccess }: { o
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Edit Item</DialogTitle>
+                    <DialogTitle>Edit Item - {master.lib_name || master.lib_desc}</DialogTitle>
+                    <DialogDescription>
+                        Editing item in <strong>{master.lib_name || master.lib_desc}</strong> category. Note: The Value/Code cannot be changed as it may be referenced in other tables.
+                    </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={onSubmit} className="space-y-4">
                     <div className="space-y-2">
-                        <Label htmlFor="lib_val">Value/Code</Label>
-                        <Input id="lib_val" name="lib_val" defaultValue={item.lib_id?.toString() || item.lib_val || item.code} required />
+                        <Label htmlFor="lib_val">Value/Code (Read-only)</Label>
+                        <Input
+                            id="lib_val"
+                            name="lib_val"
+                            defaultValue={item.lib_id?.toString() || item.lib_val || item.code}
+                            disabled
+                            className="bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-70"
+                        />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="lib_desc">Description</Label>

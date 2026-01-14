@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -166,15 +166,22 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
 };
 
 const MenuGroup = ({ label, icon, isCollapsed, children, defaultOpen = false }: MenuGroupProps) => {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
   const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const isActive = useMemo(() => {
+    if (!mounted) return false;
     // If we are in field related pages
     if (label === "Field Assets") {
-      return pathname?.includes("/dashboard/field");
+      return pathname?.includes("/dashboard/field") ?? false;
     }
-    return pathname?.startsWith(`/dashboard/${label.toLowerCase()}`);
-  }, [pathname, label]);
+    return pathname?.startsWith(`/dashboard/${label.toLowerCase()}`) ?? false;
+  }, [pathname, label, mounted]);
 
   if (isCollapsed) {
     return null;
@@ -219,7 +226,13 @@ const MenuGroup = ({ label, icon, isCollapsed, children, defaultOpen = false }: 
 const MenuLink = (props: MenuLinkProps) => {
   const pathname = usePathname();
   const router = useRouter();
-  const isActive = pathname === props.href;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isActive = mounted && pathname === props.href;
 
   const handleActionClick = (e: React.MouseEvent) => {
     e.preventDefault();
