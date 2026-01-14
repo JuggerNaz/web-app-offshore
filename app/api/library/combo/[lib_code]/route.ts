@@ -26,18 +26,29 @@ export async function GET(
             );
         }
 
-        // Fetch combo items
+        console.log("Fetching combo items for:", lib_code);
+
+        // Fetch combo items - table uses lib_com for comments
         const { data: comboItems, error } = await supabase
             .from("u_lib_combo" as any)
-            .select("*")
+            .select("lib_code, code_1, code_2, lib_com, lib_delete")
             .eq("lib_code", lib_code)
-            .order("id");
+            .order("code_1, code_2");
 
-        if (error) throw error;
+        if (error) {
+            console.error("Error fetching combo items:", error);
+            throw error;
+        }
 
+        console.log("Found combo items:", comboItems?.length || 0);
         return NextResponse.json({ data: comboItems || [] });
     } catch (error: any) {
         console.error("Error fetching combo items:", error);
+        console.error("Error details:", {
+            message: error.message,
+            code: error.code,
+            details: error.details
+        });
         return NextResponse.json(
             { error: error.message || "Failed to fetch combo items" },
             { status: 500 }
@@ -75,7 +86,7 @@ export async function POST(
         // Check for duplicate combination
         const { data: existing } = await supabase
             .from("u_lib_combo" as any)
-            .select("id")
+            .select("lib_code, code_1, code_2")
             .eq("lib_code", lib_code)
             .eq("code_1", code_1)
             .eq("code_2", code_2)
@@ -89,7 +100,7 @@ export async function POST(
         }
 
         // Insert new combo
-        console.log("Attempting to insert combo:", { lib_code, code_1, code_2, workunit: lib_com });
+        console.log("Attempting to insert combo:", { lib_code, code_1, code_2, lib_com });
 
         const { data, error } = await supabase
             .from("u_lib_combo" as any)
@@ -97,7 +108,7 @@ export async function POST(
                 lib_code,
                 code_1,
                 code_2,
-                workunit: lib_com || '000', // Use workunit instead of lib_com, default to '000'
+                lib_com: lib_com || null, // Allow null for empty comments
             })
             .select()
             .single();

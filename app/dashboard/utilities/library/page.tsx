@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import useSWR, { mutate } from "swr"; // mutate for revalidation
 import { fetcher } from "@/utils/utils";
 import { LibraryComboDetails } from "./combo-library";
+import { ColorPicker } from "./color-picker";
+import { ImageUpload } from "./image-upload";
 import {
     Building2,
     Search,
@@ -50,12 +52,13 @@ interface LibItem {
     id: number;
     lib_code: string;
     lib_val?: string;
-    lib_id?: number | string; // Correct schema column
-    code?: string; // Fallback
+    lib_id?: number | string;
+    code?: string;
     lib_desc?: string;
-    lib_com?: string; // Additional comments
+    lib_com?: string;
     hidden_item?: string;
     lib_delete?: number;
+    logo_url?: string; // For contractor logos
     [key: string]: any;
 }
 
@@ -291,11 +294,29 @@ function LibraryItemRow({ item, master, onRefresh }: { item: LibItem, master: Li
                 : "bg-transparent group-hover:bg-blue-400"
                 }`} />
             <div className="flex-1 grid grid-cols-12 gap-4 items-center">
-                <div className="col-span-3 flex flex-col">
-                    <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">ID (Code)</span>
-                    <span className={`font-mono text-sm font-semibold ${isDeleted ? "text-red-700 dark:text-red-400 line-through" : "text-blue-700 dark:text-blue-400"}`}>
-                        {item.lib_id || item.lib_val || item.code || "—"}
-                    </span>
+                <div className="col-span-3 flex items-center gap-2">
+                    <div className="flex flex-col flex-1">
+                        <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">ID (Code)</span>
+                        <span className={`font-mono text-sm font-semibold ${isDeleted ? "text-red-700 dark:text-red-400 line-through" : "text-blue-700 dark:text-blue-400"}`}>
+                            {item.lib_id || item.lib_val || item.code || "—"}
+                        </span>
+                    </div>
+                    {master.lib_code === "COLOR" && (item.lib_id || item.lib_val) && (
+                        <div
+                            className="w-10 h-10 rounded border-2 border-slate-300 dark:border-slate-600 shadow-sm flex-shrink-0"
+                            style={{
+                                backgroundColor: `rgb(${item.lib_id || item.lib_val})`,
+                            }}
+                            title={`RGB: ${item.lib_id || item.lib_val}`}
+                        />
+                    )}
+                    {master.lib_code === "CONTR_NAM" && item.logo_url && (
+                        <img
+                            src={item.logo_url}
+                            alt={item.lib_desc || "Contractor logo"}
+                            className="w-10 h-10 rounded border-2 border-slate-300 dark:border-slate-600 object-contain bg-white flex-shrink-0"
+                        />
+                    )}
                 </div>
                 <div className="col-span-4 flex flex-col">
                     <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">Description</span>
@@ -342,17 +363,25 @@ function LibraryItemRow({ item, master, onRefresh }: { item: LibItem, master: Li
 // Dialogs for Create/Edit
 function CreateItemDialog({ open, onOpenChange, master, onSuccess }: { open: boolean, onOpenChange: (open: boolean) => void, master: LibMaster, onSuccess: () => void }) {
     const [loading, setLoading] = useState(false);
-    // Assuming fields based on typical library data: Val, Desc
-    // We can allow dynamic fields if we scanned schema, but standardized Val/Desc is safer for now.
+    const [colorRgb, setColorRgb] = useState("");
+    const [colorName, setColorName] = useState("");
+    const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+    const isColorLibrary = master.lib_code === "COLOR";
+    const isContractorLibrary = master.lib_code === "CONTR_NAM";
+
+    console.log("Create Dialog - lib_code:", master.lib_code, "isContractor:", isContractorLibrary);
 
     async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         setLoading(true);
         const formData = new FormData(e.currentTarget);
+
         const payload = {
-            lib_id: formData.get("lib_val"), // Map to lib_id (schema)
-            lib_desc: formData.get("lib_desc"),
+            lib_id: isColorLibrary ? colorRgb : formData.get("lib_val"),
+            lib_desc: isColorLibrary ? colorName : formData.get("lib_desc"),
             lib_com: formData.get("lib_com"),
+            logo_url: isContractorLibrary ? logoUrl : undefined,
         };
 
         try {
@@ -364,6 +393,9 @@ function CreateItemDialog({ open, onOpenChange, master, onSuccess }: { open: boo
                 toast.success("Item created successfully");
                 onOpenChange(false);
                 onSuccess();
+                // Reset color state
+                setColorRgb("");
+                setColorName("");
             } else {
                 toast.error("Failed to create item");
             }
@@ -382,21 +414,40 @@ function CreateItemDialog({ open, onOpenChange, master, onSuccess }: { open: boo
                     <DialogDescription>Create a new entry for the <strong>{master.lib_name || master.lib_desc}</strong> category.</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={onSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="lib_val">Value/Code</Label>
-                        <Input id="lib_val" name="lib_val" required placeholder="e.g. DRILL" />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="lib_desc">Description</Label>
-                        <Input id="lib_desc" name="lib_desc" required placeholder="e.g. Drilling Platform" />
-                    </div>
+                    {isColorLibrary ? (
+                        <ColorPicker
+                            onColorChange={(rgb, name) => {
+                                setColorRgb(rgb);
+                                setColorName(name);
+                            }}
+                        />
+                    ) : (
+                        <>
+                            <div className="space-y-2">
+                                <Label htmlFor="lib_val">Value/Code</Label>
+                                <Input id="lib_val" name="lib_val" required placeholder="e.g. DRILL" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="lib_desc">Description</Label>
+                                <Input id="lib_desc" name="lib_desc" required placeholder="e.g. Drilling Platform" />
+                            </div>
+                        </>
+                    )}
+                    {isContractorLibrary && (
+                        <ImageUpload
+                            onImageChange={setLogoUrl}
+                            storagePath={`CONTRACTOR/${new Date().getTime()}`}
+                        />
+                    )}
                     <div className="space-y-2">
                         <Label htmlFor="lib_com">Comments (Optional)</Label>
                         <Textarea id="lib_com" name="lib_com" placeholder="Additional notes..." className="min-h-[100px]" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                        <Button type="submit" disabled={loading}>{loading ? "Creating..." : "Create"}</Button>
+                        <Button type="submit" disabled={loading || (isColorLibrary && (!colorRgb || !colorName))}>
+                            {loading ? "Creating..." : "Create"}
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -406,6 +457,11 @@ function CreateItemDialog({ open, onOpenChange, master, onSuccess }: { open: boo
 
 function EditItemDialog({ open, onOpenChange, item, master, onSuccess }: { open: boolean, onOpenChange: (open: boolean) => void, item: LibItem, master: LibMaster, onSuccess: () => void }) {
     const [loading, setLoading] = useState(false);
+    const [colorName, setColorName] = useState(item.lib_desc || "");
+    const [logoUrl, setLogoUrl] = useState<string | null>(item.logo_url || null);
+
+    const isColorLibrary = master.lib_code === "COLOR";
+    const isContractorLibrary = master.lib_code === "CONTR_NAM";
 
     async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -413,8 +469,9 @@ function EditItemDialog({ open, onOpenChange, item, master, onSuccess }: { open:
         const formData = new FormData(e.currentTarget);
         // Only send description and comments - do NOT update lib_id/code
         const payload = {
-            lib_desc: formData.get("lib_desc"),
+            lib_desc: isColorLibrary ? colorName : formData.get("lib_desc"),
             lib_com: formData.get("lib_com"),
+            logo_url: isContractorLibrary ? logoUrl : undefined,
         };
 
         try {
@@ -446,20 +503,62 @@ function EditItemDialog({ open, onOpenChange, item, master, onSuccess }: { open:
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={onSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="lib_val">Value/Code (Read-only)</Label>
-                        <Input
-                            id="lib_val"
-                            name="lib_val"
-                            defaultValue={item.lib_id?.toString() || item.lib_val || item.code}
-                            disabled
-                            className="bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-70"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="lib_desc">Description</Label>
-                        <Input id="lib_desc" name="lib_desc" defaultValue={item.lib_desc} required />
-                    </div>
+                    {isColorLibrary ? (
+                        <>
+                            <div className="space-y-2">
+                                <Label>RGB Value (Read-only)</Label>
+                                <div className="flex gap-3 items-center">
+                                    <div
+                                        className="w-16 h-16 rounded border-2 border-slate-300 dark:border-slate-600 shadow-md flex-shrink-0"
+                                        style={{
+                                            backgroundColor: `rgb(${item.lib_id || item.lib_val || "0,0,0"})`,
+                                        }}
+                                        title={`RGB: ${item.lib_id || item.lib_val}`}
+                                    />
+                                    <Input
+                                        value={item.lib_id || item.lib_val || ""}
+                                        disabled
+                                        className="bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-70 font-mono flex-1"
+                                    />
+                                </div>
+                                <p className="text-xs text-muted-foreground">The RGB value cannot be changed. Create a new color instead.</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="color_name">Color Name</Label>
+                                <Input
+                                    id="color_name"
+                                    value={colorName}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setColorName(e.target.value)}
+                                    placeholder="e.g., Red"
+                                    required
+                                />
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="space-y-2">
+                                <Label htmlFor="lib_val">Value/Code (Read-only)</Label>
+                                <Input
+                                    id="lib_val"
+                                    name="lib_val"
+                                    defaultValue={item.lib_id?.toString() || item.lib_val || item.code}
+                                    disabled
+                                    className="bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-70"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="lib_desc">Description</Label>
+                                <Input id="lib_desc" name="lib_desc" defaultValue={item.lib_desc} required />
+                            </div>
+                            {isContractorLibrary && (
+                                <ImageUpload
+                                    currentImageUrl={item.logo_url}
+                                    onImageChange={setLogoUrl}
+                                    storagePath={`CONTRACTOR/${item.lib_id || item.lib_val || 'temp'}`}
+                                />
+                            )}
+                        </>
+                    )}
                     <div className="space-y-2">
                         <Label htmlFor="lib_com">Comments</Label>
                         <Textarea id="lib_com" name="lib_com" defaultValue={item.lib_com} className="min-h-[100px]" />

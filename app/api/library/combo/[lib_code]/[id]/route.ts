@@ -11,18 +11,22 @@ export async function PUT(
         const { lib_code, id } = await params;
         const body = await request.json();
 
-        const { lib_com, lib_delete } = body;
+        const { lib_com, lib_delete, code_1, code_2 } = body;
 
         // Build update object
         const updateData: any = {};
-        if (lib_com !== undefined) updateData.workunit = lib_com; // Map lib_com to workunit
+        if (lib_com !== undefined) updateData.lib_com = lib_com;
         if (lib_delete !== undefined) updateData.lib_delete = lib_delete;
+
+        // The 'id' param is actually "code_1-code_2" format, split it
+        const [updateCode1, updateCode2] = id.split('-');
 
         const { data, error } = await supabase
             .from("u_lib_combo" as any)
             .update(updateData)
-            .eq("id", id)
             .eq("lib_code", lib_code)
+            .eq("code_1", updateCode1)
+            .eq("code_2", updateCode2)
             .select()
             .single();
 
@@ -47,11 +51,15 @@ export async function DELETE(
         const supabase = await createClient();
         const { lib_code, id } = await params;
 
+        // The 'id' param is actually "code_1-code_2" format, split it
+        const [deleteCode1, deleteCode2] = id.split('-');
+
         const { error } = await supabase
             .from("u_lib_combo" as any)
             .delete()
-            .eq("id", id)
-            .eq("lib_code", lib_code);
+            .eq("lib_code", lib_code)
+            .eq("code_1", deleteCode1)
+            .eq("code_2", deleteCode2);
 
         if (error) throw error;
 

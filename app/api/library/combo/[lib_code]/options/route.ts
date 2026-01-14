@@ -30,33 +30,46 @@ export async function GET(
             );
         }
 
-        // Fetch code_1 options
+        // Fetch code_1 options (exclude soft-deleted items)
         const code1Query = await supabase
             .from("u_lib_list" as any)
             .select("lib_id, lib_desc")
             .eq("lib_code", config.code1_lib)
+            .or("lib_delete.is.null,lib_delete.eq.0")
             .order("lib_id");
 
         if (code1Query.error) throw code1Query.error;
 
-        // Fetch code_2 options
+        // Fetch code_2 options (exclude soft-deleted items)
         const code2Query = await supabase
             .from("u_lib_list" as any)
             .select("lib_id, lib_desc")
             .eq("lib_code", config.code2_lib)
+            .or("lib_delete.is.null,lib_delete.eq.0")
             .order("lib_id");
 
         if (code2Query.error) throw code2Query.error;
 
-        // Fetch master names for labels
+        // Fetch master names for labels from u_lib_mast table
         const mastersQuery = await supabase
-            .from("u_lib_master" as any)
-            .select("lib_code, lib_name, lib_desc")
+            .from("u_lib_mast" as any)
+            .select("lib_code, lib_name")
             .in("lib_code", [config.code1_lib, config.code2_lib]);
 
+        if (mastersQuery.error) {
+            console.error("Error fetching masters:", mastersQuery.error);
+        }
+
+        console.log("Masters query result:", mastersQuery.data);
+        console.log("Looking for codes:", config.code1_lib, config.code2_lib);
+
         const masterMap = new Map(
-            mastersQuery.data?.map((m: any) => [m.lib_code, m.lib_name || m.lib_desc]) || []
+            mastersQuery.data?.map((m: any) => [m.lib_code, m.lib_name]) || []
         );
+
+        console.log("Master map:", Object.fromEntries(masterMap));
+        console.log("Code 1 label:", masterMap.get(config.code1_lib));
+        console.log("Code 2 label:", masterMap.get(config.code2_lib));
 
         return NextResponse.json({
             data: {

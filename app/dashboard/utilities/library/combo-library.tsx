@@ -40,11 +40,10 @@ interface LibMaster {
 }
 
 interface ComboItem {
-    id: number;
     lib_code: string;
     code_1: string;
     code_2: string;
-    workunit?: string;
+    lib_com?: string;
     lib_delete?: number;
 }
 
@@ -105,7 +104,7 @@ export function LibraryComboDetails({ master }: { master: LibMaster }) {
             item.code_2.toLowerCase().includes(searchStr) ||
             code1Desc.toLowerCase().includes(searchStr) ||
             code2Desc.toLowerCase().includes(searchStr) ||
-            (item.workunit && item.workunit.toLowerCase().includes(searchStr))
+            (item.lib_com && item.lib_com.toLowerCase().includes(searchStr))
         );
     });
 
@@ -145,13 +144,14 @@ export function LibraryComboDetails({ master }: { master: LibMaster }) {
                     <div className="grid gap-3">
                         {filteredItems.map(item => (
                             <ComboItemRow
-                                key={item.id}
+                                key={`${item.code_1}-${item.code_2}`}
                                 item={item}
                                 master={master}
                                 code1Map={code1Map}
                                 code2Map={code2Map}
                                 code1Label={options.code1_label}
                                 code2Label={options.code2_label}
+                                code2Lib={options.code2_lib}
                                 onRefresh={refreshItems}
                             />
                         ))}
@@ -182,6 +182,7 @@ function ComboItemRow({
     code2Map,
     code1Label,
     code2Label,
+    code2Lib,
     onRefresh
 }: {
     item: ComboItem;
@@ -190,6 +191,7 @@ function ComboItemRow({
     code2Map: Map<string, string>;
     code1Label: string;
     code2Label: string;
+    code2Lib: string;
     onRefresh: () => void;
 }) {
     const isDeleted = item.lib_delete === 1;
@@ -201,7 +203,7 @@ function ComboItemRow({
         setIsLoading(true);
         try {
             const newStatus = isDeleted ? 0 : 1;
-            const res = await fetch(`/api/library/combo/${encodeURIComponent(master.lib_code)}/${item.id}`, {
+            const res = await fetch(`/api/library/combo/${encodeURIComponent(master.lib_code)}/${item.code_1}-${item.code_2}`, {
                 method: "PUT",
                 body: JSON.stringify({ lib_delete: newStatus }),
             });
@@ -242,19 +244,30 @@ function ComboItemRow({
                         {code1Map.get(item.code_1) || "—"}
                     </span>
                 </div>
-                <div className="col-span-4 flex flex-col">
-                    <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">{code2Label}</span>
-                    <span className={`text-sm font-semibold ${isDeleted ? "text-red-700 dark:text-red-400 line-through" : "text-blue-700 dark:text-blue-400"}`}>
-                        {item.code_2}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {code2Map.get(item.code_2) || "—"}
-                    </span>
+                <div className="col-span-4 flex items-center gap-2">
+                    <div className="flex flex-col flex-1">
+                        <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">{code2Label}</span>
+                        <span className={`text-sm font-semibold ${isDeleted ? "text-red-700 dark:text-red-400 line-through" : "text-blue-700 dark:text-blue-400"}`}>
+                            {item.code_2}
+                        </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {code2Map.get(item.code_2) || "—"}
+                        </span>
+                    </div>
+                    {code2Lib === "COLOR" && item.code_2 && (
+                        <div
+                            className="w-10 h-10 rounded border-2 border-slate-300 dark:border-slate-600 shadow-sm flex-shrink-0"
+                            style={{
+                                backgroundColor: `rgb(${item.code_2})`,
+                            }}
+                            title={`RGB: ${code2Map.get(item.code_2)}`}
+                        />
+                    )}
                 </div>
                 <div className="col-span-4 flex flex-col">
-                    <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">Work Unit</span>
+                    <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">Comments</span>
                     <span className={`text-sm ${isDeleted ? "text-red-400" : "text-slate-500 dark:text-slate-400"} truncate`}>
-                        {item.workunit || "—"}
+                        {item.lib_com || "—"}
                     </span>
                 </div>
             </div>
@@ -361,7 +374,7 @@ function CreateComboDialog({
                             <SelectTrigger>
                                 <SelectValue placeholder={`Select ${options.code1_label || "Code 1"}`} />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="max-h-[300px]">
                                 {options.code1_options && options.code1_options.length > 0 ? (
                                     options.code1_options.map(opt => (
                                         <SelectItem key={opt.lib_id} value={opt.lib_id}>
@@ -373,6 +386,7 @@ function CreateComboDialog({
                                 )}
                             </SelectContent>
                         </Select>
+                        <p className="text-xs text-muted-foreground">Tip: Start typing to search</p>
                         <input type="hidden" name="code_1" value={code1} />
                     </div>
                     <div className="space-y-2">
@@ -381,7 +395,7 @@ function CreateComboDialog({
                             <SelectTrigger>
                                 <SelectValue placeholder={`Select ${options.code2_label || "Code 2"}`} />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="max-h-[300px]">
                                 {options.code2_options && options.code2_options.length > 0 ? (
                                     options.code2_options.map(opt => (
                                         <SelectItem key={opt.lib_id} value={opt.lib_id}>
@@ -393,11 +407,12 @@ function CreateComboDialog({
                                 )}
                             </SelectContent>
                         </Select>
+                        <p className="text-xs text-muted-foreground">Tip: Start typing to search</p>
                         <input type="hidden" name="code_2" value={code2} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="lib_com">Work Unit (Optional)</Label>
-                        <Input id="lib_com" name="lib_com" placeholder="e.g., 000" defaultValue="000" className="font-mono" />
+                        <Label htmlFor="lib_com">Comments (Optional)</Label>
+                        <Textarea id="lib_com" name="lib_com" placeholder="Additional notes..." className="min-h-[100px]" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -444,7 +459,7 @@ function EditComboDialog({
         };
 
         try {
-            const res = await fetch(`/api/library/combo/${encodeURIComponent(master.lib_code)}/${item.id}`, {
+            const res = await fetch(`/api/library/combo/${encodeURIComponent(master.lib_code)}/${item.code_1}-${item.code_2}`, {
                 method: "PUT",
                 body: JSON.stringify(payload),
             });
@@ -489,8 +504,8 @@ function EditComboDialog({
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="lib_com">Work Unit</Label>
-                        <Input id="lib_com" name="lib_com" defaultValue={item.workunit || '000'} className="font-mono" />
+                        <Label htmlFor="lib_com">Comments</Label>
+                        <Textarea id="lib_com" name="lib_com" defaultValue={item.lib_com || ''} className="min-h-[100px]" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
