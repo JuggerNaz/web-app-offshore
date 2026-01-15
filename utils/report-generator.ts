@@ -26,8 +26,8 @@ export interface ReportHeader {
 /**
  * Get report header with company branding
  */
-export const getReportHeader = (reportTitle: string, reportType: string): ReportHeader => {
-    const companyData = getReportHeaderData();
+export const getReportHeader = async (reportTitle: string, reportType: string): Promise<ReportHeader> => {
+    const companyData = await getReportHeaderData();
 
     return {
         ...companyData,
@@ -57,7 +57,7 @@ export const generateStructureSummaryReport = async (structureId: string) => {
     // TODO: Generate PDF with structure details
     console.log("Generating Structure Summary Report for:", structureId);
 
-    const header = getReportHeader("Structure Summary Report", "Structure");
+    const header = await getReportHeader("Structure Summary Report", "Structure");
     const filename = formatReportFilename("structure_summary", structureId);
 
     return {
@@ -73,7 +73,7 @@ export const generateStructureSummaryReport = async (structureId: string) => {
 export const generateComponentCatalogueReport = async (structureId: string) => {
     console.log("Generating Component Catalogue for:", structureId);
 
-    const header = getReportHeader("Component Catalogue", "Structure");
+    const header = await getReportHeader("Component Catalogue", "Structure");
     const filename = formatReportFilename("component_catalogue", structureId);
 
     return {
@@ -89,7 +89,7 @@ export const generateComponentCatalogueReport = async (structureId: string) => {
 export const generateTechnicalSpecsReport = async (structureId: string) => {
     console.log("Generating Technical Specifications for:", structureId);
 
-    const header = getReportHeader("Technical Specifications", "Structure");
+    const header = await getReportHeader("Technical Specifications", "Structure");
     const filename = formatReportFilename("technical_specs", structureId);
 
     return {
@@ -105,7 +105,7 @@ export const generateTechnicalSpecsReport = async (structureId: string) => {
 export const generateJobPackSummaryReport = async (jobPackId: string) => {
     console.log("Generating Job Pack Summary for:", jobPackId);
 
-    const header = getReportHeader("Job Pack Summary", "Job Pack");
+    const header = await getReportHeader("Job Pack Summary", "Job Pack");
     const filename = formatReportFilename("jobpack_summary", jobPackId);
 
     return {
@@ -121,7 +121,7 @@ export const generateJobPackSummaryReport = async (jobPackId: string) => {
 export const generateWorkScopeReport = async (jobPackId: string) => {
     console.log("Generating Work Scope Report for:", jobPackId);
 
-    const header = getReportHeader("Work Scope Report", "Job Pack");
+    const header = await getReportHeader("Work Scope Report", "Job Pack");
     const filename = formatReportFilename("work_scope", jobPackId);
 
     return {
@@ -137,7 +137,7 @@ export const generateWorkScopeReport = async (jobPackId: string) => {
 export const generateResourceAllocationReport = async (jobPackId: string) => {
     console.log("Generating Resource Allocation for:", jobPackId);
 
-    const header = getReportHeader("Resource Allocation", "Job Pack");
+    const header = await getReportHeader("Resource Allocation", "Job Pack");
     const filename = formatReportFilename("resource_allocation", jobPackId);
 
     return {
@@ -153,7 +153,7 @@ export const generateResourceAllocationReport = async (jobPackId: string) => {
 export const generateInspectionScheduleReport = async (planningId: string) => {
     console.log("Generating Inspection Schedule for:", planningId);
 
-    const header = getReportHeader("Inspection Schedule", "Planning");
+    const header = await getReportHeader("Inspection Schedule", "Planning");
     const filename = formatReportFilename("inspection_schedule", planningId);
 
     return {
@@ -169,7 +169,7 @@ export const generateInspectionScheduleReport = async (planningId: string) => {
 export const generatePlanningOverviewReport = async (planningId: string) => {
     console.log("Generating Planning Overview for:", planningId);
 
-    const header = getReportHeader("Planning Overview", "Planning");
+    const header = await getReportHeader("Planning Overview", "Planning");
     const filename = formatReportFilename("planning_overview", planningId);
 
     return {
@@ -188,7 +188,7 @@ export const generateInspectionReport = async (
 ) => {
     console.log("Generating Inspection Report for:", jobPackId, inspectionType);
 
-    const header = getReportHeader("Inspection Report", "Inspection");
+    const header = await getReportHeader("Inspection Report", "Inspection");
     const filename = formatReportFilename(
         `inspection_${inspectionType}`,
         jobPackId
@@ -210,7 +210,7 @@ export const generateDefectSummaryReport = async (
 ) => {
     console.log("Generating Defect Summary for:", jobPackId, inspectionType);
 
-    const header = getReportHeader("Defect Summary", "Inspection");
+    const header = await getReportHeader("Defect Summary", "Inspection");
     const filename = formatReportFilename(
         `defect_summary_${inspectionType}`,
         jobPackId
@@ -232,7 +232,7 @@ export const generateComplianceReport = async (
 ) => {
     console.log("Generating Compliance Report for:", jobPackId, inspectionType);
 
-    const header = getReportHeader("Compliance Report", "Inspection");
+    const header = await getReportHeader("Compliance Report", "Inspection");
     const filename = formatReportFilename(
         `compliance_${inspectionType}`,
         jobPackId

@@ -134,12 +134,21 @@ const generatePipelineReport = async (
 
   // Logo area (right side)
   if (companySettings?.logo_url) {
-    doc.setDrawColor(255, 255, 255);
-    doc.setLineWidth(0.5);
-    doc.rect(pageWidth - 25, 4, 18, 18);
-    doc.setFontSize(7);
-    doc.setTextColor(255, 255, 255);
-    doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+    try {
+      // Load and add the actual logo image with padding
+      const logoData = await loadImage(companySettings.logo_url);
+      // Box is 18x18, logo is 16x16 with 1mm padding on each side
+      doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
+    } catch (error) {
+      console.error("Error loading company logo:", error);
+      // Fallback to placeholder box if image fails to load
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0.5);
+      doc.rect(pageWidth - 25, 4, 18, 18);
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+      doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+    }
   }
 
   // Company Name
@@ -428,13 +437,21 @@ const generatePlatformReport = async (
 
   // Logo area (right side) - Bigger Square layout
   if (companySettings?.logo_url) {
-    // Placeholder for logo - in production, you'd load and add the actual image
-    doc.setDrawColor(255, 255, 255);
-    doc.setLineWidth(0.5);
-    doc.rect(pageWidth - 25, 4, 18, 18); // Bigger square: 18x18
-    doc.setFontSize(7);
-    doc.setTextColor(255, 255, 255);
-    doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+    try {
+      // Load and add the actual logo image with padding
+      const logoData = await loadImage(companySettings.logo_url);
+      // Box is 18x18, logo is 16x16 with 1mm padding on each side
+      doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
+    } catch (error) {
+      console.error("Error loading company logo:", error);
+      // Fallback to placeholder box if image fails to load
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0.5);
+      doc.rect(pageWidth - 25, 4, 18, 18);
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+      doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+    }
   }
 
   // Company Name - LARGEST (left side)

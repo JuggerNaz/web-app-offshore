@@ -69,13 +69,13 @@ export function CollapsibleSidebar() {
         >
           <div className="relative">
             {companyLogo ? (
-              <div className="h-10 w-10 rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl transition-all border-2 border-white dark:border-slate-800">
+              <div className="h-10 w-10 rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl transition-all border-2 border-white dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-center p-1">
                 <Image
                   src={companyLogo}
                   alt="Company Logo"
                   width={40}
                   height={40}
-                  className="object-cover"
+                  className="object-contain w-full h-full"
                 />
               </div>
             ) : (

@@ -69,7 +69,26 @@ export const saveCompanySettings = (settings: CompanySettings): void => {
  * Get report header data for PDF/document generation
  * @returns Object with company name, department, and logo for reports
  */
-export const getReportHeaderData = () => {
+export const getReportHeaderData = async () => {
+    // Try to fetch from API first
+    try {
+        const response = await fetch("/api/company-settings");
+        if (response.ok) {
+            const { data } = await response.json();
+            return {
+                companyName: data.company_name || "OFFSHORE DATA MANAGEMENT",
+                departmentName: data.department_name || "",
+                serialNo: data.serial_no || "",
+                companyLogo: data.logo_url || null,
+                generatedDate: new Date().toLocaleDateString(),
+                generatedTime: new Date().toLocaleTimeString(),
+            };
+        }
+    } catch (error) {
+        console.error("Error fetching company settings for report:", error);
+    }
+
+    // Fallback to localStorage
     const settings = getCompanySettings();
 
     return {

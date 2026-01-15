@@ -605,20 +605,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const fetchComponentTypes = async () => {
-        try {
-            const res = await fetch("/api/components/types");
-            const json = await res.json();
-            const map: Record<string, string> = {};
-            if (json.data) {
-                json.data.forEach((t: any) => {
-                    if (t.code) map[t.code] = t.name || t.code;
-                });
-            }
-            return map;
-        } catch (e) {
-            console.error("Error fetching component types", e);
-            return {};
-        }
+        // Component types mapping - using hardcoded values since API doesn't exist yet
+        // TODO: Create /api/components/types endpoint if needed
+        return {
+            'LEG': 'Leg',
+            'PILE': 'Pile',
+            'NODE': 'Node',
+            'MEMBER': 'Member',
+            'DECK': 'Deck',
+            'JACKET': 'Jacket'
+        };
     };
 
     const generateReportAction = async (returnBlob: boolean = false) => {
@@ -632,7 +628,25 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const data = await fetchStructureData();
         if (!data) return null;
 
-        const companySettings = { company_name: "NasQuest Resources Sdn Bhd" }; // In real app, fetch from API
+        // Fetch real company settings from API
+        let companySettings: any = { company_name: "NasQuest Resources Sdn Bhd" };
+        try {
+            const response = await fetch("/api/company-settings");
+            if (response.ok) {
+                const result = await response.json();
+                if (result.data) {
+                    companySettings = {
+                        company_name: result.data.company_name || "NasQuest Resources Sdn Bhd",
+                        department_name: result.data.department_name,
+                        serial_no: result.data.serial_no,
+                        logo_url: result.data.logo_url
+                    };
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching company settings for report:", error);
+        }
+
         const typeMap = await fetchComponentTypes();
         const reportConfig = { ...config, returnBlob };
 

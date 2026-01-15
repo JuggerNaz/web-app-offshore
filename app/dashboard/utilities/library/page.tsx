@@ -66,6 +66,7 @@ export default function LibraryPage() {
     const [selectedMaster, setSelectedMaster] = useState<LibMaster | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [detailSearchTerm, setDetailSearchTerm] = useState("");
+    const [categoryFilter, setCategoryFilter] = useState<"all" | "combination" | "standard">("all");
 
     // Fetch Master List
     const { data: masterData, error: masterError, isLoading: masterLoading } = useSWR(
@@ -73,13 +74,23 @@ export default function LibraryPage() {
         fetcher
     );
 
+    // Hardcoded list of combination categories
+    const COMBINATION_CATEGORIES = ['AMLYCODFND', 'ANMLYCLR', 'ANMALTDAYS', 'ANMTRGINSP'];
+
     const masters: LibMaster[] = masterData?.data || [];
 
-    const filteredMasters = masters.filter(m =>
-        m.lib_desc?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.lib_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.lib_name?.toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => (a.lib_name || a.lib_desc || "").localeCompare(b.lib_name || b.lib_desc || ""));
+    const filteredMasters = masters.filter(m => {
+        // Filter by category type
+        const isCombination = COMBINATION_CATEGORIES.includes(m.lib_code);
+
+        if (categoryFilter === "combination" && !isCombination) return false;
+        if (categoryFilter === "standard" && isCombination) return false;
+
+        // Search filter
+        return m.lib_desc?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            m.lib_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            m.lib_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    }).sort((a, b) => (a.lib_name || a.lib_desc || "").localeCompare(b.lib_name || b.lib_desc || ""));
 
     return (
         <div className="flex h-[calc(100vh-6rem)] gap-0 overflow-hidden rounded-lg border bg-background shadow-sm">
@@ -103,6 +114,46 @@ export default function LibraryPage() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="pl-9 bg-white dark:bg-slate-950"
                         />
+                    </div>
+
+                    {/* Category Type Filter */}
+                    <div className="space-y-1.5">
+                        <span className="text-xs font-medium text-muted-foreground">Category Type:</span>
+                        <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="categoryType"
+                                    value="all"
+                                    checked={categoryFilter === "all"}
+                                    onChange={(e) => setCategoryFilter(e.target.value as any)}
+                                    className="w-3.5 h-3.5 text-blue-600 cursor-pointer"
+                                />
+                                <span className="text-xs">All</span>
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="categoryType"
+                                    value="combination"
+                                    checked={categoryFilter === "combination"}
+                                    onChange={(e) => setCategoryFilter(e.target.value as any)}
+                                    className="w-3.5 h-3.5 text-blue-600 cursor-pointer"
+                                />
+                                <span className="text-xs">Combination</span>
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="categoryType"
+                                    value="standard"
+                                    checked={categoryFilter === "standard"}
+                                    onChange={(e) => setCategoryFilter(e.target.value as any)}
+                                    className="w-3.5 h-3.5 text-blue-600 cursor-pointer"
+                                />
+                                <span className="text-xs">Standard</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -170,6 +221,7 @@ function LibraryDetails({ master }: { master: LibMaster }) {
 
     const [searchTerm, setSearchTerm] = useState("");
     const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [itemTypeFilter, setItemTypeFilter] = useState<"all" | "combination" | "standard">("all");
 
     // Fetch Items
     const { data: itemsData, error, isLoading, mutate: refreshItems } = useSWR(
@@ -177,9 +229,28 @@ function LibraryDetails({ master }: { master: LibMaster }) {
         fetcher
     );
 
+    // Fetch combination items to determine which items are combinations
+    const { data: comboData } = useSWR(
+        master ? `/api/library/combo/${encodeURIComponent(master.lib_code)}` : null,
+        fetcher
+    );
+
     const items: LibItem[] = itemsData?.data || [];
+    const comboItems = comboData?.data || [];
+
+    // Create a Set of combination item IDs for quick lookup
+    const combinationIds = new Set(
+        comboItems.map((combo: any) => combo.lib_val || combo.code)
+    );
 
     const filteredItems = items.filter(item => {
+        // Filter by item type
+        const itemId = item.lib_val || item.code;
+        const isCombination = combinationIds.has(itemId);
+
+        if (itemTypeFilter === "combination" && !isCombination) return false;
+        if (itemTypeFilter === "standard" && isCombination) return false;
+
         // Search in all string values
         const searchStr = searchTerm.toLowerCase();
         return Object.values(item).some(val =>
@@ -190,26 +261,68 @@ function LibraryDetails({ master }: { master: LibMaster }) {
     return (
         <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="px-6 py-4 border-b flex justify-between items-center gap-4">
-                <div>
-                    <h2 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
-                        {master.lib_name || master.lib_desc}
-                    </h2>
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="relative w-60">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Search items..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-9"
-                        />
+            <div className="px-6 py-4 border-b space-y-4">
+                <div className="flex justify-between items-center gap-4">
+                    <div>
+                        <h2 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
+                            {master.lib_name || master.lib_desc}
+                        </h2>
                     </div>
-                    <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
-                        <Plus className="w-4 h-4" />
-                        Add Item
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <div className="relative w-60">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search items..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-9"
+                            />
+                        </div>
+                        <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+                            <Plus className="w-4 h-4" />
+                            Add Item
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Item Type Filter */}
+                <div className="flex items-center gap-4 px-1">
+                    <span className="text-sm font-medium text-muted-foreground">Item Type:</span>
+                    <div className="flex items-center gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="radio"
+                                name="itemType"
+                                value="all"
+                                checked={itemTypeFilter === "all"}
+                                onChange={(e) => setItemTypeFilter(e.target.value as any)}
+                                className="w-4 h-4 text-blue-600 cursor-pointer"
+                            />
+                            <span className="text-sm">All Items</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="radio"
+                                name="itemType"
+                                value="combination"
+                                checked={itemTypeFilter === "combination"}
+                                onChange={(e) => setItemTypeFilter(e.target.value as any)}
+                                className="w-4 h-4 text-blue-600 cursor-pointer"
+                            />
+                            <span className="text-sm">Combination Items</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="radio"
+                                name="itemType"
+                                value="standard"
+                                checked={itemTypeFilter === "standard"}
+                                onChange={(e) => setItemTypeFilter(e.target.value as any)}
+                                className="w-4 h-4 text-blue-600 cursor-pointer"
+                            />
+                            <span className="text-sm">Standard Items</span>
+                        </label>
+                    </div>
                 </div>
             </div>
 

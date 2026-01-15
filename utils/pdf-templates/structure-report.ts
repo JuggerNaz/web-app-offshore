@@ -48,7 +48,7 @@ export const generateStructureReportPDF = async (data: StructureReportData) => {
   console.log("Generating Structure Report PDF for:", data.str_name);
 
   // Get company branding
-  const header = getReportHeaderData();
+  const header = await getReportHeaderData();
 
   // TODO: Implement PDF generation with jsPDF
   // This is a placeholder that returns the structure for the PDF
@@ -94,8 +94,8 @@ export const generateStructureReportPDF = async (data: StructureReportData) => {
 /**
  * HTML Template for Structure Report Preview
  */
-export const getStructureReportHTML = (data: StructureReportData): string => {
-  const header = getReportHeaderData();
+export const getStructureReportHTML = async (data: StructureReportData): Promise<string> => {
+  const header = await getReportHeaderData();
 
   return `
 <!DOCTYPE html>
@@ -311,12 +311,12 @@ export const getStructureReportHTML = (data: StructureReportData): string => {
     <!-- Header -->
     <div class="report-header">
       <div class="company-info">
-        ${header.companyLogo ? `<img src="${header.companyLogo}" alt="Company Logo" class="company-logo">` : ''}
         <div class="company-name">${header.companyName}</div>
         ${header.departmentName ? `<div class="department-name">${header.departmentName}</div>` : ''}
         ${header.serialNo ? `<div class="serial-no">Serial No: ${header.serialNo}</div>` : ''}
       </div>
       <div class="report-meta">
+        ${header.companyLogo ? `<img src="${header.companyLogo}" alt="Company Logo" class="company-logo" style="margin-bottom: 10px;">` : ''}
         <div><strong>Report Type:</strong> Structure Report</div>
         <div><strong>Generated:</strong> ${header.generatedDate}</div>
         <div><strong>Time:</strong> ${header.generatedTime}</div>

@@ -187,6 +187,20 @@ const MenuGroup = ({ label, icon, isCollapsed, children, defaultOpen = false }: 
     return null;
   }
 
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!mounted) {
+    return (
+      <div className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-semibold text-muted-foreground">
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 rounded-md bg-muted">
+            {icon}
+          </div>
+          <span className="truncate">{label}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
       <CollapsibleTrigger

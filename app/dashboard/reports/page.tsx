@@ -42,9 +42,6 @@ export default function ReportsPage() {
     // I will keep the Wizard as the main view and assume the Wizard handles component selection better.
     // However, to avoid breaking the "Component Data Sheet" feature if the Wizard doesn't support it fully yet:
 
-    // Fetch component types
-    const { data: componentTypes } = useSWR("/api/components/types", fetcher);
-
     // Fetch components for a generic search (this might need structure context in real app)
     // For now, let's assume we fetch components for the currently selected structure in Wizard?
     // Actually, let's utilize the Wizard for everything. If the user wants a component report, 
