@@ -1,4 +1,6 @@
-"use server";
+
+
+import React from "react";
 
 import Link from "next/link";
 import HeaderAuth from "./header-auth";
@@ -35,6 +37,5 @@ const HomeNav = () => (
   </nav>
 );
 
-const DashboardNavPlaceholder = () => null;
-
-export { HomeNav, DashboardNavPlaceholder as DashboardNav };
+export const DashboardNav = () => null;
+export { HomeNav };

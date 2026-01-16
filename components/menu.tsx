@@ -3,21 +3,21 @@
 import {
   Home,
   Package,
-  BrickWall,
   Layers2,
   Calendar,
   ChevronDown,
   ChevronRight,
   Plus,
   MapPin,
-  LayoutDashboard,
-  ClipboardList,
-  Compass,
+  Settings,
   FileText,
+  Compass,
+  Database,
+  LayoutDashboard,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -55,7 +55,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
           <MenuLink
             href="/dashboard"
             isCollapsed={isCollapsed}
-            label="Dashboard"
+            label="Analytics"
             icon={<LayoutDashboard className="h-[18px] w-[18px]" />}
             text="Analytics"
           />
@@ -86,7 +86,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
               <MenuLink
                 href="/dashboard/field"
                 isCollapsed={isCollapsed}
-                label="Overview"
+                label="Map Overview"
                 icon={<Compass className="h-4 w-4" />}
                 text="Map Overview"
                 isChild
@@ -94,7 +94,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
               <MenuLink
                 href="/dashboard/field/platform"
                 isCollapsed={isCollapsed}
-                label="Platform"
+                label="Platforms"
                 icon={<Layers2 className="h-4 w-4" />}
                 text="Platforms"
                 isChild
@@ -103,7 +103,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
               <MenuLink
                 href="/dashboard/field/pipeline"
                 isCollapsed={isCollapsed}
-                label="Pipeline"
+                label="Pipelines"
                 icon={<FileText className="h-4 w-4" />}
                 text="Pipelines"
                 isChild
@@ -113,7 +113,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
           )}
         </div>
 
-        {/* Operations Section */}
+        {/* EXECUTION / OPERATIONS */}
         <div className="space-y-1">
           {!isCollapsed && (
             <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
@@ -123,37 +123,82 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
           <MenuLink
             href="/dashboard/jobpack"
             isCollapsed={isCollapsed}
-            label="Job Pack"
+            label="Work Packages"
             icon={<Package className="h-[18px] w-[18px]" />}
             text="Work Packages"
           />
           <MenuLink
             href="/dashboard/planning"
             isCollapsed={isCollapsed}
-            label="Inspection Planning"
+            label="Planning"
             icon={<Calendar className="h-[18px] w-[18px]" />}
             text="Planning"
             actionHref="/dashboard/planning/form"
           />
+          <MenuLink
+            href="/dashboard/reports"
+            isCollapsed={isCollapsed}
+            label="Reports"
+            icon={<FileText className="h-[18px] w-[18px]" />}
+            text="Reports"
+          />
         </div>
+
+        {/* UTILITIES */}
+        <div className="space-y-1">
+          {!isCollapsed && (
+            <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+              Utilities
+            </p>
+          )}
+          <MenuLink
+            href="/dashboard/utilities/library"
+            isCollapsed={isCollapsed}
+            label="Library"
+            icon={<Database className="h-[18px] w-[18px]" />}
+            text="Library"
+          />
+        </div>
+
       </nav>
     </TooltipProvider>
   );
 };
 
 const MenuGroup = ({ label, icon, isCollapsed, children, defaultOpen = false }: MenuGroupProps) => {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
   const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const isActive = useMemo(() => {
+    if (!mounted) return false;
     // If we are in field related pages
     if (label === "Field Assets") {
-      return pathname?.includes("/dashboard/field");
+      return pathname?.includes("/dashboard/field") ?? false;
     }
-    return pathname?.startsWith(`/dashboard/${label.toLowerCase()}`);
-  }, [pathname, label]);
+    return pathname?.startsWith(`/dashboard/${label.toLowerCase()}`) ?? false;
+  }, [pathname, label, mounted]);
 
   if (isCollapsed) {
     return null;
+  }
+
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!mounted) {
+    return (
+      <div className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-semibold text-muted-foreground">
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 rounded-md bg-muted">
+            {icon}
+          </div>
+          <span className="truncate">{label}</span>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -195,7 +240,13 @@ const MenuGroup = ({ label, icon, isCollapsed, children, defaultOpen = false }: 
 const MenuLink = (props: MenuLinkProps) => {
   const pathname = usePathname();
   const router = useRouter();
-  const isActive = pathname === props.href;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isActive = mounted && pathname === props.href;
 
   const handleActionClick = (e: React.MouseEvent) => {
     e.preventDefault();

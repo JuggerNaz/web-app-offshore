@@ -1,0 +1,11 @@
+            setCurrentStructure(detailedStructure);
+
+            // Ensure photos array exists (fallback to visuals if needed)
+            if (!detailedStructure.photos && detailedStructure.visuals && detailedStructure.visuals.length > 0) {
+                detailedStructure.photos = detailedStructure.visuals.map((visual: any) => ({
+                    id: visual.id,
+                    url: visual.meta?.file_url || visual.path,
+                    name: visual.name
+                }));
+                console.log('Photos mapped from visuals:', detailedStructure.photos.length);
+            }
