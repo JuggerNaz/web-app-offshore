@@ -242,7 +242,7 @@ export default function PlatformPage() {
               return (
                 <Link
                   key={`platform-${platform.plat_id}`}
-                  href={`/dashboard/field/platform/${platform.plat_id}`}
+                  href={`/dashboard/field/platform/${platform.plat_id}?from=list`}
                   className="group"
                 >
                   <div className="relative h-80 rounded-xl overflow-hidden border border-border/50 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 hover:shadow-xl hover:scale-105 transition-all duration-300 cursor-pointer flex flex-col">
@@ -381,7 +381,7 @@ export default function PlatformPage() {
                     <TableRow
                       key={`platform-${platform.plat_id}`}
                       className="cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-950/20"
-                      onClick={() => window.location.href = `/dashboard/field/platform/${platform.plat_id}`}
+                      onClick={() => window.location.href = `/dashboard/field/platform/${platform.plat_id}?from=list`}
                     >
                       <TableCell>
                         <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-center">

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Building2, Waves, ArrowRight, LayoutGrid, List, Search, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { getStoragePublicUrl } from "@/utils/storage";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -65,12 +65,14 @@ export default function StructuresPage() {
         fetcher
     );
 
-    const platforms: Platform[] = platformsData?.data || [];
-    const pipelines: Pipeline[] = pipelinesData?.data || [];
+    const platforms: Platform[] = useMemo(() => platformsData?.data || [], [platformsData]);
+    const pipelines: Pipeline[] = useMemo(() => pipelinesData?.data || [], [pipelinesData]);
     const field: FieldInfo | null = fieldData?.data || null;
 
     // Generate random image selection for platforms with multiple images
     useEffect(() => {
+        if (!platformsData) return;
+
         const imageMap = new Map<number, string>();
         platforms.forEach((platform) => {
             if (platform.images && platform.images.length > 0) {
@@ -81,7 +83,7 @@ export default function StructuresPage() {
             }
         });
         setRandomImages(imageMap);
-    }, [platforms]);
+    }, [platformsData]);
 
     // Filter structures based on search query
     const filteredPlatforms = platforms.filter((platform) =>
