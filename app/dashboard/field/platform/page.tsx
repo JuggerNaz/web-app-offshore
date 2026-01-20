@@ -80,10 +80,12 @@ export default function PlatformPage() {
     fetcher
   );
 
-  const platforms: Platform[] = data?.data || [];
+  const platforms: Platform[] = useMemo(() => data?.data || [], [data]);
 
   // Generate random image selection for platforms with multiple images
   useEffect(() => {
+    if (!data) return;
+
     const imageMap = new Map<number, string>();
     platforms.forEach((platform) => {
       if (platform.images && platform.images.length > 0) {
@@ -94,7 +96,7 @@ export default function PlatformPage() {
       }
     });
     setRandomImages(imageMap);
-  }, [platforms]);
+  }, [data]);
 
   // Persist view mode
   useEffect(() => {

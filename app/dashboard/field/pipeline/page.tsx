@@ -69,7 +69,7 @@ export default function PipelinePage() {
     fetcher
   );
 
-  const pipelines: Pipeline[] = data?.data || [];
+  const pipelines: Pipeline[] = useMemo(() => data?.data || [], [data]);
 
   // Persist view mode
   useEffect(() => {
