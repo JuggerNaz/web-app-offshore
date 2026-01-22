@@ -740,6 +740,46 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
     };
 
+    const handleShare = async () => {
+        if (!previewUrl) {
+            alert("Please wait for the preview to generate before sharing.");
+            return;
+        }
+
+        // Check if Web Share API is supported
+        if (!navigator.share) {
+            alert("Sharing is not supported in this browser. Please use the Download button instead.");
+            return;
+        }
+
+        try {
+            // Fetch the blob from the preview URL
+            const response = await fetch(previewUrl);
+            const blob = await response.blob();
+
+            // Create a descriptive filename
+            const template = getCurrentTemplate();
+            const structure = structures.find((s: any) => s.id.toString() === selections.structureId);
+            const filename = `${template?.name.replace(/\s+/g, '_')}_${structure?.str_name?.replace(/\s+/g, '_') || 'Report'}.pdf`;
+
+            // Convert blob to File object
+            const file = new File([blob], filename, { type: 'application/pdf' });
+
+            // Use Web Share API
+            await navigator.share({
+                title: template?.name || 'Report',
+                text: `${template?.name} - ${structure?.str_name || 'Structure Report'}`,
+                files: [file]
+            });
+        } catch (error: any) {
+            // User cancelled the share or an error occurred
+            if (error.name !== 'AbortError') {
+                console.error('Error sharing:', error);
+                alert('Failed to share the report. Please try downloading instead.');
+            }
+        }
+    };
+
     const renderPreview = () => (
         <div className="h-full flex flex-col space-y-4">
             <div className="text-center space-y-1 mb-2">
@@ -884,6 +924,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         </Button>
                         <Button className="gap-2 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20" onClick={handleDownload}>
                             <Download className="w-4 h-4" /> Download
+                        </Button>
+                        <Button variant="outline" className="gap-2" onClick={handleShare}>
+                            <Share2 className="w-4 h-4" /> Share
                         </Button>
                         <Button variant="secondary" className="gap-2" onClick={handlePrint}>
                             <Printer className="w-4 h-4" /> Print

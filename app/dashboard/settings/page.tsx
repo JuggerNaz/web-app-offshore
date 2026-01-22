@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Settings, Building2, Video } from "lucide-react";
+import { Settings, Building2, Video, Activity } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SettingsPage() {
@@ -93,6 +93,43 @@ export default function SettingsPage() {
                                     <li className="flex items-center gap-2">
                                         <span className="w-1.5 h-1.5 bg-purple-500 rounded-full"></span>
                                         Format Conversion
+                                    </li>
+                                </ul>
+                            </CardContent>
+                        </Card>
+                    </Link>
+
+                    {/* Data Acquisition */}
+                    <Link href="/dashboard/settings/data-acquisition">
+                        <Card className="cursor-pointer hover:border-green-500 hover:shadow-lg transition-all duration-200 h-full">
+                            <CardHeader>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                        <Activity className="w-6 h-6 text-green-600" />
+                                    </div>
+                                    <div>
+                                        <CardTitle>Data Acquisition</CardTitle>
+                                        <CardDescription>External Data Sources</CardDescription>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <ul className="space-y-2 text-sm text-muted-foreground">
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                        Serial Port (RS232) Connection
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                        Network (TCP/UDP) Connection
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                        Position & ID-Based Parsing
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                        Field Mapping Configuration
                                     </li>
                                 </ul>
                             </CardContent>
