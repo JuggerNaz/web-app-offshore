@@ -30,6 +30,7 @@ interface DataAcquisitionSettings {
     connection: {
         type: ConnectionType;
         serial: {
+            comPort: string;
             baudRate: number;
             dataBits: 5 | 6 | 7 | 8;
             parity: 'none' | 'even' | 'odd';
@@ -61,6 +62,8 @@ export default function DataAcquisitionPage() {
 
     // Connection Settings
     const [connectionType, setConnectionType] = useState<ConnectionType>('serial');
+    const [comPort, setComPort] = useState<string>('');
+    const [availablePorts, setAvailablePorts] = useState<Array<{ id: string, name: string }>>([]);
     const [baudRate, setBaudRate] = useState(9600);
     const [dataBits, setDataBits] = useState<5 | 6 | 7 | 8>(8);
     const [parity, setParity] = useState<'none' | 'even' | 'odd'>('none');
@@ -82,6 +85,54 @@ export default function DataAcquisitionPage() {
     const [isConnected, setIsConnected] = useState(false);
     const [liveData, setLiveData] = useState('');
     const [parsedData, setParsedData] = useState<Record<string, string>>({});
+
+    // Web Serial API
+    const [serialPort, setSerialPort] = useState<any>(null);
+    const [reader, setReader] = useState<any>(null);
+    const [isWebSerialSupported, setIsWebSerialSupported] = useState(false);
+
+    // Check Web Serial API support and get available ports
+    useEffect(() => {
+        const checkSerialSupport = async () => {
+            if ('serial' in navigator) {
+                setIsWebSerialSupported(true);
+                await refreshAvailablePorts();
+            }
+        };
+        checkSerialSupport();
+    }, []);
+
+    // Function to refresh available ports
+    const refreshAvailablePorts = async () => {
+        if ('serial' in navigator) {
+            try {
+                const ports = await (navigator as any).serial.getPorts();
+                const portList = ports.map((port: any, index: number) => {
+                    const info = port.getInfo();
+                    const vendorId = info.usbVendorId ? `VID:${info.usbVendorId.toString(16).toUpperCase().padStart(4, '0')}` : '';
+                    const productId = info.usbProductId ? `PID:${info.usbProductId.toString(16).toUpperCase().padStart(4, '0')}` : '';
+
+                    // Create a descriptive name with COM port number
+                    let deviceInfo = [vendorId, productId].filter(Boolean).join(' ');
+                    const portNumber = index + 1;
+                    const name = deviceInfo
+                        ? `COM${portNumber} - ${deviceInfo}`
+                        : `COM${portNumber} - Serial Device`;
+
+                    return {
+                        id: `port-${index}`,
+                        name: name
+                    };
+                });
+                setAvailablePorts(portList);
+                if (portList.length > 0 && !comPort) {
+                    setComPort(portList[0].id);
+                }
+            } catch (error) {
+                console.error('Error getting serial ports:', error);
+            }
+        }
+    };
 
     // Get default settings based on structure type
     const getDefaultSettings = (type: StructureType): DataAcquisitionSettings => {
@@ -186,7 +237,7 @@ export default function DataAcquisitionPage() {
             structureType: type,
             connection: {
                 type: 'serial',
-                serial: { baudRate: 9600, dataBits: 8, parity: 'none', stopBits: 1 },
+                serial: { comPort: 'COM1', baudRate: 9600, dataBits: 8, parity: 'none', stopBits: 1 },
                 network: { protocol: 'tcp', ipAddress: '192.168.1.100', port: 5000 },
             },
             parsing: {
@@ -252,6 +303,7 @@ export default function DataAcquisitionPage() {
 
         // Update all state variables
         setConnectionType(settings.connection.type);
+        setComPort(settings.connection.serial.comPort || 'COM1');
         setBaudRate(settings.connection.serial.baudRate);
         setDataBits(settings.connection.serial.dataBits);
         setParity(settings.connection.serial.parity);
@@ -270,7 +322,7 @@ export default function DataAcquisitionPage() {
             structureType,
             connection: {
                 type: connectionType,
-                serial: { baudRate, dataBits, parity, stopBits },
+                serial: { comPort, baudRate, dataBits, parity, stopBits },
                 network: { protocol, ipAddress, port },
             },
             parsing: {
@@ -342,16 +394,86 @@ export default function DataAcquisitionPage() {
         setFields(fields.map(f => f.id === id ? { ...f, ...updates } : f));
     };
 
-    const handleConnect = () => {
-        setIsConnected(true);
-        const sampleData = 'N1234567E0987654D0123CP-0850';
-        setLiveData(sampleData);
+    const handleConnect = async () => {
+        if (!isWebSerialSupported) {
+            alert('Web Serial API is not supported in this browser. Please use Chrome, Edge, or Opera.');
+            return;
+        }
+
+        try {
+            // Request a port
+            const port = await (navigator as any).serial.requestPort();
+
+            // Open the port with the configured settings
+            await port.open({
+                baudRate: baudRate,
+                dataBits: dataBits,
+                parity: parity,
+                stopBits: stopBits,
+            });
+
+            setSerialPort(port);
+            setIsConnected(true);
+
+            // Refresh available ports list
+            await refreshAvailablePorts();
+
+            // Start reading data
+            const textDecoder = new TextDecoderStream();
+            const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+            const reader = textDecoder.readable.getReader();
+            setReader(reader);
+
+            // Read loop
+            const readLoop = async () => {
+                try {
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) {
+                            break;
+                        }
+                        if (value) {
+                            // Append new data
+                            setLiveData(prev => {
+                                const newData = prev + value;
+                                // Keep only the last 1000 characters to prevent memory issues
+                                return newData.slice(-1000);
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error reading from serial port:', error);
+                }
+            };
+
+            readLoop();
+
+        } catch (error) {
+            console.error('Failed to connect to serial port:', error);
+            alert('Failed to connect to serial port. Please check your device and try again.');
+        }
     };
 
-    const handleDisconnect = () => {
-        setIsConnected(false);
-        setLiveData('');
-        setParsedData({});
+    const handleDisconnect = async () => {
+        try {
+            // Cancel the reader
+            if (reader) {
+                await reader.cancel();
+                setReader(null);
+            }
+
+            // Close the port
+            if (serialPort) {
+                await serialPort.close();
+                setSerialPort(null);
+            }
+
+            setIsConnected(false);
+            setLiveData('');
+            setParsedData({});
+        } catch (error) {
+            console.error('Error disconnecting from serial port:', error);
+        }
     };
 
     const applyModification = (value: string, field: FieldMapping): string => {
@@ -562,57 +684,112 @@ export default function DataAcquisitionPage() {
 
                         {/* Serial Settings */}
                         {connectionType === 'serial' && (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Baud Rate</label>
+                            <div className="space-y-4">
+                                {/* COM Port Selection */}
+                                <div className="p-4 bg-muted/50 rounded-lg">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="block text-sm font-medium">COM Port</label>
+                                        {isWebSerialSupported ? (
+                                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                                                Web Serial API Supported
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs px-2 py-1 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
+                                                Not Supported
+                                            </span>
+                                        )}
+                                    </div>
                                     <select
-                                        value={baudRate}
-                                        onChange={(e) => setBaudRate(Number(e.target.value))}
+                                        value={comPort}
+                                        onChange={(e) => setComPort(e.target.value)}
                                         className="w-full bg-background border border-input rounded-lg px-3 py-2"
+                                        disabled={isConnected}
                                     >
-                                        <option value={9600}>9600</option>
-                                        <option value={19200}>19200</option>
-                                        <option value={38400}>38400</option>
-                                        <option value={57600}>57600</option>
-                                        <option value={115200}>115200</option>
+                                        {availablePorts.length === 0 ? (
+                                            <option value="">No ports available - Click "Connect & Test" to add</option>
+                                        ) : (
+                                            availablePorts.map(port => (
+                                                <option key={port.id} value={port.id}>{port.name}</option>
+                                            ))
+                                        )}
                                     </select>
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                        {isWebSerialSupported
+                                            ? 'Click "Connect & Test" to select and connect to your serial device'
+                                            : 'Web Serial API requires Chrome, Edge, or Opera browser'}
+                                    </p>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Data Bits</label>
-                                    <select
-                                        value={dataBits}
-                                        onChange={(e) => setDataBits(Number(e.target.value) as 5 | 6 | 7 | 8)}
-                                        className="w-full bg-background border border-input rounded-lg px-3 py-2"
-                                    >
-                                        <option value={5}>5</option>
-                                        <option value={6}>6</option>
-                                        <option value={7}>7</option>
-                                        <option value={8}>8</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Parity</label>
-                                    <select
-                                        value={parity}
-                                        onChange={(e) => setParity(e.target.value as 'none' | 'even' | 'odd')}
-                                        className="w-full bg-background border border-input rounded-lg px-3 py-2"
-                                    >
-                                        <option value="none">None</option>
-                                        <option value="even">Even</option>
-                                        <option value="odd">Odd</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Stop Bits</label>
-                                    <select
-                                        value={stopBits}
-                                        onChange={(e) => setStopBits(Number(e.target.value) as 1 | 1.5 | 2)}
-                                        className="w-full bg-background border border-input rounded-lg px-3 py-2"
-                                    >
-                                        <option value={1}>1</option>
-                                        <option value={1.5}>1.5</option>
-                                        <option value={2}>2</option>
-                                    </select>
+
+                                {/* Serial Parameters */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Baud Rate</label>
+                                        <select
+                                            value={baudRate}
+                                            onChange={(e) => setBaudRate(Number(e.target.value))}
+                                            className="w-full bg-background border border-input rounded-lg px-3 py-2"
+                                        >
+                                            <option value={110}>110</option>
+                                            <option value={300}>300</option>
+                                            <option value={600}>600</option>
+                                            <option value={1200}>1200</option>
+                                            <option value={2400}>2400</option>
+                                            <option value={4800}>4800</option>
+                                            <option value={9600}>9600</option>
+                                            <option value={14400}>14400</option>
+                                            <option value={19200}>19200</option>
+                                            <option value={28800}>28800</option>
+                                            <option value={38400}>38400</option>
+                                            <option value={56000}>56000</option>
+                                            <option value={57600}>57600</option>
+                                            <option value={115200}>115200</option>
+                                            <option value={128000}>128000</option>
+                                            <option value={230400}>230400</option>
+                                            <option value={256000}>256000</option>
+                                            <option value={460800}>460800</option>
+                                            <option value={921600}>921600</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Data Bits</label>
+                                        <select
+                                            value={dataBits}
+                                            onChange={(e) => setDataBits(Number(e.target.value) as 5 | 6 | 7 | 8)}
+                                            className="w-full bg-background border border-input rounded-lg px-3 py-2"
+                                            disabled={isConnected}
+                                        >
+                                            <option value={5}>5</option>
+                                            <option value={6}>6</option>
+                                            <option value={7}>7</option>
+                                            <option value={8}>8</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Parity</label>
+                                        <select
+                                            value={parity}
+                                            onChange={(e) => setParity(e.target.value as 'none' | 'even' | 'odd')}
+                                            className="w-full bg-background border border-input rounded-lg px-3 py-2"
+                                            disabled={isConnected}
+                                        >
+                                            <option value="none">None</option>
+                                            <option value="even">Even</option>
+                                            <option value="odd">Odd</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Stop Bits</label>
+                                        <select
+                                            value={stopBits}
+                                            onChange={(e) => setStopBits(Number(e.target.value) as 1 | 1.5 | 2)}
+                                            className="w-full bg-background border border-input rounded-lg px-3 py-2"
+                                            disabled={isConnected}
+                                        >
+                                            <option value={1}>1</option>
+                                            <option value={1.5}>1.5</option>
+                                            <option value={2}>2</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         )}
