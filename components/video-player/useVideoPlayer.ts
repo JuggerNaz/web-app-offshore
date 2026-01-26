@@ -18,7 +18,7 @@ export interface VideoPlayerState {
     loading: boolean;
 }
 
-export function useVideoPlayer(videoRef: React.RefObject<HTMLVideoElement>) {
+export function useVideoPlayer(videoRef: React.RefObject<HTMLVideoElement | null>) {
     const [state, setState] = useState<VideoPlayerState>({
         playing: false,
         currentTime: 0,

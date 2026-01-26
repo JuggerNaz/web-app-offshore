@@ -19,7 +19,7 @@ export async function fixWebMDuration(blob: Blob, durationMs: number): Promise<B
         const durationSeconds = durationMs / 1000;
 
         // Apply the fix
-        const fixedBlob = await fixWebmDuration(blob, durationSeconds);
+        const fixedBlob = await (fixWebmDuration as any)(blob, durationSeconds);
 
         console.log(`✅ WebM duration fixed: ${durationSeconds}s`);
         return fixedBlob;

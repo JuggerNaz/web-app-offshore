@@ -137,3 +137,44 @@ export interface OverrideRequest {
     newValue: any;
     reason: string;
 }
+
+// Enriched rule for display
+export interface DefectCriteriaRuleDisplay extends DefectCriteriaRule {
+    priorityLabel: string;
+    defectCodeLabel: string;
+    defectTypeLabel: string;
+}
+
+// Database Entities
+export interface LibraryCombo {
+    lib_code: string;
+    code_1: string;
+    code_2: string;
+}
+
+export interface InspectionDefectFlag {
+    id: string;
+    inspection_id: string;
+    event_id: string;
+    procedure_id: number;
+    rule_id: number;
+    auto_flagged: boolean;
+    overridden: boolean;
+    override_reason?: string;
+}
+
+export interface DefectOverrideAuditLog {
+    id: string;
+    defect_flag_id: string;
+    user_id: string;
+    field_changed: string;
+    original_value: string;
+    new_value: string;
+    reason: string;
+    override_timestamp: string;
+}
+
+// Aliases for better semantics
+export type DefectPriority = LibraryItem;
+export type DefectCode = LibraryItem;
+export type DefectType = LibraryItem;

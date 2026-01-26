@@ -182,7 +182,7 @@ export async function getApplicableProcedure(
  * Get all rules for a specific procedure, ordered by evaluation priority
  */
 export async function getProcedureRules(
-    procedureId: number
+    procedureId: string | number
 ): Promise<DefectCriteriaRule[]> {
     const supabase = createClient();
 
@@ -434,8 +434,8 @@ export async function evaluateCriteria(
 export async function flagDefect(
     inspectionId: string,
     eventId: string,
-    procedureId: number,
-    ruleId: number,
+    procedureId: string | number,
+    ruleId: string | number,
     autoFlagged: boolean = true
 ): Promise<InspectionDefectFlag | null> {
     const supabase = createClient();
@@ -513,7 +513,7 @@ export async function logOverride(
  * Get override audit trail for a defect flag
  */
 export async function getOverrideAuditTrail(
-    defectFlagId: number
+    defectFlagId: string | number
 ): Promise<DefectOverrideAuditLog[]> {
     const supabase = createClient();
 

@@ -168,22 +168,21 @@ export default function VideoRecorderWidget({
     }
 
     function drawVideoToCanvas() {
-        const canvas = canvasRef.current;
-        const video = videoRef.current;
-        if (!canvas || !video) return;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
         function draw() {
             if (!isRecording && !isPaused) return;
 
-            // Draw video frame
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const currentCanvas = canvasRef.current;
+            const currentVideo = videoRef.current;
+            const currentCtx = currentCanvas?.getContext('2d');
 
-            // Overlay manager will draw on top
-            if (overlayManagerRef.current) {
-                overlayManagerRef.current.redraw();
+            if (currentCanvas && currentVideo && currentCtx) {
+                // Draw video frame
+                currentCtx.drawImage(currentVideo, 0, 0, currentCanvas.width, currentCanvas.height);
+
+                // Overlay manager will draw on top
+                if (overlayManagerRef.current) {
+                    overlayManagerRef.current.redraw();
+                }
             }
 
             requestAnimationFrame(draw);
@@ -287,7 +286,7 @@ export default function VideoRecorderWidget({
   `;
 
     return (
-        <div className={widgetClasses} style={mode === 'floating' ? defaultPosition : undefined}>
+        <div className={widgetClasses} style={mode === 'floating' ? { left: defaultPosition.x, top: defaultPosition.y } : undefined}>
             {/* Header */}
             <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-4 py-3 flex items-center justify-between border-b border-slate-700 cursor-move">
                 <div className="flex items-center gap-2 text-sm font-semibold text-white">

@@ -26,7 +26,7 @@ export function VideoPlayer({ src, filename = 'video.webm', poster, autoPlay = f
     const { state, controls } = useVideoPlayer(videoRef);
     const [showControls, setShowControls] = useState(true);
     const [volumeSliderVisible, setVolumeSliderVisible] = useState(false);
-    const hideControlsTimeoutRef = useRef<NodeJS.Timeout>();
+    const hideControlsTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
     // Auto-hide controls after 3 seconds of inactivity
     const resetHideControlsTimer = () => {
@@ -242,7 +242,7 @@ export function VideoPlayer({ src, filename = 'video.webm', poster, autoPlay = f
                         />
 
                         {/* Format Converter */}
-                        <FormatConverter src={src} filename={filename} />
+                        <FormatConverter videoSrc={src} filename={filename} />
 
                         {/* Fullscreen */}
                         <button
