@@ -67,9 +67,9 @@ export default function PlatformPage() {
   const [randomImages, setRandomImages] = useState<Map<number, string>>(new Map());
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('platformViewMode') as ViewMode) || 'card';
+      return (localStorage.getItem('platform_view_mode') as ViewMode) || 'list';
     }
-    return 'card';
+    return 'list';
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("title");
@@ -80,10 +80,12 @@ export default function PlatformPage() {
     fetcher
   );
 
-  const platforms: Platform[] = data?.data || [];
+  const platforms: Platform[] = useMemo(() => data?.data || [], [data]);
 
   // Generate random image selection for platforms with multiple images
   useEffect(() => {
+    if (!data) return;
+
     const imageMap = new Map<number, string>();
     platforms.forEach((platform) => {
       if (platform.images && platform.images.length > 0) {
@@ -94,12 +96,12 @@ export default function PlatformPage() {
       }
     });
     setRandomImages(imageMap);
-  }, [platforms]);
+  }, [data]);
 
   // Persist view mode
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('platformViewMode', viewMode);
+      localStorage.setItem('platform_view_mode', viewMode);
     }
   }, [viewMode]);
 
@@ -242,7 +244,7 @@ export default function PlatformPage() {
               return (
                 <Link
                   key={`platform-${platform.plat_id}`}
-                  href={`/dashboard/field/platform/${platform.plat_id}`}
+                  href={`/dashboard/field/platform/${platform.plat_id}?from=list`}
                   className="group"
                 >
                   <div className="relative h-80 rounded-xl overflow-hidden border border-border/50 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 hover:shadow-xl hover:scale-105 transition-all duration-300 cursor-pointer flex flex-col">
@@ -381,7 +383,7 @@ export default function PlatformPage() {
                     <TableRow
                       key={`platform-${platform.plat_id}`}
                       className="cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-950/20"
-                      onClick={() => window.location.href = `/dashboard/field/platform/${platform.plat_id}`}
+                      onClick={() => window.location.href = `/dashboard/field/platform/${platform.plat_id}?from=list`}
                     >
                       <TableCell>
                         <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-center">

@@ -17,6 +17,8 @@
     "test-storage": "node scripts/test-storage-url.js"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-checkbox": "^1.1.4",
@@ -42,6 +44,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
+    "fix-webm-duration": "^1.0.6",
     "framer-motion": "^12.24.10",
     "geist": "^1.2.1",
     "gray-matter": "^4.0.3",
@@ -62,6 +65,7 @@
     "sonner": "^2.0.1",
     "swr": "^2.3.0",
     "upgrade": "^1.1.0",
+    "webm-duration-fix": "^1.0.4",
     "zod": "^3.23.8",
     "zod-defaults": "^0.1.3"
   },

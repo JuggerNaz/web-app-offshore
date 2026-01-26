@@ -56,9 +56,9 @@ export default function PipelinePage() {
   const fieldId = searchParams.get("field");
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('pipelineViewMode') as ViewMode) || 'card';
+      return (localStorage.getItem('pipeline_view_mode') as ViewMode) || 'list';
     }
-    return 'card';
+    return 'list';
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("title");
@@ -69,12 +69,12 @@ export default function PipelinePage() {
     fetcher
   );
 
-  const pipelines: Pipeline[] = data?.data || [];
+  const pipelines: Pipeline[] = useMemo(() => data?.data || [], [data]);
 
   // Persist view mode
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('pipelineViewMode', viewMode);
+      localStorage.setItem('pipeline_view_mode', viewMode);
     }
   }, [viewMode]);
 
@@ -218,7 +218,7 @@ export default function PipelinePage() {
             {filteredAndSortedPipelines.map((pipeline) => (
               <Link
                 key={`pipeline-${pipeline.pipe_id}`}
-                href={`/dashboard/field/pipeline/${pipeline.pipe_id}`}
+                href={`/dashboard/field/pipeline/${pipeline.pipe_id}?from=list`}
                 className="group"
               >
                 <div className="relative h-80 rounded-xl overflow-hidden border border-border/50 bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-950/20 dark:to-cyan-950/20 hover:shadow-xl hover:scale-105 transition-all duration-300 cursor-pointer flex flex-col">
@@ -357,7 +357,7 @@ export default function PipelinePage() {
                   <TableRow
                     key={`pipeline-${pipeline.pipe_id}`}
                     className="cursor-pointer hover:bg-teal-50/50 dark:hover:bg-teal-950/20"
-                    onClick={() => window.location.href = `/dashboard/field/pipeline/${pipeline.pipe_id}`}
+                    onClick={() => window.location.href = `/dashboard/field/pipeline/${pipeline.pipe_id}?from=list`}
                   >
                     <TableCell>
                       <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-teal-100 to-cyan-100 dark:from-teal-900/20 dark:to-cyan-900/20 flex items-center justify-center">

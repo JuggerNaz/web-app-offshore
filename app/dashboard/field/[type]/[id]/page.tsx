@@ -1,5 +1,6 @@
 "use client";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SpecHead from "@/components/forms/spec1";
 import { useEffect, useState, Suspense } from "react";
@@ -27,12 +28,15 @@ import {
   Database,
   Activity,
   Save,
-  ChevronRight
+  ChevronRight,
+  ArrowLeft
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function DetailPage() {
   const { type, id } = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [pageId, setPageId] = useAtom(urlId);
   const [pageType, setPageType] = useAtom(urlType);
   const [activeTab, setActiveTab] = useState("spec1");
@@ -50,6 +54,25 @@ export default function DetailPage() {
     setPageId(parseInt(id as string) ?? 0);
     setPageType(resolvedType || "platform");
   }, []);
+
+  // Handle back navigation intelligently
+  const handleBackNavigation = () => {
+    const from = searchParams.get("from");
+    const fieldId = data?.data?.pfield;
+
+    // If we have a 'from' parameter, use it
+    if (from === "list") {
+      router.push(`/dashboard/field/${type}`);
+    } else if (from === "structures" && fieldId) {
+      router.push(`/dashboard/field/structures?field=${fieldId}`);
+    } else if (fieldId) {
+      // Default: if we have a field ID, go to structures page
+      router.push(`/dashboard/field/structures?field=${fieldId}`);
+    } else {
+      // Fallback: go to the type list page
+      router.push(`/dashboard/field/${type}`);
+    }
+  };
 
   if (error) return (
     <div className="flex flex-col items-center justify-center h-full text-center p-8">
@@ -71,6 +94,7 @@ export default function DetailPage() {
 
   const isNew = id === "new";
   const title = data?.data?.title || (isNew ? `New ${type}` : "Loading...");
+  const fieldId = data?.data?.pfield;
 
   return (
     <div className="flex-1 w-full flex flex-col animate-in fade-in duration-700 h-full overflow-hidden">
@@ -79,6 +103,29 @@ export default function DetailPage() {
         <div className="bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b px-8 pt-8 pb-6 shadow-sm space-y-6 shrink-0 z-20">
           <div className="flex items-center justify-between max-w-7xl mx-auto w-full">
             <div className="flex flex-col">
+              {/* Breadcrumb Navigation */}
+              <div className="flex items-center gap-2 mb-3">
+                <Link
+                  href="/dashboard/field"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Fields
+                </Link>
+                <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                {fieldId && (
+                  <>
+                    <Link
+                      href={`/dashboard/field/structures?field=${fieldId}`}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Structures
+                    </Link>
+                    <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                  </>
+                )}
+                <span className="text-xs font-semibold text-foreground">{title}</span>
+              </div>
+
               <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 mb-1.5 px-0.5">
                 <span className="opacity-50">Engineering</span>
                 <div className="h-1 w-1 rounded-full bg-blue-500" />
@@ -87,16 +134,28 @@ export default function DetailPage() {
               <h1 className="text-3xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none">{title}</h1>
             </div>
 
-            {activeTab === "spec1" && (
+            <div className="flex items-center gap-3">
+              {/* Back Button */}
               <Button
-                form="asset-form"
-                type="submit"
-                className="rounded-xl h-11 px-6 font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 transition-all gap-2"
+                onClick={handleBackNavigation}
+                variant="outline"
+                className="rounded-xl h-11 px-4 font-bold gap-2"
               >
-                <Save className="h-4 w-4" />
-                Save Changes
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Back</span>
               </Button>
-            )}
+
+              {activeTab === "spec1" && (
+                <Button
+                  form="asset-form"
+                  type="submit"
+                  className="rounded-xl h-11 px-6 font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 transition-all gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Changes
+                </Button>
+              )}
+            </div>
           </div>
 
           <TabsList className="w-full max-w-7xl mx-auto flex h-14 items-center justify-start bg-slate-100/50 dark:bg-slate-900/50 p-1.5 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 overflow-x-auto overflow-y-hidden no-scrollbar">

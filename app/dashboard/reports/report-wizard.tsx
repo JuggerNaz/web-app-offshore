@@ -61,6 +61,7 @@ interface SelectionState {
     componentId: string;
     jobPackId: string;
     planningId: string;
+    procedureId: string;
 }
 
 // Report Templates Definition
@@ -85,6 +86,9 @@ const REPORT_TEMPLATES = {
         { id: "defect-summary", name: "Defect Summary", icon: FileBarChart, description: "Summary of identified defects and issues", requires: ["jobpack"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
     ],
+    others: [
+        { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
+    ],
 };
 
 export function ReportWizard({ onClose }: ReportWizardProps) {
@@ -96,6 +100,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         componentId: "",
         jobPackId: "",
         planningId: "",
+        procedureId: "",
     });
 
     // Default Configuration
@@ -129,6 +134,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [isLoadingComponents, setIsLoadingComponents] = useState(false);
     const [componentSearch, setComponentSearch] = useState("");
     const [structureSearch, setStructureSearch] = useState("");
+
+    // Fetch procedures for Defect Criteria
+    const { data: proceduresData } = useSWR("/api/defect-criteria/procedures", fetcher);
+    // Sort logic for procedures could be here or rely on API sort
+    const defectProcedures = proceduresData || [];
 
     // Fetch components when structure changes if needed
     useEffect(() => {
@@ -210,7 +220,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             "Structure": REPORT_TEMPLATES.structure,
             "Job Pack": REPORT_TEMPLATES.jobpack || [],
             "Planning": REPORT_TEMPLATES.planning || [],
-            "Inspection": REPORT_TEMPLATES.inspection || []
+            "Inspection": REPORT_TEMPLATES.inspection || [],
+            "Others": (REPORT_TEMPLATES as any).others || []
         };
 
         return (
@@ -390,6 +401,27 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 <SelectContent>
                                     {plannings.map((p) => (
                                         <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    {template.requires.includes("procedure") && (
+                        <div className="space-y-3">
+                            <Label>Defect Criteria Procedure</Label>
+                            <Select
+                                value={selections.procedureId}
+                                onValueChange={(val) => setSelections({ ...selections, procedureId: val })}
+                            >
+                                <SelectTrigger className="h-12 w-full bg-white dark:bg-slate-900">
+                                    <SelectValue placeholder="Select procedures..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ALL" className="font-semibold text-primary">All Procedures</SelectItem>
+                                    <Separator className="my-1" />
+                                    {defectProcedures.map((p: any) => (
+                                        <SelectItem key={p.id} value={p.id}>{p.procedureNumber} - {p.procedureName} (v{p.version})</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -587,10 +619,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     // Auto-generate preview when entering preview step
     useEffect(() => {
-        if (step === "preview" && selections.structureId && !previewUrl) {
-            generatePreview();
+        if (step === "preview" && !previewUrl) {
+            const isDefectReport = selections.templateId === "defect-criteria-report";
+            if (selections.structureId || isDefectReport) {
+                generatePreview();
+            }
         }
-    }, [step, selections.structureId]);
+    }, [step, selections.structureId, selections.templateId]);
 
     const fetchStructureData = async () => {
         if (!selections.structureId) return null;
@@ -625,8 +660,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             generateTechnicalSpecsReport
         } = await import("@/utils/pdf-generator");
 
-        const data = await fetchStructureData();
-        if (!data) return null;
+        // Dynamic import for new generator
+        const { generateDefectCriteriaReport } = await import("@/utils/report-generators/defect-criteria-report");
 
         // Fetch real company settings from API
         let companySettings: any = { company_name: "NasQuest Resources Sdn Bhd" };
@@ -647,8 +682,18 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             console.error("Error fetching company settings for report:", error);
         }
 
-        const typeMap = await fetchComponentTypes();
         const reportConfig = { ...config, returnBlob };
+
+        // Defect Criteria Report (No Structure Data Required)
+        if (selections.templateId === "defect-criteria-report") {
+            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId } as any);
+        }
+
+        const data = await fetchStructureData();
+        if (!data) return null;
+
+        const typeMap = await fetchComponentTypes();
+        // const reportConfig = { ...config, returnBlob }; // Already declared above
 
         switch (selections.templateId) {
             case "structure-summary":
@@ -736,6 +781,46 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 iframe.contentWindow.print();
             } else {
                 window.open(previewUrl, '_blank');
+            }
+        }
+    };
+
+    const handleShare = async () => {
+        if (!previewUrl) {
+            alert("Please wait for the preview to generate before sharing.");
+            return;
+        }
+
+        // Check if Web Share API is supported
+        if (!navigator.share) {
+            alert("Sharing is not supported in this browser. Please use the Download button instead.");
+            return;
+        }
+
+        try {
+            // Fetch the blob from the preview URL
+            const response = await fetch(previewUrl);
+            const blob = await response.blob();
+
+            // Create a descriptive filename
+            const template = getCurrentTemplate();
+            const structure = structures.find((s: any) => s.id.toString() === selections.structureId);
+            const filename = `${template?.name.replace(/\s+/g, '_')}_${structure?.str_name?.replace(/\s+/g, '_') || 'Report'}.pdf`;
+
+            // Convert blob to File object
+            const file = new File([blob], filename, { type: 'application/pdf' });
+
+            // Use Web Share API
+            await navigator.share({
+                title: template?.name || 'Report',
+                text: `${template?.name} - ${structure?.str_name || 'Structure Report'}`,
+                files: [file]
+            });
+        } catch (error: any) {
+            // User cancelled the share or an error occurred
+            if (error.name !== 'AbortError') {
+                console.error('Error sharing:', error);
+                alert('Failed to share the report. Please try downloading instead.');
             }
         }
     };
@@ -884,6 +969,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         </Button>
                         <Button className="gap-2 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20" onClick={handleDownload}>
                             <Download className="w-4 h-4" /> Download
+                        </Button>
+                        <Button variant="outline" className="gap-2" onClick={handleShare}>
+                            <Share2 className="w-4 h-4" /> Share
                         </Button>
                         <Button variant="secondary" className="gap-2" onClick={handlePrint}>
                             <Printer className="w-4 h-4" /> Print

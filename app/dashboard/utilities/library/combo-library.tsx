@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import {
@@ -152,6 +152,7 @@ export function LibraryComboDetails({ master }: { master: LibMaster }) {
                                 code1Label={options.code1_label}
                                 code2Label={options.code2_label}
                                 code2Lib={options.code2_lib}
+                                options={options}
                                 onRefresh={refreshItems}
                             />
                         ))}
@@ -183,6 +184,7 @@ function ComboItemRow({
     code1Label,
     code2Label,
     code2Lib,
+    options,
     onRefresh
 }: {
     item: ComboItem;
@@ -192,6 +194,7 @@ function ComboItemRow({
     code1Label: string;
     code2Label: string;
     code2Lib: string;
+    options: ComboOptions;
     onRefresh: () => void;
 }) {
     const isDeleted = item.lib_delete === 1;
@@ -298,6 +301,7 @@ function ComboItemRow({
                 code2Label={code2Label}
                 code1Desc={code1Map.get(item.code_1)}
                 code2Desc={code2Map.get(item.code_2)}
+                options={options}
                 onSuccess={onRefresh}
             />
         </div>
@@ -436,6 +440,7 @@ function EditComboDialog({
     code2Label,
     code1Desc,
     code2Desc,
+    options,
     onSuccess
 }: {
     open: boolean;
@@ -446,9 +451,15 @@ function EditComboDialog({
     code2Label: string;
     code1Desc?: string;
     code2Desc?: string;
+    options: ComboOptions;
     onSuccess: () => void;
 }) {
     const [loading, setLoading] = useState(false);
+    const [code2, setCode2] = useState(item.code_2);
+
+    useEffect(() => {
+        setCode2(item.code_2);
+    }, [item]);
 
     async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -456,10 +467,11 @@ function EditComboDialog({
         const formData = new FormData(e.currentTarget);
         const payload = {
             lib_com: formData.get("lib_com"),
+            code_2: code2 !== item.code_2 ? code2 : undefined
         };
 
         try {
-            const res = await fetch(`/api/library/combo/${encodeURIComponent(master.lib_code)}/${item.code_1}-${item.code_2}`, {
+            const res = await fetch(`/api/library/combo/${encodeURIComponent(master.lib_code)}/${encodeURIComponent(item.code_1)}-${encodeURIComponent(item.code_2)}`, {
                 method: "PUT",
                 body: JSON.stringify(payload),
             });
@@ -468,7 +480,8 @@ function EditComboDialog({
                 onOpenChange(false);
                 onSuccess();
             } else {
-                toast.error("Failed to update combination");
+                const data = await res.json();
+                toast.error(data.error || "Failed to update combination");
             }
         } catch (error) {
             toast.error("Error updating combination");
@@ -477,13 +490,15 @@ function EditComboDialog({
         }
     }
 
+    const canEditCode2 = options.code2_options && options.code2_options.length > 0;
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Edit Combination - {master.lib_name || master.lib_desc}</DialogTitle>
                     <DialogDescription>
-                        Editing combination in <strong>{master.lib_name || master.lib_desc}</strong> category. The codes cannot be changed.
+                        Editing combination in <strong>{master.lib_name || master.lib_desc}</strong> category.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={onSubmit} className="space-y-4">
@@ -496,12 +511,30 @@ function EditComboDialog({
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>{code2Label} (Read-only)</Label>
-                        <Input
-                            value={`${item.code_2} - ${code2Desc || ''}`}
-                            disabled
-                            className="bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-70"
-                        />
+                        <Label>{code2Label} {canEditCode2 ? "" : "(Read-only)"}</Label>
+                        {canEditCode2 ? (
+                            <>
+                                <Select value={code2} onValueChange={setCode2}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={`Select ${code2Label}`} />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-[300px]">
+                                        {options.code2_options.map(opt => (
+                                            <SelectItem key={opt.lib_id} value={opt.lib_id}>
+                                                {opt.lib_id} - {opt.lib_desc}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <input type="hidden" name="code_2" value={code2} />
+                            </>
+                        ) : (
+                            <Input
+                                value={`${item.code_2} - ${code2Desc || ''}`}
+                                disabled
+                                className="bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-70"
+                            />
+                        )}
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="lib_com">Comments</Label>
