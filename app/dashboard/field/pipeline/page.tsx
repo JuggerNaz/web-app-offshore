@@ -56,9 +56,9 @@ export default function PipelinePage() {
   const fieldId = searchParams.get("field");
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('pipelineViewMode') as ViewMode) || 'card';
+      return (localStorage.getItem('pipeline_view_mode') as ViewMode) || 'list';
     }
-    return 'card';
+    return 'list';
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("title");
@@ -74,7 +74,7 @@ export default function PipelinePage() {
   // Persist view mode
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('pipelineViewMode', viewMode);
+      localStorage.setItem('pipeline_view_mode', viewMode);
     }
   }, [viewMode]);
 

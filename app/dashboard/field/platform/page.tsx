@@ -67,9 +67,9 @@ export default function PlatformPage() {
   const [randomImages, setRandomImages] = useState<Map<number, string>>(new Map());
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('platformViewMode') as ViewMode) || 'card';
+      return (localStorage.getItem('platform_view_mode') as ViewMode) || 'list';
     }
-    return 'card';
+    return 'list';
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("title");
@@ -101,7 +101,7 @@ export default function PlatformPage() {
   // Persist view mode
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('platformViewMode', viewMode);
+      localStorage.setItem('platform_view_mode', viewMode);
     }
   }, [viewMode]);
 
