@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AlertTriangle, Plus, Edit, Trash2, Save, X, AlertCircle, CheckCircle, ArrowLeft, Settings2, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, Plus, Edit, Trash2, Save, X, AlertCircle, CheckCircle, ArrowLeft, Settings2, ShieldAlert, Search } from 'lucide-react';
 import type { DefectCriteriaProcedure, DefectCriteriaRule, RuleFormData, LibraryItem, ProcedureStatus } from '@/types/defect-criteria';
 
 export default function DefectCriteriaPage() {
@@ -27,6 +27,7 @@ export default function DefectCriteriaPage() {
     const [defectCodes, setDefectCodes] = useState<LibraryItem[]>([]);
     const [defectTypes, setDefectTypes] = useState<LibraryItem[]>([]);
     const [structureGroups, setStructureGroups] = useState<LibraryItem[]>([]);
+    const [anomalyColors, setAnomalyColors] = useState<any[]>([]);
 
     // Modal states
     const [showRuleBuilder, setShowRuleBuilder] = useState(false);
@@ -34,6 +35,7 @@ export default function DefectCriteriaPage() {
     const [showEditProcedure, setShowEditProcedure] = useState(false);
     const [editingRule, setEditingRule] = useState<DefectCriteriaRule | null>(null);
     const [valueType, setValueType] = useState<'number' | 'text'>('number');
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Form data
     const [ruleForm, setRuleForm] = useState<RuleFormData>({
@@ -92,21 +94,23 @@ export default function DefectCriteriaPage() {
     // Load library data
     const loadLibraryData = async () => {
         try {
-            const [prioritiesRes, codesRes, groupsRes] = await Promise.all([
+            const [prioritiesRes, codesRes, groupsRes, typesRes, colorsRes] = await Promise.all([
                 fetch('/api/defect-criteria/library/priorities', { cache: 'no-store' }),
                 fetch('/api/defect-criteria/library/codes?structureType=platform', { cache: 'no-store' }),
                 fetch('/api/defect-criteria/library/structure-groups', { cache: 'no-store' }),
+                fetch('/api/defect-criteria/library/types', { cache: 'no-store' }),
+                fetch('/api/library/combo/ANMLYCLR', { cache: 'no-store' }),
             ]);
 
-            const [prioritiesData, codesData, groupsData] = await Promise.all([
-                prioritiesRes.json(),
-                codesRes.json(),
-                groupsRes.json(),
-            ]);
+            setPriorities(prioritiesRes.ok ? await prioritiesRes.json() : []);
+            setDefectCodes(codesRes.ok ? await codesRes.json() : []);
+            setStructureGroups(groupsRes.ok ? await groupsRes.json() : []);
+            setDefectTypes(typesRes.ok ? await typesRes.json() : []);
 
-            setPriorities(prioritiesData);
-            setDefectCodes(codesData);
-            setStructureGroups(groupsData);
+            if (colorsRes.ok) {
+                const colorsData = await colorsRes.json();
+                setAnomalyColors(colorsData.data || []);
+            }
         } catch (error) {
             console.error('Error loading library data:', error);
         }
@@ -358,6 +362,28 @@ export default function DefectCriteriaPage() {
         return items.find(item => item.lib_id === id)?.lib_desc || 'Unknown';
     };
 
+    const filteredRules = rules.filter(rule => {
+        if (!searchTerm) return true;
+        const searchLower = searchTerm.toLowerCase();
+
+        const priorityLabel = getLibraryLabel(priorities, rule.priorityId).toLowerCase();
+        const defectCode = getLibraryLabel(defectCodes, rule.defectCodeId).toLowerCase();
+        // Since we don't have all types map handy unless we use 'allDefectTypes', 
+        // we can try looking up in 'allDefectTypes' if populated, or fallback.
+        // Assuming 'allDefectTypes' is available from previous steps (I see I added it).
+        const defectType = getLibraryLabel(allDefectTypes, rule.defectTypeId).toLowerCase();
+        const structureGroup = rule.structureGroup.toLowerCase();
+        const alertMsg = rule.alertMessage.toLowerCase();
+
+        return (
+            priorityLabel.includes(searchLower) ||
+            defectCode.includes(searchLower) ||
+            defectType.includes(searchLower) ||
+            structureGroup.includes(searchLower) ||
+            alertMsg.includes(searchLower)
+        );
+    });
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-96">
@@ -492,15 +518,26 @@ export default function DefectCriteriaPage() {
                 {activeProcedure && (
                     <Card>
                         <CardHeader>
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div>
                                     <CardTitle>Criteria Rules</CardTitle>
                                     <CardDescription>Define validation rules for defect detection</CardDescription>
                                 </div>
-                                <Button onClick={() => { resetRuleForm(); setShowRuleBuilder(true); }}>
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Add New Rule
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <div className="relative w-full sm:w-64">
+                                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search rules..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="pl-9"
+                                        />
+                                    </div>
+                                    <Button onClick={() => { resetRuleForm(); setShowRuleBuilder(true); }}>
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Add New Rule
+                                    </Button>
+                                </div>
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -511,16 +548,48 @@ export default function DefectCriteriaPage() {
                                         No rules defined yet. Add your first rule to start automatic defect detection.
                                     </AlertDescription>
                                 </Alert>
+                            ) : filteredRules.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <p>No rules found matching "{searchTerm}"</p>
+                                    <Button variant="link" onClick={() => setSearchTerm('')} className="mt-2 text-primary">
+                                        Clear Search
+                                    </Button>
+                                </div>
                             ) : (
                                 <div className="space-y-4">
-                                    {rules.map((rule, index) => (
+                                    {filteredRules.map((rule, index) => (
                                         <Card key={rule.id}>
                                             <CardContent className="pt-6">
                                                 <div className="flex items-start justify-between">
                                                     <div className="space-y-2 flex-1">
                                                         <div className="flex items-center gap-2">
                                                             <span className="font-semibold">Rule {index + 1}</span>
-                                                            <Badge variant="outline">Priority: {getLibraryLabel(priorities, rule.priorityId)}</Badge>
+                                                            {(() => {
+                                                                const priorityColor = anomalyColors.find(c =>
+                                                                    c.code_1 === rule.priorityId &&
+                                                                    (c.lib_delete === null || c.lib_delete === 0)
+                                                                );
+                                                                const rgb = priorityColor?.code_2 ? `rgb(${priorityColor.code_2})` : undefined;
+
+                                                                // Calculate text color for contrast if color exists
+                                                                let textColor = undefined;
+                                                                if (priorityColor?.code_2) {
+                                                                    const parts = priorityColor.code_2.split(',').map((p: string) => parseInt(p.trim()));
+                                                                    if (parts.length === 3) {
+                                                                        const brightness = (parts[0] * 299 + parts[1] * 587 + parts[2] * 114) / 1000;
+                                                                        textColor = brightness < 125 ? 'white' : 'black';
+                                                                    }
+                                                                }
+
+                                                                return (
+                                                                    <Badge
+                                                                        variant="outline"
+                                                                        style={rgb ? { backgroundColor: rgb, color: textColor, borderColor: rgb } : {}}
+                                                                    >
+                                                                        Priority: {getLibraryLabel(priorities, rule.priorityId)}
+                                                                    </Badge>
+                                                                );
+                                                            })()}
                                                             {rule.autoFlag && (
                                                                 <Badge variant="secondary">
                                                                     <CheckCircle className="h-3 w-3 mr-1" />

@@ -17,6 +17,8 @@ export async function PUT(
         const updateData: any = {};
         if (lib_com !== undefined) updateData.lib_com = lib_com;
         if (lib_delete !== undefined) updateData.lib_delete = lib_delete;
+        if (code_1 !== undefined) updateData.code_1 = code_1;
+        if (code_2 !== undefined) updateData.code_2 = code_2;
 
         // The 'id' param is actually "code_1-code_2" format, split it
         const [updateCode1, updateCode2] = id.split('-');
