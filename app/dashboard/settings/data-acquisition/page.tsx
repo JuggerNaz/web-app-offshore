@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Wifi, Cable, Activity, Settings2, Play, Square, Trash2, Download, Upload, Building2, GitBranch } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -64,6 +64,7 @@ export default function DataAcquisitionPage() {
     const [connectionType, setConnectionType] = useState<ConnectionType>('serial');
     const [comPort, setComPort] = useState<string>('');
     const [availablePorts, setAvailablePorts] = useState<Array<{ id: string, name: string }>>([]);
+    const [knownPorts, setKnownPorts] = useState<any[]>([]);
     const [baudRate, setBaudRate] = useState(9600);
     const [dataBits, setDataBits] = useState<5 | 6 | 7 | 8>(8);
     const [parity, setParity] = useState<'none' | 'even' | 'odd'>('none');
@@ -84,12 +85,15 @@ export default function DataAcquisitionPage() {
     // Connection Status
     const [isConnected, setIsConnected] = useState(false);
     const [liveData, setLiveData] = useState('');
+    const [lastProcessedFrame, setLastProcessedFrame] = useState('');
     const [parsedData, setParsedData] = useState<Record<string, string>>({});
 
     // Web Serial API
     const [serialPort, setSerialPort] = useState<any>(null);
     const [reader, setReader] = useState<any>(null);
     const [isWebSerialSupported, setIsWebSerialSupported] = useState(false);
+    const dataBufferRef = useRef<string>('');
+    const readableStreamClosedRef = useRef<any>(null);
 
     // Check Web Serial API support and get available ports
     useEffect(() => {
@@ -102,31 +106,86 @@ export default function DataAcquisitionPage() {
         checkSerialSupport();
     }, []);
 
+    // UI Update Loop - Throttles updates to prevent flickering (every 100ms)
+    // AND ensures we only show COMPLETE frames (based on String Length) to avoid visual "cutting"
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (isConnected) {
+            interval = setInterval(() => {
+                if (dataBufferRef.current) {
+                    const snapshot = dataBufferRef.current;
+                    let validEndIndex = snapshot.length;
+
+                    // If using Position-based or ID-based parsing, ensure we don't display a partial frame at the end
+                    if ((parseMethod === 'position' || parseMethod === 'id') && startCharacter && stringLength > 0) {
+                        const lastStartIndex = snapshot.lastIndexOf(startCharacter);
+                        if (lastStartIndex !== -1) {
+                            // Calculate length of the potential last frame
+                            const potentialFrameLength = snapshot.length - lastStartIndex;
+
+                            // If it's shorter than expected run length, it's incomplete.
+                            // We wait for more data before showing this part.
+                            if (potentialFrameLength < stringLength) {
+                                validEndIndex = lastStartIndex;
+                            }
+                        }
+                    }
+
+                    // Take valid content and show the recent history (up to 2000 chars)
+                    const validContent = snapshot.substring(0, validEndIndex);
+                    setLiveData(validContent.slice(-2000));
+                }
+            }, 100);
+        }
+        return () => clearInterval(interval);
+    }, [isConnected, startCharacter, stringLength, parseMethod]);
+
     // Function to refresh available ports
     const refreshAvailablePorts = async () => {
         if ('serial' in navigator) {
             try {
                 const ports = await (navigator as any).serial.getPorts();
+                setKnownPorts(ports);
+
                 const portList = ports.map((port: any, index: number) => {
                     const info = port.getInfo();
-                    const vendorId = info.usbVendorId ? `VID:${info.usbVendorId.toString(16).toUpperCase().padStart(4, '0')}` : '';
-                    const productId = info.usbProductId ? `PID:${info.usbProductId.toString(16).toUpperCase().padStart(4, '0')}` : '';
+                    const vid = info.usbVendorId;
+                    const pid = info.usbProductId;
+                    const vendorIdStr = vid ? vid.toString(16).toUpperCase().padStart(4, '0') : '';
+                    const productIdStr = pid ? pid.toString(16).toUpperCase().padStart(4, '0') : '';
 
-                    // Create a descriptive name with COM port number
-                    let deviceInfo = [vendorId, productId].filter(Boolean).join(' ');
+                    // Known Device Lookup - Map common VIDs to friendly names because browsers don't expose descriptions
+                    let friendlyName = '';
+                    if (vid === 0x0557 && pid === 0x2008) friendlyName = 'ATEN USB to Serial Bridge';
+                    else if (vid === 0x0403) friendlyName = 'FTDI Serial Device';
+                    else if (vid === 0x067B) friendlyName = 'Prolific PL2303';
+                    else if (vid === 0x1A86) friendlyName = 'CH340 Serial';
+                    else if (vid === 0x10C4) friendlyName = 'Silicon Labs CP210x';
+                    else if (vid === 0x2341) friendlyName = 'Arduino Device';
+
+                    // Create user-friendly label
                     const portNumber = index + 1;
-                    const name = deviceInfo
-                        ? `COM${portNumber} - ${deviceInfo}`
-                        : `COM${portNumber} - Serial Device`;
+                    let label = `Device ${portNumber}`;
+
+                    if (friendlyName) {
+                        label += ` - ${friendlyName}`;
+                    } else if (vendorIdStr) {
+                        // Fallback to VID/PID if unknown
+                        label += ` (VID:${vendorIdStr} PID:${productIdStr})`;
+                    } else {
+                        label += ` (Generic Serial)`;
+                    }
 
                     return {
                         id: `port-${index}`,
-                        name: name
+                        name: label
                     };
                 });
                 setAvailablePorts(portList);
                 if (portList.length > 0 && !comPort) {
                     setComPort(portList[0].id);
+                } else if (portList.length === 0) {
+                    setComPort('new'); // Select "Add New" by default if empty
                 }
             } catch (error) {
                 console.error('Error getting serial ports:', error);
@@ -261,8 +320,6 @@ export default function DataAcquisitionPage() {
             parseData(liveData);
         }
     }, [fields, parseMethod, liveData, isConnected]);
-
-    // No longer need this useEffect - values are preserved in separate fields
 
     const loadSettings = (type: StructureType) => {
         const saved = localStorage.getItem(STORAGE_KEYS[type]);
@@ -401,8 +458,20 @@ export default function DataAcquisitionPage() {
         }
 
         try {
-            // Request a port
-            const port = await (navigator as any).serial.requestPort();
+            let port;
+
+            // Try to use the selected known port
+            if (comPort && comPort !== 'new' && comPort.startsWith('port-')) {
+                const portIndex = parseInt(comPort.replace('port-', ''));
+                if (!isNaN(portIndex) && knownPorts[portIndex]) {
+                    port = knownPorts[portIndex];
+                }
+            }
+
+            if (!port) {
+                // Request a port (browser picker) - for new devices or fallback
+                port = await (navigator as any).serial.requestPort();
+            }
 
             // Open the port with the configured settings
             await port.open({
@@ -414,6 +483,7 @@ export default function DataAcquisitionPage() {
 
             setSerialPort(port);
             setIsConnected(true);
+            dataBufferRef.current = ''; // Reset buffer
 
             // Refresh available ports list
             await refreshAvailablePorts();
@@ -421,6 +491,7 @@ export default function DataAcquisitionPage() {
             // Start reading data
             const textDecoder = new TextDecoderStream();
             const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+            readableStreamClosedRef.current = readableStreamClosed;
             const reader = textDecoder.readable.getReader();
             setReader(reader);
 
@@ -433,12 +504,13 @@ export default function DataAcquisitionPage() {
                             break;
                         }
                         if (value) {
-                            // Append new data
-                            setLiveData(prev => {
-                                const newData = prev + value;
-                                // Keep only the last 1000 characters to prevent memory issues
-                                return newData.slice(-1000);
-                            });
+                            // Append new data to ref buffer (non-blocking for UI)
+                            dataBufferRef.current += value;
+
+                            // Prevent infinite memory growth in Ref
+                            if (dataBufferRef.current.length > 10000) {
+                                dataBufferRef.current = dataBufferRef.current.slice(-5000);
+                            }
                         }
                     }
                 } catch (error) {
@@ -456,10 +528,15 @@ export default function DataAcquisitionPage() {
 
     const handleDisconnect = async () => {
         try {
-            // Cancel the reader
+            // Cancel the reader to signal the loop to exit
             if (reader) {
                 await reader.cancel();
                 setReader(null);
+            }
+
+            // Wait for the stream to close essentially
+            if (readableStreamClosedRef.current) {
+                await readableStreamClosedRef.current.catch(() => { /* Ignore error */ });
             }
 
             // Close the port
@@ -502,8 +579,34 @@ export default function DataAcquisitionPage() {
     const parseData = (dataString: string) => {
         const parsed: Record<string, string> = {};
 
+        // Pre-process data string based on parsing method
+        let processedData = dataString;
+        if ((parseMethod === 'position' || parseMethod === 'id') && startCharacter) {
+            // Find the last occurrence of start character to get the latest frame
+            let startIndex = dataString.lastIndexOf(startCharacter);
+
+            // Check if we have a full frame at this position
+            // If the data ends before the strings length is reached, it's a partial packet.
+            // In that case, we look for the *previous* start character to get the last *complete* frame.
+            if (startIndex !== -1 && (startIndex + stringLength > dataString.length)) {
+                startIndex = dataString.lastIndexOf(startCharacter, startIndex - 1);
+            }
+
+            if (startIndex !== -1 && (startIndex + stringLength <= dataString.length)) {
+                // Cut from start character with defined string length
+                // This ensures we always process a COMPLETE frame of data, avoiding "partial cut" issues
+                processedData = dataString.substring(startIndex, startIndex + stringLength);
+            } else {
+                // No complete frame found in the current buffer.
+                // We skip parsing to maintain the last valid values and avoid flickering with empty/partial data.
+                return;
+            }
+        }
+
+        setLastProcessedFrame(processedData);
+
         fields.forEach(field => {
-            let value: string;
+            let value: string = '';
 
             // Handle default data options (Requirement A)
             if (field.defaultDataOption === 'system_date') {
@@ -513,9 +616,14 @@ export default function DataAcquisitionPage() {
             } else {
                 // Extract from data string
                 if (parseMethod === 'position') {
-                    // Position-based parsing
+                    // Position-based parsing on the processed frame
                     const start = parseInt(field.positionValue);
-                    value = dataString.substring(start, start + field.length);
+
+                    if (!isNaN(start) && start < processedData.length) {
+                        value = processedData.substring(start, Math.min(start + field.length, processedData.length));
+                    } else {
+                        value = '';
+                    }
 
                     // Remove prefix character if it's a letter (e.g., "N1234567" → "1234567")
                     if (value.length > 0 && /[a-zA-Z]/.test(value[0])) {
@@ -523,9 +631,12 @@ export default function DataAcquisitionPage() {
                     }
                 } else {
                     // ID-based parsing (Requirement C)
+                    // Now also operates on the processed (cut) frame if Start/Length are defined
                     const idPrefix = field.idValue;
-                    const regex = new RegExp(`${idPrefix}([^,]+)`);
-                    const match = dataString.match(regex);
+                    // Escape special regex characters in idPrefix if any
+                    const escapedPrefix = idPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`${escapedPrefix}([^,]+)`);
+                    const match = processedData.match(regex);
                     value = match ? match[1].substring(0, field.length) : field.defaultDataValue;
 
                     // Remove prefix character if it's a letter
@@ -688,7 +799,7 @@ export default function DataAcquisitionPage() {
                                 {/* COM Port Selection */}
                                 <div className="p-4 bg-muted/50 rounded-lg">
                                     <div className="flex items-center justify-between mb-2">
-                                        <label className="block text-sm font-medium">COM Port</label>
+                                        <label className="block text-sm font-medium">Serial Device</label>
                                         {isWebSerialSupported ? (
                                             <span className="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
                                                 Web Serial API Supported
@@ -705,18 +816,17 @@ export default function DataAcquisitionPage() {
                                         className="w-full bg-background border border-input rounded-lg px-3 py-2"
                                         disabled={isConnected}
                                     >
-                                        {availablePorts.length === 0 ? (
-                                            <option value="">No ports available - Click "Connect & Test" to add</option>
-                                        ) : (
-                                            availablePorts.map(port => (
-                                                <option key={port.id} value={port.id}>{port.name}</option>
-                                            ))
-                                        )}
+                                        {availablePorts.map(port => (
+                                            <option key={port.id} value={port.id}>{port.name}</option>
+                                        ))}
+                                        <option value="new">➕ Add New Device...</option>
                                     </select>
                                     <p className="text-xs text-muted-foreground mt-2">
-                                        {isWebSerialSupported
-                                            ? 'Click "Connect & Test" to select and connect to your serial device'
-                                            : 'Web Serial API requires Chrome, Edge, or Opera browser'}
+                                        Select a known device or click "Add New Device" to pair a new one.
+                                        <br />
+                                        <span className="opacity-80 block mt-1">
+                                            Note: Browsers cannot read system COM port numbers for security. Please identify your device by its description or hardware ID.
+                                        </span>
                                     </p>
                                 </div>
 
@@ -1085,8 +1195,15 @@ export default function DataAcquisitionPage() {
                             <>
                                 <div>
                                     <label className="block text-sm font-medium mb-2">Raw Data String</label>
-                                    <div className="bg-muted border border-border rounded-lg p-3 font-mono text-sm">
+                                    <div className="bg-muted border border-border rounded-lg p-3 font-mono text-sm max-h-48 overflow-y-auto break-all">
                                         {liveData || 'Waiting for data...'}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Parsed Frame (Used for Extraction)</label>
+                                    <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3 font-mono text-sm break-all">
+                                        {lastProcessedFrame || <span className="text-muted-foreground italic">Waiting for complete frame...</span>}
                                     </div>
                                 </div>
 
