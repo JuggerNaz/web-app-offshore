@@ -1,0 +1,89 @@
+// Add this button after line 387 (after the closing </div> of the procedure details)
+// Find the line with: </div>
+// That closes the div containing procedure name, number, version, etc.
+// Add this BEFORE that closing </div>:
+
+<Button variant="outline" size="sm" onClick={handleEditProcedure} className="ml-4">
+    <Edit className="h-4 w-4 mr-2" />
+    Edit
+</Button>
+
+// Then add this entire dialog AFTER line 547 (after the New Procedure Dialog closes)
+// Find: </Dialog> that closes the New Procedure dialog
+// Add this AFTER it:
+
+{/* Edit Procedure Dialog */}
+<Dialog open={showEditProcedure} onOpenChange={setShowEditProcedure}>
+    <DialogContent className="max-w-2xl">
+        <DialogHeader>
+            <DialogTitle>Edit Procedure</DialogTitle>
+            <DialogDescription>
+                Update defect criteria procedure details
+            </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="editProcedureNumber">Procedure Number</Label>
+                    <Input
+                        id="editProcedureNumber"
+                        placeholder="DC-001"
+                        value={procedureForm.procedureNumber}
+                        onChange={(e) => setProcedureForm({ ...procedureForm, procedureNumber: e.target.value })}
+                    />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="editEffectiveDate">Effective Date</Label>
+                    <Input
+                        id="editEffectiveDate"
+                        type="date"
+                        value={procedureForm.effectiveDate}
+                        onChange={(e) => setProcedureForm({ ...procedureForm, effectiveDate: e.target.value })}
+                    />
+                </div>
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="editProcedureName">Procedure Name</Label>
+                <Input
+                    id="editProcedureName"
+                    placeholder="Baseline Inspection Criteria 2024"
+                    value={procedureForm.procedureName}
+                    onChange={(e) => setProcedureForm({ ...procedureForm, procedureName: e.target.value })}
+                />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="editStatus">Status</Label>
+                <Select 
+                    value={procedureForm.status} 
+                    onValueChange={(value) => setProcedureForm({ ...procedureForm, status: value as ProcedureStatus })}
+                >
+                    <SelectTrigger id="editStatus">
+                        <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="editNotes">Notes (Optional)</Label>
+                <Input
+                    id="editNotes"
+                    placeholder="Additional notes..."
+                    value={procedureForm.notes}
+                    onChange={(e) => setProcedureForm({ ...procedureForm, notes: e.target.value })}
+                />
+            </div>
+        </div>
+        <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditProcedure(false)}>
+                Cancel
+            </Button>
+            <Button onClick={handleUpdateProcedure} disabled={saving}>
+                {saving ? 'Updating...' : 'Update Procedure'}
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>

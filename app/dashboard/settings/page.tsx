@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Settings, Building2, Video, Activity } from "lucide-react";
+import { Settings, Building2, Video, Activity, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SettingsPage() {
@@ -130,6 +130,43 @@ export default function SettingsPage() {
                                     <li className="flex items-center gap-2">
                                         <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
                                         Field Mapping Configuration
+                                    </li>
+                                </ul>
+                            </CardContent>
+                        </Card>
+                    </Link>
+
+                    {/* Defect Criteria */}
+                    <Link href="/dashboard/settings/defect-criteria">
+                        <Card className="cursor-pointer hover:border-orange-500 hover:shadow-lg transition-all duration-200 h-full">
+                            <CardHeader>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+                                        <AlertTriangle className="w-6 h-6 text-orange-600" />
+                                    </div>
+                                    <div>
+                                        <CardTitle>Defect / Anomaly</CardTitle>
+                                        <CardDescription>Inspection Criteria & Rules</CardDescription>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <ul className="space-y-2 text-sm text-muted-foreground">
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
+                                        Validation Procedures
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
+                                        Defect Detection Logic
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
+                                        Library Configuration
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
+                                        Auto-flagging Rules
                                     </li>
                                 </ul>
                             </CardContent>
