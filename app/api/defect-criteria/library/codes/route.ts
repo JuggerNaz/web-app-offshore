@@ -12,7 +12,7 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const structureType = searchParams.get('structureType') || 'platform';
 
-        let query = supabase
+        let query = (supabase as any)
             .from('u_lib_list')
             .select('*')
             .eq('lib_code', 'AMLY_COD')

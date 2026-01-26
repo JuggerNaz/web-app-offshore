@@ -11,7 +11,7 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const status = searchParams.get('status');
 
-        let query = supabase
+        let query = (supabase as any)
             .from('defect_criteria_procedures')
             .select('*')
             .order('effective_date', { ascending: false });
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
         }
 
         // Check if procedure number already exists
-        const { data: existing } = await supabase
+        const { data: existing } = await (supabase as any)
             .from('defect_criteria_procedures')
             .select('procedure_number, version')
             .eq('procedure_number', procedureNumber)
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
         const nextVersion = existing ? existing.version + 1 : 1;
 
         // Create new procedure
-        const { data: newProcedure, error: procedureError } = await supabase
+        const { data: newProcedure, error: procedureError } = await (supabase as any)
             .from('defect_criteria_procedures')
             .insert({
                 procedure_number: procedureNumber,
@@ -108,13 +108,13 @@ export async function POST(request: Request) {
 
         // If copying from another procedure, copy its rules
         if (copyFromProcedureId) {
-            const { data: rulesToCopy } = await supabase
+            const { data: rulesToCopy } = await (supabase as any)
                 .from('defect_criteria_rules')
                 .select('*')
                 .eq('procedure_id', copyFromProcedureId);
 
             if (rulesToCopy && rulesToCopy.length > 0) {
-                const copiedRules = rulesToCopy.map(rule => ({
+                const copiedRules = rulesToCopy.map((rule: any) => ({
                     procedure_id: newProcedure.id,
                     structure_group: rule.structure_group,
                     priority_id: rule.priority_id,
@@ -133,7 +133,7 @@ export async function POST(request: Request) {
                     evaluation_priority: rule.evaluation_priority,
                 }));
 
-                await supabase
+                await (supabase as any)
                     .from('defect_criteria_rules')
                     .insert(copiedRules);
             }

@@ -56,7 +56,7 @@ export async function PATCH(
             (key) => updateData[key] === undefined && delete updateData[key]
         );
 
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
             .from('defect_criteria_rules')
             .update(updateData)
             .eq('id', id)
@@ -88,7 +88,7 @@ export async function DELETE(
         const supabase = await createClient();
         const { id } = await params;
 
-        const { error } = await supabase
+        const { error } = await (supabase as any)
             .from('defect_criteria_rules')
             .delete()
             .eq('id', id);

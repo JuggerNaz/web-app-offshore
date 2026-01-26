@@ -14,7 +14,7 @@ export async function GET(
         const { id } = await params;
 
         // Fetch procedure
-        const { data: procedure, error: procedureError } = await supabase
+        const { data: procedure, error: procedureError } = await (supabase as any)
             .from('defect_criteria_procedures')
             .select('*')
             .eq('id', id)
@@ -28,7 +28,7 @@ export async function GET(
         }
 
         // Fetch associated rules
-        const { data: rules, error: rulesError } = await supabase
+        const { data: rules, error: rulesError } = await (supabase as any)
             .from('defect_criteria_rules')
             .select('*')
             .eq('procedure_id', id)
@@ -91,7 +91,7 @@ export async function PATCH(
             return NextResponse.json({ error: 'No valid update fields found', receivedKeys: Object.keys(body) }, { status: 400 });
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
             .from('defect_criteria_procedures')
             .update(updates)
             .eq('id', id)
@@ -143,7 +143,7 @@ export async function DELETE(
         const { id } = await params;
 
         // Check if procedure is in draft status
-        const { data: procedure } = await supabase
+        const { data: procedure } = await (supabase as any)
             .from('defect_criteria_procedures')
             .select('status')
             .eq('id', id)
@@ -156,7 +156,7 @@ export async function DELETE(
             );
         }
 
-        const { error } = await supabase
+        const { error } = await (supabase as any)
             .from('defect_criteria_procedures')
             .delete()
             .eq('id', id);

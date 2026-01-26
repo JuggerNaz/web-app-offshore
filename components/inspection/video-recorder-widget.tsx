@@ -126,7 +126,7 @@ export default function VideoRecorderWidget({
 
         // Create media recorder
         const recorder = createMediaRecorder(combinedStream, {
-            videoFormat: settings.recording.videoFormat,
+            videoFormat: settings.recording.video.format,
         });
 
         if (!recorder) {
@@ -143,9 +143,9 @@ export default function VideoRecorderWidget({
                 setFileSize(prev => prev + blob.size);
             },
             async (blob) => {
-                const formatConfig = FORMAT_CONFIGS[settings.recording.videoFormat];
+                const formatConfig = FORMAT_CONFIGS[settings.recording.video.format];
                 const filename = generateFilename(
-                    settings.recording.filenamePrefix,
+                    settings.recording.video.filenamePrefix,
                     formatConfig.extension,
                     { platformId, componentId }
                 );
@@ -219,11 +219,11 @@ export default function VideoRecorderWidget({
         const blob = await captureSnapshot(
             videoRef.current,
             canvasRef.current,
-            settings.recording.photoFormat
+            settings.recording.photo.format
         );
 
         if (blob) {
-            const extension = getPhotoExtension(settings.recording.photoFormat);
+            const extension = getPhotoExtension(settings.recording.photo.format);
             const filename = generateFilename(
                 'snapshot',
                 extension,
@@ -339,8 +339,8 @@ export default function VideoRecorderWidget({
                             <button
                                 onClick={() => handleToolChange('select')}
                                 className={`w-8 h-8 flex items-center justify-center rounded transition-colors ${currentTool === 'select'
-                                        ? 'bg-teal-500 text-white'
-                                        : 'bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                    ? 'bg-teal-500 text-white'
+                                    : 'bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-white'
                                     }`}
                             >
                                 ↖️
@@ -350,8 +350,8 @@ export default function VideoRecorderWidget({
                                     key={tool}
                                     onClick={() => handleToolChange(tool)}
                                     className={`w-8 h-8 flex items-center justify-center rounded transition-colors ${currentTool === tool
-                                            ? 'bg-teal-500 text-white'
-                                            : 'bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                        ? 'bg-teal-500 text-white'
+                                        : 'bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-white'
                                         }`}
                                 >
                                     {tool === 'pen' && '🖊️'}

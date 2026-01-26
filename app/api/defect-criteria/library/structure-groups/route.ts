@@ -9,7 +9,7 @@ export async function GET() {
     try {
         const supabase = await createClient();
 
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
             .from('u_lib_list')
             .select('*')
             .eq('lib_code', 'COMPGRP')

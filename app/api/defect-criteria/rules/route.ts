@@ -18,7 +18,7 @@ export async function GET(request: Request) {
             );
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
             .from('defect_criteria_rules')
             .select('*')
             .eq('procedure_id', procedureId)
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         }
 
         // Transform snake_case to camelCase to match Frontend interfaces
-        const camelData = data.map(r => ({
+        const camelData = data.map((r: any) => ({
             id: r.id,
             procedureId: r.procedure_id,
             structureGroup: r.structure_group,
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
         } = body;
 
         // Get the current max rule_order for this procedure
-        const { data: maxOrderRule } = await supabase
+        const { data: maxOrderRule } = await (supabase as any)
             .from('defect_criteria_rules')
             .select('rule_order')
             .eq('procedure_id', procedureId)
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
 
         const nextOrder = maxOrderRule ? maxOrderRule.rule_order + 1 : 1;
 
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
             .from('defect_criteria_rules')
             .insert({
                 procedure_id: procedureId,

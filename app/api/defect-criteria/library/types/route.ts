@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         // METHOD 1: Database View (Optimized)
         // ---------------------------------------------------------
         try {
-            const { data, error } = await supabase
+            const { data, error } = await (supabase as any)
                 .from('v_defect_types_by_code')
                 .select('lib_id, lib_desc') // Only fetch needed columns
                 .eq('defect_code_id', defectCodeId) // User confirmed alias is defect_code_id
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
         // ---------------------------------------------------------
 
         // 1. Get Combo Targets (code_1 is Parent/Input, code_2 is Child/Output)
-        const { data: combos } = await supabase
+        const { data: combos } = await (supabase as any)
             .from('u_lib_combo')
             .select('code_2') // We need the Type ID
             .eq('lib_code', 'AMLYCODFND')
