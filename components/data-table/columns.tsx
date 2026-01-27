@@ -18,7 +18,7 @@ import Link from "next/link";
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
-import { Trash2, Edit2, Plus } from "lucide-react";
+import { Trash2, Edit2, Plus, Calendar } from "lucide-react";
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
 
@@ -41,6 +41,7 @@ export type Component = {
   description: string;
   component_type: string;
 };
+export type InspectionType = Database["public"]["Tables"]["inspection_type"]["Row"];
 
 export const columns: ColumnDef<Platform>[] = [
   {
@@ -799,6 +800,81 @@ export const inspectionPlanningColumns: ColumnDef<InspectionPlanning>[] = [
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Decommission Plan
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      );
+    },
+  },
+];
+
+export const inspectionTypeColumns: ColumnDef<InspectionType>[] = [
+  {
+    accessorKey: "code",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Code" />,
+    cell: ({ row }) => (
+      <div className="font-black text-xs uppercase tracking-tight text-slate-900 dark:text-white">
+        {row.getValue("code") || "---"}
+      </div>
+    ),
+  },
+  {
+    accessorKey: "name",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Full Name" />,
+    cell: ({ row }) => (
+      <div className="font-bold text-xs text-slate-600 dark:text-slate-300">
+        {row.getValue("name") || "Unnamed Type"}
+      </div>
+    ),
+  },
+  {
+    accessorKey: "sname",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Short Name" />,
+    cell: ({ row }) => (
+      <span className="text-[10px] font-black px-2 py-1 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 uppercase tracking-widest border border-blue-100 dark:border-blue-800">
+        {row.getValue("sname") || "N/A"}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "created_at",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Registration Date" />,
+    cell: ({ row }) => (
+      <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2">
+        <Calendar className="h-3 w-3 opacity-50" />
+        {row.getValue("created_at") ? moment(row.getValue("created_at")).format("DD MMM YYYY") : "---"}
+      </div>
+    ),
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const item = row.original;
+
+      return (
+        <div className="text-right pr-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                <MoreVertical className="h-4 w-4 text-slate-400" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
+              <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-4 py-2">Operations</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="cursor-pointer rounded-xl m-1 py-3 font-bold text-xs gap-3 focus:bg-slate-50 dark:focus:bg-slate-900"
+                asChild
+              >
+                <Link href={`/dashboard/utilities/inspection-type/form?id=${item.id}`}>
+                  <Edit2 className="h-4 w-4 text-blue-500" />
+                  Modify Parameters
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer rounded-xl m-1 py-3 font-bold text-xs gap-3 text-rose-500 focus:bg-rose-50 dark:focus:bg-rose-950/30">
+                <Trash2 className="h-4 w-4" />
+                Remove Type
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

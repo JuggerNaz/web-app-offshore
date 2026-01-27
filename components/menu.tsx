@@ -158,6 +158,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<Database className="h-[18px] w-[18px]" />}
             text="Library"
           />
+          <MenuLink
+            href="/dashboard/utilities/inspection-type"
+            isCollapsed={isCollapsed}
+            label="Inspection Type"
+            icon={<FileText className="h-[18px] w-[18px]" />}
+            text="Inspection Type"
+          />
         </div>
 
       </nav>
