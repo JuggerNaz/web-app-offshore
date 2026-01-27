@@ -40,3 +40,36 @@ export const PATCH = withAuth(
     return apiSuccess(data);
   }
 );
+
+/**
+ * DELETE /api/structure-components/item/[id]
+ * Permanently delete a structure component by id.
+ */
+export const DELETE = withAuth(
+  async (
+    request: NextRequest,
+    context: { params: Promise<{ id: string }>; user: any }
+  ) => {
+    const supabase = createClient();
+    const { id } = await context.params;
+
+    const componentId = Number(id);
+    if (Number.isNaN(componentId)) {
+      return handleSupabaseError(
+        { message: "Invalid component id", details: null, hint: null, code: "400" } as any,
+        "Invalid component id"
+      );
+    }
+
+    const { error } = await supabase
+      .from("structure_components")
+      .delete()
+      .eq("id", componentId);
+
+    if (error) {
+      return handleSupabaseError(error, "Failed to delete structure component");
+    }
+
+    return apiSuccess({ success: true });
+  }
+);

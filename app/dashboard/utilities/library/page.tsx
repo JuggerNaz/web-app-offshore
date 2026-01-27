@@ -221,7 +221,6 @@ function LibraryDetails({ master }: { master: LibMaster }) {
 
     const [searchTerm, setSearchTerm] = useState("");
     const [isCreateOpen, setIsCreateOpen] = useState(false);
-    const [itemTypeFilter, setItemTypeFilter] = useState<"all" | "combination" | "standard">("all");
 
     // Fetch Items
     const { data: itemsData, error, isLoading, mutate: refreshItems } = useSWR(
@@ -229,28 +228,9 @@ function LibraryDetails({ master }: { master: LibMaster }) {
         fetcher
     );
 
-    // Fetch combination items to determine which items are combinations
-    const { data: comboData } = useSWR(
-        master ? `/api/library/combo/${encodeURIComponent(master.lib_code)}` : null,
-        fetcher
-    );
-
     const items: LibItem[] = itemsData?.data || [];
-    const comboItems = comboData?.data || [];
-
-    // Create a Set of combination item IDs for quick lookup
-    const combinationIds = new Set(
-        comboItems.map((combo: any) => combo.lib_val || combo.code)
-    );
 
     const filteredItems = items.filter(item => {
-        // Filter by item type
-        const itemId = item.lib_val || item.code;
-        const isCombination = combinationIds.has(itemId);
-
-        if (itemTypeFilter === "combination" && !isCombination) return false;
-        if (itemTypeFilter === "standard" && isCombination) return false;
-
         // Search in all string values
         const searchStr = searchTerm.toLowerCase();
         return Object.values(item).some(val =>
@@ -285,45 +265,7 @@ function LibraryDetails({ master }: { master: LibMaster }) {
                     </div>
                 </div>
 
-                {/* Item Type Filter */}
-                <div className="flex items-center gap-4 px-1">
-                    <span className="text-sm font-medium text-muted-foreground">Item Type:</span>
-                    <div className="flex items-center gap-6">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                name="itemType"
-                                value="all"
-                                checked={itemTypeFilter === "all"}
-                                onChange={(e) => setItemTypeFilter(e.target.value as any)}
-                                className="w-4 h-4 text-blue-600 cursor-pointer"
-                            />
-                            <span className="text-sm">All Items</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                name="itemType"
-                                value="combination"
-                                checked={itemTypeFilter === "combination"}
-                                onChange={(e) => setItemTypeFilter(e.target.value as any)}
-                                className="w-4 h-4 text-blue-600 cursor-pointer"
-                            />
-                            <span className="text-sm">Combination Items</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                name="itemType"
-                                value="standard"
-                                checked={itemTypeFilter === "standard"}
-                                onChange={(e) => setItemTypeFilter(e.target.value as any)}
-                                className="w-4 h-4 text-blue-600 cursor-pointer"
-                            />
-                            <span className="text-sm">Standard Items</span>
-                        </label>
-                    </div>
-                </div>
+
             </div>
 
             {/* List */}
