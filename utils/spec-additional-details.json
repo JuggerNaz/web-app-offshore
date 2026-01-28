@@ -97,6 +97,21 @@
             }
         },
         {
+            "code": "bl",
+            "componentType": "bl_comp",
+            "additionalDataTemplate": {
+                "thetype": "",
+                "no_subsea": "",
+                "no_topside": "",
+                "no_landings": "",
+                "length": "",
+                "width": "",
+                "weight": "",
+                "id_chk": "",
+                "del": false
+            }
+        },
+        {
             "code": "hm",
             "componentType": "hm_comp",
             "additionalDataTemplate": {
