@@ -16,7 +16,7 @@ import Spec1Pipeline from "@/components/forms/spec1-pipeline";
 import Spec2Platform from "@/components/forms/spec2-platform";
 import { Button } from "@/components/ui/button";
 import Spec2Pipeline from "@/components/forms/spec2-pipeline";
-import { getDefaultsForSchema } from "zod-defaults";
+import { getSchemaDefaults } from "@/utils/zod-helpers";
 import { PipelineSchema, PlatformSchema } from "@/utils/schemas/zod";
 import {
   FileText,
@@ -44,9 +44,9 @@ export default function DetailPage() {
   //avoid calling api when id is new
   const { data, error, isLoading } = useSWR(id === "new" ? null : `/api/${type}/${id}`, fetcher);
 
-  const defaults = getDefaultsForSchema(PlatformSchema);
+  const defaults = getSchemaDefaults(PlatformSchema);
   defaults.plat_id = 0;
-  const pipelineDefaults = getDefaultsForSchema(PipelineSchema);
+  const pipelineDefaults = getSchemaDefaults(PipelineSchema);
   pipelineDefaults.pipe_id = 0;
 
   useEffect(() => {

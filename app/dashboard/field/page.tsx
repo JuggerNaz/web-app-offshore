@@ -66,60 +66,64 @@ export default function FieldPage() {
                                 href={`/dashboard/field/structures?field=${field.lib_id}`}
                                 className="group"
                             >
-                                <div className="relative h-64 rounded-xl overflow-hidden border border-border/50 bg-gradient-to-br from-blue-50 to-teal-50 dark:from-blue-950/20 dark:to-teal-950/20 hover:shadow-xl hover:scale-105 transition-all duration-300 cursor-pointer">
-                                    {/* Icon Area */}
-                                    <div className="absolute inset-0 flex items-center justify-center p-8">
-                                        <div className="relative w-full h-full flex items-center justify-center">
-                                            {/* Animated background circles */}
-                                            <div className="absolute inset-0 flex items-center justify-center">
-                                                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-400/20 to-teal-400/20 group-hover:scale-110 transition-transform duration-500" />
-                                                <div className="absolute w-24 h-24 rounded-full bg-gradient-to-br from-blue-500/30 to-teal-500/30 group-hover:scale-125 transition-transform duration-700" />
-                                            </div>
+                                <div className="relative h-[22rem] flex flex-col rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/50 dark:shadow-black/20 hover:shadow-2xl hover:scale-[1.02] transition-all duration-500 cursor-pointer">
+                                    {/* Icon / Visual Area */}
+                                    <div className="relative flex-1 flex items-center justify-center p-6 bg-slate-50/50 dark:bg-slate-950/30 overflow-hidden">
+                                        {/* Animated background circles */}
+                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                            <div className="w-40 h-40 rounded-full bg-gradient-to-br from-blue-400/10 to-teal-400/10 group-hover:scale-125 transition-transform duration-1000" />
+                                            <div className="absolute w-28 h-28 rounded-full bg-gradient-to-br from-blue-500/15 to-teal-500/15 group-hover:scale-150 transition-transform duration-700" />
+                                        </div>
 
-                                            {/* Oil field icon */}
-                                            <div className="relative z-10 text-blue-600 dark:text-blue-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors duration-300">
-                                                <Waves className="w-20 h-20" strokeWidth={1.5} />
-                                            </div>
+                                        {/* Main Icon */}
+                                        <div className="relative z-10 text-blue-600 dark:text-blue-400 group-hover:text-blue-500 group-hover:scale-110 transition-all duration-500 drop-shadow-2xl">
+                                            <Waves className="w-16 h-16" strokeWidth={1} />
                                         </div>
                                     </div>
 
-                                    {/* Field Name */}
-                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background/95 via-background/90 to-transparent p-6 pt-12">
-                                        <h3 className="text-xl font-bold text-center mb-3 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                            {field.lib_desc}
-                                        </h3>
+                                    {/* Content Area */}
+                                    <div className="p-6 flex flex-col gap-4 bg-white dark:bg-slate-900 relative">
+                                        {/* Title Section */}
+                                        <div className="min-h-[3rem] flex items-center justify-center">
+                                            <h3 className="text-sm font-black text-center uppercase tracking-tight text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight">
+                                                {field.lib_desc}
+                                            </h3>
+                                        </div>
 
-                                        {/* Statistics Footer */}
-                                        <div className="flex items-center justify-center gap-6 text-sm">
+                                        {/* Integrated Stats Row */}
+                                        <div className="flex items-center justify-between gap-2 mt-auto">
                                             <button
                                                 onClick={(e) => {
                                                     e.preventDefault();
                                                     window.location.href = `/dashboard/field/platform?field=${field.lib_id}`;
                                                 }}
-                                                className="flex items-center gap-2 bg-blue-600/90 hover:bg-blue-700 backdrop-blur-sm text-white rounded-lg px-3 py-2 border border-blue-500/30 transition-colors"
-                                                title="View platforms"
+                                                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100/50 dark:border-blue-800/50 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all group/btn shadow-sm"
                                             >
-                                                <Building2 className="w-4 h-4" />
-                                                <span className="font-semibold">{field.platform_count}</span>
-                                                <span className="hidden sm:inline">Platform{field.platform_count !== 1 ? 's' : ''}</span>
+                                                <Building2 className="w-3.5 h-3.5" />
+                                                <span className="text-[10px] font-black uppercase tracking-widest">{field.platform_count}</span>
+                                                <span className="text-[9px] font-bold uppercase tracking-widest opacity-70 group-hover/btn:opacity-100">PLATFORM</span>
                                             </button>
+
                                             <button
                                                 onClick={(e) => {
                                                     e.preventDefault();
                                                     window.location.href = `/dashboard/field/pipeline?field=${field.lib_id}`;
                                                 }}
-                                                className="flex items-center gap-2 bg-teal-600/90 hover:bg-teal-700 backdrop-blur-sm text-white rounded-lg px-3 py-2 border border-teal-500/30 transition-colors"
-                                                title="View pipelines"
+                                                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 border border-teal-100/50 dark:border-teal-800/50 hover:bg-teal-600 hover:text-white hover:border-teal-600 transition-all group/btn shadow-sm"
                                             >
-                                                <Layers className="w-4 h-4" />
-                                                <span className="font-semibold">{field.pipeline_count}</span>
-                                                <span className="hidden sm:inline">Pipeline{field.pipeline_count !== 1 ? 's' : ''}</span>
+                                                <Layers className="w-3.5 h-3.5" />
+                                                <span className="text-[10px] font-black uppercase tracking-widest">{field.pipeline_count}</span>
+                                                <span className="text-[9px] font-bold uppercase tracking-widest opacity-70 group-hover/btn:opacity-100">PIPELINE</span>
                                             </button>
                                         </div>
                                     </div>
 
-                                    {/* Hover overlay */}
-                                    <div className="absolute inset-0 bg-gradient-to-br from-blue-600/0 to-teal-600/0 group-hover:from-blue-600/5 group-hover:to-teal-600/5 transition-all duration-300" />
+                                    {/* Top identifier / Badge */}
+                                    <div className="absolute top-4 left-4 z-20">
+                                        <div className="px-2.5 py-1 rounded-lg bg-slate-900/90 dark:bg-slate-800/90 backdrop-blur-md border border-white/10 text-[8px] font-black text-white uppercase tracking-[0.2em] shadow-lg">
+                                            FIELD ID: {field.lib_id}
+                                        </div>
+                                    </div>
                                 </div>
                             </Link>
                         ))}
