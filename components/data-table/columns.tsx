@@ -27,7 +27,7 @@ export type Comment = Database["public"]["Tables"]["comment"]["Row"];
 export type Pipeline = Database["public"]["Tables"]["u_pipeline"]["Row"];
 export type Levels = Database["public"]["Tables"]["str_level"]["Row"];
 export type Faces = Database["public"]["Tables"]["str_faces"]["Row"];
-export type Jobpack = Database["public"]["Tables"]["workpl"]["Row"];
+export type Jobpack = Database["public"]["Tables"]["jobpack"]["Row"];
 export type Field = Database["public"]["Tables"]["u_lib_list"]["Row"];
 export type StructureSelect = {
   str_id: number;
@@ -416,32 +416,78 @@ export const faces: ColumnDef<Faces>[] = [
 
 export const jobpacks: ColumnDef<Jobpack>[] = [
   {
-    accessorKey: "inspno",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="#" />,
+    accessorKey: "id",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="ID" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
-    accessorKey: "jobname",
+    accessorKey: "name",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
-    enableSorting: true,
-    enableHiding: true,
-  },
-  {
-    accessorKey: "plantype",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Plan Type" />,
-    enableSorting: true,
-    enableHiding: true,
-  },
-  {
-    accessorKey: "tasktype",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Task Type" />,
     enableSorting: true,
     enableHiding: true,
   },
   {
     accessorKey: "status",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+    cell: ({ row }) => {
+      const status = row.getValue("status") as string;
+      return (
+        <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${status === "OPEN" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"
+          }`}>
+          {status || "N/A"}
+        </span>
+      );
+    },
+    enableSorting: true,
+    enableHiding: true,
+  },
+  {
+    id: "structures",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Structures" />,
+    accessorFn: (row) => {
+      const metadata = row.metadata as any;
+      const structures = metadata?.structures || [];
+      return structures.map((s: any) => s.title || s.code || s.name || "").join(", ");
+    },
+    cell: ({ row }) => {
+      const metadata = row.original.metadata as any;
+      const structures = metadata?.structures || [];
+      if (structures.length === 0) return <span className="text-slate-400 text-xs italic">No structures</span>;
+
+      return (
+        <div className="flex flex-wrap gap-1">
+          {structures.map((s: any, i: number) => (
+            <span key={i} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800">
+              {s.title || s.code || s.name}
+            </span>
+          ))}
+        </div>
+      );
+    },
+    filterFn: (row, id, value) => {
+      const metadata = row.original.metadata as any;
+      const structures = metadata?.structures || [];
+      const searchValue = value.toLowerCase();
+      return structures.some((s: any) =>
+        (s.title?.toLowerCase().includes(searchValue)) ||
+        (s.code?.toLowerCase().includes(searchValue)) ||
+        (s.name?.toLowerCase().includes(searchValue))
+      );
+    },
+  },
+  {
+    accessorKey: "created_at",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Created" />,
+    cell: ({ row }) => {
+      const date = row.getValue("created_at") as string;
+      if (!date) return <span className="text-slate-300 text-[10px]">N/A</span>;
+      return (
+        <div className="text-[10px] font-medium text-slate-500">
+          {moment(date).format("DD MMM YYYY")}
+        </div>
+      );
+    },
     enableSorting: true,
     enableHiding: true,
   },
@@ -476,7 +522,7 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
                   // })
                 }}
               >
-                <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
+                <Link className="w-full flex" href={`/dashboard/jobpack/${item.id}`}>
                   <Edit2 size={18} className="mr-2" /> Modify
                 </Link>
               </DropdownMenuItem>
@@ -486,7 +532,7 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
                   console.log(item);
                 }}
               >
-                <Link className="w-full flex" href={`/dashboard/jobpack/${item.inspno}`}>
+                <Link className="w-full flex" href={`/dashboard/jobpack/${item.id}`}>
                   <Trash2 size={18} className="mr-2" /> Delete
                 </Link>
               </DropdownMenuItem>

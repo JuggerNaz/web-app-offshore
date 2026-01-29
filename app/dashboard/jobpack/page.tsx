@@ -3,8 +3,9 @@ import { jobpacks } from "@/components/data-table/columns";
 import { DataTable } from "@/components/data-table/data-table";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
+import Link from "next/link";
 
-import { Package, Activity } from "lucide-react";
+import { Package, Activity, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function JobpackPage() {
@@ -45,6 +46,23 @@ export default function JobpackPage() {
               </div>
               <h1 className="text-3xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none">Jobpacks & Work Units</h1>
             </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="rounded-xl h-12 px-6 font-bold border-slate-200 dark:border-slate-800"
+              onClick={() => window.location.reload()}
+            >
+              Refresh
+            </Button>
+            <Link href="/dashboard/jobpack/new">
+              <Button
+                className="rounded-xl h-12 px-8 font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20 transition-all gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Register New Job Pack
+              </Button>
+            </Link>
           </div>
         </div>
 
