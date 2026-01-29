@@ -5,7 +5,7 @@ export async function GET(request: Request, context: any) {
   const { id } = await context.params;
 
   const supabase = createClient();
-  const { data, error } = await supabase.from("jobpack").select("*").eq("id", id).single();
+  const { data, error } = await supabase.from("jobpack").select("*").eq("id", Number(id)).single();
 
   if (error) {
     if (error.code === "PGRST116") {
@@ -29,7 +29,7 @@ export async function PUT(request: Request, context: any) {
       ...body,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id)
+    .eq("id", Number(id))
     .single();
 
   if (error) {

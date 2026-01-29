@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
         const { data, error } = await supabase
             .from("inspection_type")
             .select("*")
-            .eq("id", id)
+            .eq("id", Number(id))
             .single();
 
         if (error) return handleSupabaseError(error, "Failed to fetch inspection type");
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
         result = await supabase
             .from("inspection_type")
             .update(payload)
-            .eq("id", id)
+            .eq("id", Number(id))
             .select()
             .single();
     } else {
@@ -80,7 +80,7 @@ export async function DELETE(request: NextRequest) {
     const { error } = await supabase
         .from("inspection_type")
         .delete()
-        .eq("id", id);
+        .eq("id", Number(id));
 
     if (error) return handleSupabaseError(error, "Failed to delete inspection type");
     return apiSuccess({ success: true });
