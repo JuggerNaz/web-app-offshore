@@ -14,6 +14,7 @@ import {
   Compass,
   Database,
   LayoutDashboard,
+  User as UserIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -59,6 +60,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<LayoutDashboard className="h-[18px] w-[18px]" />}
             text="Analytics"
           />
+
         </div>
 
         {/* Assets Section */}

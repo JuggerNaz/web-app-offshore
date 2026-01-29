@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Settings, Building2, Video, Activity, AlertTriangle } from "lucide-react";
+import { Settings, Building2, Video, Activity, AlertTriangle, User } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SettingsPage() {
@@ -167,6 +167,34 @@ export default function SettingsPage() {
                                     <li className="flex items-center gap-2">
                                         <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
                                         Auto-flagging Rules
+                                    </li>
+                                </ul>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                    {/* User Data */}
+                    <Link href="/dashboard/user-data">
+                        <Card className="cursor-pointer hover:border-cyan-500 hover:shadow-lg transition-all duration-200 h-full">
+                            <CardHeader>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg">
+                                        <User className="w-6 h-6 text-cyan-600" />
+                                    </div>
+                                    <div>
+                                        <CardTitle>User Data</CardTitle>
+                                        <CardDescription>User Management & Accounts</CardDescription>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <ul className="space-y-2 text-sm text-muted-foreground">
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full"></span>
+                                        Manage Registered Users
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full"></span>
+                                        User Profiles & Access
                                     </li>
                                 </ul>
                             </CardContent>
