@@ -221,77 +221,54 @@ export default function PipelinePage() {
                 href={`/dashboard/field/pipeline/${pipeline.pipe_id}?from=list`}
                 className="group"
               >
-                <div className="relative h-80 rounded-xl overflow-hidden border border-border/50 bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-950/20 dark:to-cyan-950/20 hover:shadow-xl hover:scale-105 transition-all duration-300 cursor-pointer flex flex-col">
-                  {/* Structure Type Badge */}
-                  <div className="absolute top-3 left-3 z-10">
-                    <div className="flex items-center gap-2 bg-teal-600/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg">
-                      <Waves className="w-3.5 h-3.5" />
-                      <span>PIPELINE</span>
+                <div className="relative h-[22rem] flex flex-col rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/50 dark:shadow-black/20 hover:shadow-2xl hover:scale-[1.02] transition-all duration-500 cursor-pointer">
+                  {/* Visual Area */}
+                  <div className="relative flex-1 flex items-center justify-center p-6 bg-slate-50/50 dark:bg-slate-950/30 overflow-hidden text-teal-600 dark:text-teal-400">
+                    {/* Animated background circles */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-40 h-40 rounded-full bg-gradient-to-br from-teal-400/10 to-cyan-400/10 group-hover:scale-125 transition-transform duration-1000" />
+                      <div className="absolute w-28 h-28 rounded-full bg-gradient-to-br from-teal-500/15 to-cyan-500/15 group-hover:scale-150 transition-transform duration-700" />
+                    </div>
+
+                    {/* Main Icon */}
+                    <div className="relative z-10 text-teal-600 dark:text-teal-400 group-hover:text-teal-500 group-hover:scale-110 transition-all duration-500 drop-shadow-2xl">
+                      <OilPipelineIcon className="w-20 h-20" />
                     </div>
                   </div>
 
-                  {/* Icon Area */}
-                  <div className="flex-1 flex items-center justify-center p-6 relative">
-                    <div className="relative w-full h-full flex items-center justify-center">
-                      {/* Animated background circles */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-32 h-32 rounded-full bg-gradient-to-br from-teal-400/20 to-cyan-400/20 group-hover:scale-110 transition-transform duration-500" />
-                        <div className="absolute w-24 h-24 rounded-full bg-gradient-to-br from-teal-500/30 to-cyan-500/30 group-hover:scale-125 transition-transform duration-700" />
-                      </div>
-
-                      {/* Oil Pipeline icon */}
-                      <div className="relative z-10 text-teal-600 dark:text-teal-400 group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors duration-300">
-                        <OilPipelineIcon />
-                      </div>
-                    </div>
-
-                    {/* Title Overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 via-black/50 to-transparent p-4">
-                      <h3 className="text-lg font-bold text-white group-hover:text-teal-200 transition-colors line-clamp-2">
+                  {/* Content Area */}
+                  <div className="p-6 flex flex-col gap-4 bg-white dark:bg-slate-900 relative">
+                    {/* Title Section */}
+                    <div className="min-h-[3rem] flex items-center justify-center">
+                      <h3 className="text-sm font-black text-center uppercase tracking-tight text-slate-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors line-clamp-2 leading-tight">
                         {pipeline.title}
                       </h3>
                     </div>
-                  </div>
 
-                  {/* Pipeline Details - Always at bottom */}
-                  <div className="bg-background border-t border-border/30 p-4">
-                    {/* Pipeline Stats */}
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {pipeline.plength !== null && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-muted-foreground">Length:</span>
-                          <span className="font-semibold">{pipeline.plength.toFixed(2)} m</span>
-                        </div>
-                      )}
-                      {pipeline.st_loc && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-muted-foreground">From:</span>
-                          <span className="font-semibold truncate max-w-[80px]" title={pipeline.st_loc}>
-                            {pipeline.st_loc}
-                          </span>
-                        </div>
-                      )}
-                      {pipeline.end_loc && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-muted-foreground">To:</span>
-                          <span className="font-semibold truncate max-w-[80px]" title={pipeline.end_loc}>
-                            {pipeline.end_loc}
-                          </span>
-                        </div>
-                      )}
-                      {pipeline.ptype && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-muted-foreground">Type:</span>
-                          <span className="font-semibold truncate max-w-[80px]" title={pipeline.ptype}>
-                            {pipeline.ptype}
-                          </span>
-                        </div>
-                      )}
+                    {/* Integrated Data Row */}
+                    <div className="grid grid-cols-3 gap-2 mt-auto">
+                      <div className="flex flex-col items-center justify-center py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 shadow-sm">
+                        <span className="text-[10px] font-black uppercase text-teal-600 dark:text-teal-400">{pipeline.plength?.toFixed(0) || "0"}m</span>
+                        <span className="text-[8px] font-bold uppercase text-slate-400 tracking-widest">LEN</span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                        <span className="text-[10px] font-black uppercase text-teal-600 dark:text-teal-400 truncate max-w-full px-1">{pipeline.st_loc || "N/A"}</span>
+                        <span className="text-[8px] font-bold uppercase text-slate-400 tracking-widest">FROM</span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                        <span className="text-[10px] font-black uppercase text-teal-600 dark:text-teal-400 truncate max-w-full px-1">{pipeline.end_loc || "N/A"}</span>
+                        <span className="text-[8px] font-bold uppercase text-slate-400 tracking-widest">TO</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Hover overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-teal-600/0 to-cyan-600/0 group-hover:from-teal-600/5 group-hover:to-cyan-600/5 transition-all duration-300 pointer-events-none" />
+                  {/* Top Identifier Badge */}
+                  <div className="absolute top-4 left-4 z-20">
+                    <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-teal-600 text-[8px] font-black text-white uppercase tracking-[0.2em] shadow-lg">
+                      <Waves className="w-3 h-3" />
+                      PIPELINE ID: {pipeline.pipe_id}
+                    </div>
+                  </div>
                 </div>
               </Link>
             ))}

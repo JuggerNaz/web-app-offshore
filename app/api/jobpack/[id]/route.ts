@@ -5,7 +5,7 @@ export async function GET(request: Request, context: any) {
   const { id } = await context.params;
 
   const supabase = createClient();
-  const { data, error } = await supabase.from("workpl").select("*").eq("inspno", id).single();
+  const { data, error } = await supabase.from("jobpack").select("*").eq("id", Number(id)).single();
 
   if (error) {
     if (error.code === "PGRST116") {
@@ -23,9 +23,14 @@ export async function PUT(request: Request, context: any) {
   const body = await request.json();
   const supabase = createClient();
 
-  console.log(id, body);
-
-  const { data, error } = await supabase.from("workpl").update(body).eq("inspno", id).single();
+  const { data, error } = await supabase
+    .from("jobpack")
+    .update({
+      ...body,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", Number(id))
+    .single();
 
   if (error) {
     if (error.code === "PGRST116") {

@@ -25,6 +25,7 @@ import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { toast } from "sonner";
 import specAdditionalDetails from "@/utils/spec-additional-details.json";
+import { Wrench, Settings2, Save, X, Plus } from "lucide-react";
 
 type Component = {
   id: number;
@@ -336,51 +337,68 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <span className="text-blue-500">🔧</span>
-            {isCreateMode ? "Create New Component" : `${component?.code || "Component"} Specifications [${component?.id_no}]`}
-          </DialogTitle>
-          {!isCreateMode && component && (
-            <DialogDescription className="text-xs text-muted-foreground">
-              {`Created: ${component.created_at ? new Date(component.created_at).toLocaleString() : "N/A"} • Updated: ${component.updated_at ? new Date(component.updated_at).toLocaleString() : "N/A"} • Created by: ${component.created_by_name || component.created_by || "N/A"
-                } • Modified by: ${component.modified_by_name || component.modified_by || "N/A"
-                }`}
-            </DialogDescription>
-          )}
+      <DialogContent className="sm:max-w-5xl rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl max-h-[95vh] flex flex-col">
+        <DialogHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/50 border-b relative overflow-hidden shrink-0">
+          <div className="absolute top-0 right-0 p-8 opacity-5">
+            <Wrench className="h-24 w-24 -rotate-12" />
+          </div>
+          <div className="flex items-center gap-4 mb-2">
+            <div className="h-12 w-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <Wrench className="h-6 w-6" />
+            </div>
+            <div>
+              <DialogTitle className="text-2xl font-black uppercase tracking-tight">
+                {isCreateMode ? "Create New Component" : "Component Specifications"}
+              </DialogTitle>
+              <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                {isCreateMode ? "Structure Asset Management" : (
+                  <>
+                    <span className="text-blue-600 font-black">{component?.id_no}</span>
+                    {component?.updated_at && (
+                      <>
+                        <span className="opacity-20 text-slate-400">|</span>
+                        <span>Updated: {new Date(component.updated_at).toLocaleDateString()}</span>
+                      </>
+                    )}
+                  </>
+                )}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
 
-        <Tabs defaultValue="specifications" className="w-full">
-          <TabsList className={`grid w-full ${isCreateMode ? 'grid-cols-1' : 'grid-cols-4'}`}>
-            <TabsTrigger value="specifications">Specifications</TabsTrigger>
-            {!isCreateMode && (
-              <>
-                <TabsTrigger value="specifications2">Specifications 2</TabsTrigger>
-                <TabsTrigger value="comments">Comments</TabsTrigger>
-                <TabsTrigger value="attachments">Attachments</TabsTrigger>
-              </>
-            )}
-          </TabsList>
+        <div className="flex-1 overflow-y-auto p-8 pt-6">
+          <Tabs defaultValue="specifications" className="w-full">
+            <TabsList className={`grid w-full mb-8 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl ${isCreateMode ? 'grid-cols-1' : 'grid-cols-4 h-12'}`}>
+              <TabsTrigger value="specifications" className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">Specifications</TabsTrigger>
+              {!isCreateMode && (
+                <>
+                  <TabsTrigger value="specifications2" className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">Association</TabsTrigger>
+                  <TabsTrigger value="comments" className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">Comments</TabsTrigger>
+                  <TabsTrigger value="attachments" className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">Attachments</TabsTrigger>
+                </>
+              )}
+            </TabsList>
 
-          {/* Specifications Tab */}
-          <TabsContent value="specifications" className="space-y-4 mt-4">
-            <div className="border rounded-lg p-6 space-y-4 bg-slate-50 dark:bg-slate-900">
-              {/* Row 1: Q ID, ID No, Code */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="qId">Q Id:</Label>
+            {/* Specifications Tab */}
+            <TabsContent value="specifications" className="space-y-8 mt-0 outline-none">
+              <div className="grid grid-cols-12 gap-6 bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
+                {/* Row 1: Q ID, ID No, Code */}
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="qId" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Q Id</Label>
                   <Input
                     id="qId"
+                    className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
                     value={isCreateMode || isEditMode ? formData.q_id : (component?.q_id || "")}
                     onChange={(e) => handleInputChange("q_id", e.target.value)}
                     readOnly={!(isCreateMode || isEditMode)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="idNo">ID No:</Label>
+                <div className="col-span-6 space-y-2">
+                  <Label htmlFor="idNo" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">ID No</Label>
                   <Input
                     id="idNo"
+                    className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 font-mono text-blue-600 dark:text-blue-400 h-11"
                     value={
                       isCreateMode
                         ? buildIdNo(
@@ -395,69 +413,58 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                     readOnly
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="code">Code:</Label>
-                  <Input id="code" value={isCreateMode ? formData.code : (defaultCode || component?.code || "")} readOnly />
+                <div className="col-span-2 space-y-2">
+                  <Label htmlFor="code" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Code</Label>
+                  <Input id="code" className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 text-center font-black h-11" value={isCreateMode ? formData.code : (defaultCode || component?.code || "")} readOnly />
                 </div>
-              </div>
 
-              {/* Row 2: Description (full width, floating label) */}
-              <div className="space-y-2">
-                <div className="relative">
+                {/* Row 2: Description */}
+                <div className="col-span-12 space-y-2">
+                  <Label htmlFor="description" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Description</Label>
                   <Input
                     id="description"
-                    placeholder=" "
-                    className="peer pt-4"
+                    className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 h-11"
                     value={isCreateMode || isEditMode ? formData.description : (component?.metadata?.description ?? "")}
                     onChange={(e) => handleInputChange("description", e.target.value)}
                     readOnly={!(isCreateMode || isEditMode)}
                   />
-                  <Label
-                    htmlFor="description"
-                    className="pointer-events-none absolute left-3 top-0 -translate-y-1/2 bg-background px-1 text-xs text-muted-foreground transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:-translate-y-1/2 peer-focus:top-0 peer-focus:-translate-y-1/2 peer-focus:text-xs"
-                  >
-                    Description
-                  </Label>
                 </div>
-              </div>
 
-
-              {/* Row 4: Start Node, End Node */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sNode">Start Node:</Label>
+                {/* Row 4: Start Node, End Node */}
+                <div className="col-span-6 space-y-2 text-blue-600">
+                  <Label htmlFor="sNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Node</Label>
                   <Input
                     id="sNode"
+                    className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
                     value={isCreateMode || isEditMode ? formData.s_node : (component?.metadata?.s_node ?? "")}
                     onChange={(e) => handleInputChange("s_node", e.target.value)}
                     readOnly={!(isCreateMode || isEditMode)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="eNode">End Node:</Label>
+                <div className="col-span-6 space-y-2">
+                  <Label htmlFor="eNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Node</Label>
                   <Input
                     id="eNode"
+                    className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
                     value={isCreateMode || isEditMode ? formData.f_node : (component?.metadata?.f_node ?? "")}
                     onChange={(e) => handleInputChange("f_node", e.target.value)}
                     readOnly={!(isCreateMode || isEditMode)}
                   />
                 </div>
-              </div>
 
-              {/* Row 5: Start Leg, End Leg, Distance */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sLeg">Start Leg:</Label>
+                {/* Row 5: Start Leg, End Leg, Distance */}
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="sLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Leg</Label>
                   {pageType === "platform" ? (
                     <Select
                       value={isCreateMode ? formData.s_leg : (component?.metadata?.s_leg ?? "")}
                       onValueChange={(val) => handleInputChange("s_leg", val)}
                       disabled={!isCreateMode || legOptions.length === 0}
                     >
-                      <SelectTrigger id="sLeg">
+                      <SelectTrigger id="sLeg" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
                         <SelectValue placeholder="Select start leg" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="rounded-xl">
                         {legOptions.map((opt: any) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
@@ -466,21 +473,21 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                    <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="eLeg">End Leg:</Label>
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="eLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Leg</Label>
                   {pageType === "platform" ? (
                     <Select
                       value={isCreateMode ? formData.f_leg : (component?.metadata?.f_leg ?? "")}
                       onValueChange={(val) => handleInputChange("f_leg", val)}
                       disabled={!isCreateMode || legOptions.length === 0}
                     >
-                      <SelectTrigger id="eLeg">
+                      <SelectTrigger id="eLeg" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
                         <SelectValue placeholder="Select end leg" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="rounded-xl">
                         {legOptions.map((opt: any) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
@@ -489,54 +496,52 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                    <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="distance">Distance:</Label>
-                  <div className="flex items-center gap-2">
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="distance" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Distance</Label>
+                  <div className="relative">
                     <Input
                       id="distance"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-8"
                       value={isCreateMode || isEditMode ? formData.dist : (component?.metadata?.dist ?? "")}
                       onChange={(e) => handleInputChange("dist", e.target.value)}
                       readOnly={!(isCreateMode || isEditMode)}
-                      className="flex-1"
                     />
-                    <span className="text-sm text-muted-foreground">m</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">M</span>
                   </div>
                 </div>
-              </div>
 
-              {/* Row 6: Elevation 1, Elevation 2, Clock Position */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="elevation1">Elevation 1:</Label>
-                  <div className="flex items-center gap-2">
+                {/* Row 6: Elevation 1, Elevation 2, Clock Position */}
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="elevation1" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Elevation 1</Label>
+                  <div className="relative">
                     <Input
                       id="elevation1"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-8"
                       value={isCreateMode || isEditMode ? formData.elv_1 : (component?.metadata?.elv_1 ?? "")}
                       onChange={(e) => handleInputChange("elv_1", e.target.value)}
                       readOnly={!(isCreateMode || isEditMode)}
-                      className="flex-1"
                     />
-                    <span className="text-sm text-muted-foreground">m</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">M</span>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="elevation2">Elevation 2:</Label>
-                  <div className="flex items-center gap-2">
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="elevation2" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Elevation 2</Label>
+                  <div className="relative">
                     <Input
                       id="elevation2"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-8"
                       value={isCreateMode || isEditMode ? formData.elv_2 : (component?.metadata?.elv_2 ?? "")}
                       onChange={(e) => handleInputChange("elv_2", e.target.value)}
                       readOnly={!(isCreateMode || isEditMode)}
-                      className="flex-1"
                     />
-                    <span className="text-sm text-muted-foreground">m</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">M</span>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="clockPos">Clock Position:</Label>
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="clockPos" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Clock Position</Label>
                   <Select
                     value={
                       (isCreateMode || isEditMode)
@@ -546,10 +551,10 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                     onValueChange={(val) => handleInputChange("clk_pos", val)}
                     disabled={!isCreateMode || !positionLib}
                   >
-                    <SelectTrigger id="clockPos">
+                    <SelectTrigger id="clockPos" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
                       <SelectValue placeholder="Select position" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="rounded-xl">
                       {positionLib?.data
                         ?.filter((x: any) => x.lib_code === "POSITION")
                         .map((x: any) => (
@@ -560,22 +565,20 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              {/* Row 7: Level, Face, Part */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="level">Level:</Label>
+                {/* Row 7: Level, Face, Part */}
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="level" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Level</Label>
                   {pageType === "platform" ? (
                     <Select
                       value={isCreateMode || isEditMode ? formData.lvl : (component?.metadata?.lvl ?? "")}
                       onValueChange={(val) => handleInputChange("lvl", val)}
                       disabled={!(isCreateMode || isEditMode) || levelOptions.length === 0}
                     >
-                      <SelectTrigger id="level">
+                      <SelectTrigger id="level" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
                         <SelectValue placeholder="Select level" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="rounded-xl">
                         {levelOptions.map((opt: any) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
@@ -584,21 +587,21 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                    <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="face">Face:</Label>
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="face" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Face</Label>
                   {pageType === "platform" ? (
                     <Select
                       value={isCreateMode || isEditMode ? formData.face : (component?.metadata?.face ?? "")}
                       onValueChange={(val) => handleInputChange("face", val)}
                       disabled={!(isCreateMode || isEditMode) || faceOptions.length === 0}
                     >
-                      <SelectTrigger id="face">
+                      <SelectTrigger id="face" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
                         <SelectValue placeholder="Select face" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="rounded-xl">
                         {faceOptions.map((opt: any) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
@@ -607,11 +610,11 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Select disabled><SelectTrigger><SelectValue /></SelectTrigger></Select>
+                    <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="part">Part:</Label>
+                <div className="col-span-4 space-y-2">
+                  <Label htmlFor="part" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Part</Label>
                   <Select
                     value={
                       (isCreateMode || isEditMode)
@@ -621,212 +624,248 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                     onValueChange={(val) => handleInputChange("top_und", val)}
                     disabled={!isCreateMode}
                   >
-                    <SelectTrigger id="part">
+                    <SelectTrigger id="part" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
                       <SelectValue placeholder="Select part" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="rounded-xl">
                       <SelectItem value="TOPSIDE">TOPSIDE</SelectItem>
                       <SelectItem value="SUBSEA">SUBSEA</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              {/* Row 8: Structural Group (full width) */}
-              <div className="space-y-2">
-                <Label htmlFor="structuralGroup">Structural Group:</Label>
-                <Select
-                  value={
-                    (isCreateMode || isEditMode)
-                      ? formData.comp_group
-                      : (component?.metadata?.comp_group ?? "")
-                  }
-                  onValueChange={(val) => handleInputChange("comp_group", val)}
-                  disabled={!isCreateMode || !compGroupLib}
-                >
-                  <SelectTrigger id="structuralGroup">
-                    <SelectValue placeholder="Select structural group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {compGroupLib?.data
-                      ?.filter((x: any) => x.lib_code === "COMPGRP")
-                      .map((x: any) => (
-                        <SelectItem key={x.lib_id} value={String(x.lib_id)}>
-                          {x.lib_desc}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                {/* Row 8: Structural Group (full width) */}
+                <div className="col-span-12 space-y-2">
+                  <Label htmlFor="structuralGroup" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Structural Group</Label>
+                  <Select
+                    value={
+                      (isCreateMode || isEditMode)
+                        ? formData.comp_group
+                        : (component?.metadata?.comp_group ?? "")
+                    }
+                    onValueChange={(val) => handleInputChange("comp_group", val)}
+                    disabled={!isCreateMode || !compGroupLib}
+                  >
+                    <SelectTrigger id="structuralGroup" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-12 font-bold">
+                      <SelectValue placeholder="Select structural group" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                      {compGroupLib?.data
+                        ?.filter((x: any) => x.lib_code === "COMPGRP")
+                        .map((x: any) => (
+                          <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                            {x.lib_desc}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              {/* Dynamic Additional Details */}
-              {Object.keys(formData.additionalInfo).length > 0 ? (
-                <div className="pt-4 border-t space-y-4">
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider italic">Additional Details</h3>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-                    {Object.entries(formData.additionalInfo).map(([key, value]) => {
-                      if (key === 'del') return null;
-                      const label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                      return (
-                        <div key={key} className="flex items-center gap-4">
-                          <Label htmlFor={key} className="text-xs font-medium min-w-[100px] text-right">{label}:</Label>
-                          {typeof value === 'boolean' ? (
-                            <Checkbox
-                              id={key}
-                              checked={!!value}
-                              onCheckedChange={(checked: boolean) => handleAdditionalInfoChange(key, checked)}
-                              disabled={!(isCreateMode || isEditMode)}
-                            />
-                          ) : (
-                            <Input
-                              id={key}
-                              value={value || ""}
-                              onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
-                              readOnly={!(isCreateMode || isEditMode)}
-                              className="h-8 text-xs text-cyan-600 dark:text-cyan-400 font-mono shadow-sm"
-                            />
+                {/* Dynamic Additional Details */}
+                {Object.keys(formData.additionalInfo).length > 0 ? (
+                  <div className="col-span-12 pt-8 border-t border-slate-200/60 dark:border-slate-800/60 space-y-6">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                        <Settings2 className="h-4 w-4 text-slate-500" />
+                      </div>
+                      <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Additional Specifications</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-12 gap-y-6 px-1">
+                      {Object.entries(formData.additionalInfo).map(([key, value]) => {
+                        if (key === 'del') return null;
+                        const label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                        return (
+                          <div key={key} className="space-y-2">
+                            <Label htmlFor={key} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
+                            {typeof value === 'boolean' ? (
+                              <div className="flex items-center h-11">
+                                <Checkbox
+                                  id={key}
+                                  checked={!!value}
+                                  onCheckedChange={(checked: boolean) => handleAdditionalInfoChange(key, checked)}
+                                  disabled={!(isCreateMode || isEditMode)}
+                                  className="h-5 w-5 rounded-md border-slate-300 dark:border-slate-700"
+                                />
+                              </div>
+                            ) : (
+                              <Input
+                                id={key}
+                                value={value || ""}
+                                onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
+                                readOnly={!(isCreateMode || isEditMode)}
+                                className="h-11 rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-mono text-xs text-cyan-600 dark:text-cyan-400"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Metadata */}
+                {component?.metadata && (
+                  <div className="col-span-12 space-y-2 mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-800/60">
+                    <Label htmlFor="metadata" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Metadata RAW</Label>
+                    <textarea
+                      id="metadata"
+                      value={JSON.stringify(component.metadata, null, 2)}
+                      readOnly
+                      className="w-full p-4 border border-slate-200 dark:border-slate-800 rounded-xl font-mono text-[10px] bg-slate-100/30 dark:bg-slate-900/30 min-h-[100px]"
+                    />
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {!isCreateMode && (
+              <>
+                {/* Specifications 2 Tab */}
+                <TabsContent value="specifications2" className="space-y-4 mt-0 outline-none">
+                  <div className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8 min-h-[400px]">
+                    <div className="space-y-6">
+                      <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 mb-4">
+                        Associate Component to other Component
+                      </h3>
+
+                      <div className="flex items-center space-x-4">
+                        <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider min-w-[120px]">Associated to:</Label>
+                        <div className="flex items-center space-x-2 flex-1">
+                          <div className="min-w-[200px] h-11 px-4 flex items-center bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
+                            <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
+                              {allComponents?.data?.find((c: any) => c.id === (isCreateMode ? formData.associated_comp_id : component?.metadata?.associated_comp_id))?.id_no || "None"}
+                            </span>
+                          </div>
+                          {(isCreateMode || isEditMode) && (
+                            <Button
+                              variant="secondary"
+                              className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 px-4 h-11 rounded-xl font-bold"
+                              onClick={() => setSelectorOpen(true)}
+                            >
+                              ...
+                            </Button>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
-              {/* Metadata */}
-              {component?.metadata && (
-                <div className="space-y-2 mt-4 pt-4 border-t">
-                  <Label htmlFor="metadata">Metadata:</Label>
-                  <textarea
-                    id="metadata"
-                    value={JSON.stringify(component.metadata, null, 2)}
-                    readOnly
-                    className="w-full p-2 border rounded-md font-mono text-xs bg-muted min-h-[100px]"
-                  />
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
-          {!isCreateMode && (
-            <>
-              {/* Specifications 2 Tab */}
-              <TabsContent value="specifications2" className="space-y-4 mt-4">
-                <div className="border rounded-lg p-8 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 space-y-8 min-h-[400px]">
-                  <div className="space-y-6">
-                    <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                      Associate Component to other Component:
-                    </h3>
-
-                    <div className="flex items-center space-x-4">
-                      <Label className="text-sm font-medium min-w-[120px]">Associated to:</Label>
-                      <div className="flex items-center space-x-2 flex-1">
-                        <div className="min-w-[200px] h-10 px-3 flex items-center bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-md">
-                          <span className="text-sm font-mono text-cyan-600 dark:text-cyan-400">
-                            {allComponents?.data?.find((c: any) => c.id === (isCreateMode ? formData.associated_comp_id : component?.metadata?.associated_comp_id))?.id_no || "None"}
-                          </span>
-                        </div>
-                        {(isCreateMode || isEditMode) && (
-                          <Button
-                            variant="secondary"
-                            className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 px-4 h-10 font-bold"
-                            onClick={() => setSelectorOpen(true)}
-                          >
-                            ...
-                          </Button>
-                        )}
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <Dialog open={selectorOpen} onOpenChange={setSelectorOpen}>
-                  <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
-                    <DialogHeader>
-                      <DialogTitle>Select Component to Associate</DialogTitle>
-                      <DialogDescription>
-                        Choose a component from the same structure ({structureId}) to associate with this component.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="flex-1 overflow-y-auto mt-4 border rounded-md">
-                      <DataTable
-                        columns={[
-                          { accessorKey: "id_no", header: "ID No" },
-                          { accessorKey: "q_id", header: "Q ID" },
-                          { accessorKey: "code", header: "Code" },
-                          {
-                            id: "actions",
-                            header: "Action",
-                            cell: ({ row }) => (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  handleInputChange("associated_comp_id", (row.original as any).id);
-                                  setSelectorOpen(false);
-                                }}
-                              >
-                                Select
-                              </Button>
-                            ),
-                          },
-                        ]}
-                        data={allComponents?.data?.filter((c: any) => c.id !== component?.id) || []}
-                        disableRowClick={true}
-                      />
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </TabsContent>
+                  <Dialog open={selectorOpen} onOpenChange={setSelectorOpen}>
+                    <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
+                      <DialogHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/50 border-b">
+                        <DialogTitle className="text-xl font-black uppercase tracking-tight">Select Component</DialogTitle>
+                        <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                          Associate with structure ({structureId})
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="flex-1 overflow-y-auto p-8">
+                        <div className="border border-slate-200/60 dark:border-slate-800/60 rounded-2xl overflow-hidden shadow-sm">
+                          <DataTable
+                            columns={[
+                              { accessorKey: "id_no", header: "ID No" },
+                              { accessorKey: "q_id", header: "Q ID" },
+                              { accessorKey: "code", header: "Code" },
+                              {
+                                id: "actions",
+                                header: "Action",
+                                cell: ({ row }) => (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-lg font-bold"
+                                    onClick={() => {
+                                      handleInputChange("associated_comp_id", (row.original as any).id);
+                                      setSelectorOpen(false);
+                                    }}
+                                  >
+                                    Select
+                                  </Button>
+                                ),
+                              },
+                            ]}
+                            data={allComponents?.data?.filter((c: any) => c.id !== component?.id) || []}
+                            disableRowClick={true}
+                          />
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </TabsContent>
 
-              {/* Comments Tab */}
-              <TabsContent value="comments" className="p-4 mt-4">
-                {commentsLoading ? (
-                  <div>Loading comments...</div>
-                ) : commentsError ? (
-                  <div>Failed to load comments</div>
-                ) : (
-                  <DataTable
-                    columns={comments}
-                    data={commentsData?.data || []}
-                    disableRowClick={true}
-                    toolbarActions={<ComponentCommentDialog componentId={component?.id || 0} />}
-                  />
-                )}
-              </TabsContent>
+                {/* Comments Tab */}
+                <TabsContent value="comments" className="mt-0 outline-none">
+                  <div className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
+                    {commentsLoading ? (
+                      <div className="h-[200px] flex items-center justify-center text-slate-400 font-bold animate-pulse uppercase tracking-widest text-xs">Loading comments...</div>
+                    ) : (
+                      <div className="border border-slate-200/60 dark:border-slate-800/60 rounded-2xl overflow-hidden shadow-sm">
+                        <DataTable
+                          columns={comments}
+                          data={commentsData?.data || []}
+                          disableRowClick={true}
+                          toolbarActions={<ComponentCommentDialog componentId={component?.id || 0} />}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
 
-              {/* Attachments Tab */}
-              <TabsContent value="attachments" className="p-4 mt-4">
-                {attachmentsLoading ? (
-                  <div>Loading attachments...</div>
-                ) : attachmentsError ? (
-                  <div>Failed to load attachments</div>
-                ) : (
-                  <DataTable
-                    columns={attachments}
-                    data={attachmentsData?.data || []}
-                    disableRowClick={true}
-                    toolbarActions={<ComponentAttachmentDialog componentId={component?.id || 0} />}
-                  />
-                )}
-              </TabsContent>
-            </>
-          )}
-        </Tabs>
+                {/* Attachments Tab */}
+                <TabsContent value="attachments" className="mt-0 outline-none">
+                  <div className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
+                    {attachmentsLoading ? (
+                      <div className="h-[200px] flex items-center justify-center text-slate-400 font-bold animate-pulse uppercase tracking-widest text-xs">Loading attachments...</div>
+                    ) : (
+                      <div className="border border-slate-200/60 dark:border-slate-800/60 rounded-2xl overflow-hidden shadow-sm">
+                        <DataTable
+                          columns={attachments}
+                          data={attachmentsData?.data || []}
+                          disableRowClick={true}
+                          toolbarActions={<ComponentAttachmentDialog componentId={component?.id || 0} />}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+              </>
+            )}
+          </Tabs>
+        </div>
 
-        <DialogFooter className="flex gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          {isCreateMode || isEditMode ? (
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "Saving..." : isCreateMode ? "Save" : "Save Changes"}
+        <DialogFooter className="p-8 bg-slate-50/50 dark:bg-slate-900/50 border-t shrink-0">
+          <div className="flex justify-end gap-3 w-full">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              className="rounded-xl font-bold px-6 h-11 transition-all"
+            >
+              Cancel
             </Button>
-          ) : (
-            <Button onClick={() => onOpenChange(false)}>
-              OK
-            </Button>
-          )}
+            {isCreateMode ? (
+              <Button
+                type="submit"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]"
+              >
+                {isSaving ? (
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                {isSaving ? "Saving..." : "Create Component"}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 uppercase tracking-widest text-[10px]"
+              >
+                Got it
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

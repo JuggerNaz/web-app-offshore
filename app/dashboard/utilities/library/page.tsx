@@ -93,7 +93,7 @@ export default function LibraryPage() {
     }).sort((a, b) => (a.lib_name || a.lib_desc || "").localeCompare(b.lib_name || b.lib_desc || ""));
 
     return (
-        <div className="flex h-[calc(100vh-6rem)] gap-0 overflow-hidden rounded-lg border bg-background shadow-sm">
+        <div className="flex h-full w-full gap-0 overflow-hidden bg-background">
             {/* Master List Sidebar */}
             <div className="w-1/3 min-w-[300px] border-r flex flex-col bg-slate-50/50 dark:bg-slate-900/50">
                 <div className="p-4 border-b space-y-4">

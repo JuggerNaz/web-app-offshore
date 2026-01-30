@@ -35,7 +35,7 @@ export interface PaginatedResponse<T> {
  */
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 50;
-const MAX_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 1000;
 
 /**
  * Extract and validate pagination parameters from request URL
