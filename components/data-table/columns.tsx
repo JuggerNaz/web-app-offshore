@@ -18,7 +18,11 @@ import Link from "next/link";
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
+<<<<<<< Updated upstream
 import { Trash2, Edit2, Plus, Calendar } from "lucide-react";
+=======
+import { Trash2, Edit2, Plus, CheckCircle } from "lucide-react";
+>>>>>>> Stashed changes
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
 
@@ -420,18 +424,46 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     header: ({ column }) => <DataTableColumnHeader column={column} title="ID" />,
     enableSorting: true,
     enableHiding: true,
+    enableGlobalFilter: false,
   },
   {
     accessorKey: "name",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+    cell: ({ row }) => row.original.jobname || "",
     enableSorting: true,
     enableHiding: true,
   },
   {
+<<<<<<< Updated upstream
+=======
+    accessorKey: "topside",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Scope" />,
+    cell: ({ row }) => {
+      const t = row.original.topside;
+      const s = row.original.subsea;
+      return (
+        <div className="flex gap-1">
+          {t === 1 && <span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded">Top</span>}
+          {s === 1 && <span className="text-[10px] bg-cyan-100 text-cyan-700 px-1 rounded">Sub</span>}
+        </div>
+      )
+    },
+    enableSorting: true,
+    enableHiding: true,
+  },
+  {
+    accessorKey: "tasktype", // Is this real?
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Task Type" />,
+    enableSorting: true,
+    enableHiding: true,
+  },
+  {
+>>>>>>> Stashed changes
     accessorKey: "status",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
+<<<<<<< Updated upstream
       return (
         <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${status === "OPEN" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"
           }`}>
@@ -487,6 +519,12 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
           {moment(date).format("DD MMM YYYY")}
         </div>
       );
+=======
+      let color = "bg-slate-100 text-slate-700";
+      if (status === 'OPEN') color = "bg-green-100 text-green-700";
+      if (status === 'CLOSED') color = "bg-gray-100 text-gray-500 line-through";
+      return <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase ${color}`}>{status}</span>
+>>>>>>> Stashed changes
     },
     enableSorting: true,
     enableHiding: true,
@@ -496,8 +534,33 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     cell: ({ row }) => {
       const item = row.original;
 
+      const handleDelete = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (confirm("Are you sure you want to delete this Work Pack?")) {
+          try {
+            await fetcher(`/api/jobpack/${item.inspno}`, { method: 'DELETE' });
+            mutate('/api/jobpack');
+            toast.success("Work Pack deleted");
+          } catch (e) { toast.error("Failed to delete"); }
+        }
+      }
+
+      const handleConsolidate = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (confirm("Are you sure you want to Consolidate (Close) this Work Pack?")) {
+          try {
+            await fetcher(`/api/jobpack/${item.inspno}`, {
+              method: 'PUT',
+              body: JSON.stringify({ status: 'CLOSED' })
+            });
+            mutate('/api/jobpack');
+            toast.success("Work Pack Consolidated");
+          } catch (e) { toast.error("Failed to consolidate"); }
+        }
+      }
+
       return (
-        <div className="text-center">
+        <div className="text-center" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-8 w-8 p-0">
@@ -508,6 +571,7 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
+<<<<<<< Updated upstream
               {/* TODO: search for better way to make dropdown item menu cursor pointer */}
               <DropdownMenuItem
                 className="cursor-pointer w-full"
@@ -535,6 +599,18 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
                 <Link className="w-full flex" href={`/dashboard/jobpack/${item.id}`}>
                   <Trash2 size={18} className="mr-2" /> Delete
                 </Link>
+=======
+              <DropdownMenuItem className="cursor-pointer">
+                <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.inspno}`}>
+                  <Edit2 size={16} className="mr-2" /> Modify
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={handleConsolidate}>
+                <CheckCircle size={16} className="mr-2 text-green-600" /> Consolidate
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer text-red-600" onClick={handleDelete}>
+                <Trash2 size={16} className="mr-2" /> Delete
+>>>>>>> Stashed changes
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -266,6 +266,24 @@ function VideoRecorderSettings() {
         }
     }
 
+    async function requestPermissions() {
+        try {
+            console.log("Requesting permissions...");
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+
+            // Stop tracks immediately as we just wanted permissions
+            stream.getTracks().forEach(track => track.stop());
+
+            showToast('Permissions granted. Scanning devices...', 'success');
+
+            // Re-initialize to populate lists
+            await initializeSettings();
+        } catch (error) {
+            console.error('Permission request failed:', error);
+            showToast('Failed to grant permissions. Please check browser settings or ensure HTTPS.', 'error');
+        }
+    }
+
     async function startPreview() {
         if (!settings) return;
 
@@ -729,21 +747,41 @@ function VideoRecorderSettings() {
                                 <label className="block text-sm font-medium mb-2">
                                     Video Device
                                 </label>
-                                <select
-                                    value={settings.video.deviceId}
-                                    onChange={(e) => handleVideoDeviceChange(e.target.value)}
-                                    className="w-full bg-background border border-input rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-ring"
-                                >
-                                    <option value="">Select camera...</option>
-                                    {videoDevices.map((device) => (
-                                        <option key={device.deviceId} value={device.deviceId}>
-                                            {device.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                {settings.video.deviceId && (
-                                    <div className="mt-2 inline-flex items-center gap-2 text-xs font-semibold px-2 py-1 bg-green-50 dark:bg-green-950/20 text-green-600 dark:text-green-400 rounded">
-                                        ✅ Compatible
+                                {videoDevices.length > 0 ? (
+                                    <>
+                                        <select
+                                            value={settings.video.deviceId}
+                                            onChange={(e) => handleVideoDeviceChange(e.target.value)}
+                                            className="w-full bg-background border border-input rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-ring"
+                                        >
+                                            <option value="">Select camera...</option>
+                                            {videoDevices.map((device) => (
+                                                <option key={device.deviceId} value={device.deviceId}>
+                                                    {device.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {settings.video.deviceId && (
+                                            <div className="mt-2 inline-flex items-center gap-2 text-xs font-semibold px-2 py-1 bg-green-50 dark:bg-green-950/20 text-green-600 dark:text-green-400 rounded">
+                                                ✅ Compatible
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg p-3">
+                                        <p className="text-sm text-amber-800 dark:text-amber-200 mb-2">
+                                            No cameras found. You may need to grant permission.
+                                        </p>
+                                        <button
+                                            onClick={requestPermissions}
+                                            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2 px-3 rounded text-sm transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <span className="text-lg">🔓</span>
+                                            Grant Camera Access
+                                        </button>
+                                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                                            Note: Cameras are blocked on non-secure (HTTP) connections except localhost. Ensure you are using HTTPS.
+                                        </p>
                                     </div>
                                 )}
                             </div>
