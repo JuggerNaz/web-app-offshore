@@ -271,6 +271,7 @@ export const JobpackSchema = z.object({
   istart: z.string().optional().nullable(),
   iend: z.string().optional().nullable(),
   plantype: z.string().optional().nullable(),
+  jobtype: z.string().optional().nullable(),
   contrac: z.string().optional().nullable(),
   comprep: z.string().optional().nullable(),
   vessel: z.string().optional().nullable(),
