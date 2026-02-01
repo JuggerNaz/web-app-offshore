@@ -430,17 +430,7 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     enableHiding: true,
   },
 
-  {
-    id: "jobtype",
-    accessorFn: (row) => (row.metadata as any)?.jobtype || "",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Job Type" />,
-    enableSorting: true,
-    enableHiding: true,
-    cell: ({ row }) => {
-      const val = (row.original.metadata as any)?.jobtype;
-      return val ? <span className="text-[10px] uppercase font-bold text-slate-500">{val}</span> : null;
-    }
-  },
+
   {
     id: "plantype",
     accessorFn: (row) => (row.metadata as any)?.plantype || "",
@@ -512,10 +502,11 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     },
   },
   {
-    accessorKey: "created_at",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Created" />,
-    cell: ({ row }) => {
-      const date = row.getValue("created_at") as string;
+    id: "istart",
+    accessorFn: (row) => (row.metadata as any)?.istart,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Start Date" />,
+    cell: ({ getValue }) => {
+      const date = getValue() as string;
       if (!date) return <span className="text-slate-300 text-[10px]">N/A</span>;
       return (
         <div className="text-[10px] font-medium text-slate-500">

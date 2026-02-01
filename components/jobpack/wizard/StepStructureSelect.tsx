@@ -37,12 +37,12 @@ export function StepStructureSelect({ state, updateState, onNext, onBack }: Step
     const selectedIds = state.structures || [];
 
     // Derived lists
-    const availableList = allStructures.filter((s: any) => !selectedIds.some(id => String(id) === String(s.str_id)) &&
+    const availableList = allStructures.filter((s: any) => !selectedIds.some((id: any) => String(id) === String(s.str_id)) &&
         (s.str_name.toLowerCase().includes(availableSearch.toLowerCase()) ||
             String(s.str_id).includes(availableSearch))
     );
 
-    const selectedList = allStructures.filter((s: any) => selectedIds.some(id => String(id) === String(s.str_id)));
+    const selectedList = allStructures.filter((s: any) => selectedIds.some((id: any) => String(id) === String(s.str_id)));
 
     const handleAdd = (strId: string | number) => {
         updateState({ structures: [...selectedIds, String(strId)] });

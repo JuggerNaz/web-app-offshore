@@ -66,7 +66,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const { data, isLoading } = useSWR(id ? `/api/jobpack/${id}` : null, fetcher);
   const { data: platforms } = useSWR("/api/platform", fetcher);
   const { data: pipelines } = useSWR("/api/pipeline", fetcher);
-  const { data: inspectionTypes } = useSWR("/api/inspection-type", fetcher);
+  const { data: inspectionTypes } = useSWR("/api/inspection-type?pageSize=1000", fetcher);
   const { data: contractors } = useSWR("/api/library/CONTR_NAM", fetcher);
   const { data: compTypesLib } = useSWR("/api/components", fetcher);
 
@@ -182,11 +182,42 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   }, [contractors]);
 
   const toggleStructure = (s: any) => {
-    if (selectedStructures.some((item) => item.id === s.id && item.type === s.type)) {
+    const isSelected = selectedStructures.some((item) => item.id === s.id && item.type === s.type);
+
+    if (isSelected) {
       setSelectedStructures(selectedStructures.filter((item) => !(item.id === s.id && item.type === s.type)));
     } else {
       setSelectedStructures([...selectedStructures, s]);
-      setActiveStructKey(`${s.type}-${s.id}`);
+      const newKey = `${s.type}-${s.id}`;
+      setActiveStructKey(newKey);
+
+      // Auto-select defaults based on metadata
+      if (inspectionTypes?.data) {
+        const defaults = inspectionTypes.data.filter((insp: any) => {
+          const m = insp.metadata || {};
+          // Must have default=1
+          if (m.default !== 1 && m.default !== "1" && m.default !== true) return false;
+
+          // Must match scope
+          if (s.type === "PLATFORM") {
+            const p = m.platform;
+            return p === 1 || p === "1" || p === true;
+          }
+          if (s.type === "PIPELINE") {
+            const p = m.pipeline;
+            return p === 1 || p === "1" || p === true;
+          }
+          return false;
+        });
+
+        if (defaults.length > 0) {
+          setInspectionsByStruct(prev => ({
+            ...prev,
+            [newKey]: defaults
+          }));
+          toast.success(`Auto-selected ${defaults.length} inspection(s) for ${s.title}`);
+        }
+      }
     }
   };
 
@@ -211,11 +242,66 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
     const currentList = inspectionsByStruct[activeStructKey] || [];
     const exists = currentList.some((item) => item.id === insp.id);
 
-    let newList;
+    let newList: any[] = [];
     if (exists) {
-      newList = currentList.filter((item) => item.id !== insp.id);
+      const remainingList = currentList.filter((item) => item.id !== insp.id);
+
+      // Auto-remove Dependencies logic
+      const removedDeps = insp.metadata?.requires || []; // codes to potentially remove
+      if (Array.isArray(removedDeps) && removedDeps.length > 0) {
+        // 1. Identify what is still required by other selected items
+        const stillRequiredCodes = new Set<string>();
+        remainingList.forEach((item) => {
+          const reqs = item.metadata?.requires;
+          if (Array.isArray(reqs)) {
+            reqs.forEach((r: string) => stillRequiredCodes.add(r));
+          }
+        });
+
+        // 2. Identify codes that are safe to remove (dependent on 'insp' but not others)
+        const safeToRemoveCodes = removedDeps.filter((code: string) => !stillRequiredCodes.has(code));
+
+        // 3. Remove them from the list
+        if (safeToRemoveCodes.length > 0) {
+          newList = remainingList.filter((item) => !safeToRemoveCodes.includes(item.code));
+          const removedCount = remainingList.length - newList.length;
+          if (removedCount > 0) {
+            toast.info(`Also removed ${removedCount} dependent inspection(s)`);
+          }
+        } else {
+          newList = remainingList;
+        }
+      } else {
+        newList = remainingList;
+      }
     } else {
       newList = [...currentList, insp];
+
+      // Auto-select Dependencies (requires)
+      const requirements = insp.metadata?.requires; // Array of codes
+      if (Array.isArray(requirements) && requirements.length > 0 && inspectionTypes?.data) {
+        let addedCount = 0;
+        const reqNames: string[] = [];
+
+        // Find matching inspection types
+        const deps = inspectionTypes.data.filter((d: any) =>
+          requirements.includes(d.code) && d.id !== insp.id
+        );
+
+        deps.forEach((d: any) => {
+          // Check if already selected
+          const alreadySelected = newList.some(sel => sel.id === d.id);
+          if (!alreadySelected) {
+            newList.push(d);
+            addedCount++;
+            reqNames.push(d.code);
+          }
+        });
+
+        if (addedCount > 0) {
+          toast.success(`Auto-added required: ${reqNames.join(", ")}`);
+        }
+      }
     }
 
     setInspectionsByStruct({
@@ -737,7 +823,27 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
 
                           <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-white dark:bg-slate-950">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {inspectionTypes?.data?.map((insp: any) => {
+                              {inspectionTypes?.data?.filter((insp: any) => {
+                                // Text Filter
+                                if (inspectionSearch) {
+                                  const search = inspectionSearch.toLowerCase();
+                                  const matches = (insp.name?.toLowerCase().includes(search)) ||
+                                    (insp.code?.toLowerCase().includes(search));
+                                  if (!matches) return false;
+                                }
+                                // Structure Type Filter
+                                if (activeStructKey) {
+                                  if (activeStructKey.startsWith("PLATFORM")) {
+                                    const val = insp.metadata?.platform;
+                                    return val === 1 || val === "1" || val === true;
+                                  }
+                                  if (activeStructKey.startsWith("PIPELINE")) {
+                                    const val = insp.metadata?.pipeline;
+                                    return val === 1 || val === "1" || val === true;
+                                  }
+                                }
+                                return true;
+                              }).map((insp: any) => {
                                 const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
 
                                 return (
@@ -760,6 +866,14 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                     <div className="flex flex-col min-w-0">
                                       <span className={cn("font-bold text-xs truncate", isSelected ? "text-blue-900" : "text-slate-700")}>{insp.name}</span>
                                       <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
+                                      <div className="flex gap-1 mt-1 flex-wrap">
+                                        {(insp.metadata?.rov === 1 || insp.metadata?.rov === "1" || insp.metadata?.rov === true) && (
+                                          <Badge variant="secondary" className="text-[8px] h-4 px-1 bg-sky-100 text-sky-700 hover:bg-sky-200 border-sky-200">ROV</Badge>
+                                        )}
+                                        {(insp.metadata?.diving === 1 || insp.metadata?.diving === "1" || insp.metadata?.diving === true) && (
+                                          <Badge variant="secondary" className="text-[8px] h-4 px-1 bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-200">DIVING</Badge>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
                                 );
