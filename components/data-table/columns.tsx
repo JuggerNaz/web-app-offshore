@@ -478,15 +478,26 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     cell: ({ row }) => {
       const metadata = row.original.metadata as any;
       const structures = metadata?.structures || [];
+      const stStatus = metadata?.structure_status || {};
+
       if (structures.length === 0) return <span className="text-slate-400 text-xs italic">No structures</span>;
 
       return (
         <div className="flex flex-wrap gap-1">
-          {structures.map((s: any, i: number) => (
-            <span key={i} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800">
-              {s.title || s.code || s.name}
-            </span>
-          ))}
+          {structures.map((s: any, i: number) => {
+            const key = `${s.type}-${s.id}`;
+            const isClosed = stStatus[key]?.status === "CLOSED";
+
+            return (
+              <span key={i} className={`text-[9px] font-bold px-1.5 py-0.5 rounded border flex items-center gap-1 transition-colors ${isClosed
+                ? "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                : "bg-indigo-50 text-indigo-600 border-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800"
+                }`}>
+                {s.title || s.code || s.name}
+                {isClosed && <CheckCircle size={8} className="text-green-600 dark:text-green-500" />}
+              </span>
+            )
+          })}
         </div>
       );
     },
@@ -523,10 +534,31 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     enableHiding: false,
     cell: ({ row }) => {
       const item = row.original;
+      const metadata = item.metadata as any || {};
+      const structureStatus = metadata.structure_status || {};
+
+      const isJobClosed = item.status === "CLOSED";
+      const hasClosedStructures = Object.values(structureStatus).some((v: any) => v?.status === "CLOSED");
+
+      let hasInspections = false;
+      if (metadata.inspections) {
+        if (Array.isArray(metadata.inspections)) {
+          hasInspections = metadata.inspections.length > 0;
+        } else if (typeof metadata.inspections === 'object') {
+          hasInspections = Object.values(metadata.inspections).some((arr: any) => Array.isArray(arr) && arr.length > 0);
+        }
+      }
+
+      const canDelete = !isJobClosed && !hasClosedStructures;
 
       const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (confirm("Are you sure you want to delete this Work Pack?")) {
+        if (!canDelete) return;
+
+        let msg = "Are you sure you want to delete this Work Pack?";
+        if (hasInspections) msg += "\n\nWARNING: This Job Pack has assigned inspections which will also be deleted.";
+
+        if (confirm(msg)) {
           try {
             await fetcher(`/api/jobpack/${item.id}`, { method: 'DELETE' });
             mutate('/api/jobpack');
@@ -535,19 +567,7 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
         }
       }
 
-      const handleConsolidate = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (confirm("Are you sure you want to Consolidate (Close) this Work Pack?")) {
-          try {
-            await fetcher(`/api/jobpack/${item.id}`, {
-              method: 'PUT',
-              body: JSON.stringify({ status: 'CLOSED' })
-            });
-            mutate('/api/jobpack');
-            toast.success("Work Pack Consolidated");
-          } catch (e) { toast.error("Failed to consolidate"); }
-        }
-      }
+
 
       return (
         <div className="text-center" onClick={(e) => e.stopPropagation()}>
@@ -566,10 +586,16 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
                   <Edit2 size={16} className="mr-2" /> Modify
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer" onClick={handleConsolidate}>
-                <CheckCircle size={16} className="mr-2 text-green-600" /> Consolidate
+              <DropdownMenuItem className="cursor-pointer">
+                <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}/consolidate`}>
+                  <CheckCircle size={16} className="mr-2 text-green-600" /> Consolidate
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer text-red-600" onClick={handleDelete}>
+              <DropdownMenuItem
+                className={canDelete ? "cursor-pointer text-red-600" : "cursor-not-allowed opacity-50 text-slate-400"}
+                onClick={handleDelete}
+                disabled={!canDelete}
+              >
                 <Trash2 size={16} className="mr-2" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>

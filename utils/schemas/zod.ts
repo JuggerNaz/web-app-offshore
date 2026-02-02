@@ -278,6 +278,7 @@ export const JobpackSchema = z.object({
   divetyp: z.string().optional().nullable(),
   contract_ref: z.string().optional().nullable(),
   contractor_ref: z.string().optional().nullable(),
+  idesc: z.string().optional().nullable(),
   site_hrs: z.coerce.number().optional().nullable(),
   created_at: z.string().optional().nullable(),
   updated_at: z.string().optional().nullable(),

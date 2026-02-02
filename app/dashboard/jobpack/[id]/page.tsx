@@ -17,6 +17,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   ChevronLeft,
   Package,
   ShieldCheck,
@@ -63,12 +72,32 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const [jobTypeByStruct, setJobTypeByStruct] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
+
+
+
+
+
+
+
+
   const { data, isLoading } = useSWR(id ? `/api/jobpack/${id}` : null, fetcher);
   const { data: platforms } = useSWR("/api/platform", fetcher);
   const { data: pipelines } = useSWR("/api/pipeline", fetcher);
   const { data: inspectionTypes } = useSWR("/api/inspection-type?pageSize=1000", fetcher);
   const { data: contractors } = useSWR("/api/library/CONTR_NAM", fetcher);
   const { data: compTypesLib } = useSWR("/api/components", fetcher);
+
+  // Consolidation Logic
+  const [consolidationOpen, setConsolidationOpen] = useState(false);
+  const [structureStatus, setStructureStatus] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    if (data?.data?.metadata?.structure_status) {
+      setStructureStatus(data.data.metadata.structure_status);
+    }
+  }, [data]);
+
+
 
   const form = useForm<JobpackValues>({
     resolver: zodResolver(JobpackSchema),
@@ -80,7 +109,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
       divetyp: "ROV",
       topside: 0,
       subsea: 0,
-      istart: "",
+      istart: moment().format("YYYY-MM-DD"),
       iend: "",
       contrac: "",
       comprep: "",
@@ -107,7 +136,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
         subsea: metadata.subsea || 0,
         istart: metadata.istart || "",
         iend: metadata.iend || "",
-        contrac: metadata.contrac || "",
+        contrac: (metadata.contrac || jobpack.contrac) ? String(metadata.contrac || jobpack.contrac) : "",
         comprep: metadata.comprep || "",
         vessel: metadata.vessel || "",
         contract_ref: metadata.contract_ref || "",
@@ -438,6 +467,15 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
               >
                 Save Draft
               </Button>
+              {!isNew && (
+                <Button
+                  type="button"
+                  onClick={() => router.push(`/dashboard/jobpack/${id}/consolidate`)}
+                  className="rounded-xl h-12 px-6 font-bold bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-200 dark:shadow-none"
+                >
+                  Consolidate
+                </Button>
+              )}
               <Button
                 type="button"
                 onClick={() => form.handleSubmit((v) => onSubmit(v))()}
@@ -547,7 +585,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
 
                     <div className="grid grid-cols-2 gap-4">
                       <FormFieldWrap label="Start Date" name="istart" form={form} ftype="vertical" type="date" />
-                      {!isNew && <FormFieldWrap label="End Date" name="iend" form={form} ftype="vertical" type="date" />}
+                      <FormFieldWrap label="End Date" name="iend" form={form} ftype="vertical" type="date" disabled />
                     </div>
 
                     <div className="flex gap-4 items-start">
@@ -584,6 +622,8 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                     <FormFieldWrap label="Company Rep" name="comprep" form={form} ftype="vertical" />
                     <FormFieldWrap label="Vessel" name="vessel" form={form} ftype="vertical" />
 
+
+
                     <div className="grid grid-cols-2 gap-4">
                       <FormFieldWrap label="Contract Ref#" name="contract_ref" form={form} ftype="vertical" />
                       <FormFieldWrap label="Contractor Ref#" name="contractor_ref" form={form} ftype="vertical" />
@@ -603,6 +643,22 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                         disabled
                       />
                     </div>
+
+                    <FormField
+                      control={form.control}
+                      name="idesc"
+                      render={({ field }) => (
+                        <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Remarks</Label>
+                          <textarea
+                            className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs ring-offset-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:ring-offset-slate-950 dark:placeholder:text-slate-400 dark:focus-visible:ring-slate-300"
+                            placeholder="Enter description or remarks..."
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </div>
+                      )}
+                    />
                   </CardContent>
                 </Card>
               </div>
@@ -753,13 +809,15 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                               <div className="flex flex-wrap gap-2">
                                 {["Major", "Partial", "Pipeline", "Special"].map((jt) => {
                                   const isSelected = jobTypeByStruct[activeStructKey] === jt;
+                                  const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
                                   return (
                                     <Badge
                                       key={jt}
                                       variant={isSelected ? "default" : "outline"}
-                                      className={cn("cursor-pointer select-none transition-colors px-3 py-1",
+                                      className={cn("select-none transition-colors px-3 py-1",
+                                        isLocked ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer",
                                         isSelected ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50")}
-                                      onClick={() => setJobTypeByStruct({ ...jobTypeByStruct, [activeStructKey]: jt })}
+                                      onClick={() => !isLocked && setJobTypeByStruct({ ...jobTypeByStruct, [activeStructKey]: jt })}
                                     >
                                       {jt}
                                     </Badge>
@@ -785,13 +843,16 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                         const idVal = String(c.id);
                                         const currentSelected = compTypesByStruct[activeStructKey] || [];
                                         const isSelected = currentSelected.includes(idVal);
+                                        const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
                                         return (
                                           <Badge
                                             key={idVal}
                                             variant={isSelected ? "default" : "secondary"}
-                                            className={cn("cursor-pointer border select-none transition-colors px-3 py-1",
+                                            className={cn("border select-none transition-colors px-3 py-1",
+                                              isLocked ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer",
                                               isSelected ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50")}
                                             onClick={() => {
+                                              if (isLocked) return;
                                               const newSelection = isSelected
                                                 ? currentSelected.filter(id => id !== idVal)
                                                 : [...currentSelected, idVal];
@@ -846,15 +907,15 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                               }).map((insp: any) => {
                                 const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
 
+                                const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
                                 return (
                                   <div
                                     key={insp.id}
-                                    onClick={() => toggleInspection(insp)}
+                                    onClick={() => !isLocked && toggleInspection(insp)}
                                     className={cn(
-                                      "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all select-none",
-                                      isSelected
-                                        ? "bg-blue-50 border-blue-200 shadow-sm"
-                                        : "bg-white border-slate-100 hover:border-blue-200 hover:shadow-sm"
+                                      "flex items-start gap-3 p-3 rounded-xl border transition-all hover:shadow-md",
+                                      isLocked ? "opacity-60 cursor-not-allowed pointer-events-none" : "cursor-pointer",
+                                      isSelected ? "bg-blue-50 border-blue-500 shadow-lg shadow-blue-500/10" : "bg-white dark:bg-slate-900 border-slate-200 hover:border-blue-300"
                                     )}
                                   >
                                     <div className={cn(
@@ -896,6 +957,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
           </form>
         </Form>
       </div>
+
     </div >
   );
 }

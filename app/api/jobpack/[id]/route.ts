@@ -42,3 +42,16 @@ export async function PUT(request: Request, context: any) {
 
   return NextResponse.json({ data });
 }
+
+export async function DELETE(request: Request, context: any) {
+  const { id } = await context.params;
+  const supabase = createClient();
+
+  const { error } = await supabase.from("jobpack").delete().eq("id", Number(id));
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}
