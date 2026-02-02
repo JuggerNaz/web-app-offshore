@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Build query with count for pagination metadata
-  let query = supabase.from("jobpack").select("*", { count: "exact" });
+  let query = supabase.from("jobpack").select("*", { count: "exact" }).order("metadata->>istart", { ascending: false });
 
   // Apply pagination
   query = applyPagination(query, paginationParams);

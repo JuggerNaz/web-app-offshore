@@ -82,9 +82,9 @@ export function FormFieldWrap({
         ) : ftype === "checkbox" ? (
           <FormCheckbox label={label} field={field} />
         ) : ftype === "select" ? (
-          <FormSelect label={label} options={options} field={field} />
+          <FormSelect label={label} options={options} field={field} disabled={disabled} />
         ) : ftype === "vselect" ? (
-          <FormSelectVertical label={label} options={options} field={field} />
+          <FormSelectVertical label={label} options={options} field={field} disabled={disabled} />
         ) : ftype === "slider" ? (
           <FormItemSlider
             label={label}
@@ -255,15 +255,17 @@ export function FormSelect({
   label,
   options,
   field,
+  disabled,
 }: {
   label: string;
   options?: { label: string; value: string }[];
   field: any;
+  disabled?: boolean;
 }) {
   return (
     <FormItem>
       <FormLabel>{label}</FormLabel>
-      <Select onValueChange={field.onChange} defaultValue={field.value}>
+      <Select onValueChange={field.onChange} value={field.value} disabled={disabled}>
         <SelectTrigger className="">
           <SelectValue placeholder={`Select ${label}`} />
         </SelectTrigger>
@@ -286,15 +288,17 @@ export function FormSelectVertical({
   label,
   options,
   field,
+  disabled
 }: {
   label: string;
   options?: { label: string; value: string }[];
   field: any;
+  disabled?: boolean;
 }) {
   return (
     <FormItem className="flex flex-col gap-2">
       <div className={`w-full text-sm font-medium`}>{label}</div>
-      <Select onValueChange={field.onChange} defaultValue={field.value}>
+      <Select onValueChange={field.onChange} value={field.value} disabled={disabled}>
         <SelectTrigger className="">
           <SelectValue placeholder={`Select ${label}`} />
         </SelectTrigger>

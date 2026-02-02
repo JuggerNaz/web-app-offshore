@@ -18,7 +18,7 @@ import Link from "next/link";
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
-import { Trash2, Edit2, Plus, Calendar } from "lucide-react";
+import { Trash2, Edit2, Plus, Calendar, CheckCircle } from "lucide-react";
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
 
@@ -420,24 +420,49 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     header: ({ column }) => <DataTableColumnHeader column={column} title="ID" />,
     enableSorting: true,
     enableHiding: true,
+    enableGlobalFilter: false,
   },
   {
     accessorKey: "name",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+    cell: ({ row }) => row.original.name || "",
     enableSorting: true,
     enableHiding: true,
   },
+
+
+  {
+    id: "plantype",
+    accessorFn: (row) => (row.metadata as any)?.plantype || "",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Plan Type" />,
+    enableSorting: true,
+    enableHiding: true,
+    cell: ({ row }) => {
+      const val = (row.original.metadata as any)?.plantype;
+      return val ? <span className="text-[10px] uppercase font-bold text-slate-500">{val}</span> : null;
+    }
+  },
+  {
+    id: "tasktype",
+    accessorFn: (row) => (row.metadata as any)?.tasktype || "",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Task Type" />,
+    enableSorting: true,
+    enableHiding: true,
+    cell: ({ row }) => {
+      const val = (row.original.metadata as any)?.tasktype;
+      return val ? <span className="text-[10px] uppercase font-bold text-slate-500">{val}</span> : null;
+    }
+  },
+
   {
     accessorKey: "status",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
-      return (
-        <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${status === "OPEN" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"
-          }`}>
-          {status || "N/A"}
-        </span>
-      );
+      let color = "bg-slate-100 text-slate-700";
+      if (status === 'OPEN') color = "bg-green-100 text-green-700";
+      if (status === 'CLOSED') color = "bg-gray-100 text-gray-500 line-through";
+      return <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase ${color}`}>{status}</span>
     },
     enableSorting: true,
     enableHiding: true,
@@ -453,15 +478,26 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     cell: ({ row }) => {
       const metadata = row.original.metadata as any;
       const structures = metadata?.structures || [];
+      const stStatus = metadata?.structure_status || {};
+
       if (structures.length === 0) return <span className="text-slate-400 text-xs italic">No structures</span>;
 
       return (
         <div className="flex flex-wrap gap-1">
-          {structures.map((s: any, i: number) => (
-            <span key={i} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800">
-              {s.title || s.code || s.name}
-            </span>
-          ))}
+          {structures.map((s: any, i: number) => {
+            const key = `${s.type}-${s.id}`;
+            const isClosed = stStatus[key]?.status === "CLOSED";
+
+            return (
+              <span key={i} className={`text-[9px] font-bold px-1.5 py-0.5 rounded border flex items-center gap-1 transition-colors ${isClosed
+                ? "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                : "bg-indigo-50 text-indigo-600 border-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800"
+                }`}>
+                {s.title || s.code || s.name}
+                {isClosed && <CheckCircle size={8} className="text-green-600 dark:text-green-500" />}
+              </span>
+            )
+          })}
         </div>
       );
     },
@@ -477,10 +513,11 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     },
   },
   {
-    accessorKey: "created_at",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Created" />,
-    cell: ({ row }) => {
-      const date = row.getValue("created_at") as string;
+    id: "istart",
+    accessorFn: (row) => (row.metadata as any)?.istart,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Start Date" />,
+    cell: ({ getValue }) => {
+      const date = getValue() as string;
       if (!date) return <span className="text-slate-300 text-[10px]">N/A</span>;
       return (
         <div className="text-[10px] font-medium text-slate-500">
@@ -493,11 +530,47 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
   },
   {
     id: "actions",
+    header: "Actions",
+    enableHiding: false,
     cell: ({ row }) => {
       const item = row.original;
+      const metadata = item.metadata as any || {};
+      const structureStatus = metadata.structure_status || {};
+
+      const isJobClosed = item.status === "CLOSED";
+      const hasClosedStructures = Object.values(structureStatus).some((v: any) => v?.status === "CLOSED");
+
+      let hasInspections = false;
+      if (metadata.inspections) {
+        if (Array.isArray(metadata.inspections)) {
+          hasInspections = metadata.inspections.length > 0;
+        } else if (typeof metadata.inspections === 'object') {
+          hasInspections = Object.values(metadata.inspections).some((arr: any) => Array.isArray(arr) && arr.length > 0);
+        }
+      }
+
+      const canDelete = !isJobClosed && !hasClosedStructures;
+
+      const handleDelete = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!canDelete) return;
+
+        let msg = "Are you sure you want to delete this Work Pack?";
+        if (hasInspections) msg += "\n\nWARNING: This Job Pack has assigned inspections which will also be deleted.";
+
+        if (confirm(msg)) {
+          try {
+            await fetcher(`/api/jobpack/${item.id}`, { method: 'DELETE' });
+            mutate('/api/jobpack');
+            toast.success("Work Pack deleted");
+          } catch (e) { toast.error("Failed to delete"); }
+        }
+      }
+
+
 
       return (
-        <div className="text-center">
+        <div className="text-center" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-8 w-8 p-0">
@@ -508,33 +581,22 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-              <DropdownMenuItem
-                className="cursor-pointer w-full"
-                onClick={async () => {
-                  // await fetcher(`/api/platform/faces`, {
-                  //   method: 'DELETE',
-                  //   body: JSON.stringify(item)
-                  // })
-                  // .then((res) => {
-                  //   mutate(`/api/platform/faces/${item.inspno}`)
-                  //   toast("Faces deleted successfully")
-                  // })
-                }}
-              >
-                <Link className="w-full flex" href={`/dashboard/jobpack/${item.id}`}>
-                  <Edit2 size={18} className="mr-2" /> Modify
+              <DropdownMenuItem className="cursor-pointer">
+                <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}`}>
+                  <Edit2 size={16} className="mr-2" /> Modify
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer">
+                <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}/consolidate`}>
+                  <CheckCircle size={16} className="mr-2 text-green-600" /> Consolidate
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem
-                className="cursor-pointer"
-                onClick={() => {
-                  console.log(item);
-                }}
+                className={canDelete ? "cursor-pointer text-red-600" : "cursor-not-allowed opacity-50 text-slate-400"}
+                onClick={handleDelete}
+                disabled={!canDelete}
               >
-                <Link className="w-full flex" href={`/dashboard/jobpack/${item.id}`}>
-                  <Trash2 size={18} className="mr-2" /> Delete
-                </Link>
+                <Trash2 size={16} className="mr-2" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
