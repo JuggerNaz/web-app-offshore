@@ -183,7 +183,7 @@ function ElevationItem({ item, onDelete }: { item: any, onDelete: () => void }) 
           <Ruler className="h-4 w-4" />
         </div>
         <div className="flex flex-col">
-          <span className="text-xs font-bold text-slate-900 dark:text-white leading-none mb-1">Elevation Point</span>
+          <span className="text-xs font-bold text-slate-900 dark:text-white leading-none mb-1">Elevation</span>
           <span className="font-mono text-[10px] text-slate-500 font-bold tracking-tight">Value: {item.elv}m</span>
         </div>
       </div>
