@@ -34,6 +34,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   ChevronLeft,
   Package,
@@ -74,6 +81,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [inspectionSearch, setInspectionSearch] = useState("");
+  const [inspectionModeTab, setInspectionModeTab] = useState("diving");
   const [selectedStructures, setSelectedStructures] = useState<any[]>([]);
   // Managed per structure: Key is `${s.type}-${s.id}`
   const [inspectionsByStruct, setInspectionsByStruct] = useState<Record<string, any[]>>({});
@@ -323,12 +331,13 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
     }
   }, [selectedStructures, activeStructKey]);
 
-  const toggleInspection = (insp: any) => {
-    if (!activeStructKey) {
+  const toggleInspection = (insp: any, structureKey?: string) => {
+    const targetKey = structureKey || activeStructKey;
+    if (!targetKey) {
       toast.error("Please select a structure first");
       return;
     }
-    const currentList = inspectionsByStruct[activeStructKey] || [];
+    const currentList = inspectionsByStruct[targetKey] || [];
     const exists = currentList.some((item) => item.id === insp.id);
 
     let newList: any[] = [];
@@ -395,7 +404,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
 
     setInspectionsByStruct({
       ...inspectionsByStruct,
-      [activeStructKey]: newList
+      [targetKey]: newList
     });
   };
 
@@ -624,9 +633,9 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                         control={form.control}
                         name="divetyp"
                         render={({ field }) => (
-                          <div className="h-32 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl p-3 bg-white dark:bg-slate-950 space-y-2 custom-scrollbar">
-                            {['ROV', 'AIR DIVING', 'SAT DIVING', 'ROPE ACCESS'].map((mode) => (
-                              <div key={mode} className="flex items-center space-x-3 p-1 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-lg transition-colors">
+                          <div className="flex gap-4 border border-slate-200 dark:border-slate-800 rounded-xl p-3 bg-white dark:bg-slate-950">
+                            {['ROV', 'AIR DIVING', 'SAT DIVING'].map((mode) => (
+                              <div key={mode} className="flex items-center space-x-2 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-lg transition-colors px-2 py-1">
                                 <Checkbox
                                   id={mode}
                                   checked={field.value?.includes(mode)}
@@ -638,7 +647,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                     field.onChange(newVals.join(','));
                                   }}
                                 />
-                                <Label htmlFor={mode} className="text-xs font-bold uppercase cursor-pointer flex-1">{mode}</Label>
+                                <Label htmlFor={mode} className="text-xs font-bold uppercase cursor-pointer">{mode}</Label>
                               </div>
                             ))}
                           </div>
@@ -654,10 +663,18 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormFieldWrap label="Start Date" name="istart" form={form} ftype="vertical" type="date" />
-                      <FormFieldWrap label="End Date" name="iend" form={form} ftype="vertical" type="date" disabled />
-                    </div>
+
+                    {isClosed ? (
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormFieldWrap label="Start Date" name="istart" form={form} ftype="vertical" type="date" disabled />
+                        <FormFieldWrap label="End Date" name="iend" form={form} ftype="vertical" type="date" disabled />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <FormFieldWrap label="Start Date" name="istart" form={form} ftype="vertical" type="date" />
+                      </div>
+                    )}
+
 
                     <div className="flex gap-4 items-start">
                       <div className="flex-1 space-y-2">
@@ -676,7 +693,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                 <Select
                                   key={field.value || 'no-contractor'}
                                   onValueChange={field.onChange}
-                                  value={field.value}
+                                  value={field.value || undefined}
                                   defaultValue={field.value || undefined}
                                 >
                                   <SelectTrigger>
@@ -784,50 +801,52 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="p-2 bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg"><Search className="w-4 h-4" /></div>
-                          <span className="font-bold text-sm uppercase text-slate-700 dark:text-slate-200">Add Assets to Scope</span>
+                          <span className="font-bold text-sm uppercase text-slate-700 dark:text-slate-200">Add Structure to Scope</span>
                         </div>
                         <Input
-                          placeholder="Search & Add Assets..."
+                          placeholder="Search & Add Structure..."
                           className="w-64 h-8 text-xs rounded-lg bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                         />
                       </div>
                     </CardHeader>
-                    <CardContent className="p-0 border-b border-slate-100 dark:border-slate-800 max-h-[200px] overflow-y-auto custom-scrollbar bg-white dark:bg-slate-950">
-                      <table className="w-full text-left">
-                        <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                          {filteredStructures.slice(0, 50).map((s: any) => {
-                            const isSelected = selectedStructures.some(sel => sel.id === s.id && sel.type === s.type);
-                            return (
-                              <tr key={`${s.type}-${s.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                                <td className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">{s.title}</td>
-                                <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{s.fieldName}</td>
-                                <td className="px-4 py-2 text-xs text-slate-400 dark:text-slate-500 uppercase">{s.type}</td>
-                                <td className="px-4 py-2 text-right">
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-6 text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                    onClick={() => toggleStructure(s)}
-                                    disabled={isSelected}
-                                  >
-                                    {isSelected ? "Added" : "Add"}
-                                  </Button>
+                    {searchQuery && (
+                      <CardContent className="p-0 border-b border-slate-100 dark:border-slate-800 max-h-[200px] overflow-y-auto custom-scrollbar bg-white dark:bg-slate-950">
+                        <table className="w-full text-left">
+                          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                            {filteredStructures.slice(0, 50).map((s: any) => {
+                              const isSelected = selectedStructures.some(sel => sel.id === s.id && sel.type === s.type);
+                              return (
+                                <tr key={`${s.type}-${s.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                                  <td className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">{s.title}</td>
+                                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{s.fieldName}</td>
+                                  <td className="px-4 py-2 text-xs text-slate-400 dark:text-slate-500 uppercase">{s.type}</td>
+                                  <td className="px-4 py-2 text-right">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                      onClick={() => toggleStructure(s)}
+                                      disabled={isSelected}
+                                    >
+                                      {isSelected ? "Added" : "Add"}
+                                    </Button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {filteredStructures.length === 0 && (
+                              <tr>
+                                <td colSpan={4} className="px-4 py-8 text-center text-xs text-slate-400 uppercase font-bold">
+                                  No structures found
                                 </td>
                               </tr>
-                            );
-                          })}
-                          {filteredStructures.length === 0 && (
-                            <tr>
-                              <td colSpan={3} className="px-4 py-8 text-center text-xs text-slate-400 uppercase font-bold">
-                                No assets found
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </CardContent>
+                            )}
+                          </tbody>
+                        </table>
+                      </CardContent>
+                    )}
                   </Card>
                 )}
 
@@ -866,7 +885,10 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                   <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black", isActive ? "bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400" : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500")}>
                                     {i + 1}
                                   </div>
-                                  <span className={cn("font-bold text-sm", isActive ? "text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-400")}>{s.title}</span>
+                                  <div className="flex flex-col">
+                                    <span className={cn("font-bold text-sm", isActive ? "text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-400")}>{s.title}</span>
+                                    <span className="text-[9px] text-slate-400 dark:text-slate-500 lowercase">{s.type}</span>
+                                  </div>
                                 </div>
                                 <Button
                                   size="icon"
@@ -882,9 +904,36 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                               <div className="flex flex-wrap gap-1.5 min-h-[1.5rem]">
                                 {assignedInspections.length > 0 ? (
                                   assignedInspections.map((insp: any) => (
-                                    <span key={insp.id} className="px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[9px] font-bold border border-blue-100 dark:border-blue-500/20 uppercase tracking-tight">
-                                      {insp.code}
-                                    </span>
+                                    <TooltipProvider key={insp.id}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="group/badge relative px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[9px] font-bold border border-blue-100 dark:border-blue-500/20 uppercase tracking-tight cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
+                                            {insp.code}
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (!isClosed && structureStatus[key]?.status !== "CLOSED") {
+                                                  // Show confirmation dialog
+                                                  const confirmed = window.confirm(
+                                                    `Are you sure you want to remove "${insp.name}" (${insp.code}) from this structure?\n\nThis action cannot be undone.`
+                                                  );
+                                                  if (confirmed) {
+                                                    toggleInspection(insp, key);
+                                                  }
+                                                }
+                                              }}
+                                              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/badge:opacity-100 transition-opacity hover:bg-red-600"
+                                              disabled={isClosed || structureStatus[key]?.status === "CLOSED"}
+                                            >
+                                              <X className="w-2 h-2" />
+                                            </button>
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p className="text-xs font-medium">{insp.name}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
                                   ))
                                 ) : (
                                   <span className="text-[10px] italic text-slate-400 dark:text-slate-500">No inspections assigned</span>
@@ -984,80 +1033,165 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                               </div>
                             )}
 
-                            {/* Quick Filter */}
-                            <div className="mt-4 relative">
-                              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                              <Input
-                                placeholder="Filter inspection types..."
-                                className="h-9 pl-9 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                                value={inspectionSearch}
-                                onChange={(e) => setInspectionSearch(e.target.value)}
-                              />
-                            </div>
                           </div>
 
                           <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-white dark:bg-slate-950">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {inspectionTypes?.data?.filter((insp: any) => {
-                                // Text Filter
-                                if (inspectionSearch) {
-                                  const search = inspectionSearch.toLowerCase();
-                                  const matches = (insp.name?.toLowerCase().includes(search)) ||
-                                    (insp.code?.toLowerCase().includes(search));
-                                  if (!matches) return false;
-                                }
-                                // Structure Type Filter
-                                if (activeStructKey) {
-                                  if (activeStructKey.startsWith("PLATFORM")) {
-                                    const val = insp.metadata?.platform;
-                                    return val === 1 || val === "1" || val === true;
-                                  }
-                                  if (activeStructKey.startsWith("PIPELINE")) {
-                                    const val = insp.metadata?.pipeline;
-                                    return val === 1 || val === "1" || val === true;
-                                  }
-                                }
-                                return true;
-                              }).map((insp: any) => {
-                                const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
+                            <Tabs value={inspectionModeTab} onValueChange={setInspectionModeTab} className="w-full">
+                              <TabsList className="grid w-full grid-cols-2 mb-4">
+                                <TabsTrigger value="diving" className="text-xs font-bold uppercase">Diving</TabsTrigger>
+                                <TabsTrigger value="rov" className="text-xs font-bold uppercase">ROV</TabsTrigger>
+                              </TabsList>
 
-                                const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
-                                return (
-                                  <div
-                                    key={insp.id}
-                                    onClick={() => !isLocked && toggleInspection(insp)}
-                                    className={cn(
-                                      "flex items-start gap-3 p-3 rounded-xl border transition-all hover:shadow-md",
-                                      isLocked ? "opacity-60 cursor-not-allowed pointer-events-none" : "cursor-pointer",
-                                      isSelected
-                                        ? "bg-blue-50 dark:bg-blue-500/10 border-blue-500 shadow-lg shadow-blue-500/10"
-                                        : "bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-500"
-                                    )}
-                                  >
-                                    <div className={cn(
-                                      "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors shrink-0",
-                                      isSelected
-                                        ? "bg-blue-600 border-blue-600"
-                                        : "border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800"
-                                    )}>
-                                      {isSelected && <CheckCircle className="w-3.5 h-3.5 text-white" />}
-                                    </div>
-                                    <div className="flex flex-col min-w-0">
-                                      <span className={cn("font-bold text-xs truncate", isSelected ? "text-blue-900 dark:text-blue-100" : "text-slate-700 dark:text-slate-200")}>{insp.name}</span>
-                                      <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
-                                      <div className="flex gap-1 mt-1 flex-wrap">
-                                        {(insp.metadata?.rov === 1 || insp.metadata?.rov === "1" || insp.metadata?.rov === true) && (
-                                          <Badge variant="secondary" className="text-[8px] h-4 px-1 bg-sky-100 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 hover:bg-sky-200 dark:hover:bg-sky-500/20 border-sky-200 dark:border-sky-500/20">ROV</Badge>
-                                        )}
-                                        {(insp.metadata?.diving === 1 || insp.metadata?.diving === "1" || insp.metadata?.diving === true) && (
-                                          <Badge variant="secondary" className="text-[8px] h-4 px-1 bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-500/20 border-amber-200 dark:border-amber-500/20">DIVING</Badge>
-                                        )}
-                                      </div>
-                                    </div>
+                              <TabsContent value="diving" className="space-y-4">
+                                <div className="relative">
+                                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                  <Input
+                                    placeholder="Search diving inspection types..."
+                                    className="h-9 pl-9 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                    value={inspectionSearch}
+                                    onChange={(e) => setInspectionSearch(e.target.value)}
+                                  />
+                                </div>
+                                {inspectionSearch && (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {inspectionTypes?.data?.filter((insp: any) => {
+                                      // Diving filter
+                                      const isDiving = insp.metadata?.diving === 1 || insp.metadata?.diving === "1" || insp.metadata?.diving === true;
+                                      if (!isDiving) return false;
+
+                                      // Text Filter
+                                      if (inspectionSearch) {
+                                        const search = inspectionSearch.toLowerCase();
+                                        const matches = (insp.name?.toLowerCase().includes(search)) ||
+                                          (insp.code?.toLowerCase().includes(search));
+                                        if (!matches) return false;
+                                      }
+                                      // Structure Type Filter
+                                      if (activeStructKey) {
+                                        if (activeStructKey.startsWith("PLATFORM")) {
+                                          const val = insp.metadata?.platform;
+                                          return val === 1 || val === "1" || val === true;
+                                        }
+                                        if (activeStructKey.startsWith("PIPELINE")) {
+                                          const val = insp.metadata?.pipeline;
+                                          return val === 1 || val === "1" || val === true;
+                                        }
+                                      }
+                                      return true;
+                                    }).map((insp: any) => {
+                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
+                                      const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
+                                      return (
+                                        <div
+                                          key={insp.id}
+                                          className={cn(
+                                            "flex items-start gap-3 p-3 rounded-xl border transition-all",
+                                            isLocked ? "opacity-60 cursor-not-allowed" : "",
+                                            isSelected
+                                              ? "bg-amber-50 dark:bg-amber-500/10 border-amber-500 shadow-lg shadow-amber-500/10"
+                                              : "bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-700"
+                                          )}
+                                        >
+                                          <div className="flex flex-col flex-1 min-w-0">
+                                            <span className={cn("font-bold text-xs truncate", isSelected ? "text-amber-900 dark:text-amber-100" : "text-slate-700 dark:text-slate-200")}>{insp.name}</span>
+                                            <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
+                                          </div>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className={cn(
+                                              "h-6 text-[10px] uppercase font-bold shrink-0",
+                                              isSelected
+                                                ? "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/20"
+                                                : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                            )}
+                                            onClick={() => !isLocked && toggleInspection(insp)}
+                                            disabled={isLocked}
+                                          >
+                                            {isSelected ? "Added" : "Add"}
+                                          </Button>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
-                                );
-                              })}
-                            </div>
+                                )}
+                              </TabsContent>
+
+                              <TabsContent value="rov" className="space-y-4">
+                                <div className="relative">
+                                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                  <Input
+                                    placeholder="Search ROV inspection types..."
+                                    className="h-9 pl-9 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                    value={inspectionSearch}
+                                    onChange={(e) => setInspectionSearch(e.target.value)}
+                                  />
+                                </div>
+                                {inspectionSearch && (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {inspectionTypes?.data?.filter((insp: any) => {
+                                      // ROV filter
+                                      const isROV = insp.metadata?.rov === 1 || insp.metadata?.rov === "1" || insp.metadata?.rov === true;
+                                      if (!isROV) return false;
+
+                                      // Text Filter
+                                      if (inspectionSearch) {
+                                        const search = inspectionSearch.toLowerCase();
+                                        const matches = (insp.name?.toLowerCase().includes(search)) ||
+                                          (insp.code?.toLowerCase().includes(search));
+                                        if (!matches) return false;
+                                      }
+                                      // Structure Type Filter
+                                      if (activeStructKey) {
+                                        if (activeStructKey.startsWith("PLATFORM")) {
+                                          const val = insp.metadata?.platform;
+                                          return val === 1 || val === "1" || val === true;
+                                        }
+                                        if (activeStructKey.startsWith("PIPELINE")) {
+                                          const val = insp.metadata?.pipeline;
+                                          return val === 1 || val === "1" || val === true;
+                                        }
+                                      }
+                                      return true;
+                                    }).map((insp: any) => {
+                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
+                                      const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
+                                      return (
+                                        <div
+                                          key={insp.id}
+                                          className={cn(
+                                            "flex items-start gap-3 p-3 rounded-xl border transition-all",
+                                            isLocked ? "opacity-60 cursor-not-allowed" : "",
+                                            isSelected
+                                              ? "bg-sky-50 dark:bg-sky-500/10 border-sky-500 shadow-lg shadow-sky-500/10"
+                                              : "bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-700"
+                                          )}
+                                        >
+                                          <div className="flex flex-col flex-1 min-w-0">
+                                            <span className={cn("font-bold text-xs truncate", isSelected ? "text-sky-900 dark:text-sky-100" : "text-slate-700 dark:text-slate-200")}>{insp.name}</span>
+                                            <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
+                                          </div>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className={cn(
+                                              "h-6 text-[10px] uppercase font-bold shrink-0",
+                                              isSelected
+                                                ? "text-sky-600 dark:text-sky-400 bg-sky-100 dark:bg-sky-500/20"
+                                                : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                            )}
+                                            onClick={() => !isLocked && toggleInspection(insp)}
+                                            disabled={isLocked}
+                                          >
+                                            {isSelected ? "Added" : "Add"}
+                                          </Button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </TabsContent>
+                            </Tabs>
                           </div>
                         </>
                       ) : (
