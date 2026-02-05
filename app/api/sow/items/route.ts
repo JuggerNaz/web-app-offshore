@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
         // If item ID is provided, fetch specific item
         if (itemId) {
-            const { data, error } = await supabase
+            const { data, error } = await (supabase as any)
                 .from("u_sow_items")
                 .select("*")
                 .eq("id", itemId)
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
         // If sow_id is provided, fetch all items for that SOW
         if (sowId) {
-            const { data, error } = await supabase
+            const { data, error } = await (supabase as any)
                 .from("u_sow_items")
                 .select("*")
                 .eq("sow_id", sowId)
@@ -159,7 +159,7 @@ export async function PUT(request: NextRequest) {
                 continue;
             }
 
-            const { data, error } = await supabase
+            const { data, error } = await (supabase as any)
                 .from("u_sow_items")
                 .update({
                     ...updateData,
@@ -202,7 +202,7 @@ export async function DELETE(request: NextRequest) {
             );
         }
 
-        const { error } = await supabase
+        const { error } = await (supabase as any)
             .from("u_sow_items")
             .delete()
             .eq("id", id);
