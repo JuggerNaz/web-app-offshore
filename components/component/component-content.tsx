@@ -135,7 +135,7 @@ export default function ComponentContent() {
   return (
     <div className="flex w-full gap-8 min-h-[70vh]">
       {/* Left Sidebar - Component Types List */}
-      <div className="w-72 flex-shrink-0 flex flex-col gap-6">
+      <div className="w-72 flex-shrink-0 flex flex-col gap-6 sticky top-0 self-start">
         <div className="bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 flex flex-col gap-6 h-full shadow-sm">
           <div className="space-y-4">
             <h3 className="px-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Library Sections</h3>
@@ -222,10 +222,10 @@ export default function ComponentContent() {
 
         {/* Data Table Container */}
         <div className="bg-white dark:bg-slate-900/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-black/20 overflow-hidden relative">
-          <div className="overflow-x-auto">
+          <div className="overflow-auto h-[60vh] custom-scrollbar relative">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-slate-50/50 dark:bg-slate-900/80 border-b border-slate-100 dark:border-slate-800">
+                <tr className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
                   <TableTh className="w-[200px]">System ID No</TableTh>
                   <TableTh className="w-[140px]">Q ID</TableTh>
                   <TableTh className="w-[100px]">Type</TableTh>
@@ -350,6 +350,26 @@ export default function ComponentContent() {
                             >
                               {comp.is_deleted ? "Unarchive Record" : "Archive Record"}
                             </DropdownMenuItem>
+                            {comp.is_deleted && (
+                              <DropdownMenuItem
+                                className="rounded-lg py-2.5 font-bold cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/20"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!confirm("Are you sure you want to permanently delete this record? This action cannot be undone.")) return;
+
+                                  try {
+                                    await fetcher(`/api/structure-components/item/${comp.id}`, {
+                                      method: "DELETE",
+                                    });
+                                    if (apiUrl) mutate(apiUrl);
+                                  } catch (error) {
+                                    console.error("Action failed", error);
+                                  }
+                                }}
+                              >
+                                Permanent Delete
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>

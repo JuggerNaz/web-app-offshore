@@ -15,6 +15,7 @@ export function CollapsibleSidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState("OFFSHORE");
+  const [departmentName, setDepartmentName] = useState("Data Management");
 
   // Load company settings from API
   useEffect(() => {
@@ -28,6 +29,9 @@ export function CollapsibleSidebar() {
           }
           if (data.company_name) {
             setCompanyName(data.company_name);
+          }
+          if (data.department_name) {
+            setDepartmentName(data.department_name);
           }
         }
       } catch (error) {
@@ -59,43 +63,52 @@ export function CollapsibleSidebar() {
       )}
     >
       {/* Brand Header */}
+      {/* Brand Header */}
       <div className={cn(
-        "flex items-center h-20 px-6 overflow-hidden transition-all duration-300",
-        isCollapsed ? "justify-center" : "justify-start"
+        "flex items-center overflow-hidden transition-all duration-300 py-6",
+        isCollapsed ? "justify-center" : "justify-center"
       )}>
         <Link
           href="/dashboard"
-          className="flex items-center gap-3 transition-transform hover:scale-105 active:scale-95 group"
+          className={cn(
+            "flex items-center transition-transform hover:scale-105 active:scale-95 group",
+            isCollapsed ? "gap-0" : "flex-col gap-2"
+          )}
         >
           <div className="relative">
             {companyLogo ? (
-              <div className="h-10 w-10 rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl transition-all border-2 border-white dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-center p-1">
+              <div className={cn(
+                "rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl transition-all border-2 border-white dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-center p-1",
+                isCollapsed ? "h-10 w-10" : "h-16 w-16"
+              )}>
                 <Image
                   src={companyLogo}
                   alt="Company Logo"
-                  width={40}
-                  height={40}
+                  width={isCollapsed ? 40 : 64}
+                  height={isCollapsed ? 40 : 64}
                   className="object-contain w-full h-full"
                 />
               </div>
             ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-all">
-                <Compass className="h-6 w-6" />
+              <div className={cn(
+                "flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-all",
+                isCollapsed ? "h-10 w-10" : "h-16 w-16"
+              )}>
+                <Compass className={cn(
+                  isCollapsed ? "h-6 w-6" : "h-10 w-10"
+                )} />
               </div>
             )}
             <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-white dark:border-slate-950 bg-emerald-500" />
           </div>
 
           {!isCollapsed && (
-            <div className="flex flex-col">
-              <span className="font-black text-lg leading-tight tracking-tight text-slate-900 dark:text-slate-100 flex items-center">
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="font-bold text-sm text-slate-900 dark:text-slate-100 text-center leading-tight">
                 {companyName}
-                <span className="text-[10px] ml-1.5 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 font-bold tracking-widest uppercase">
-                  Pro
-                </span>
               </span>
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                Data Management
+              <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center">
+                {departmentName}
               </span>
             </div>
           )}

@@ -13,7 +13,7 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
 
   const { data, error } = await supabase
     .from("components")
-    .select("id, name, code, descrip, is_active")
+    .select("id, name, code, descrip, is_active, plat, pipe")
     .eq("is_active", true)
     .order("name");
 

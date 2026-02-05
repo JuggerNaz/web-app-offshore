@@ -15,6 +15,7 @@ import {
   Database,
   LayoutDashboard,
   User as UserIcon,
+  ClipboardCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -144,6 +145,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<FileText className="h-[18px] w-[18px]" />}
             text="Reports"
           />
+          <MenuLink
+            href="/dashboard/inspection"
+            isCollapsed={isCollapsed}
+            label="Inspection"
+            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+            text="Inspection"
+          />
         </div>
 
         {/* UTILITIES */}
@@ -159,6 +167,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             label="Library"
             icon={<Database className="h-[18px] w-[18px]" />}
             text="Library"
+          />
+          <MenuLink
+            href="/dashboard/utilities/inspection-type"
+            isCollapsed={isCollapsed}
+            label="Inspection Type"
+            icon={<FileText className="h-[18px] w-[18px]" />}
+            text="Inspection Type"
           />
         </div>
 

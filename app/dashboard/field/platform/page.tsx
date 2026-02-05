@@ -247,81 +247,67 @@ export default function PlatformPage() {
                   href={`/dashboard/field/platform/${platform.plat_id}?from=list`}
                   className="group"
                 >
-                  <div className="relative h-80 rounded-xl overflow-hidden border border-border/50 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 hover:shadow-xl hover:scale-105 transition-all duration-300 cursor-pointer flex flex-col">
-                    {/* Structure Type Badge */}
-                    <div className="absolute top-3 left-3 z-10">
-                      <div className="flex items-center gap-2 bg-blue-600/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg">
-                        <Building2 className="w-3.5 h-3.5" />
-                        <span>PLATFORM</span>
-                      </div>
-                    </div>
+                  <div className="relative h-[22rem] flex flex-col rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/50 dark:shadow-black/20 hover:shadow-2xl hover:scale-[1.02] transition-all duration-500 cursor-pointer">
+                    {/* Visual Area */}
+                    <div className="relative flex-1 flex items-center justify-center p-6 bg-slate-50/50 dark:bg-slate-950/30 overflow-hidden">
+                      {/* Animated background circles (only if no image) */}
+                      {!hasImage && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-40 h-40 rounded-full bg-gradient-to-br from-blue-400/10 to-indigo-400/10 group-hover:scale-125 transition-transform duration-1000" />
+                          <div className="absolute w-28 h-28 rounded-full bg-gradient-to-br from-blue-500/15 to-indigo-500/15 group-hover:scale-150 transition-transform duration-700" />
+                        </div>
+                      )}
 
-                    {/* Image or Icon Area */}
-                    <div className="flex-1 flex items-center justify-center p-6 relative">
                       {hasImage ? (
                         <div className="relative w-full h-full">
                           <Image
                             src={imageUrl}
                             alt={platform.title}
                             fill
-                            className="object-contain group-hover:scale-110 transition-transform duration-500"
+                            className="object-contain group-hover:scale-110 transition-transform duration-700 drop-shadow-xl"
                             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
                           />
                         </div>
                       ) : (
-                        <div className="relative w-full h-full flex items-center justify-center">
-                          {/* Animated background circles */}
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-400/20 to-indigo-400/20 group-hover:scale-110 transition-transform duration-500" />
-                            <div className="absolute w-24 h-24 rounded-full bg-gradient-to-br from-blue-500/30 to-indigo-500/30 group-hover:scale-125 transition-transform duration-700" />
-                          </div>
-
-                          {/* Oil Platform icon */}
-                          <div className="relative z-10 text-blue-600 dark:text-blue-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-300">
-                            <OilPlatformIcon />
-                          </div>
+                        <div className="relative z-10 text-blue-600 dark:text-blue-400 group-hover:text-blue-500 group-hover:scale-110 transition-all duration-500 drop-shadow-2xl">
+                          <OilPlatformIcon className="w-20 h-20" />
                         </div>
                       )}
+                    </div>
 
-                      {/* Title Overlay */}
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 via-black/50 to-transparent p-4">
-                        <h3 className="text-lg font-bold text-white group-hover:text-blue-200 transition-colors line-clamp-2">
+                    {/* Content Area */}
+                    <div className="p-6 flex flex-col gap-4 bg-white dark:bg-slate-900 relative">
+                      {/* Title Section */}
+                      <div className="min-h-[3rem] flex items-center justify-center">
+                        <h3 className="text-sm font-black text-center uppercase tracking-tight text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight">
                           {platform.title}
                         </h3>
                       </div>
-                    </div>
 
-                    {/* Platform Details - Always at bottom */}
-                    <div className="bg-background border-t border-border/30 p-4">
-                      {/* Platform Stats */}
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        {platform.plegs !== null && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-muted-foreground">Legs:</span>
-                            <span className="font-semibold">{platform.plegs}</span>
-                          </div>
-                        )}
-                        {platform.process && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-muted-foreground">Process:</span>
-                            <span className="font-semibold truncate max-w-[100px]" title={platform.process}>
-                              {platform.process}
-                            </span>
-                          </div>
-                        )}
-                        {platform.ptype && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-muted-foreground">Type:</span>
-                            <span className="font-semibold truncate max-w-[80px]" title={platform.ptype}>
-                              {platform.ptype}
-                            </span>
-                          </div>
-                        )}
+                      {/* Integrated Data Row */}
+                      <div className="grid grid-cols-3 gap-2 mt-auto">
+                        <div className="flex flex-col items-center justify-center py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 shadow-sm">
+                          <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400">{platform.plegs ?? "0"}</span>
+                          <span className="text-[8px] font-bold uppercase text-slate-400 tracking-widest">LEGS</span>
+                        </div>
+                        <div className="flex flex-col items-center justify-center py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                          <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 truncate max-w-full px-1">{platform.ptype || "N/A"}</span>
+                          <span className="text-[8px] font-bold uppercase text-slate-400 tracking-widest">TYPE</span>
+                        </div>
+                        <div className="flex flex-col items-center justify-center py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                          <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 truncate max-w-full px-1">{platform.process || "N/A"}</span>
+                          <span className="text-[8px] font-bold uppercase text-slate-400 tracking-widest">PROC</span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Hover overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-600/0 to-indigo-600/0 group-hover:from-blue-600/5 group-hover:to-indigo-600/5 transition-all duration-300 pointer-events-none" />
+                    {/* Top Identifier Badge */}
+                    <div className="absolute top-4 left-4 z-20">
+                      <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-blue-600 text-[8px] font-black text-white uppercase tracking-[0.2em] shadow-lg">
+                        <Building2 className="w-3 h-3" />
+                        PLATFORM ID: {platform.plat_id}
+                      </div>
+                    </div>
                   </div>
                 </Link>
               );
