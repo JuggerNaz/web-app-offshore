@@ -67,6 +67,8 @@ import { JobpackSchema } from "@/utils/schemas/zod";
 import { FormFieldWrap } from "@/components/forms/form-field-wrap";
 import moment from "moment";
 import { VesselManager, VesselRecord } from "@/components/jobpack/vessel-manager";
+import { SOWDialog } from "@/components/jobpack/sow-dialog";
+
 
 type JobpackValues = z.infer<typeof JobpackSchema>;
 
@@ -90,6 +92,14 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const [jobTypeByStruct, setJobTypeByStruct] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [vesselHistory, setVesselHistory] = useState<VesselRecord[]>([]);
+
+  // SOW Dialog state
+  const [sowDialogOpen, setSOWDialogOpen] = useState(false);
+  const [sowStructure, setSOWStructure] = useState<any>(null);
+  const [sowComponents, setSOWComponents] = useState<any[]>([]);
+
+  const searchParams = useSearchParams();
+
 
 
 
@@ -275,6 +285,44 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
       return words.every(word => name.includes(word) || code.includes(word));
     });
   }, [inspectionTypes, inspectionSearch]);
+
+  // Handle SOW dialog opening from URL parameters
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const structureKey = searchParams.get("structure");
+
+    if (tab === "sow" && structureKey && selectedStructures.length > 0) {
+      const structure = selectedStructures.find(
+        (s) => `${s.type}-${s.id}` === structureKey
+      );
+
+      if (structure) {
+        setSOWStructure(structure);
+        setActiveStructKey(structureKey);
+        setSOWDialogOpen(true);
+      }
+    }
+  }, [searchParams, selectedStructures]);
+
+  // Fetch components when SOW dialog opens
+  useEffect(() => {
+    const fetchComponents = async () => {
+      if (sowStructure && sowDialogOpen) {
+        try {
+          console.log("Fetching components for structure:", sowStructure.id);
+          const response = await fetch(`/api/structure-components?structure_id=${sowStructure.id}`);
+          const result = await response.json();
+          console.log("Components API response:", result);
+          setSOWComponents(result.data || []);
+        } catch (error) {
+          console.error("Error fetching components:", error);
+          setSOWComponents([]);
+        }
+      }
+    };
+
+    fetchComponents();
+  }, [sowStructure, sowDialogOpen]);
 
 
 
@@ -547,6 +595,28 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                   className="rounded-xl h-12 px-6 font-bold bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-200 dark:shadow-none"
                 >
                   Consolidate
+                </Button>
+              )}
+              {!isNew && selectedStructures.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (activeStructKey) {
+                      const activeStruct = selectedStructures.find(
+                        (s) => `${s.type}-${s.id}` === activeStructKey
+                      );
+                      if (activeStruct) {
+                        router.push(`/dashboard/jobpack/${id}?tab=sow&structure=${activeStructKey}`);
+                      }
+                    } else {
+                      toast.error("Please select a structure first");
+                    }
+                  }}
+                  className="rounded-xl h-12 px-6 font-bold border-2 border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all gap-2"
+                >
+                  <FileText className="h-4 w-4" />
+                  SOW
                 </Button>
               )}
               <Button
@@ -1210,6 +1280,29 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
         </Form>
       </div>
 
-    </div >
+      {/* SOW Dialog */}
+      {sowStructure && sowDialogOpen && (
+        <SOWDialog
+          open={sowDialogOpen}
+          onOpenChange={setSOWDialogOpen}
+          jobpackId={Number(id)}
+          jobpackTitle={data?.data?.name}
+          structure={{
+            id: sowStructure.id,
+            type: sowStructure.type,
+            title: sowStructure.title,
+          }}
+          availableStructures={selectedStructures || []}
+          onSwitchStructure={(newStruct) => setSOWStructure(newStruct)}
+          inspectionTypes={inspectionsByStruct[`${sowStructure.type}-${sowStructure.id}`] || []}
+          components={sowComponents}
+          onSave={() => {
+            // Optionally refresh data
+            setSOWDialogOpen(false);
+          }}
+        />
+      )}
+
+    </div>
   );
 }

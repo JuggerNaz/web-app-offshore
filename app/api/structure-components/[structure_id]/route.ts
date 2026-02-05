@@ -32,10 +32,11 @@ export const GET = withAuth(
     // Filter by archived / active
     if (archived === "true") {
       query = query.eq("is_deleted", true);
-    } else {
-      // Default: only non-deleted (treat null as not deleted)
-      query = query.or("is_deleted.is.null,is_deleted.eq.false");
     }
+    // else {
+    //   // If not explicitly asking for archived, we now return EVERYTHING (Active + Deleted)
+    //   // This allows the UI to show deleted items in a different color as requested.
+    // }
 
     // Apply code filter if provided and not "ALL COMPONENTS"
     if (code && code !== "ALL COMPONENTS") {
