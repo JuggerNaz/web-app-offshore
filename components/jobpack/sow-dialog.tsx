@@ -124,6 +124,11 @@ export function SOWDialog({
         return true;
     });
 
+    // State for searching selected components
+    const [selectedComponentSearch, setSelectedComponentSearch] = useState("");
+
+
+
     // Initial load
     useEffect(() => {
         if (open && structure) {
@@ -693,6 +698,17 @@ export function SOWDialog({
         .map(id => components.find(c => c.id === id))
         .filter(Boolean);
 
+    // Filter selected components based on search
+    const filteredSelectedComponents = selectedComponentsList.filter(c =>
+        !selectedComponentSearch ||
+        c!.qid.toLowerCase().includes(selectedComponentSearch.toLowerCase()) ||
+        c!.type.toLowerCase().includes(selectedComponentSearch.toLowerCase())
+    );
+
+
+
+
+
     // Debug logging
     console.log("SOW Dialog Debug:", {
         totalComponents: components.length,
@@ -775,92 +791,89 @@ export function SOWDialog({
                         <div className="flex-1 flex flex-col overflow-hidden p-8 gap-8">
 
                             {/* Report Numbers & Stats Row */}
-                            <div className="flex items-start gap-8 shrink-0">
-                                <div className="flex-[2] bg-white p-6 rounded-2xl shadow-[0_2px_20px_-5px_rgba(0,0,0,0.05)] border border-slate-100 flex flex-col gap-4 relative overflow-hidden group">
-                                    <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-500 to-indigo-500"></div>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                            <FileText className="h-4 w-4 text-blue-500" />
-                                            Report Numbers
+                            {/* Top Controls Row: Reports & Stats Compacted */}
+                            <div className="flex items-stretch gap-4 shrink-0 h-[100px]">
+                                {/* Report Numbers Card */}
+                                <div className="flex-[2] bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col justify-between overflow-hidden">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                            <FileText className="h-3.5 w-3.5 text-blue-500" />
+                                            Report References
                                         </label>
-                                        <span className="text-[10px] font-semibold bg-slate-100 px-2 py-1 rounded-md text-slate-500">
-                                            {reportNumbers.length} ACTIVE
-                                        </span>
+                                        {reportNumbers.length > 0 && (
+                                            <Badge variant="secondary" className="text-[9px] h-5 px-1.5 font-semibold bg-slate-50 text-slate-500">
+                                                {reportNumbers.length} ACTIVE
+                                            </Badge>
+                                        )}
                                     </div>
 
-                                    <div className="flex gap-3">
+                                    <div className="flex gap-2 mb-2">
                                         <div className="relative flex-1 group/input">
-                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                <span className="text-slate-400 text-sm font-mono">#</span>
-                                            </div>
+                                            <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400 text-xs font-mono">#</span>
                                             <Input
-                                                placeholder="Enter Report Number..."
+                                                placeholder="Report No..."
                                                 value={reportInput}
                                                 onChange={(e) => setReportInput(e.target.value)}
-                                                className="pl-8 h-11 rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium"
+                                                className="pl-6 h-8 text-xs rounded-lg border-slate-200 bg-slate-50/50 focus:bg-white focus:border-blue-500 transition-all font-medium placeholder:text-slate-400"
                                                 onKeyDown={(e) => e.key === "Enter" && handleAddReportNumber()}
                                             />
                                         </div>
                                         <Input
-                                            placeholder="Contractor Ref (opt)"
+                                            placeholder="Contr. Ref"
                                             value={contractorRefInput}
                                             onChange={(e) => setContractorRefInput(e.target.value)}
-                                            className="w-48 h-11 rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                                            className="w-24 h-8 text-xs rounded-lg border-slate-200 bg-slate-50/50 focus:bg-white focus:border-blue-500 transition-all placeholder:text-slate-400"
                                             onKeyDown={(e) => e.key === "Enter" && handleAddReportNumber()}
                                         />
                                         <Button
                                             onClick={handleAddReportNumber}
                                             size="icon"
-                                            className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 shadow-lg shadow-green-200 transition-all hover:scale-105 active:scale-95 text-white border-0"
+                                            className="h-8 w-8 rounded-lg bg-blue-600 hover:bg-blue-700 shadow-sm text-white border-0 shrink-0"
                                         >
-                                            <Plus className="h-6 w-6" />
+                                            <Plus className="h-4 w-4" />
                                         </Button>
                                     </div>
 
-                                    <div className="flex flex-wrap gap-2 min-h-[32px]">
-                                        {reportNumbers.length === 0 && (
-                                            <div className="w-full text-center py-2 text-sm text-slate-400 italic bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                                                No report numbers added yet. Add one to start defining scope.
-                                            </div>
-                                        )}
-                                        {reportNumbers.map((report, index) => (
-                                            <Badge
-                                                key={index}
-                                                variant="secondary"
-                                                className={`pl-3 pr-2 py-2 rounded-lg border gap-3 text-sm font-semibold transition-all cursor-pointer group/badge ${activeReportNumber === report.number
-                                                    ? "bg-blue-50 text-blue-700 border-blue-200 shadow-sm ring-1 ring-blue-500/20"
-                                                    : "bg-white text-slate-600 border-slate-200 hover:border-blue-200 hover:bg-slate-50"
-                                                    }`}
-                                                onClick={() => setActiveReportNumber(report.number)}
-                                                role="button"
-                                            >
-                                                {report.number}
-                                                {report.contractor_ref && <span className="opacity-50 font-normal border-l border-current pl-2 text-xs uppercase tracking-wide">{report.contractor_ref}</span>}
+                                    <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1">
+                                        {reportNumbers.length === 0 ? (
+                                            <span className="text-[10px] text-slate-400 italic pl-1">No reports added.</span>
+                                        ) : (
+                                            reportNumbers.map((report, index) => (
                                                 <div
-                                                    className={`p-1 rounded-full transition-colors ${activeReportNumber === report.number ? 'hover:bg-blue-200 text-blue-400 hover:text-blue-700' : 'hover:bg-rose-100 text-slate-300 hover:text-rose-500'}`}
-                                                    onClick={(e) => { e.stopPropagation(); handleRemoveReportNumber(index); }}
+                                                    key={index}
+                                                    className={`flex items-center gap-1 px-2 py-1 rounded-md border text-[10px] font-medium transition-all whitespace-nowrap cursor-pointer ${activeReportNumber === report.number
+                                                        ? "bg-blue-50 text-blue-700 border-blue-200 ring-1 ring-blue-500/10"
+                                                        : "bg-slate-50 text-slate-600 border-slate-200 hover:border-blue-200"
+                                                        }`}
+                                                    onClick={() => setActiveReportNumber(report.number)}
                                                 >
-                                                    <X className="h-3.5 w-3.5" />
+                                                    <span>{report.number}</span>
+                                                    {report.contractor_ref && <span className="text-slate-400 border-l border-slate-200 pl-1 ml-0.5">{report.contractor_ref}</span>}
+                                                    <X
+                                                        className="h-3 w-3 text-slate-300 hover:text-rose-500 cursor-pointer ml-1"
+                                                        onClick={(e) => { e.stopPropagation(); handleRemoveReportNumber(index); }}
+                                                    />
                                                 </div>
-                                            </Badge>
-                                        ))}
+                                            ))
+                                        )}
                                     </div>
                                 </div>
 
-                                {/* Stats Cards - Redesigned */}
-                                <div className="flex-[1.2] grid grid-cols-2 gap-3 h-full">
+                                {/* Stats Panel - Compact Horizontal */}
+                                {/* Stats Panel - Compact Horizontal Row */}
+                                <div className="flex-[2] flex items-center gap-2 h-full">
                                     {[
-                                        { label: "Total Selected", value: stats.total, color: "text-slate-800", bg: "bg-white", border: "border-slate-100", icon: Filter, iconColor: "text-slate-400" },
-                                        { label: "Completed", value: stats.completed, color: "text-emerald-600", bg: "bg-emerald-50/50", border: "border-emerald-100", icon: CheckCircle2, iconColor: "text-emerald-500" },
-                                        { label: "Incomplete", value: stats.incomplete, color: "text-rose-600", bg: "bg-rose-50/50", border: "border-rose-100", icon: XCircle, iconColor: "text-rose-500" },
-                                        { label: "Pending", value: stats.pending, color: "text-blue-600", bg: "bg-blue-50/50", border: "border-blue-100", icon: Clock, iconColor: "text-blue-500" }
+                                        { label: "Selected", value: stats.total, color: "text-slate-700", bg: "bg-white", border: "border-slate-200", icon: Filter },
+                                        { label: "Pending", value: stats.pending, color: "text-blue-600", bg: "bg-blue-50/30", border: "border-blue-100", icon: Clock },
+                                        { label: "Incomplete", value: stats.incomplete, color: "text-rose-600", bg: "bg-rose-50/30", border: "border-rose-100", icon: XCircle },
+                                        { label: "Done", value: stats.completed, color: "text-emerald-600", bg: "bg-emerald-50/30", border: "border-emerald-100", icon: CheckCircle2 }
                                     ].map((stat, i) => (
-                                        <div key={i} className={`${stat.bg} p-4 rounded-xl shadow-sm border ${stat.border} flex flex-col justify-between items-start transition-all hover:shadow-md h-[100px]`}>
-                                            <div className="flex justify-between w-full">
-                                                <span className={`text-[10px] uppercase font-bold tracking-wider ${stat.iconColor} opacity-80`}>{stat.label}</span>
-                                                <stat.icon className={`h-4 w-4 ${stat.iconColor}`} />
+                                        <div key={i} className={`flex-1 min-w-0 ${stat.bg} px-2 py-2 rounded-xl border ${stat.border} flex flex-col justify-center h-full`}>
+                                            <div className="flex justify-between items-center w-full mb-0.5">
+                                                <span className="text-[8px] uppercase font-bold text-slate-400 tracking-wider truncate">{stat.label}</span>
+                                                <stat.icon className="h-2.5 w-2.5 text-slate-400 opacity-50 flex-shrink-0" />
                                             </div>
-                                            <div className={`text-3xl font-black tracking-tight ${stat.color}`}>{stat.value}</div>
+                                            <div className={`text-lg font-bold leading-none ${stat.color} truncate`}>{stat.value}</div>
                                         </div>
                                     ))}
                                 </div>
@@ -905,50 +918,47 @@ export function SOWDialog({
                                             filteredComponents.map((comp, idx) => (
                                                 <div
                                                     key={comp.id}
-                                                    className="group relative bg-white p-4 rounded-xl border border-slate-100 hover:border-blue-300 hover:shadow-[0_4px_20px_-12px_rgba(37,99,235,0.2)] cursor-pointer transition-all duration-200 flex flex-col gap-3"
+                                                    className="group relative bg-white p-3 rounded-lg border border-slate-100 hover:border-blue-300 hover:shadow-sm cursor-pointer transition-all duration-200 flex flex-col gap-1"
                                                     onClick={() => handleAddComponent(comp.id)}
                                                 >
                                                     <div className="absolute top-4 right-4 h-8 w-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100 shadow-sm">
                                                         <Plus className="h-5 w-5" />
                                                     </div>
 
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="h-8 w-8 rounded-lg bg-slate-50 flex items-center justify-center font-bold text-xs text-slate-400 font-mono border border-slate-100">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-6 w-6 rounded bg-slate-50 flex items-center justify-center font-bold text-[10px] text-slate-400 font-mono border border-slate-100 shrink-0">
                                                             {idx + 1}
                                                         </div>
-                                                        <div className="flex-1">
-                                                            <div className="font-bold text-base text-slate-800 group-hover:text-blue-700 transition-colors">
-                                                                {comp.qid}
-                                                            </div>
-                                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
-                                                                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{comp.type}</div>
 
-                                                                {/* Node & Leg Details */}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
+                                                                <div className="font-bold text-sm text-slate-800 group-hover:text-blue-700 transition-colors whitespace-nowrap">
+                                                                    {comp.qid}
+                                                                </div>
+                                                                <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 whitespace-nowrap">
+                                                                    {comp.type}
+                                                                </div>
+
                                                                 {(comp.s_node || comp.f_node) && (
-                                                                    <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                                                    <div className="flex items-center gap-1 text-[9px] text-slate-500 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 whitespace-nowrap">
                                                                         <span className="text-slate-400">N:</span>
                                                                         {comp.s_node || '?'} <span className="text-slate-300">→</span> {comp.f_node || '?'}
                                                                     </div>
                                                                 )}
                                                                 {(comp.s_leg || comp.f_leg) && (
-                                                                    <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                                                    <div className="flex items-center gap-1 text-[9px] text-slate-500 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 whitespace-nowrap">
                                                                         <span className="text-slate-400">L:</span>
                                                                         {comp.s_leg || '?'} <span className="text-slate-300">→</span> {comp.f_leg || '?'}
                                                                     </div>
                                                                 )}
+
+                                                                {comp.elv_1 !== undefined && (
+                                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-50 border border-slate-100 text-slate-500 whitespace-nowrap ml-auto mr-6">
+                                                                        {comp.elv_1}m {comp.elv_2 !== undefined ? `- ${comp.elv_2}m` : ''}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
-                                                    </div>
-
-                                                    <div className="flex flex-wrap gap-1.5 mt-1">
-                                                        <span className="text-[10px] uppercase font-bold px-2 py-1 rounded bg-slate-100 text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                                                            {comp.type}
-                                                        </span>
-                                                        {comp.elv_1 !== undefined && (
-                                                            <span className="text-[10px] font-mono px-2 py-1 rounded bg-slate-50 border border-slate-100 text-slate-500">
-                                                                {comp.elv_1}m {comp.elv_2 !== undefined ? `- ${comp.elv_2}m` : ''}
-                                                            </span>
-                                                        )}
                                                     </div>
                                                 </div>
                                             ))
@@ -958,18 +968,28 @@ export function SOWDialog({
                                 {/* Right Panel: Matrix with Vertical Headers */}
                                 <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                                     {/* Elevation Split Toggle and Controls */}
-                                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center gap-4">
                                         <div className="flex flex-col">
                                             <div className="text-sm font-bold text-slate-800 tracking-wide uppercase flex items-center gap-2">
                                                 <Settings2 className="h-4 w-4 text-blue-500" />
                                                 Scope Matrix
                                             </div>
-                                            {selectedComponentsList.length > 0 && (
-                                                <p className="text-[10px] text-slate-400 font-medium mt-1">
-                                                    Assign inspection types to components. Use 'Split' to segment by elevation.
-                                                </p>
-                                            )}
                                         </div>
+
+                                        {/* Selected Components Search */}
+                                        {selectedComponentsList.length > 0 && (
+                                            <div className="relative group max-w-[200px] w-full">
+                                                <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                                    <Search className="h-3 w-3 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                                                </div>
+                                                <Input
+                                                    placeholder="Filter Matrix..."
+                                                    value={selectedComponentSearch}
+                                                    onChange={(e) => setSelectedComponentSearch(e.target.value)}
+                                                    className="pl-8 h-8 rounded-lg bg-white border-slate-200 text-xs focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 transition-all font-medium"
+                                                />
+                                            </div>
+                                        )}
                                     </div>
 
                                     {selectedComponentsList.length === 0 ? (
@@ -993,12 +1013,12 @@ export function SOWDialog({
                                             <table className="w-full text-sm border-collapse">
                                                 <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
                                                     <tr>
-                                                        <th className="p-4 text-left font-bold text-slate-600 border-r border-b border-slate-200 w-[240px] sticky left-0 bg-slate-50 z-30 shadow-[4px_0_16px_-4px_rgba(0,0,0,0.05)]">
+                                                        <th className="p-2 text-left font-bold text-slate-600 border-r border-b border-slate-200 w-[240px] sticky left-0 bg-slate-50 z-30 shadow-[4px_0_16px_-4px_rgba(0,0,0,0.05)]">
                                                             Component Details
                                                         </th>
                                                         {filteredInspectionTypes.map((inspection) => (
-                                                            <th key={inspection.id} className="p-2 border-b border-slate-200 min-w-[60px] relative group hover:bg-blue-50/50 transition-colors">
-                                                                <div className="writing-mode-vertical text-[10px] uppercase font-bold text-slate-500 whitespace-nowrap transform rotate-180 py-4 h-40 w-full flex items-center justify-center text-center tracking-wider" style={{ writingMode: 'vertical-rl' }} title={`${inspection.code} - ${inspection.name}`}>
+                                                            <th key={inspection.id} className="p-1 border-b border-slate-200 min-w-[50px] relative group hover:bg-blue-50/50 transition-colors bg-slate-50">
+                                                                <div className="writing-mode-vertical text-[10px] uppercase font-bold text-slate-500 whitespace-normal leading-snug transform rotate-180 py-2 h-32 w-full flex items-center justify-center text-center tracking-wider" style={{ writingMode: 'vertical-rl' }} title={`${inspection.code} - ${inspection.name}`}>
                                                                     {inspection.name}
                                                                 </div>
                                                                 <div className="absolute inset-x-0 bottom-0 h-1 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -1007,7 +1027,7 @@ export function SOWDialog({
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {selectedComponentsList.map((component) => {
+                                                    {filteredSelectedComponents.map((component) => {
                                                         // Check if split is enabled for this specific component
                                                         const isSplit = componentSplitByElevation[component!.id];
 
@@ -1078,76 +1098,95 @@ export function SOWDialog({
                                                                                     </button>
                                                                                 </div>
                                                                                 <div className="text-xs text-gray-500 truncate" title={component!.type || ''}>{component!.type}</div>
-                                                                                <div className="text-xs text-gray-700 font-medium whitespace-nowrap mt-1">
+                                                                                <div className="text-xs text-gray-700 font-medium whitespace-nowrap mt-1 flex items-center gap-2">
                                                                                     {minElv.toFixed(1)}m - {maxElv.toFixed(1)}m
-                                                                                </div>
 
-                                                                                {/* Split Toggle */}
-                                                                                {component!.elv_1 != null && component!.elv_2 != null && (
-                                                                                    <div className="mt-2 flex items-center gap-1">
-                                                                                        <input
-                                                                                            type="checkbox"
-                                                                                            id={`split-${component!.id}`}
-                                                                                            checked={!!componentSplitByElevation[component!.id]}
-                                                                                            onChange={(e) => {
-                                                                                                setComponentSplitByElevation(prev => ({
-                                                                                                    ...prev,
-                                                                                                    [component!.id]: e.target.checked
-                                                                                                }));
-                                                                                            }}
-                                                                                            className="h-3 w-3 cursor-pointer"
-                                                                                        />
-                                                                                        <label htmlFor={`split-${component!.id}`} className="text-[10px] text-gray-500 cursor-pointer select-none">
-                                                                                            Split Ranges
-                                                                                        </label>
-                                                                                    </div>
-                                                                                )}
+                                                                                    {/* Split Toggle */}
+                                                                                    {component!.elv_1 != null && component!.elv_2 != null && (
+                                                                                        <div className="flex items-center gap-1.5 ml-auto">
+                                                                                            <input
+                                                                                                type="checkbox"
+                                                                                                id={`split-${component!.id}`}
+                                                                                                checked={!!componentSplitByElevation[component!.id]}
+                                                                                                onChange={(e) => {
+                                                                                                    setComponentSplitByElevation(prev => ({
+                                                                                                        ...prev,
+                                                                                                        [component!.id]: e.target.checked
+                                                                                                    }));
+                                                                                                }}
+                                                                                                className="h-3 w-3 cursor-pointer accent-blue-600 rounded"
+                                                                                            />
+                                                                                            <label htmlFor={`split-${component!.id}`} className="text-[10px] font-medium text-slate-500 cursor-pointer select-none">
+                                                                                                Split
+                                                                                            </label>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
 
                                                                                 {/* Configuration Controls (Only if split is enabled) */}
                                                                                 {isSplit && (
-                                                                                    <div className="mt-2 pl-1 border-l-2 border-blue-100 space-y-2">
-                                                                                        {/* Breakpoint Inputs */}
-                                                                                        <div className="flex items-center gap-1">
-                                                                                            <input
-                                                                                                type="number"
-                                                                                                step="0.1"
-                                                                                                placeholder="Split at..."
-                                                                                                className="w-16 h-6 text-[10px] px-1 border rounded"
-                                                                                                value={newElevationInput[component!.id] || ''}
-                                                                                                onChange={(e) => setNewElevationInput(prev => ({
-                                                                                                    ...prev,
-                                                                                                    [component!.id]: e.target.value
-                                                                                                }))}
-                                                                                                onKeyPress={(e) => {
-                                                                                                    if (e.key === 'Enter') {
+                                                                                    <div className="mt-1.5 pl-2 border-l-2 border-blue-100 flex flex-col gap-1.5 animate-in slide-in-from-left-2 duration-200">
+                                                                                        {/* Inputs Row */}
+                                                                                        <div className="flex items-center gap-1.5">
+                                                                                            <div className="flex items-center relative flex-1 min-w-[70px]">
+                                                                                                <input
+                                                                                                    type="number"
+                                                                                                    step="0.1"
+                                                                                                    placeholder="Split..."
+                                                                                                    className="w-full h-6 text-[10px] pl-1.5 pr-4 border border-slate-200 rounded text-slate-700 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-0 transition-colors placeholder:text-slate-400"
+                                                                                                    value={newElevationInput[component!.id] || ''}
+                                                                                                    onChange={(e) => setNewElevationInput(prev => ({
+                                                                                                        ...prev,
+                                                                                                        [component!.id]: e.target.value
+                                                                                                    }))}
+                                                                                                    onKeyPress={(e) => {
+                                                                                                        if (e.key === 'Enter') {
+                                                                                                            handleAddComponentBreakpoint(component!.id, parseFloat(newElevationInput[component!.id]));
+                                                                                                            setNewElevationInput(prev => ({ ...prev, [component!.id]: '' }));
+                                                                                                        }
+                                                                                                    }}
+                                                                                                />
+                                                                                                <Plus
+                                                                                                    className="h-3 w-3 text-blue-400 absolute right-1 cursor-pointer hover:text-blue-600"
+                                                                                                    onClick={() => {
                                                                                                         handleAddComponentBreakpoint(component!.id, parseFloat(newElevationInput[component!.id]));
                                                                                                         setNewElevationInput(prev => ({ ...prev, [component!.id]: '' }));
-                                                                                                    }
-                                                                                                }}
-                                                                                            />
-                                                                                            <button
-                                                                                                className="text-blue-600 hover:text-blue-800"
-                                                                                                onClick={() => {
-                                                                                                    handleAddComponentBreakpoint(component!.id, parseFloat(newElevationInput[component!.id]));
-                                                                                                    setNewElevationInput(prev => ({ ...prev, [component!.id]: '' }));
-                                                                                                }}
-                                                                                            >
-                                                                                                <Plus className="h-3 w-3" />
-                                                                                            </button>
-                                                                                        </div>
-                                                                                        <div className="flex items-center gap-1">
-                                                                                            <input
-                                                                                                type="number"
-                                                                                                step="0.1"
-                                                                                                placeholder="Interval..."
-                                                                                                className="w-16 h-6 text-[10px] px-1 border rounded"
-                                                                                                value={autoSplitIntervals[component!.id] || ''}
-                                                                                                onChange={(e) => setAutoSplitIntervals(prev => ({
-                                                                                                    ...prev,
-                                                                                                    [component!.id]: e.target.value
-                                                                                                }))}
-                                                                                                onKeyPress={(e) => {
-                                                                                                    if (e.key === 'Enter') {
+                                                                                                    }}
+                                                                                                />
+                                                                                            </div>
+
+                                                                                            <div className="flex items-center relative flex-1 min-w-[70px]">
+                                                                                                <input
+                                                                                                    type="number"
+                                                                                                    step="0.1"
+                                                                                                    placeholder="Interval..."
+                                                                                                    className="w-full h-6 text-[10px] pl-1.5 pr-5 border border-slate-200 rounded text-slate-700 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-0 transition-colors placeholder:text-slate-400"
+                                                                                                    value={autoSplitIntervals[component!.id] || ''}
+                                                                                                    onChange={(e) => setAutoSplitIntervals(prev => ({
+                                                                                                        ...prev,
+                                                                                                        [component!.id]: e.target.value
+                                                                                                    }))}
+                                                                                                    onKeyPress={(e) => {
+                                                                                                        if (e.key === 'Enter') {
+                                                                                                            const interval = parseFloat(autoSplitIntervals[component!.id]);
+                                                                                                            if (!isNaN(interval) && interval > 0) {
+                                                                                                                const newPoints: number[] = [];
+                                                                                                                if (interval > 0.001 && maxElv > minElv) {
+                                                                                                                    for (let val = minElv + interval; val < maxElv; val += interval) {
+                                                                                                                        newPoints.push(Math.round(val * 10) / 10);
+                                                                                                                    }
+                                                                                                                }
+                                                                                                                setComponentBreakpoints(prev => ({
+                                                                                                                    ...prev,
+                                                                                                                    [component!.id]: newPoints.sort((a, b) => a - b)
+                                                                                                                }));
+                                                                                                                setAutoSplitIntervals(prev => ({ ...prev, [component!.id]: '' }));
+                                                                                                            }
+                                                                                                        }
+                                                                                                    }}
+                                                                                                />
+                                                                                                <button
+                                                                                                    onClick={() => {
                                                                                                         const interval = parseFloat(autoSplitIntervals[component!.id]);
                                                                                                         if (!isNaN(interval) && interval > 0) {
                                                                                                             const newPoints: number[] = [];
@@ -1162,145 +1201,123 @@ export function SOWDialog({
                                                                                                             }));
                                                                                                             setAutoSplitIntervals(prev => ({ ...prev, [component!.id]: '' }));
                                                                                                         }
-                                                                                                    }
-                                                                                                }}
-                                                                                            />
-                                                                                            <button
-                                                                                                className="text-purple-600 hover:text-purple-800"
-                                                                                                onClick={() => {
-                                                                                                    const interval = parseFloat(autoSplitIntervals[component!.id]);
-                                                                                                    if (!isNaN(interval) && interval > 0) {
-                                                                                                        const newPoints: number[] = [];
-                                                                                                        if (interval > 0.001 && maxElv > minElv) {
-                                                                                                            for (let val = minElv + interval; val < maxElv; val += interval) {
-                                                                                                                newPoints.push(Math.round(val * 10) / 10);
-                                                                                                            }
-                                                                                                        }
-                                                                                                        setComponentBreakpoints(prev => ({
-                                                                                                            ...prev,
-                                                                                                            [component!.id]: newPoints.sort((a, b) => a - b)
-                                                                                                        }));
-                                                                                                        setAutoSplitIntervals(prev => ({ ...prev, [component!.id]: '' }));
-                                                                                                    }
-                                                                                                }}
-                                                                                            >
-                                                                                                <Columns className="h-3 w-3" />
-                                                                                            </button>
-                                                                                        </div>
-                                                                                        {/* Active Keypoints */}
-                                                                                        {(componentBreakpoints[component!.id] || []).length > 0 && (
-                                                                                            <div className="flex flex-wrap gap-1">
-                                                                                                {(componentBreakpoints[component!.id] || []).map((bp) => (
-                                                                                                    <span key={bp} className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-gray-100 text-[9px] text-gray-600 border">
-                                                                                                        {bp}m
-                                                                                                        <X
-                                                                                                            className="h-2 w-2 cursor-pointer hover:text-red-500"
-                                                                                                            onClick={() => handleRemoveComponentBreakpoint(component!.id, bp)}
-                                                                                                        />
-                                                                                                    </span>
-                                                                                                ))}
+                                                                                                    }}
+                                                                                                    className="absolute right-1 top-0.5 p-1 hover:bg-slate-100 rounded"
+                                                                                                >
+                                                                                                    <Columns className="h-3 w-3 text-purple-400 hover:text-purple-600" />
+                                                                                                </button>
                                                                                             </div>
-                                                                                        )}
+                                                                                        </div>
+
+                                                                                        {/* Existing Breakpoints List - Compact */}
+                                                                                        <div className="flex flex-wrap gap-1 mt-0.5">
+                                                                                            {breakpoints.map((bp) => (
+                                                                                                <span key={bp} className="inline-flex items-center text-[10px] bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 rounded px-1 border border-slate-200 cursor-pointer group/bp transition-colors"
+                                                                                                    onClick={() => handleRemoveComponentBreakpoint(component!.id, bp)}
+                                                                                                    title="Click to remove"
+                                                                                                >
+                                                                                                    {bp}m
+                                                                                                    <X className="h-2 w-2 ml-0.5 opacity-0 group-hover/bp:opacity-100" />
+                                                                                                </span>
+                                                                                            ))}
+                                                                                        </div>
                                                                                     </div>
                                                                                 )}
                                                                             </div>
                                                                         </div>
+                                                                </td>
+                                                                {filteredInspectionTypes.map((inspection) => (
+                                                                    <td key={inspection.id} className="p-2 border-r text-center align-top pt-4 bg-gray-50/30">
+                                                                        <div className="flex justify-center items-center gap-2" title="Select for WHOLE component">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                className="h-4 w-4 rounded border-gray-400 text-blue-800 focus:ring-blue-500"
+                                                                                checked={isSelected(component!.id, inspection.id, 0, 0)}
+                                                                                onChange={() => toggleSelection(component!.id, inspection.id, 0, 0)}
+                                                                            />
+                                                                            {isSelected(component!.id, inspection.id, 0, 0) && (
+                                                                                <div title={getItemStatus(component!.id, inspection.id, 0, 0)}>
+                                                                                    {getStatusIcon(getItemStatus(component!.id, inspection.id, 0, 0))}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
                                                                     </td>
-                                                                    {filteredInspectionTypes.map((inspection) => (
-                                                                        <td key={inspection.id} className="p-2 border-r text-center align-top pt-4 bg-gray-50/30">
-                                                                            <div className="flex justify-center items-center gap-2" title="Select for WHOLE component">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    className="h-4 w-4 rounded border-gray-400 text-blue-800 focus:ring-blue-500"
-                                                                                    checked={isSelected(component!.id, inspection.id, 0, 0)}
-                                                                                    onChange={() => toggleSelection(component!.id, inspection.id, 0, 0)}
-                                                                                />
-                                                                                {isSelected(component!.id, inspection.id, 0, 0) && (
-                                                                                    <div title={getItemStatus(component!.id, inspection.id, 0, 0)}>
-                                                                                        {getStatusIcon(getItemStatus(component!.id, inspection.id, 0, 0))}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        </td>
-                                                                    ))}
-                                                                </tr>
-
-                                                                {/* SPLIT ROWS: Only if split is enabled */}
-                                                                {isSplit && componentRanges.map((range, idx) => (
-                                                                    <tr key={`${component!.id}-split-${idx}`} className="border-b hover:bg-gray-50">
-                                                                        <td className="p-2 border-r sticky left-0 bg-white z-10 w-48 pl-6 text-xs text-gray-500 border-l-4 border-l-blue-100">
-                                                                            {range.start.toFixed(1)}m - {range.end.toFixed(1)}m
-                                                                        </td>
-                                                                        {filteredInspectionTypes.map((inspection) => {
-                                                                            // Logic: If "Whole Component" is selected (0:0), DISABLE split selection? 
-                                                                            // Or just show it as unchecked?
-                                                                            // Better UX: If Whole is selected, Splits are disabled.
-                                                                            const isWholeSelected = isSelected(component!.id, inspection.id, 0, 0);
-
-                                                                            return (
-                                                                                <td key={inspection.id} className="p-2 border-r text-center">
-                                                                                    <div className="flex justify-center items-center gap-2">
-                                                                                        <input
-                                                                                            type="checkbox"
-                                                                                            className="h-3 w-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-30 disabled:cursor-not-allowed"
-                                                                                            checked={isSelected(component!.id, inspection.id, range.start, range.end)}
-                                                                                            onChange={() => toggleSelection(component!.id, inspection.id, range.start, range.end)}
-                                                                                            disabled={isWholeSelected}
-                                                                                            title={isWholeSelected ? "Global scope selected for this component" : ""}
-                                                                                        />
-                                                                                        {isSelected(component!.id, inspection.id, range.start, range.end) && (
-                                                                                            <div title={getItemStatus(component!.id, inspection.id, range.start, range.end)}>
-                                                                                                {getStatusIcon(getItemStatus(component!.id, inspection.id, range.start, range.end))}
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </div>
-                                                                                </td>
-                                                                            )
-                                                                        })}
-                                                                    </tr>
                                                                 ))}
-                                                            </React.Fragment>
-                                                        );
+                                                            </tr>
+
+                                                                {/* SPLIT ROWS: Only if split is enabled */ }
+                                                        {
+                                                            isSplit && componentRanges.map((range, idx) => (
+                                                                <tr key={`${component!.id}-split-${idx}`} className="border-b hover:bg-slate-50/50">
+                                                                    <td className="p-2 border-r border-slate-100 bg-white sticky left-0 z-10 w-[300px] pl-8 text-xs text-slate-500 font-mono border-l-4 border-l-blue-100">
+                                                                        {range.start.toFixed(1)}m - {range.end.toFixed(1)}m
+                                                                    </td>
+                                                                    {filteredInspectionTypes.map((inspection) => {
+                                                                        const isWholeSelected = isSelected(component!.id, inspection.id, 0, 0);
+                                                                        return (
+                                                                            <td key={inspection.id} className="p-2 border-r border-slate-100 text-center bg-white">
+                                                                                <div className="flex justify-center items-center gap-2">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        className="h-3 w-3 rounded border-gray-300 text-blue-500 focus:ring-blue-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                                                        checked={isSelected(component!.id, inspection.id, range.start, range.end)}
+                                                                                        onChange={() => toggleSelection(component!.id, inspection.id, range.start, range.end)}
+                                                                                        disabled={isWholeSelected}
+                                                                                    />
+                                                                                    {isSelected(component!.id, inspection.id, range.start, range.end) && (
+                                                                                        <div title={getItemStatus(component!.id, inspection.id, range.start, range.end)}>
+                                                                                            {getStatusIcon(getItemStatus(component!.id, inspection.id, range.start, range.end))}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            </td>
+                                                                        )
+                                                                    })}
+                                                                </tr>
+                                                            ))
+                                                        }
 
 
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                </React.Fragment >
+                                                );
+        })}
+                                            </tbody >
+                                        </table >
+</div >
+)}
+                            </div >
+                        </div >
 
-                            {/* Actions */}
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-2">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => onOpenChange(false)}
-                                    className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium"
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    onClick={handleSave}
-                                    disabled={saving || filteredInspectionTypes.length === 0 || reportNumbers.length === 0}
-                                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold shadow-md shadow-blue-200 disabled:opacity-50 disabled:shadow-none min-w-[120px]"
-                                >
-                                    {saving ? (
-                                        <>
-                                            <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                                            Saving...
-                                        </>
-                                    ) : (
-                                        <>
-                                            Save Configuration
-                                        </>
-                                    )}
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
+    {/* Actions */}
+                    < div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-2" >
+                        <Button
+                            variant="outline"
+                            onClick={() => onOpenChange(false)}
+                            className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSave}
+                            disabled={saving || filteredInspectionTypes.length === 0 || reportNumbers.length === 0}
+                            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold shadow-md shadow-blue-200 disabled:opacity-50 disabled:shadow-none min-w-[120px]"
+                        >
+                            {saving ? (
+                                <>
+                                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                                    Saving...
+                                </>
+                            ) : (
+                                <>
+                                    Save Configuration
+                                </>
+                            )}
+                        </Button>
+                    </div >
+                </div >
+)}
+            </DialogContent >
+        </Dialog >
 
             <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
                 <DialogContent className="sm:max-w-[425px]">
@@ -1350,6 +1367,6 @@ export function SOWDialog({
                     </div>
                 </DialogContent>
             </Dialog>
-        </>
-    );
+</>
+);
 }
