@@ -287,18 +287,25 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   }, [inspectionTypes, inspectionSearch]);
 
   // Handle SOW dialog opening from URL parameters
+  // Handle SOW dialog opening from URL parameters
   useEffect(() => {
     const tab = searchParams.get("tab");
     const structureKey = searchParams.get("structure");
 
-    if (tab === "sow" && structureKey && selectedStructures.length > 0) {
-      const structure = selectedStructures.find(
-        (s) => `${s.type}-${s.id}` === structureKey
-      );
+    if (tab === "sow" && selectedStructures.length > 0) {
+      let structure = null;
+      if (structureKey) {
+        structure = selectedStructures.find(
+          (s) => `${s.type}-${s.id}` === structureKey
+        );
+      } else {
+        // Default to first structure if none specified in URL
+        structure = selectedStructures[0];
+      }
 
       if (structure) {
         setSOWStructure(structure);
-        setActiveStructKey(structureKey);
+        setActiveStructKey(`${structure.type}-${structure.id}`);
         setSOWDialogOpen(true);
       }
     }
@@ -1300,6 +1307,10 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
             // Optionally refresh data
             setSOWDialogOpen(false);
           }}
+          readOnly={
+            data?.data?.status === "CLOSED" ||
+            structureStatus?.[`${sowStructure.type}-${sowStructure.id}`]?.status === "CLOSED"
+          }
         />
       )}
 
