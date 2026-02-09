@@ -9,6 +9,7 @@ import { useEffect, useState, useMemo } from "react";
 import { getStoragePublicUrl } from "@/utils/storage";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface Platform {
     plat_id: number;
@@ -178,50 +179,60 @@ export default function StructuresPage() {
             </div>
 
             {/* Controls Bar */}
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row gap-4 mb-6 items-center">
                 {/* Search */}
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <div className="relative flex-1 group w-full">
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
                     <Input
                         type="text"
                         placeholder="Search structures..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10"
+                        className="pl-11 pr-4 h-12 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm focus-visible:ring-blue-600/20 focus-visible:border-blue-600 transition-all text-sm font-medium"
                     />
                 </div>
 
                 {/* View Toggle */}
-                <div className="flex gap-2">
-                    <Button
-                        variant={viewMode === "card" ? "default" : "outline"}
-                        size="icon"
+                <div className="flex p-1 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800 self-stretch sm:self-auto">
+                    <button
                         onClick={() => setViewMode("card")}
+                        className={cn(
+                            "flex items-center justify-center px-4 h-10 rounded-lg transition-all gap-2 text-xs font-bold uppercase tracking-wider",
+                            viewMode === "card"
+                                ? "bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400"
+                                : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                        )}
                         title="Card View"
                     >
                         <LayoutGrid className="w-4 h-4" />
-                    </Button>
-                    <Button
-                        variant={viewMode === "list" ? "default" : "outline"}
-                        size="icon"
+                        <span className={cn("hidden lg:block", viewMode !== "card" && "hidden")}>Cards</span>
+                    </button>
+                    <button
                         onClick={() => setViewMode("list")}
-                        title="List View"
+                        className={cn(
+                            "flex items-center justify-center px-4 h-10 rounded-lg transition-all gap-2 text-xs font-bold uppercase tracking-wider",
+                            viewMode === "list"
+                                ? "bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400"
+                                : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                        )}
+                        title="Table View"
                     >
                         <List className="w-4 h-4" />
-                    </Button>
+                        <span className={cn("hidden lg:block", viewMode !== "list" && "hidden")}>Table</span>
+                    </button>
                 </div>
 
                 {/* Create New Actions */}
-                <div className="flex gap-2">
-                    <Link href="/dashboard/field/platform/new">
-                        <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2" title="New Platform">
-                            <Plus className="w-4 h-4" />
+                <div className="flex gap-2 self-stretch sm:self-auto">
+                    <Link href="/dashboard/field/platform/new" className="flex-1 sm:flex-none">
+                        <Button className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl h-12 px-6 shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all gap-2 border-0" title="New Platform">
+                            <Plus className="w-4 h-4 stroke-[3px]" />
                             <span className="hidden sm:inline">New Platform</span>
                         </Button>
                     </Link>
-                    <Link href="/dashboard/field/pipeline/new">
-                        <Button className="bg-teal-600 hover:bg-teal-700 text-white gap-2" title="New Pipeline">
-                            <Plus className="w-4 h-4" />
+                    <Link href="/dashboard/field/pipeline/new" className="flex-1 sm:flex-none">
+                        <Button className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl h-12 px-6 shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all gap-2 border-0" title="New Pipeline">
+                            <Plus className="w-4 h-4 stroke-[3px]" />
                             <span className="hidden sm:inline">New Pipeline</span>
                         </Button>
                     </Link>
@@ -418,50 +429,63 @@ export default function StructuresPage() {
                                 href={`/dashboard/field/platform/${platform.plat_id}`}
                                 className="group block"
                             >
-                                <div className="flex items-center gap-4 p-4 rounded-lg border border-border/50 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-blue-950/10 dark:to-indigo-950/10 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all duration-200">
+                                <div className="flex items-center gap-6 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-xl hover:scale-[1.01] hover:border-blue-500/30 transition-all duration-500">
                                     {/* Icon/Image */}
-                                    <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-center">
+                                    <div className="flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 flex items-center justify-center group-hover:shadow-lg transition-all duration-500 shadow-sm">
                                         {hasImage ? (
-                                            <div className="relative w-full h-full">
+                                            <div className="relative w-full h-full p-1.5 text-blue-600">
                                                 <Image
                                                     src={imageUrl}
                                                     alt={platform.title}
                                                     fill
-                                                    className="object-cover"
-                                                    sizes="64px"
+                                                    className="object-cover rounded-xl group-hover:scale-110 transition-transform duration-700"
+                                                    sizes="80px"
                                                 />
                                             </div>
                                         ) : (
-                                            <OilPlatformIcon className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+                                            <div className="text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-all duration-500">
+                                                <OilPlatformIcon className="w-10 h-10" />
+                                            </div>
                                         )}
                                     </div>
 
                                     {/* Content */}
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="inline-flex items-center gap-1 bg-blue-600/90 text-white px-2 py-0.5 rounded text-xs font-semibold">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <span className="inline-flex items-center gap-1.5 bg-blue-600 text-white px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider shadow-lg shadow-blue-500/20">
                                                 <Building2 className="w-3 h-3" />
                                                 PLATFORM
                                             </span>
-                                            <h3 className="font-bold text-base group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+                                            <h3 className="font-black text-lg text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors truncate uppercase tracking-tight">
                                                 {platform.title}
                                             </h3>
                                         </div>
-                                        <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                                        <div className="flex flex-wrap gap-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                                             {platform.plegs !== null && (
-                                                <span>Legs: <strong className="text-foreground">{platform.plegs}</strong></span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="opacity-50">Legs:</span>
+                                                    <span className="text-blue-600 dark:text-blue-400">{platform.plegs}</span>
+                                                </div>
                                             )}
                                             {platform.process && (
-                                                <span>Process: <strong className="text-foreground">{platform.process}</strong></span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="opacity-50">Process:</span>
+                                                    <span className="text-blue-600 dark:text-blue-400">{platform.process}</span>
+                                                </div>
                                             )}
                                             {platform.ptype && (
-                                                <span>Type: <strong className="text-foreground">{platform.ptype}</strong></span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="opacity-50">Type:</span>
+                                                    <span className="text-blue-600 dark:text-blue-400">{platform.ptype}</span>
+                                                </div>
                                             )}
                                         </div>
                                     </div>
 
                                     {/* Arrow */}
-                                    <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex-shrink-0" />
+                                    <div className="h-12 w-12 rounded-2xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-all duration-300 flex-shrink-0">
+                                        <ArrowRight className="w-6 h-6 transform group-hover:translate-x-1 transition-transform" />
+                                    </div>
                                 </div>
                             </Link>
                         );
@@ -474,41 +498,51 @@ export default function StructuresPage() {
                             href={`/dashboard/field/pipeline/${pipeline.pipe_id}`}
                             className="group block"
                         >
-                            <div className="flex items-center gap-4 p-4 rounded-lg border border-border/50 bg-gradient-to-r from-teal-50/50 to-cyan-50/50 dark:from-teal-950/10 dark:to-cyan-950/10 hover:shadow-md hover:border-teal-300 dark:hover:border-teal-700 transition-all duration-200">
+                            <div className="flex items-center gap-6 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-xl hover:scale-[1.01] hover:border-teal-500/30 transition-all duration-500">
                                 {/* Icon */}
-                                <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-teal-100 to-cyan-100 dark:from-teal-900/20 dark:to-cyan-900/20 flex items-center justify-center">
-                                    <OilPipelineIcon className="w-10 h-10 text-teal-600 dark:text-teal-400" />
+                                <div className="flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 flex items-center justify-center group-hover:shadow-lg transition-all duration-500 shadow-sm">
+                                    <div className="text-teal-600 dark:text-teal-400 group-hover:scale-110 transition-all duration-500">
+                                        <OilPipelineIcon className="w-10 h-10" />
+                                    </div>
                                 </div>
 
                                 {/* Content */}
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="inline-flex items-center gap-1 bg-teal-600/90 text-white px-2 py-0.5 rounded text-xs font-semibold">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <span className="inline-flex items-center gap-1.5 bg-teal-600 text-white px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider shadow-lg shadow-teal-500/20">
                                             <Waves className="w-3 h-3" />
                                             PIPELINE
                                         </span>
-                                        <h3 className="font-bold text-base group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors truncate">
+                                        <h3 className="font-black text-lg text-slate-900 dark:text-white group-hover:text-teal-600 transition-colors truncate uppercase tracking-tight">
                                             {pipeline.title}
                                         </h3>
                                     </div>
-                                    <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                                    <div className="flex flex-wrap gap-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                                         {pipeline.plength !== null && (
-                                            <span>Length: <strong className="text-foreground">{pipeline.plength.toFixed(2)} m</strong></span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="opacity-50">Length:</span>
+                                                <span className="text-teal-600 dark:text-teal-400">{pipeline.plength.toFixed(2)}m</span>
+                                            </div>
                                         )}
                                         {pipeline.st_loc && (
-                                            <span>From: <strong className="text-foreground">{pipeline.st_loc}</strong></span>
-                                        )}
-                                        {pipeline.end_loc && (
-                                            <span>To: <strong className="text-foreground">{pipeline.end_loc}</strong></span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="opacity-50">Route:</span>
+                                                <span className="text-teal-600 dark:text-teal-400 lowercase">{pipeline.st_loc} <ArrowRight className="inline w-2.5 h-2.5 mx-1" /> {pipeline.end_loc}</span>
+                                            </div>
                                         )}
                                         {pipeline.ptype && (
-                                            <span>Type: <strong className="text-foreground">{pipeline.ptype}</strong></span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="opacity-50">Type:</span>
+                                                <span className="text-teal-600 dark:text-teal-400">{pipeline.ptype}</span>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
 
                                 {/* Arrow */}
-                                <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors flex-shrink-0" />
+                                <div className="h-12 w-12 rounded-2xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-300 group-hover:text-teal-600 group-hover:bg-teal-50 dark:group-hover:bg-teal-900/20 transition-all duration-300 flex-shrink-0">
+                                    <ArrowRight className="w-6 h-6 transform group-hover:translate-x-1 transition-transform" />
+                                </div>
                             </div>
                         </Link>
                     ))}

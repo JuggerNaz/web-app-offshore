@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
 import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
@@ -73,27 +73,121 @@ export async function POST(request: Request, context: any) {
 
   console.log(publicUrl);
 
-  const { data, error } = await supabase.from("attachment").insert([
-    {
-      name: name, //need to change or store filename randomize
-      source_type: source_type,
-      source_id: Number(source_id),
-      meta: {
-        file_label: name,
-        original_file_name: file.name,
-        file_url: publicUrl,
-        file_path: filePath,
-        file_size: file.size,
-        file_type: file.type,
+  const { data, error } = await supabase
+    .from("attachment")
+    .insert([
+      {
+        name: name,
+        source_type: source_type,
+        source_id: Number(source_id),
+        meta: {
+          file_label: name,
+          original_file_name: file.name,
+          file_url: publicUrl,
+          file_path: filePath,
+          file_size: file.size,
+          file_type: file.type,
+        },
+        path: publicUrl,
       },
-      path: publicUrl, //more like public url or absolute path
-    },
-  ]);
+    ])
+    .select();
 
   if (error) {
-    console.error(error.message);
-    return NextResponse.json({ error: "Failed to insert attachment" });
+    console.error("DB insertion error:", error.message);
+    return NextResponse.json({ error: "Failed to insert attachment into database" }, { status: 500 });
   }
 
-  return NextResponse.json({ attachment: data });
+  return NextResponse.json({ success: true, attachment: data?.[0] });
 }
+
+/**
+ * DELETE /api/attachment
+ * Delete an attachment by ID (and its file from storage)
+ * Query params: ?id=123
+ */
+export async function DELETE(request: NextRequest) {
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
+
+  if (!id) {
+    return NextResponse.json({ error: "No ID provided" }, { status: 400 });
+  }
+
+  let attachmentId: number | null = null;
+  try {
+    attachmentId = Number(id);
+    if (isNaN(attachmentId)) {
+      return NextResponse.json({ error: "Invalid ID format" }, { status: 400 });
+    }
+
+    console.log(`[DELETE] Attempting to delete attachment ID: ${attachmentId}`);
+
+    // 1. Fetch attachment to get storage path
+    const { data: attachment, error: fetchError } = await supabase
+      .from("attachment")
+      .select("path, meta")
+      .eq("id", attachmentId)
+      .single();
+
+    if (fetchError) {
+      console.error(`[DELETE] Fetch error for ID ${attachmentId}:`, fetchError);
+      return handleSupabaseError(fetchError, "Attachment not found");
+    }
+
+    // 2. Delete from storage if path exists
+    const storagePath = (attachment.meta as any)?.file_path || attachment.path;
+
+    if (storagePath) {
+      let relativePath = storagePath;
+      if (storagePath.startsWith("http")) {
+        const parts = storagePath.split("/");
+        const bucketIndex = parts.indexOf("attachments");
+        if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
+          relativePath = parts.slice(bucketIndex + 1).join("/");
+        }
+      }
+
+      console.log(`[DELETE] Removing from storage: ${relativePath}`);
+      const { error: storageError } = await supabase.storage.from("attachments").remove([relativePath]);
+      if (storageError) {
+        console.error("[DELETE] Storage delete error (non-fatal):", storageError);
+      }
+    }
+
+    // 3. Delete from database
+    const { data: deleteResult, error: deleteError } = await supabase
+      .from("attachment")
+      .delete()
+      .eq("id", attachmentId)
+      .select();
+
+    if (deleteError) {
+      console.error(`[DELETE] DB delete error for ID ${attachmentId}:`, deleteError);
+      return handleSupabaseError(deleteError, "Failed to delete attachment record");
+    }
+
+    if (!deleteResult || deleteResult.length === 0) {
+      console.warn(`[DELETE] No rows deleted for ID ${attachmentId}. Possible RLS restriction.`);
+
+      const isMissingServiceKey = !process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const errorMessage = isMissingServiceKey
+        ? "Delete failed. Permission denied (SUPABASE_SERVICE_ROLE_KEY is missing in .env.local)."
+        : "Delete failed. You may not have permission to delete this record.";
+
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 403 }
+      );
+    }
+
+    console.log(`[DELETE] Successfully deleted attachment ID: ${attachmentId}`);
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error(`[DELETE] Exception for ID ${attachmentId}:`, err);
+    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+  }
+}
+

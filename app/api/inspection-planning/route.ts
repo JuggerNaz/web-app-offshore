@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { apiSuccess, apiCreated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
@@ -80,7 +80,8 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
  * Decommission a planning record
  */
 export const DELETE = withAuth(async (request: NextRequest) => {
-    const supabase = createClient();
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabase = useAdmin ? createAdminClient() : createClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

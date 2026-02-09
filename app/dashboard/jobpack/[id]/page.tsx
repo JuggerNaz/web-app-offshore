@@ -17,6 +17,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -25,6 +34,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   ChevronLeft,
   Package,
@@ -50,6 +66,9 @@ import { fetcher } from "@/utils/utils";
 import { JobpackSchema } from "@/utils/schemas/zod";
 import { FormFieldWrap } from "@/components/forms/form-field-wrap";
 import moment from "moment";
+import { VesselManager, VesselRecord } from "@/components/jobpack/vessel-manager";
+import { SOWDialog } from "@/components/jobpack/sow-dialog";
+
 
 type JobpackValues = z.infer<typeof JobpackSchema>;
 
@@ -64,6 +83,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [inspectionSearch, setInspectionSearch] = useState("");
+  const [inspectionModeTab, setInspectionModeTab] = useState("diving");
   const [selectedStructures, setSelectedStructures] = useState<any[]>([]);
   // Managed per structure: Key is `${s.type}-${s.id}`
   const [inspectionsByStruct, setInspectionsByStruct] = useState<Record<string, any[]>>({});
@@ -71,6 +91,15 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const [compTypesByStruct, setCompTypesByStruct] = useState<Record<string, string[]>>({});
   const [jobTypeByStruct, setJobTypeByStruct] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [vesselHistory, setVesselHistory] = useState<VesselRecord[]>([]);
+
+  // SOW Dialog state
+  const [sowDialogOpen, setSOWDialogOpen] = useState(false);
+  const [sowStructure, setSOWStructure] = useState<any>(null);
+  const [sowComponents, setSOWComponents] = useState<any[]>([]);
+
+  const searchParams = useSearchParams();
+
 
 
 
@@ -86,6 +115,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const { data: inspectionTypes } = useSWR("/api/inspection-type?pageSize=1000", fetcher);
   const { data: contractors } = useSWR("/api/library/CONTR_NAM", fetcher);
   const { data: compTypesLib } = useSWR("/api/components", fetcher);
+
 
   // Consolidation Logic
   const [consolidationOpen, setConsolidationOpen] = useState(false);
@@ -120,10 +150,60 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
     },
   });
 
+  // Simple contractor options - just map the data directly
+  const contractorOptions = useMemo(() => {
+    if (!contractors?.data) {
+      return [];
+    }
+
+    // Filter out deleted contractors first
+    const activeContractors = contractors.data.filter((c: any) => {
+      // Active if lib_delete is null, 0, "0", or empty
+      return !c.lib_delete || c.lib_delete === 0 || c.lib_delete === "0" || c.lib_delete === "";
+    });
+
+    // Use a Map to remove duplicates by lib_id
+    const uniqueMap = new Map();
+    activeContractors.forEach((c: any, index: number) => {
+      const val = String(c.lib_id || '').trim();
+      const label = String(c.lib_desc || '').trim();
+
+      if (val && label && !uniqueMap.has(val)) {
+        uniqueMap.set(val, { label, value: val });
+      }
+    });
+
+    const options = Array.from(uniqueMap.values());
+
+    return options;
+  }, [contractors]);
+
   useEffect(() => {
-    if (data?.data) {
+    // Wait for both data and contractors to load
+    if (data?.data && contractors) {
       const jobpack = data.data;
       const metadata = jobpack.metadata || {};
+
+      // Simple: just use the contractor value from metadata
+      const contractorValue = String(metadata.contrac || "").trim();
+
+      // Vessel History Migration/Initialization
+      let loadedVessels: VesselRecord[] = [];
+      if (metadata.vessel_history && Array.isArray(metadata.vessel_history)) {
+        loadedVessels = metadata.vessel_history;
+      } else if (metadata.vessel || jobpack.vessel) {
+        // Migration: Create initial record from legacy single field
+        const legacyName = metadata.vessel || jobpack.vessel;
+        // Use istart as default mob date if available, otherwise today
+        const legacyDate = metadata.istart || moment().format("YYYY-MM-DD");
+        loadedVessels = [{
+          id: crypto.randomUUID(),
+          name: String(legacyName),
+          date: legacyDate
+        }];
+      }
+      setVesselHistory(loadedVessels);
+
       form.reset({
         ...jobpack,
         ...metadata,
@@ -136,17 +216,19 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
         subsea: metadata.subsea || 0,
         istart: metadata.istart || "",
         iend: metadata.iend || "",
-        contrac: (metadata.contrac || jobpack.contrac) ? String(metadata.contrac || jobpack.contrac) : "",
+        contrac: contractorValue,
         comprep: metadata.comprep || "",
-        vessel: metadata.vessel || "",
+        vessel: loadedVessels.length > 0
+          ? [...loadedVessels].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].name
+          : (metadata.vessel || ""),
         contract_ref: metadata.contract_ref || "",
         contractor_ref: metadata.contractor_ref || "",
         site_hrs: metadata.site_hrs || 0,
       });
+
       if (metadata.structures) setSelectedStructures(metadata.structures);
       if (metadata.inspections) {
         if (Array.isArray(metadata.inspections)) {
-          // Migration: Assign legacy global list to all structures
           const map: Record<string, any[]> = {};
           (metadata.structures || []).forEach((s: any) => {
             map[`${s.type}-${s.id}`] = metadata.inspections;
@@ -159,7 +241,8 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
       if (metadata.compTypes) setCompTypesByStruct(metadata.compTypes);
       if (metadata.jobTypes) setJobTypeByStruct(metadata.jobTypes);
     }
-  }, [data, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, contractorOptions]);
 
   const availableStructures = useMemo(() => {
     const plats = platforms?.data?.map((p: any) => ({
@@ -203,12 +286,52 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
     });
   }, [inspectionTypes, inspectionSearch]);
 
-  const contractorOptions = useMemo(() => {
-    if (!contractors?.data) return [];
-    return contractors.data
-      .filter((c: any) => !c.lib_delete || c.lib_delete === 0)
-      .map((c: any) => ({ label: c.lib_desc, value: String(c.lib_id || c.lib_val) }));
-  }, [contractors]);
+  // Handle SOW dialog opening from URL parameters
+  // Handle SOW dialog opening from URL parameters
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const structureKey = searchParams.get("structure");
+
+    if (tab === "sow" && selectedStructures.length > 0) {
+      let structure = null;
+      if (structureKey) {
+        structure = selectedStructures.find(
+          (s) => `${s.type}-${s.id}` === structureKey
+        );
+      } else {
+        // Default to first structure if none specified in URL
+        structure = selectedStructures[0];
+      }
+
+      if (structure) {
+        setSOWStructure(structure);
+        setActiveStructKey(`${structure.type}-${structure.id}`);
+        setSOWDialogOpen(true);
+      }
+    }
+  }, [searchParams, selectedStructures]);
+
+  // Fetch components when SOW dialog opens
+  useEffect(() => {
+    const fetchComponents = async () => {
+      if (sowStructure && sowDialogOpen) {
+        try {
+          console.log("Fetching components for structure:", sowStructure.id);
+          const response = await fetch(`/api/structure-components?structure_id=${sowStructure.id}`);
+          const result = await response.json();
+          console.log("Components API response:", result);
+          setSOWComponents(result.data || []);
+        } catch (error) {
+          console.error("Error fetching components:", error);
+          setSOWComponents([]);
+        }
+      }
+    };
+
+    fetchComponents();
+  }, [sowStructure, sowDialogOpen]);
+
+
 
   const toggleStructure = (s: any) => {
     const isSelected = selectedStructures.some((item) => item.id === s.id && item.type === s.type);
@@ -263,12 +386,13 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
     }
   }, [selectedStructures, activeStructKey]);
 
-  const toggleInspection = (insp: any) => {
-    if (!activeStructKey) {
+  const toggleInspection = (insp: any, structureKey?: string) => {
+    const targetKey = structureKey || activeStructKey;
+    if (!targetKey) {
       toast.error("Please select a structure first");
       return;
     }
-    const currentList = inspectionsByStruct[activeStructKey] || [];
+    const currentList = inspectionsByStruct[targetKey] || [];
     const exists = currentList.some((item) => item.id === insp.id);
 
     let newList: any[] = [];
@@ -335,7 +459,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
 
     setInspectionsByStruct({
       ...inspectionsByStruct,
-      [activeStructKey]: newList
+      [targetKey]: newList
     });
   };
 
@@ -383,6 +507,10 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
         inspections: cleanInspections,
         compTypes: compTypesByStruct,
         jobTypes: jobTypeByStruct,
+        vessel_history: vesselHistory,
+        vessel: vesselHistory.length > 0
+          ? [...vesselHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].name
+          : (values.vessel || ""),
       },
     };
 
@@ -411,7 +539,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
 
   const selectedContractorId = form.watch("contrac");
   const selectedContractor = useMemo(() => {
-    return contractors?.data?.find((c: any) => String(c.lib_id || c.lib_val) === selectedContractorId);
+    return contractors?.data?.find((c: any) => String(c.lib_id) === selectedContractorId);
   }, [contractors, selectedContractorId]);
 
   const isClosed = !isNew && data?.data?.status === "CLOSED";
@@ -476,6 +604,28 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                   Consolidate
                 </Button>
               )}
+              {!isNew && selectedStructures.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (activeStructKey) {
+                      const activeStruct = selectedStructures.find(
+                        (s) => `${s.type}-${s.id}` === activeStructKey
+                      );
+                      if (activeStruct) {
+                        router.push(`/dashboard/jobpack/${id}?tab=sow&structure=${activeStructKey}`);
+                      }
+                    } else {
+                      toast.error("Please select a structure first");
+                    }
+                  }}
+                  className="rounded-xl h-12 px-6 font-bold border-2 border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all gap-2"
+                >
+                  <FileText className="h-4 w-4" />
+                  SOW
+                </Button>
+              )}
               <Button
                 type="button"
                 onClick={() => form.handleSubmit((v) => onSubmit(v))()}
@@ -534,16 +684,23 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <FormFieldWrap
-                        label="Plan Type"
-                        name="plantype"
-                        form={form}
-                        ftype="vselect"
-                        options={[
-                          { label: "INSTANT", value: "INSTANT" },
-                          { label: "PLANNED", value: "PLANNED" }
-                        ]}
-                      />
+                      {isClosed ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="w-full text-sm font-medium">Plan Type</div>
+                          <Input value={form.getValues("plantype") || ""} disabled className="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500" />
+                        </div>
+                      ) : (
+                        <FormFieldWrap
+                          label="Plan Type"
+                          name="plantype"
+                          form={form}
+                          ftype="vselect"
+                          options={[
+                            { label: "INSTANT", value: "INSTANT" },
+                            { label: "PLANNED", value: "PLANNED" }
+                          ]}
+                        />
+                      )}
 
                     </div>
 
@@ -553,9 +710,9 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                         control={form.control}
                         name="divetyp"
                         render={({ field }) => (
-                          <div className="h-32 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl p-3 bg-white dark:bg-slate-950 space-y-2 custom-scrollbar">
-                            {['ROV', 'AIR DIVING', 'SAT DIVING', 'ROPE ACCESS'].map((mode) => (
-                              <div key={mode} className="flex items-center space-x-3 p-1 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-lg transition-colors">
+                          <div className="flex gap-4 border border-slate-200 dark:border-slate-800 rounded-xl p-3 bg-white dark:bg-slate-950">
+                            {['ROV', 'AIR DIVING', 'SAT DIVING'].map((mode) => (
+                              <div key={mode} className="flex items-center space-x-2 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-lg transition-colors px-2 py-1">
                                 <Checkbox
                                   id={mode}
                                   checked={field.value?.includes(mode)}
@@ -567,7 +724,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                     field.onChange(newVals.join(','));
                                   }}
                                 />
-                                <Label htmlFor={mode} className="text-xs font-bold uppercase cursor-pointer flex-1">{mode}</Label>
+                                <Label htmlFor={mode} className="text-xs font-bold uppercase cursor-pointer">{mode}</Label>
                               </div>
                             ))}
                           </div>
@@ -583,21 +740,58 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormFieldWrap label="Start Date" name="istart" form={form} ftype="vertical" type="date" />
-                      <FormFieldWrap label="End Date" name="iend" form={form} ftype="vertical" type="date" disabled />
-                    </div>
+
+                    {isClosed ? (
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormFieldWrap label="Start Date" name="istart" form={form} ftype="vertical" type="date" disabled />
+                        <FormFieldWrap label="End Date" name="iend" form={form} ftype="vertical" type="date" disabled />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <FormFieldWrap label="Start Date" name="istart" form={form} ftype="vertical" type="date" />
+                      </div>
+                    )}
+
 
                     <div className="flex gap-4 items-start">
                       <div className="flex-1 space-y-2">
-                        <FormFieldWrap
-                          label="Contractor"
-                          name="contrac"
-                          form={form}
-                          ftype="vselect"
-                          options={contractorOptions}
-                          placeholder="Select Contractor"
-                        />
+                        {isClosed ? (
+                          <div className="flex flex-col gap-2">
+                            <div className="w-full text-sm font-medium">Contractor</div>
+                            <Input value={selectedContractor?.lib_desc || form.getValues("contrac") || ""} disabled className="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500" />
+                          </div>
+                        ) : (
+                          <FormField
+                            control={form.control}
+                            name="contrac"
+                            render={({ field }) => (
+                              <FormItem className="flex flex-col gap-2">
+                                <div className="w-full text-sm font-medium">Contractor</div>
+                                <Select
+                                  key={field.value || 'no-contractor'}
+                                  onValueChange={field.onChange}
+                                  value={field.value || undefined}
+                                  defaultValue={field.value || undefined}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select Contractor" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      <SelectLabel>Contractor</SelectLabel>
+                                      {contractorOptions.map((item, index) => (
+                                        <SelectItem key={index} value={item.value}>
+                                          {item.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        )}
                         {selectedContractor?.lib_com && (
                           <div className="text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 leading-relaxed">
                             <span className="font-bold uppercase text-[9px] text-slate-400 block mb-0.5">Address / Details</span>
@@ -606,7 +800,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                         )}
                       </div>
                       {selectedContractor && (
-                        <div className="w-20 h-20 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white p-1 flex items-center justify-center shrink-0 shadow-sm mt-6">
+                        <div className="w-20 h-20 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 flex items-center justify-center shrink-0 shadow-sm mt-6">
                           {selectedContractor.logo_url ? (
                             <img
                               src={selectedContractor.logo_url}
@@ -614,13 +808,25 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                               className="w-full h-full object-contain rounded-xl"
                             />
                           ) : (
-                            <div className="text-[8px] text-slate-300 font-bold uppercase text-center">No Logo</div>
+                            <div className="text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase text-center">No Logo</div>
                           )}
                         </div>
                       )}
                     </div>
                     <FormFieldWrap label="Company Rep" name="comprep" form={form} ftype="vertical" />
-                    <FormFieldWrap label="Vessel" name="vessel" form={form} ftype="vertical" />
+                    <VesselManager
+                      vessels={vesselHistory}
+                      onChange={(updated) => {
+                        setVesselHistory(updated);
+                        // Update the form field for 'vessel' to be the latest date
+                        const latest = updated.length > 0
+                          ? [...updated].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].name
+                          : "";
+                        form.setValue("vessel", latest);
+                      }}
+                      isReadOnly={isClosed}
+                    />
+
 
 
 
@@ -665,57 +871,61 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
 
               {/* Right Column: Selections */}
               <div className="xl:col-span-8 space-y-6">
-                {/* 1. Asset Inventory (Add to Scope) */}
-                <Card className="rounded-[2rem] border-slate-200/60 dark:border-slate-800/60 shadow-lg overflow-hidden border-orange-100 bg-orange-50/10">
-                  <CardHeader className="bg-white/50 dark:bg-slate-900/50 border-b p-4 py-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Search className="w-4 h-4" /></div>
-                        <span className="font-bold text-sm uppercase text-slate-700">Add Assets to Scope</span>
+                {/* 1. Asset Inventory (Add to Scope) - Hidden if Closed */}
+                {!isClosed && (
+                  <Card className="rounded-[2rem] border-slate-200/60 dark:border-slate-800/60 shadow-lg overflow-hidden border-orange-100 dark:border-slate-800 bg-orange-50/10 dark:bg-slate-900/20">
+                    <CardHeader className="bg-white/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 p-4 py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg"><Search className="w-4 h-4" /></div>
+                          <span className="font-bold text-sm uppercase text-slate-700 dark:text-slate-200">Add Structure to Scope</span>
+                        </div>
+                        <Input
+                          placeholder="Search & Add Structure..."
+                          className="w-64 h-8 text-xs rounded-lg bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                        />
                       </div>
-                      <Input
-                        placeholder="Search & Add Assets..."
-                        className="w-64 h-8 text-xs rounded-lg bg-white"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-0 border-b max-h-[200px] overflow-y-auto custom-scrollbar bg-white">
-                    <table className="w-full text-left">
-                      <tbody className="divide-y divide-slate-50">
-                        {filteredStructures.slice(0, 50).map((s: any) => {
-                          const isSelected = selectedStructures.some(sel => sel.id === s.id && sel.type === s.type);
-                          return (
-                            <tr key={`${s.type}-${s.id}`} className="hover:bg-slate-50">
-                              <td className="px-4 py-2 text-xs font-bold text-slate-700">{s.title}</td>
-                              <td className="px-4 py-2 text-xs text-slate-500">{s.fieldName}</td>
-                              <td className="px-4 py-2 text-xs text-slate-400 uppercase">{s.type}</td>
-                              <td className="px-4 py-2 text-right">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 text-[10px] uppercase font-bold text-blue-600 hover:bg-blue-50"
-                                  onClick={() => toggleStructure(s)}
-                                  disabled={isSelected}
-                                >
-                                  {isSelected ? "Added" : "Add"}
-                                </Button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {filteredStructures.length === 0 && (
-                          <tr>
-                            <td colSpan={3} className="px-4 py-8 text-center text-xs text-slate-400 uppercase font-bold">
-                              No assets found
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </CardContent>
-                </Card>
+                    </CardHeader>
+                    {searchQuery && (
+                      <CardContent className="p-0 border-b border-slate-100 dark:border-slate-800 max-h-[200px] overflow-y-auto custom-scrollbar bg-white dark:bg-slate-950">
+                        <table className="w-full text-left">
+                          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                            {filteredStructures.slice(0, 50).map((s: any) => {
+                              const isSelected = selectedStructures.some(sel => sel.id === s.id && sel.type === s.type);
+                              return (
+                                <tr key={`${s.type}-${s.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                                  <td className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">{s.title}</td>
+                                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{s.fieldName}</td>
+                                  <td className="px-4 py-2 text-xs text-slate-400 dark:text-slate-500 uppercase">{s.type}</td>
+                                  <td className="px-4 py-2 text-right">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                      onClick={() => toggleStructure(s)}
+                                      disabled={isSelected}
+                                    >
+                                      {isSelected ? "Added" : "Add"}
+                                    </Button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {filteredStructures.length === 0 && (
+                              <tr>
+                                <td colSpan={4} className="px-4 py-8 text-center text-xs text-slate-400 uppercase font-bold">
+                                  No structures found
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </CardContent>
+                    )}
+                  </Card>
+                )}
 
                 {/* 2. Unified Scope Definition Board */}
                 <Card className="rounded-[2.5rem] border-slate-200/60 dark:border-slate-800/60 shadow-2xl overflow-hidden flex flex-col min-h-[600px] bg-white dark:bg-slate-950">
@@ -728,7 +938,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                           <h3 className="font-black text-sm uppercase tracking-wide text-slate-800 dark:text-slate-200">Work Scope</h3>
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Defined Structures</p>
                         </div>
-                        <Badge variant="secondary" className="bg-white shadow-sm border text-slate-600">{selectedStructures.length}</Badge>
+                        <Badge variant="secondary" className="bg-white dark:bg-slate-800 shadow-sm border dark:border-slate-700 text-slate-600 dark:text-slate-200">{selectedStructures.length}</Badge>
                       </div>
                       <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
                         {selectedStructures.length > 0 ? selectedStructures.map((s, i) => {
@@ -744,15 +954,18 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                 "group relative p-4 rounded-2xl border transition-all cursor-pointer hover:shadow-md",
                                 isActive
                                   ? "bg-white dark:bg-slate-800 border-blue-500 shadow-lg shadow-blue-500/10 ring-1 ring-blue-500/20"
-                                  : "bg-white dark:bg-slate-950 border-transparent hover:border-slate-200"
+                                  : "bg-white dark:bg-slate-950/50 border-transparent hover:border-slate-200 dark:hover:border-slate-800"
                               )}
                             >
                               <div className="flex justify-between items-start mb-2">
                                 <div className="flex items-center gap-2">
-                                  <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black", isActive ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-400")}>
+                                  <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black", isActive ? "bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400" : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500")}>
                                     {i + 1}
                                   </div>
-                                  <span className={cn("font-bold text-sm", isActive ? "text-slate-900" : "text-slate-600")}>{s.title}</span>
+                                  <div className="flex flex-col">
+                                    <span className={cn("font-bold text-sm", isActive ? "text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-400")}>{s.title}</span>
+                                    <span className="text-[9px] text-slate-400 dark:text-slate-500 lowercase">{s.type}</span>
+                                  </div>
                                 </div>
                                 <Button
                                   size="icon"
@@ -768,23 +981,50 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                               <div className="flex flex-wrap gap-1.5 min-h-[1.5rem]">
                                 {assignedInspections.length > 0 ? (
                                   assignedInspections.map((insp: any) => (
-                                    <span key={insp.id} className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-600 text-[9px] font-bold border border-blue-100 uppercase tracking-tight">
-                                      {insp.code}
-                                    </span>
+                                    <TooltipProvider key={insp.id}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="group/badge relative px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[9px] font-bold border border-blue-100 dark:border-blue-500/20 uppercase tracking-tight cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
+                                            {insp.code}
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (!isClosed && structureStatus[key]?.status !== "CLOSED") {
+                                                  // Show confirmation dialog
+                                                  const confirmed = window.confirm(
+                                                    `Are you sure you want to remove "${insp.name}" (${insp.code}) from this structure?\n\nThis action cannot be undone.`
+                                                  );
+                                                  if (confirmed) {
+                                                    toggleInspection(insp, key);
+                                                  }
+                                                }
+                                              }}
+                                              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/badge:opacity-100 transition-opacity hover:bg-red-600"
+                                              disabled={isClosed || structureStatus[key]?.status === "CLOSED"}
+                                            >
+                                              <X className="w-2 h-2" />
+                                            </button>
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p className="text-xs font-medium">{insp.name}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
                                   ))
                                 ) : (
-                                  <span className="text-[10px] italic text-slate-400">No inspections assigned</span>
+                                  <span className="text-[10px] italic text-slate-400 dark:text-slate-500">No inspections assigned</span>
                                 )}
                               </div>
                             </div>
                           );
                         }) : (
                           <div className="flex flex-col items-center justify-center h-40 text-center p-4">
-                            <div className="w-10 h-10 rounded-full bg-slate-200/50 flex items-center justify-center mb-2 text-slate-400">
+                            <div className="w-10 h-10 rounded-full bg-slate-200/50 dark:bg-slate-800/50 flex items-center justify-center mb-2 text-slate-400 dark:text-slate-500">
                               <Layers2 className="w-5 h-5" />
                             </div>
-                            <p className="text-xs font-bold text-slate-400">No structures added</p>
-                            <p className="text-[10px] text-slate-400 mt-1">Search assets above to begin value</p>
+                            <p className="text-xs font-bold text-slate-400 dark:text-slate-500">No structures added</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1">Search assets above to begin value</p>
                           </div>
                         )}
                       </div>
@@ -801,7 +1041,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                 {selectedStructures.find(s => `${s.type}-${s.id}` === activeStructKey)?.title}
                               </h3>
                             </div>
-                            <p className="text-xs text-slate-500 font-medium ml-8">Select required inspections for this location</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium ml-8">Select required inspections for this location</p>
 
                             {/* Job Type Selector (Per Structure) */}
                             <div className="mt-4 mb-2">
@@ -816,7 +1056,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                       variant={isSelected ? "default" : "outline"}
                                       className={cn("select-none transition-colors px-3 py-1",
                                         isLocked ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer",
-                                        isSelected ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50")}
+                                        isSelected ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800")}
                                       onClick={() => !isLocked && setJobTypeByStruct({ ...jobTypeByStruct, [activeStructKey]: jt })}
                                     >
                                       {jt}
@@ -850,7 +1090,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                             variant={isSelected ? "default" : "secondary"}
                                             className={cn("border select-none transition-colors px-3 py-1",
                                               isLocked ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer",
-                                              isSelected ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50")}
+                                              isSelected ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800")}
                                             onClick={() => {
                                               if (isLocked) return;
                                               const newSelection = isSelected
@@ -870,76 +1110,165 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                               </div>
                             )}
 
-                            {/* Quick Filter */}
-                            <div className="mt-4 relative">
-                              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                              <Input
-                                placeholder="Filter inspection types..."
-                                className="h-9 pl-9 text-xs rounded-xl bg-slate-50 border-slate-200"
-                                value={inspectionSearch}
-                                onChange={(e) => setInspectionSearch(e.target.value)}
-                              />
-                            </div>
                           </div>
 
                           <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-white dark:bg-slate-950">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {inspectionTypes?.data?.filter((insp: any) => {
-                                // Text Filter
-                                if (inspectionSearch) {
-                                  const search = inspectionSearch.toLowerCase();
-                                  const matches = (insp.name?.toLowerCase().includes(search)) ||
-                                    (insp.code?.toLowerCase().includes(search));
-                                  if (!matches) return false;
-                                }
-                                // Structure Type Filter
-                                if (activeStructKey) {
-                                  if (activeStructKey.startsWith("PLATFORM")) {
-                                    const val = insp.metadata?.platform;
-                                    return val === 1 || val === "1" || val === true;
-                                  }
-                                  if (activeStructKey.startsWith("PIPELINE")) {
-                                    const val = insp.metadata?.pipeline;
-                                    return val === 1 || val === "1" || val === true;
-                                  }
-                                }
-                                return true;
-                              }).map((insp: any) => {
-                                const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
+                            <Tabs value={inspectionModeTab} onValueChange={setInspectionModeTab} className="w-full">
+                              <TabsList className="grid w-full grid-cols-2 mb-4">
+                                <TabsTrigger value="diving" className="text-xs font-bold uppercase">Diving</TabsTrigger>
+                                <TabsTrigger value="rov" className="text-xs font-bold uppercase">ROV</TabsTrigger>
+                              </TabsList>
 
-                                const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
-                                return (
-                                  <div
-                                    key={insp.id}
-                                    onClick={() => !isLocked && toggleInspection(insp)}
-                                    className={cn(
-                                      "flex items-start gap-3 p-3 rounded-xl border transition-all hover:shadow-md",
-                                      isLocked ? "opacity-60 cursor-not-allowed pointer-events-none" : "cursor-pointer",
-                                      isSelected ? "bg-blue-50 border-blue-500 shadow-lg shadow-blue-500/10" : "bg-white dark:bg-slate-900 border-slate-200 hover:border-blue-300"
-                                    )}
-                                  >
-                                    <div className={cn(
-                                      "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors shrink-0",
-                                      isSelected ? "bg-blue-600 border-blue-600" : "border-slate-300 bg-white"
-                                    )}>
-                                      {isSelected && <CheckCircle className="w-3.5 h-3.5 text-white" />}
-                                    </div>
-                                    <div className="flex flex-col min-w-0">
-                                      <span className={cn("font-bold text-xs truncate", isSelected ? "text-blue-900" : "text-slate-700")}>{insp.name}</span>
-                                      <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
-                                      <div className="flex gap-1 mt-1 flex-wrap">
-                                        {(insp.metadata?.rov === 1 || insp.metadata?.rov === "1" || insp.metadata?.rov === true) && (
-                                          <Badge variant="secondary" className="text-[8px] h-4 px-1 bg-sky-100 text-sky-700 hover:bg-sky-200 border-sky-200">ROV</Badge>
-                                        )}
-                                        {(insp.metadata?.diving === 1 || insp.metadata?.diving === "1" || insp.metadata?.diving === true) && (
-                                          <Badge variant="secondary" className="text-[8px] h-4 px-1 bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-200">DIVING</Badge>
-                                        )}
-                                      </div>
-                                    </div>
+                              <TabsContent value="diving" className="space-y-4">
+                                <div className="relative">
+                                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                  <Input
+                                    placeholder="Search diving inspection types..."
+                                    className="h-9 pl-9 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                    value={inspectionSearch}
+                                    onChange={(e) => setInspectionSearch(e.target.value)}
+                                  />
+                                </div>
+                                {inspectionSearch && (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {inspectionTypes?.data?.filter((insp: any) => {
+                                      // Diving filter
+                                      const isDiving = insp.metadata?.diving === 1 || insp.metadata?.diving === "1" || insp.metadata?.diving === true;
+                                      if (!isDiving) return false;
+
+                                      // Text Filter
+                                      if (inspectionSearch) {
+                                        const search = inspectionSearch.toLowerCase();
+                                        const matches = (insp.name?.toLowerCase().includes(search)) ||
+                                          (insp.code?.toLowerCase().includes(search));
+                                        if (!matches) return false;
+                                      }
+                                      // Structure Type Filter
+                                      if (activeStructKey) {
+                                        if (activeStructKey.startsWith("PLATFORM")) {
+                                          const val = insp.metadata?.platform;
+                                          return val === 1 || val === "1" || val === true;
+                                        }
+                                        if (activeStructKey.startsWith("PIPELINE")) {
+                                          const val = insp.metadata?.pipeline;
+                                          return val === 1 || val === "1" || val === true;
+                                        }
+                                      }
+                                      return true;
+                                    }).map((insp: any) => {
+                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
+                                      const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
+                                      return (
+                                        <div
+                                          key={insp.id}
+                                          className={cn(
+                                            "flex items-start gap-3 p-3 rounded-xl border transition-all",
+                                            isLocked ? "opacity-60 cursor-not-allowed" : "",
+                                            isSelected
+                                              ? "bg-amber-50 dark:bg-amber-500/10 border-amber-500 shadow-lg shadow-amber-500/10"
+                                              : "bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-700"
+                                          )}
+                                        >
+                                          <div className="flex flex-col flex-1 min-w-0">
+                                            <span className={cn("font-bold text-xs truncate", isSelected ? "text-amber-900 dark:text-amber-100" : "text-slate-700 dark:text-slate-200")}>{insp.name}</span>
+                                            <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
+                                          </div>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className={cn(
+                                              "h-6 text-[10px] uppercase font-bold shrink-0",
+                                              isSelected
+                                                ? "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/20"
+                                                : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                            )}
+                                            onClick={() => !isLocked && toggleInspection(insp)}
+                                            disabled={isLocked}
+                                          >
+                                            {isSelected ? "Added" : "Add"}
+                                          </Button>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
-                                );
-                              })}
-                            </div>
+                                )}
+                              </TabsContent>
+
+                              <TabsContent value="rov" className="space-y-4">
+                                <div className="relative">
+                                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                  <Input
+                                    placeholder="Search ROV inspection types..."
+                                    className="h-9 pl-9 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                    value={inspectionSearch}
+                                    onChange={(e) => setInspectionSearch(e.target.value)}
+                                  />
+                                </div>
+                                {inspectionSearch && (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {inspectionTypes?.data?.filter((insp: any) => {
+                                      // ROV filter
+                                      const isROV = insp.metadata?.rov === 1 || insp.metadata?.rov === "1" || insp.metadata?.rov === true;
+                                      if (!isROV) return false;
+
+                                      // Text Filter
+                                      if (inspectionSearch) {
+                                        const search = inspectionSearch.toLowerCase();
+                                        const matches = (insp.name?.toLowerCase().includes(search)) ||
+                                          (insp.code?.toLowerCase().includes(search));
+                                        if (!matches) return false;
+                                      }
+                                      // Structure Type Filter
+                                      if (activeStructKey) {
+                                        if (activeStructKey.startsWith("PLATFORM")) {
+                                          const val = insp.metadata?.platform;
+                                          return val === 1 || val === "1" || val === true;
+                                        }
+                                        if (activeStructKey.startsWith("PIPELINE")) {
+                                          const val = insp.metadata?.pipeline;
+                                          return val === 1 || val === "1" || val === true;
+                                        }
+                                      }
+                                      return true;
+                                    }).map((insp: any) => {
+                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
+                                      const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
+                                      return (
+                                        <div
+                                          key={insp.id}
+                                          className={cn(
+                                            "flex items-start gap-3 p-3 rounded-xl border transition-all",
+                                            isLocked ? "opacity-60 cursor-not-allowed" : "",
+                                            isSelected
+                                              ? "bg-sky-50 dark:bg-sky-500/10 border-sky-500 shadow-lg shadow-sky-500/10"
+                                              : "bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-700"
+                                          )}
+                                        >
+                                          <div className="flex flex-col flex-1 min-w-0">
+                                            <span className={cn("font-bold text-xs truncate", isSelected ? "text-sky-900 dark:text-sky-100" : "text-slate-700 dark:text-slate-200")}>{insp.name}</span>
+                                            <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
+                                          </div>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className={cn(
+                                              "h-6 text-[10px] uppercase font-bold shrink-0",
+                                              isSelected
+                                                ? "text-sky-600 dark:text-sky-400 bg-sky-100 dark:bg-sky-500/20"
+                                                : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                            )}
+                                            onClick={() => !isLocked && toggleInspection(insp)}
+                                            disabled={isLocked}
+                                          >
+                                            {isSelected ? "Added" : "Add"}
+                                          </Button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </TabsContent>
+                            </Tabs>
                           </div>
                         </>
                       ) : (
@@ -958,6 +1287,33 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
         </Form>
       </div>
 
-    </div >
+      {/* SOW Dialog */}
+      {sowStructure && sowDialogOpen && (
+        <SOWDialog
+          open={sowDialogOpen}
+          onOpenChange={setSOWDialogOpen}
+          jobpackId={Number(id)}
+          jobpackTitle={data?.data?.name}
+          structure={{
+            id: sowStructure.id,
+            type: sowStructure.type,
+            title: sowStructure.title,
+          }}
+          availableStructures={selectedStructures || []}
+          onSwitchStructure={(newStruct) => setSOWStructure(newStruct)}
+          inspectionTypes={inspectionsByStruct[`${sowStructure.type}-${sowStructure.id}`] || []}
+          components={sowComponents}
+          onSave={() => {
+            // Optionally refresh data
+            setSOWDialogOpen(false);
+          }}
+          readOnly={
+            data?.data?.status === "CLOSED" ||
+            structureStatus?.[`${sowStructure.type}-${sowStructure.id}`]?.status === "CLOSED"
+          }
+        />
+      )}
+
+    </div>
   );
 }

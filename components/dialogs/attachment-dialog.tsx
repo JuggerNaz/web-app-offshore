@@ -38,10 +38,12 @@ export function AttachmentDialog() {
     data.append("source_type", pageType);
     data.append("file", file);
 
-    await fetcher(`/api/attachment`, {
-      method: "POST",
-      body: data,
-    }).then((res) => {
+    try {
+      await fetcher(`/api/attachment`, {
+        method: "POST",
+        body: data,
+      });
+
       setOpen(false);
       mutate(`/api/attachment/${pageType}/${pageId}`);
       setFormData({
@@ -50,7 +52,10 @@ export function AttachmentDialog() {
       });
       setFile(null);
       toast.success("Attachment added successfully");
-    });
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      toast.error(error.message || "Failed to upload attachment");
+    }
   };
 
   const handleChange = (e: any) => {

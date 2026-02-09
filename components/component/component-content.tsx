@@ -9,7 +9,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity } from "lucide-react";
+import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2 } from "lucide-react";
+import { DeleteConfirmDialog } from "../dialogs/delete-confirm-dialog";
 import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { ComponentEditDialog, EditableComponent } from "@/components/dialogs/component-edit-dialog";
@@ -54,6 +55,8 @@ export default function ComponentContent() {
   const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingComponent, setEditingComponent] = useState<EditableComponent | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [isLoadingTypes, setIsLoadingTypes] = useState(true);
 
   // Fetch component types
@@ -116,6 +119,22 @@ export default function ComponentContent() {
   const handleEditComponent = (component: Component) => {
     setEditingComponent(component as EditableComponent);
     setEditDialogOpen(true);
+  };
+
+  const handleDeleteItem = async () => {
+    if (!deleteId) return;
+    try {
+      setDeleteLoading(true);
+      await fetcher(`/api/structure-components/item/${deleteId}`, {
+        method: "DELETE",
+      });
+      if (apiUrl) mutate(apiUrl);
+      setDeleteId(null);
+    } catch (error) {
+      console.error("Delete failed", error);
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const handleDialogOpenChange = (isOpen: boolean) => {
@@ -255,7 +274,12 @@ export default function ComponentContent() {
                   filteredComponents.map((comp: Component) => (
                     <tr
                       key={comp.id}
-                      className="group border-b border-slate-50 dark:border-slate-800 transition-all hover:bg-slate-50/50 dark:hover:bg-slate-800/30 cursor-pointer"
+                      className={cn(
+                        "group border-b border-slate-50 dark:border-slate-800 transition-all cursor-pointer",
+                        comp.is_deleted
+                          ? "bg-red-50/60 hover:bg-red-100/60 dark:bg-rose-950/20 dark:hover:bg-rose-950/30"
+                          : "hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
+                      )}
                       onClick={() => handleRowClick(comp)}
                     >
                       <td className="px-4 py-4 align-middle">
@@ -353,18 +377,9 @@ export default function ComponentContent() {
                             {comp.is_deleted && (
                               <DropdownMenuItem
                                 className="rounded-lg py-2.5 font-bold cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/20"
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                   e.stopPropagation();
-                                  if (!confirm("Are you sure you want to permanently delete this record? This action cannot be undone.")) return;
-
-                                  try {
-                                    await fetcher(`/api/structure-components/item/${comp.id}`, {
-                                      method: "DELETE",
-                                    });
-                                    if (apiUrl) mutate(apiUrl);
-                                  } catch (error) {
-                                    console.error("Action failed", error);
-                                  }
+                                  setDeleteId(comp.id);
                                 }}
                               >
                                 Permanent Delete
@@ -400,6 +415,14 @@ export default function ComponentContent() {
           listKey={apiUrl}
         />
       )}
+      <DeleteConfirmDialog
+        open={deleteId !== null}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+        onConfirm={handleDeleteItem}
+        loading={deleteLoading}
+        title="Delete Component"
+        description="Are you sure you want to permanently delete this record? This action cannot be undone and will remove the component from the system."
+      />
     </div>
   );
 }
