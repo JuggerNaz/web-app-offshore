@@ -9,6 +9,7 @@ import { useEffect, useState, useMemo } from "react";
 import { getStoragePublicUrl } from "@/utils/storage";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -161,7 +162,7 @@ export default function PlatformPage() {
       </div>
       <h2 className="text-xl font-black tracking-tight mb-2">Sync Error</h2>
       <p className="text-slate-500 max-w-xs mx-auto mb-6">Failed to retrieve platform data. Please check your connection.</p>
-      <Button onClick={() => window.location.reload()} variant="outline" className="rounded-xl px-8 font-bold">Retry</Button>
+      <Button onClick={() => window.location.reload()} variant="outline" className="rounded-xl px-8 font-black uppercase tracking-widest border-2 hover:bg-slate-50 transition-all">Retry</Button>
     </div>
   );
 
@@ -191,46 +192,56 @@ export default function PlatformPage() {
             </div>
           </div>
 
-          <Button asChild className="rounded-xl h-12 px-6 font-bold bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xl hover:opacity-90 transition-all gap-2">
+          <Button asChild className="rounded-2xl h-12 px-8 font-black uppercase tracking-wider bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 shadow-2xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all gap-3 border-0">
             <Link href="/dashboard/field/platform/new">
-              <Plus className="h-4 w-4" />
+              <Plus className="h-5 w-5 stroke-[3px]" />
               Register Platform
             </Link>
           </Button>
         </div>
 
         {/* Controls Bar */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row gap-4 mb-6 items-center">
           {/* Search */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <div className="relative flex-1 group w-full">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
             <Input
               type="text"
               placeholder="Search platforms..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-11 pr-4 h-12 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm focus-visible:ring-blue-600/20 focus-visible:border-blue-600 transition-all text-sm font-medium"
             />
           </div>
 
           {/* View Toggle */}
-          <div className="flex gap-2">
-            <Button
-              variant={viewMode === "card" ? "default" : "outline"}
-              size="icon"
+          <div className="flex p-1 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800 self-stretch sm:self-auto">
+            <button
               onClick={() => setViewMode("card")}
+              className={cn(
+                "flex items-center justify-center px-4 h-10 rounded-lg transition-all gap-2 text-xs font-bold uppercase tracking-wider",
+                viewMode === "card"
+                  ? "bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400"
+                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              )}
               title="Card View"
             >
               <LayoutGrid className="w-4 h-4" />
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "default" : "outline"}
-              size="icon"
+              <span className={cn("hidden lg:block", viewMode !== "card" && "hidden")}>Cards</span>
+            </button>
+            <button
               onClick={() => setViewMode("list")}
+              className={cn(
+                "flex items-center justify-center px-4 h-10 rounded-lg transition-all gap-2 text-xs font-bold uppercase tracking-wider",
+                viewMode === "list"
+                  ? "bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400"
+                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              )}
               title="Table View"
             >
               <List className="w-4 h-4" />
-            </Button>
+              <span className={cn("hidden lg:block", viewMode !== "list" && "hidden")}>Table</span>
+            </button>
           </div>
         </div>
 
@@ -317,42 +328,42 @@ export default function PlatformPage() {
 
         {/* Table View */}
         {viewMode === "list" && (
-          <div className="rounded-md border">
+          <div className="rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl shadow-slate-200/50 dark:shadow-black/20 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[60px]">Icon</TableHead>
-                  <TableHead>
+                <TableRow className="hover:bg-transparent border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 h-16">
+                  <TableHead className="w-[80px] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Icon</TableHead>
+                  <TableHead className="px-6">
                     <button
                       onClick={() => handleSort("title")}
-                      className="flex items-center hover:text-foreground transition-colors"
+                      className="flex items-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 transition-colors"
                     >
                       Title
                       <SortIcon field="title" />
                     </button>
                   </TableHead>
-                  <TableHead>
+                  <TableHead className="px-6">
                     <button
                       onClick={() => handleSort("plegs")}
-                      className="flex items-center hover:text-foreground transition-colors"
+                      className="flex items-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 transition-colors"
                     >
                       Legs
                       <SortIcon field="plegs" />
                     </button>
                   </TableHead>
-                  <TableHead>
+                  <TableHead className="px-6">
                     <button
                       onClick={() => handleSort("process")}
-                      className="flex items-center hover:text-foreground transition-colors"
+                      className="flex items-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 transition-colors"
                     >
                       Process
                       <SortIcon field="process" />
                     </button>
                   </TableHead>
-                  <TableHead>
+                  <TableHead className="px-6 text-right">
                     <button
                       onClick={() => handleSort("ptype")}
-                      className="flex items-center hover:text-foreground transition-colors"
+                      className="flex items-center justify-end text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 transition-colors w-full"
                     >
                       Type
                       <SortIcon field="ptype" />
@@ -368,30 +379,56 @@ export default function PlatformPage() {
                   return (
                     <TableRow
                       key={`platform-${platform.plat_id}`}
-                      className="cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-950/20"
+                      className="group cursor-pointer border-b border-slate-50 dark:border-slate-800/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-all duration-300"
                       onClick={() => window.location.href = `/dashboard/field/platform/${platform.plat_id}?from=list`}
                     >
-                      <TableCell>
-                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-center">
+                      <TableCell className="px-6 py-4">
+                        <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 flex items-center justify-center group-hover:scale-105 group-hover:shadow-lg transition-all duration-500 shadow-sm">
                           {hasImage ? (
-                            <div className="relative w-full h-full">
+                            <div className="relative w-full h-full p-1">
                               <Image
                                 src={imageUrl}
                                 alt={platform.title}
                                 fill
-                                className="object-cover"
-                                sizes="48px"
+                                className="object-cover rounded-xl"
+                                sizes="56px"
                               />
                             </div>
                           ) : (
-                            <OilPlatformIcon className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                            <div className="text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+                              <OilPlatformIcon className="w-8 h-8" />
+                            </div>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="font-semibold">{platform.title}</TableCell>
-                      <TableCell>{platform.plegs !== null ? platform.plegs : "-"}</TableCell>
-                      <TableCell>{platform.process || "-"}</TableCell>
-                      <TableCell>{platform.ptype || "-"}</TableCell>
+                      <TableCell className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors uppercase tracking-tight">
+                            {platform.title}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                            PLAT-{platform.plat_id}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                          <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                            {platform.plegs !== null ? platform.plegs : "-"}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          {platform.process || "NOT SPECIFIED"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-right">
+                        <span className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-tighter">
+                          {platform.ptype || "Standard"}
+                        </span>
+                      </TableCell>
                     </TableRow>
                   );
                 })}

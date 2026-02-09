@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
@@ -50,7 +50,8 @@ export const DELETE = withAuth(
     request: NextRequest,
     context: { params: Promise<{ id: string }>; user: any }
   ) => {
-    const supabase = createClient();
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabase = useAdmin ? createAdminClient() : createClient();
     const { id } = await context.params;
 
     const componentId = Number(id);

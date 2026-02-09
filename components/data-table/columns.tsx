@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal, MoreVertical, ExternalLink } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import { toast } from "sonner";
 import { Trash2, Edit2, Plus, Calendar, CheckCircle, FileText } from "lucide-react";
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
+import { DeleteConfirmDialog } from "@/components/dialogs/delete-confirm-dialog";
 
 export type Platform = Database["public"]["Tables"]["platform"]["Row"];
 export type Comment = Database["public"]["Tables"]["comment"]["Row"];
@@ -313,48 +315,66 @@ export const levels: ColumnDef<Levels>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => {
-      const item = row.original;
-
-      return (
-        <div className="text-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              {/* <DropdownMenuItem
-                  onClick={() => navigator.clipboard.writeText(payment.id)}
-                >
-                Copy payment ID
-                </DropdownMenuItem> */}
-              <DropdownMenuSeparator />
-              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-              <DropdownMenuItem
-                className="cursor-pointer"
-                onClick={async () => {
-                  await fetcher(`/api/platform/level`, {
-                    method: "DELETE",
-                    body: JSON.stringify(item),
-                  }).then((res) => {
-                    mutate(`/api/platform/level/${item.plat_id}`);
-                    toast("Level deleted successfully");
-                  });
-                }}
-              >
-                Remove
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      );
-    },
+    cell: ({ row }) => <LevelActions row={row} />,
   },
 ];
+
+function LevelActions({ row }: { row: any }) {
+  const item = row.original;
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const onDelete = async () => {
+    try {
+      setLoading(true);
+      await fetcher(`/api/platform/level`, {
+        method: "DELETE",
+        body: JSON.stringify(item),
+      });
+      mutate(`/api/platform/level/${item.plat_id}`);
+      toast.success("Level deleted successfully");
+      setDeleteOpen(false);
+    } catch (e) {
+      toast.error("Failed to delete level");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="text-center">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0">
+            <span className="sr-only">Open menu</span>
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="cursor-pointer text-red-600 focus:text-red-700"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 size={16} className="mr-2" />
+            Remove
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onConfirm={onDelete}
+        loading={loading}
+        title="Remove Level"
+        description="Are you sure you want to remove this elevation level? This will affect how components are mapped."
+      />
+    </div>
+  );
+}
+
 
 export const faces: ColumnDef<Faces>[] = [
   {
@@ -371,48 +391,66 @@ export const faces: ColumnDef<Faces>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => {
-      const item = row.original;
-
-      return (
-        <div className="text-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              {/* <DropdownMenuItem
-                  onClick={() => navigator.clipboard.writeText(payment.id)}
-                >
-                Copy payment ID
-                </DropdownMenuItem> */}
-              <DropdownMenuSeparator />
-              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-              <DropdownMenuItem
-                className="cursor-pointer"
-                onClick={async () => {
-                  await fetcher(`/api/platform/faces`, {
-                    method: "DELETE",
-                    body: JSON.stringify(item),
-                  }).then((res) => {
-                    mutate(`/api/platform/faces/${item.plat_id}`);
-                    toast("Faces deleted successfully");
-                  });
-                }}
-              >
-                Remove
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      );
-    },
+    cell: ({ row }) => <FaceActions row={row} />,
   },
 ];
+
+function FaceActions({ row }: { row: any }) {
+  const item = row.original;
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const onDelete = async () => {
+    try {
+      setLoading(true);
+      await fetcher(`/api/platform/faces`, {
+        method: "DELETE",
+        body: JSON.stringify(item),
+      });
+      mutate(`/api/platform/faces/${item.plat_id}`);
+      toast.success("Face deleted successfully");
+      setDeleteOpen(false);
+    } catch (e) {
+      toast.error("Failed to delete face");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="text-center">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0">
+            <span className="sr-only">Open menu</span>
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="cursor-pointer text-red-600 focus:text-red-700"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 size={16} className="mr-2" />
+            Remove
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onConfirm={onDelete}
+        loading={loading}
+        title="Remove Face"
+        description="Are you sure you want to remove this structure face definition?"
+      />
+    </div>
+  );
+}
+
 
 export const jobpacks: ColumnDef<Jobpack>[] = [
   {
@@ -532,84 +570,94 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
     id: "actions",
     header: "Actions",
     enableHiding: false,
-    cell: ({ row }) => {
-      const item = row.original;
-      const metadata = item.metadata as any || {};
-      const structureStatus = metadata.structure_status || {};
-
-      const isJobClosed = item.status === "CLOSED";
-      const hasClosedStructures = Object.values(structureStatus).some((v: any) => v?.status === "CLOSED");
-
-      let hasInspections = false;
-      if (metadata.inspections) {
-        if (Array.isArray(metadata.inspections)) {
-          hasInspections = metadata.inspections.length > 0;
-        } else if (typeof metadata.inspections === 'object') {
-          hasInspections = Object.values(metadata.inspections).some((arr: any) => Array.isArray(arr) && arr.length > 0);
-        }
-      }
-
-      const canDelete = !isJobClosed && !hasClosedStructures;
-
-      const handleDelete = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (!canDelete) return;
-
-        let msg = "Are you sure you want to delete this Work Pack?";
-        if (hasInspections) msg += "\n\nWARNING: This Job Pack has assigned inspections which will also be deleted.";
-
-        if (confirm(msg)) {
-          try {
-            await fetcher(`/api/jobpack/${item.id}`, { method: 'DELETE' });
-            mutate('/api/jobpack');
-            toast.success("Work Pack deleted");
-          } catch (e) { toast.error("Failed to delete"); }
-        }
-      }
-
-
-
-      return (
-        <div className="text-center" onClick={(e) => e.stopPropagation()}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer">
-                <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}`}>
-                  <Edit2 size={16} className="mr-2" /> Modify
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer">
-                <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}/consolidate`}>
-                  <CheckCircle size={16} className="mr-2 text-green-600" /> Consolidate
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer">
-                <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}?tab=sow`}>
-                  <FileText size={16} className="mr-2 text-blue-600" /> SOW
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={canDelete ? "cursor-pointer text-red-600" : "cursor-not-allowed opacity-50 text-slate-400"}
-                onClick={handleDelete}
-                disabled={!canDelete}
-              >
-                <Trash2 size={16} className="mr-2" /> Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      );
-    },
+    cell: ({ row }) => <JobpackActions row={row} />,
   },
 ];
+
+function JobpackActions({ row }: { row: any }) {
+  const item = row.original;
+  const metadata = item.metadata as any || {};
+  const structureStatus = metadata.structure_status || {};
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const isJobClosed = item.status === "CLOSED";
+  const hasClosedStructures = Object.values(structureStatus).some((v: any) => v?.status === "CLOSED");
+
+  let hasInspections = false;
+  if (metadata.inspections) {
+    if (Array.isArray(metadata.inspections)) {
+      hasInspections = metadata.inspections.length > 0;
+    } else if (typeof metadata.inspections === 'object') {
+      hasInspections = Object.values(metadata.inspections).some((arr: any) => Array.isArray(arr) && arr.length > 0);
+    }
+  }
+
+  const canDelete = !isJobClosed && !hasClosedStructures;
+
+  const onDelete = async () => {
+    try {
+      setLoading(true);
+      await fetcher(`/api/jobpack/${item.id}`, { method: 'DELETE' });
+      mutate('/api/jobpack');
+      toast.success("Work Pack deleted");
+      setDeleteOpen(false);
+    } catch (e) {
+      toast.error("Failed to delete");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="text-center" onClick={(e) => e.stopPropagation()}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0">
+            <span className="sr-only">Open menu</span>
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="cursor-pointer">
+            <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}`}>
+              <Edit2 size={16} className="mr-2" /> Modify
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem className="cursor-pointer">
+            <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}/consolidate`}>
+              <CheckCircle size={16} className="mr-2 text-green-600" /> Consolidate
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem className="cursor-pointer">
+            <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}?tab=sow`}>
+              <FileText size={16} className="mr-2 text-blue-600" /> SOW
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={canDelete ? "cursor-pointer text-red-600 font-bold" : "cursor-not-allowed opacity-50 text-slate-400"}
+            onClick={() => canDelete && setDeleteOpen(true)}
+            disabled={!canDelete}
+          >
+            <Trash2 size={16} className="mr-2" /> Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onConfirm={onDelete}
+        loading={loading}
+        title="Delete Job Pack"
+        description={`Are you sure you want to delete this Work Pack?${hasInspections ? " WARNING: This Job Pack has assigned inspections which will also be deleted." : ""}`}
+      />
+    </div>
+  );
+}
+
 
 export const fields: ColumnDef<Field>[] = [
   {
@@ -801,44 +849,63 @@ export const attachments: ColumnDef<Attachment>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => {
-      const item = row.original;
-
-      return (
-        <div className="text-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              {/* <DropdownMenuItem
-                  onClick={() => navigator.clipboard.writeText(payment.id)}
-                >
-                Copy payment ID
-                </DropdownMenuItem> */}
-              <DropdownMenuSeparator />
-              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
-              <DropdownMenuItem
-                className="cursor-pointer"
-                onClick={() => {
-                  console.log(item);
-                }}
-              >
-                {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
-                  View Detail
-                  </Link> */}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      );
-    },
+    cell: ({ row }) => <AttachmentActions row={row} />,
   },
 ];
+
+function AttachmentActions({ row }: { row: any }) {
+  const item = row.original;
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const onDelete = async () => {
+    try {
+      setLoading(true);
+      await fetcher(`/api/attachment?id=${item.id}`, { method: "DELETE" });
+      mutate((key: any) => typeof key === 'string' && key.startsWith('/api/attachment/'));
+      toast.success("Attachment deleted");
+      setDeleteOpen(false);
+    } catch (e) {
+      toast.error("Failed to delete attachment");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="text-center">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0">
+            <span className="sr-only">Open menu</span>
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="cursor-pointer text-red-600 focus:text-red-700"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 size={16} className="mr-2" />
+            Remove
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onConfirm={onDelete}
+        loading={loading}
+        title="Delete Attachment"
+        description="Are you sure you want to permanently delete this attachment? This action cannot be undone."
+      />
+    </div>
+  );
+}
+
 
 export type InspectionPlanning = Database["public"]["Tables"]["inspection_planning"]["Row"] & { metadata?: any };
 
@@ -876,51 +943,66 @@ export const inspectionPlanningColumns: ColumnDef<InspectionPlanning>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => {
-      const item = row.original;
-
-      const onDelete = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (confirm("Are you sure you want to delete this inspection plan?")) {
-          try {
-            await fetcher(`/api/inspection-planning?id=${item.id}`, { method: "DELETE" });
-            mutate("/api/inspection-planning");
-            toast.success("Inspection plan decommissioned");
-          } catch (err) {
-            toast.error("Failed to delete plan");
-          }
-        }
-      };
-
-      return (
-        <div className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                <MoreVertical className="h-4 w-4 text-slate-400" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
-              <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-4 py-2">Operations</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer rounded-xl m-1 py-2 font-bold text-xs gap-2 focus:bg-slate-50 dark:focus:bg-slate-900">
-                <Edit2 className="h-3.5 w-3.5 text-blue-500" />
-                <Link href={`/dashboard/planning/form?id=${item.id}`}>Modify Parameters</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={onDelete}
-                className="cursor-pointer rounded-xl m-1 py-2 font-bold text-xs gap-2 text-rose-500 focus:bg-rose-50 dark:focus:bg-rose-950/30"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Decommission Plan
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      );
-    },
+    cell: ({ row }) => <InspectionPlanningActions row={row} />,
   },
 ];
+
+function InspectionPlanningActions({ row }: { row: any }) {
+  const item = row.original;
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const onDelete = async () => {
+    try {
+      setLoading(true);
+      await fetcher(`/api/inspection-planning?id=${item.id}`, { method: "DELETE" });
+      mutate("/api/inspection-planning");
+      toast.success("Inspection plan decommissioned");
+      setDeleteOpen(false);
+    } catch (err) {
+      toast.error("Failed to delete plan");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+            <MoreVertical className="h-4 w-4 text-slate-400" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
+          <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-4 py-2">Operations</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="cursor-pointer rounded-xl m-1 py-2 font-bold text-xs gap-2 focus:bg-slate-50 dark:focus:bg-slate-900">
+            <Edit2 className="h-3.5 w-3.5 text-blue-500" />
+            <Link href={`/dashboard/planning/form?id=${item.id}`}>Modify Parameters</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setDeleteOpen(true)}
+            className="cursor-pointer rounded-xl m-1 py-2 font-bold text-xs gap-2 text-rose-500 focus:bg-rose-50 dark:focus:bg-rose-950/30"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Decommission Plan
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onConfirm={onDelete}
+        loading={loading}
+        title="Decommission Plan"
+        description="Are you sure you want to decommission this inspection plan? This action will archive the current protocol parameters."
+      />
+    </div>
+  );
+}
+
 
 export const inspectionTypeColumns: ColumnDef<InspectionType>[] = [
   {
