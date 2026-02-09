@@ -18,7 +18,7 @@ import Link from "next/link";
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
-import { Trash2, Edit2, Plus, Calendar, CheckCircle } from "lucide-react";
+import { Trash2, Edit2, Plus, Calendar, CheckCircle, FileText } from "lucide-react";
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
 
@@ -589,6 +589,11 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
               <DropdownMenuItem className="cursor-pointer">
                 <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}/consolidate`}>
                   <CheckCircle size={16} className="mr-2 text-green-600" /> Consolidate
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer">
+                <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}?tab=sow`}>
+                  <FileText size={16} className="mr-2 text-blue-600" /> SOW
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem

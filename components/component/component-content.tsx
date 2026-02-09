@@ -255,7 +255,12 @@ export default function ComponentContent() {
                   filteredComponents.map((comp: Component) => (
                     <tr
                       key={comp.id}
-                      className="group border-b border-slate-50 dark:border-slate-800 transition-all hover:bg-slate-50/50 dark:hover:bg-slate-800/30 cursor-pointer"
+                      className={cn(
+                        "group border-b border-slate-50 dark:border-slate-800 transition-all cursor-pointer",
+                        comp.is_deleted
+                          ? "bg-red-50/60 hover:bg-red-100/60 dark:bg-rose-950/20 dark:hover:bg-rose-950/30"
+                          : "hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
+                      )}
                       onClick={() => handleRowClick(comp)}
                     >
                       <td className="px-4 py-4 align-middle">
