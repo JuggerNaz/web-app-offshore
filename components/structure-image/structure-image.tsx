@@ -1,5 +1,6 @@
 "use client";
 import { useState, useCallback, useEffect } from "react";
+import moment from "moment";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { createClient } from "@/utils/supabase/client";
@@ -22,6 +23,8 @@ interface StructureImageData {
   id: number;
   name: string;
   path: string;
+  created_at?: string;
+  updated_at?: string;
   meta: {
     file_url?: string;
     original_file_name?: string;
@@ -198,7 +201,7 @@ export default function StructureImage() {
             <CarouselContent>
               {images.map((img) => (
                 <CarouselItem key={img.id} className="flex flex-col items-center">
-                  <div className="relative w-full aspect-[16/10] md:aspect-[21/9] rounded-[2rem] overflow-hidden bg-white dark:bg-slate-950 shadow-2xl border border-slate-100 dark:border-slate-800">
+                  <div className="relative w-full aspect-[16/10] md:aspect-[21/9] rounded-[2rem] overflow-hidden bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 isolate">
                     <Image
                       src={img.meta?.file_url || getStoragePublicUrl("attachments", img.path)}
                       alt={img.name}
@@ -222,11 +225,16 @@ export default function StructureImage() {
 
                     {/* Bottom Meta Bar */}
                     <div className="absolute bottom-0 inset-x-0 h-16 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-8">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 font-mono truncate max-w-xs">{img.meta?.original_file_name || img.name}</span>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 font-mono truncate max-w-xs">{img.meta?.original_file_name || img.name}</span>
+                        <span className="text-[9px] font-bold text-slate-400 mt-0.5">
+                          {moment(img.updated_at || img.created_at).format("DD MMM YYYY HH:mm")}
+                        </span>
+                      </div>
                       <div className="flex items-center gap-4">
                         <span className="text-[10px] font-bold text-slate-400 capitalize">Format: {img.meta?.file_type?.split('/')[1] || 'Unknown'}</span>
                         <div className="h-4 w-px bg-slate-200 dark:bg-slate-800" />
-                        <span className="text-[10px] font-bold text-slate-400">Size: {(img.meta?.file_size || 0 / 1024 / 1024).toFixed(2)} MB</span>
+                        <span className="text-[10px] font-bold text-slate-400">Size: {((img.meta?.file_size || 0) / 1024 / 1024).toFixed(2)} MB</span>
                       </div>
                     </div>
                   </div>

@@ -89,9 +89,9 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
               <MenuLink
                 href="/dashboard/field"
                 isCollapsed={isCollapsed}
-                label="Map Overview"
+                label="Field Overview"
                 icon={<Compass className="h-4 w-4" />}
-                text="Map Overview"
+                text="Field Overview"
                 isChild
               />
               <MenuLink

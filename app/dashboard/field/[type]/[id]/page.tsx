@@ -163,7 +163,7 @@ export default function DetailPage() {
             <TabTrigger value="spec2" icon={<Database className="h-4 w-4" />} label="Extended Data" disabled={isNew} />
             <TabTrigger value="structure-image" icon={<ImageIcon className="h-4 w-4" />} label="Visuals" disabled={isNew} />
             <TabTrigger value="comments" icon={<MessageSquare className="h-4 w-4" />} label="Discussions" disabled={isNew} />
-            <TabTrigger value="attachments" icon={<Paperclip className="h-4 w-4" />} label="Assets" disabled={isNew} />
+            <TabTrigger value="attachments" icon={<Paperclip className="h-4 w-4" />} label="Attachments" disabled={isNew} />
             <TabTrigger value="components" icon={<Boxes className="h-4 w-4" />} label="Components" disabled={isNew} />
           </TabsList>
         </div>
