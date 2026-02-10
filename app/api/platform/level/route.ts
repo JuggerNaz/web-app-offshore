@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 
 export async function POST(request: Request, context: any) {
   const supabase = createClient();
@@ -24,7 +24,8 @@ export async function POST(request: Request, context: any) {
 export async function DELETE(request: Request, context: any) {
   const body = await request.json();
 
-  const supabase = createClient();
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
 
   const { data, error } = await supabase
     .from("str_level")

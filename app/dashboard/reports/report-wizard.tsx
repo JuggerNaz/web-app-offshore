@@ -35,6 +35,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
+import { generateWorkScopeReport } from "@/utils/report-generators/work-scope-report";
 
 // Types
 type WizardStep = "template" | "context" | "configuration" | "preview";
@@ -74,8 +75,10 @@ const REPORT_TEMPLATES = {
     ],
     jobpack: [
         { id: "jobpack-summary", name: "Job Pack Summary", icon: Package, description: "Overview of job pack details and assignments", requires: ["jobpack"] },
-        { id: "work-scope", name: "Work Scope Report", icon: Wrench, description: "Detailed work scope and requirements", requires: ["jobpack"] },
-        { id: "resource-allocation", name: "Resource Allocation", icon: FileBarChart, description: "Resource planning and allocation details", requires: ["jobpack"] },
+        { id: "work-scope-report", name: "Work Scope Report", icon: Wrench, description: "Detailed work scope for a specific platform", requires: ["jobpack", "structure"] },
+        { id: "work-scope-status", name: "Work Scope Status Summary", icon: FileBarChart, description: "Status completion summary with charts", requires: ["jobpack", "structure"] },
+        { id: "work-scope-incomplete", name: "Work Scope Incomplete Status", icon: FileBarChart, description: "Incomplete status breakdown with charts", requires: ["jobpack", "structure"] },
+
     ],
     planning: [
         { id: "inspection-schedule", name: "Inspection Schedule", icon: Calendar, description: "Planned inspection timeline and milestones", requires: ["planning"] },
@@ -119,11 +122,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const { data: structuresData } = useSWR("/api/structures", fetcher);
     const structures = structuresData?.data || [];
 
-    // Mock Data for JobPacks/Planning (replace with actual API calls if available)
-    const jobPacks = [
-        { id: "1", name: "JP-2024-001 - Annual Inspection" },
-        { id: "2", name: "JP-2024-002 - Maintenance Check" },
-    ];
+    // Data Fetching for JobPacks
+    const { data: jobPacksData } = useSWR("/api/jobpack?limit=1000", fetcher);
+    const jobPacks = jobPacksData?.data || [];
 
     const plannings = [
         { id: "1", name: "Q1 2024 Inspection Plan" },
@@ -134,6 +135,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [isLoadingComponents, setIsLoadingComponents] = useState(false);
     const [componentSearch, setComponentSearch] = useState("");
     const [structureSearch, setStructureSearch] = useState("");
+    const [jobPackSearch, setJobPackSearch] = useState("");
 
     // Fetch procedures for Defect Criteria
     const { data: proceduresData } = useSWR("/api/defect-criteria/procedures", fetcher);
@@ -203,13 +205,36 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     // Filtered Structures for Selection
     const filteredStructures = useMemo(() => {
-        if (!structureSearch) return structures;
-        const lower = structureSearch.toLowerCase();
-        return structures.filter((s: any) =>
-            s.str_name?.toLowerCase().includes(lower) ||
-            s.str_type?.toLowerCase().includes(lower)
+        let result = structures;
+
+        // Filter by JobPack if selected and template requires both
+        if (selections.jobPackId && getCurrentTemplate()?.requires.includes("jobpack")) {
+            const jp = jobPacks.find((j: any) => j.id.toString() === selections.jobPackId);
+            if (jp && jp.metadata?.structures) {
+                const structIds = jp.metadata.structures.map((s: any) => s.id);
+                result = result.filter((s: any) => structIds.includes(s.id));
+            }
+        }
+
+        if (structureSearch) {
+            const lower = structureSearch.toLowerCase();
+            result = result.filter((s: any) =>
+                s.str_name?.toLowerCase().includes(lower) ||
+                s.str_type?.toLowerCase().includes(lower)
+            );
+        }
+        return result;
+    }, [structures, structureSearch, selections.jobPackId, jobPacks]);
+
+    // Filtered Job Packs
+    const filteredJobPacks = useMemo(() => {
+        if (!jobPackSearch) return jobPacks;
+        const lower = jobPackSearch.toLowerCase();
+        return jobPacks.filter((jp: any) =>
+            jp.name?.toLowerCase().includes(lower) ||
+            jp.status?.toLowerCase().includes(lower)
         );
-    }, [structures, structureSearch]);
+    }, [jobPacks, jobPackSearch]);
 
     // Category Selection State
     const [activeCategory, setActiveCategory] = useState<string>("Structure");
@@ -252,7 +277,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     {(categories[activeCategory as keyof typeof categories] || []).map((template: any) => (
                         <div
                             key={template.id}
-                            onClick={() => setSelections({ ...selections, category: activeCategory.toLowerCase(), templateId: template.id })}
+                            onClick={() => {
+                                const categoryMap: Record<string, string> = {
+                                    "Structure": "structure",
+                                    "Job Pack": "jobpack",
+                                    "Planning": "planning",
+                                    "Inspection": "inspection",
+                                    "Others": "others"
+                                };
+                                setSelections({ ...selections, category: categoryMap[activeCategory] || "structure", templateId: template.id });
+                            }}
                             className={`
                                 cursor-pointer group relative overflow-hidden rounded-xl border-2 p-4 transition-all hover:shadow-lg
                                 ${selections.templateId === template.id
@@ -293,6 +327,41 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 </div>
 
                 <div className="space-y-6">
+                    {template.requires.includes("jobpack") && (
+                        <div className="space-y-3">
+                            <Label>Job Pack</Label>
+                            <Select
+                                value={selections.jobPackId}
+                                onValueChange={(val) => setSelections({ ...selections, jobPackId: val })}
+                            >
+                                <SelectTrigger className="h-12 w-full bg-white dark:bg-slate-900">
+                                    <SelectValue placeholder="Select a job pack..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <div className="p-2 sticky top-0 bg-white dark:bg-slate-900 z-10">
+                                        <Input
+                                            placeholder="Search job packs..."
+                                            className="h-8"
+                                            value={jobPackSearch}
+                                            onChange={(e) => setJobPackSearch(e.target.value)}
+                                            onKeyDown={(e) => e.stopPropagation()}
+                                        />
+                                    </div>
+                                    {filteredJobPacks.length === 0 ? (
+                                        <div className="p-2 text-sm text-muted-foreground text-center">No job packs found</div>
+                                    ) : (
+                                        filteredJobPacks.map((jp: any) => (
+                                            <SelectItem key={jp.id} value={jp.id.toString()}>
+                                                <span className="font-medium">{jp.name}</span>
+                                                <Badge variant="outline" className="ml-2 text-[10px] h-5">{jp.status || "OPEN"}</Badge>
+                                            </SelectItem>
+                                        ))
+                                    )}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
                     {template.requires.includes("structure") && (
                         <div className="space-y-3">
                             <Label>Structure</Label>
@@ -313,6 +382,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                             onKeyDown={(e) => e.stopPropagation()}
                                         />
                                     </div>
+                                    <SelectItem value="all">
+                                        <span className="font-bold">ALL STRUCTURES</span>
+                                    </SelectItem>
                                     {filteredStructures.length === 0 ? (
                                         <div className="p-2 text-sm text-muted-foreground text-center">No structures found</div>
                                     ) : filteredStructures.map((s: any) => (
@@ -366,25 +438,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     )}
                                 </div>
                             </div>
-                        </div>
-                    )}
-
-                    {template.requires.includes("jobpack") && (
-                        <div className="space-y-3">
-                            <Label>Job Pack</Label>
-                            <Select
-                                value={selections.jobPackId}
-                                onValueChange={(val) => setSelections({ ...selections, jobPackId: val })}
-                            >
-                                <SelectTrigger className="h-12 w-full bg-white dark:bg-slate-900">
-                                    <SelectValue placeholder="Select a job pack..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {jobPacks.map((jp) => (
-                                        <SelectItem key={jp.id} value={jp.id}>{jp.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
                         </div>
                     )}
 
@@ -617,15 +670,21 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [isGenerating, setIsGenerating] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+    // Invalidate preview when selections or config change
+    useEffect(() => {
+        setPreviewUrl(null);
+    }, [selections, config]);
+
     // Auto-generate preview when entering preview step
     useEffect(() => {
         if (step === "preview" && !previewUrl) {
             const isDefectReport = selections.templateId === "defect-criteria-report";
-            if (selections.structureId || isDefectReport) {
+            const isJobPackReport = selections.templateId === "jobpack-summary";
+            if (selections.structureId || isDefectReport || (isJobPackReport && selections.jobPackId)) {
                 generatePreview();
             }
         }
-    }, [step, selections.structureId, selections.templateId]);
+    }, [step, selections.structureId, selections.templateId, selections.jobPackId, selections.componentId, selections.planningId, selections.procedureId]);
 
     const fetchStructureData = async () => {
         if (!selections.structureId) return null;
@@ -635,6 +694,18 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             return data.success ? data.data : null;
         } catch (e) {
             console.error("Error fetching structure:", e);
+            return null;
+        }
+    };
+
+    const fetchJobPackData = async () => {
+        if (!selections.jobPackId) return null;
+        try {
+            const res = await fetch(`/api/jobpack/${selections.jobPackId}`);
+            const data = await res.json();
+            return data.data;
+        } catch (e) {
+            console.error("Error fetching jobpack:", e);
             return null;
         }
     };
@@ -660,8 +731,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             generateTechnicalSpecsReport
         } = await import("@/utils/pdf-generator");
 
-        // Dynamic import for new generator
+        // Dynamic import for new generators
+        // Dynamic import for new generators
         const { generateDefectCriteriaReport } = await import("@/utils/report-generators/defect-criteria-report");
+        const { generateJobPackSummaryReport } = await import("@/utils/report-generators/jobpack-summary-report");
+        const { generateWorkScopeStatusReport } = await import("@/utils/report-generators/work-scope-status-report");
+        const { generateWorkScopeIncompleteReport } = await import("@/utils/report-generators/work-scope-incomplete-report");
+
+
+
+
 
         // Fetch real company settings from API
         let companySettings: any = { company_name: "NasQuest Resources Sdn Bhd" };
@@ -687,6 +766,169 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         // Defect Criteria Report (No Structure Data Required)
         if (selections.templateId === "defect-criteria-report") {
             return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId } as any);
+        }
+
+        // Job Pack Summary Report
+        if (selections.templateId === "jobpack-summary") {
+            const jobPack = await fetchJobPackData();
+            if (!jobPack) return null;
+            // Map returnBlob to config if needed or pass directly. The generator expects config.returnBlob
+            return await generateJobPackSummaryReport(jobPack, companySettings, reportConfig);
+        }
+
+        // Work Scope Status Summary (New)
+        if (selections.templateId === "work-scope-status") {
+            const jobPack = await fetchJobPackData();
+            if (!jobPack) return null;
+
+            let structure: any = null;
+            let sowData: any = { items: [], report_numbers: [] };
+
+            if (selections.structureId === "all") {
+                structure = { str_name: "ALL STRUCTURES", id: "all", str_type: "COMBINED" };
+                try {
+                    const res = await fetch(`/api/sow?jobpack_id=${selections.jobPackId}`);
+                    const json = await res.json();
+                    if (json.data && Array.isArray(json.data)) {
+                        const sows = json.data;
+                        const allItems: any[] = [];
+                        for (const sow of sows) {
+                            const itemRes = await fetch(`/api/sow?sow_id=${sow.id}`);
+                            const itemJson = await itemRes.json();
+                            if (itemJson.data && itemJson.data.items) {
+                                const enrichedItems = itemJson.data.items.map((i: any) => ({
+                                    ...i,
+                                    structure_title: sow.structure_title,
+                                    structure_id: sow.structure_id
+                                }));
+                                allItems.push(...enrichedItems);
+                            }
+                        }
+                        sowData = { items: allItems, report_numbers: [] };
+                    }
+                } catch (e) { console.error(e); }
+            } else {
+                structure = await fetchStructureData();
+                if (!structure) return null;
+                try {
+                    const res = await fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`);
+                    const json = await res.json();
+                    sowData = json.data;
+                } catch (e) { console.error(e); }
+            }
+
+            if (!sowData) sowData = { items: [], report_numbers: [] };
+            return await generateWorkScopeStatusReport(jobPack, structure, sowData, companySettings, reportConfig as any);
+        }
+
+        // Work Scope Incomplete Status (New)
+        if (selections.templateId === "work-scope-incomplete") {
+            const jobPack = await fetchJobPackData();
+            if (!jobPack) return null;
+
+            let structure: any = null;
+            let sowData: any = { items: [], report_numbers: [] };
+
+            if (selections.structureId === "all") {
+                structure = { str_name: "ALL STRUCTURES", id: "all", str_type: "COMBINED" };
+                try {
+                    const res = await fetch(`/api/sow?jobpack_id=${selections.jobPackId}`);
+                    const json = await res.json();
+                    if (json.data && Array.isArray(json.data)) {
+                        const sows = json.data;
+                        const allItems: any[] = [];
+                        for (const sow of sows) {
+                            const itemRes = await fetch(`/api/sow?sow_id=${sow.id}`);
+                            const itemJson = await itemRes.json();
+                            if (itemJson.data && itemJson.data.items) {
+                                const enrichedItems = itemJson.data.items.map((i: any) => ({
+                                    ...i,
+                                    structure_title: sow.structure_title,
+                                    structure_id: sow.structure_id
+                                }));
+                                allItems.push(...enrichedItems);
+                            }
+                        }
+                        sowData = { items: allItems, report_numbers: [] };
+                    }
+                } catch (e) { console.error(e); }
+            } else {
+                structure = await fetchStructureData();
+                if (!structure) return null;
+                try {
+                    const res = await fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`);
+                    const json = await res.json();
+                    sowData = json.data;
+                } catch (e) { console.error(e); }
+            }
+
+            if (!sowData) sowData = { items: [], report_numbers: [] };
+            return await generateWorkScopeIncompleteReport(jobPack, structure, sowData, companySettings, reportConfig as any);
+        }
+
+        // Work Scope Report (Job Pack + Structure)
+        if (selections.templateId === "work-scope-report") {
+            const jobPack = await fetchJobPackData();
+            if (!jobPack) return null;
+
+            let structure: any = null;
+            let sowData: any = { items: [], report_numbers: [] };
+
+            if (selections.structureId === "all") {
+                structure = { str_name: "ALL STRUCTURES", id: "all", str_type: "COMBINED" };
+
+                try {
+                    // Fetch all SOWs for this job pack
+                    const res = await fetch(`/api/sow?jobpack_id=${selections.jobPackId}`);
+                    const json = await res.json();
+
+                    if (json.data && Array.isArray(json.data)) {
+                        // We need to fetch items for EACH SOW because the list endpoint might only return headers?
+                        // Let's check API. API "If only jobpack_id is provided, fetch all SOWs... select('*')"
+                        // It does NOT join items by default in that block.
+                        // We need to fetch items for each SOW found.
+
+                        const sows = json.data;
+                        const allItems: any[] = [];
+                        const allReportNumbers: any[] = [];
+
+                        // Parallel fetch for items of each SOW
+                        // Actually, simpler to just modify API? No, stick to frontend aggregation for safety.
+                        // Or, use the loop.
+                        for (const sow of sows) {
+                            const itemRes = await fetch(`/api/sow?sow_id=${sow.id}`);
+                            const itemJson = await itemRes.json();
+                            if (itemJson.data) {
+                                if (itemJson.data.items) {
+                                    const enrichedItems = itemJson.data.items.map((i: any) => ({
+                                        ...i,
+                                        structure_title: sow.structure_title,
+                                        structure_id: sow.structure_id
+                                    }));
+                                    allItems.push(...enrichedItems);
+                                }
+                                if (itemJson.data.report_numbers) allReportNumbers.push(...itemJson.data.report_numbers);
+                            }
+                        }
+
+                        sowData = { items: allItems, report_numbers: allReportNumbers };
+                    }
+                } catch (e) { console.error("Error fetching multi-sow data", e); }
+
+            } else {
+                structure = await fetchStructureData();
+                if (!structure) return null;
+
+                try {
+                    const res = await fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`);
+                    const json = await res.json();
+                    sowData = json.data;
+                } catch (e) { console.error(e); }
+            }
+
+            if (!sowData) sowData = { items: [], report_numbers: [] };
+
+            return await generateWorkScopeReport(jobPack, structure, sowData as any, companySettings, reportConfig);
         }
 
         const data = await fetchStructureData();
@@ -878,6 +1120,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     <h1 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         <span className="p-1.5 bg-blue-600 rounded-lg text-white"><FileText className="w-4 h-4" /></span>
                         Report Wizard
+                        {selections.templateId && getCurrentTemplate() && (
+                            <>
+                                <span className="text-slate-300 dark:text-slate-700 mx-1">/</span>
+                                <span className="text-blue-600 dark:text-blue-400 font-medium">{getCurrentTemplate()?.name}</span>
+                            </>
+                        )}
                     </h1>
                 </div>
             </div>
@@ -906,12 +1154,22 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         );
                         const isCurrent = step === s;
 
+                        const currentIndex = ["template", "context", "configuration", "preview"].indexOf(step);
+                        const isClickable = i < currentIndex;
+
                         return (
-                            <div key={s} className="relative z-10 flex flex-col items-center gap-2">
+                            <div
+                                key={s}
+                                className={`relative z-10 flex flex-col items-center gap-2 ${isClickable ? "cursor-pointer group" : "cursor-default"}`}
+                                onClick={() => {
+                                    if (isClickable) setStep(s);
+                                }}
+                            >
                                 <div className={`
                                     w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all
                                     ${isActive ? "bg-blue-600 border-blue-600 text-white" : "bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-400"}
                                     ${isCurrent ? "ring-4 ring-blue-100 dark:ring-blue-900/40" : ""}
+                                    ${isClickable ? "group-hover:bg-blue-700 group-hover:border-blue-700" : ""}
                                 `}>
                                     {i + 1}
                                 </div>

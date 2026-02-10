@@ -5,10 +5,12 @@ import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { createClient } from "@/utils/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Loader2, ImageIcon, Plus, Maximize2, Trash2, ShieldCheck, Activity } from "lucide-react";
+import { Upload, X, Loader2, ImageIcon, Plus, Maximize2, Trash2, ShieldCheck, Activity, AlertCircle } from "lucide-react";
+import { DeleteConfirmDialog } from "@/components/dialogs/delete-confirm-dialog";
 import { getStoragePublicUrl } from "@/utils/storage";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
+import { toast } from "sonner";
 import Image from "next/image";
 import {
   Carousel,
@@ -42,6 +44,8 @@ export default function StructureImage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [images, setImages] = useState<StructureImageData[]>([]);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const supabase = createClient();
   const sourceType = `${pageType}_structure_image`;
@@ -138,35 +142,35 @@ export default function StructureImage() {
     }
   };
 
-  const deleteImage = async (imageId: number) => {
+  const deleteImage = async () => {
+    if (!deleteId) return;
+
     try {
-      const img = images.find((i) => i.id === imageId);
-      if (!img) return;
+      setDeleteLoading(true);
+      setError(null);
 
-      // 1. Remove from Storage
-      if (img.meta?.file_path || img.path) {
-        const path = img.meta?.file_path || img.path;
-        const { error: storageError } = await supabase.storage.from("attachments").remove([path]);
-        if (storageError) {
-          console.error("Storage delete error:", storageError);
-          // We might continue to delete DB record even if storage fails, strictly speaking
-        }
-      }
+      console.log(`[StructureImage] Deleting visual attachment with ID: ${deleteId}`);
 
-      // 2. Remove from DB
-      const { error: dbError } = await supabase.from("attachment").delete().eq("id", imageId);
+      await fetcher(`/api/attachment?id=${deleteId}`, {
+        method: "DELETE"
+      });
 
-      if (dbError) {
-        console.error("DB delete error:", dbError);
-        throw dbError;
-      }
+      // Update UI and SWR state
+      setImages((prev) => prev.filter((i) => i.id !== deleteId));
 
-      // 3. Update UI only on success
-      setImages((prev) => prev.filter((i) => i.id !== imageId));
-      mutate(); // Sync SWR
+      // Force a global mutate to ensure all components stay in sync
+      const swrKey = `/api/attachment/${sourceType}/${pageId}`;
+      mutate(); // bound mutate
+
+      setDeleteId(null);
+      toast.success("Visual attachment deleted successfully");
     } catch (err: any) {
-      console.error("Delete exception:", err);
-      setError("Deletion failed: " + (err.message || "Unknown error"));
+      console.error("[StructureImage] Delete exception:", err);
+      const msg = err.message || "Unknown error";
+      setError("Deletion failed: " + msg);
+      toast.error("Failed to delete visual: " + msg);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -216,7 +220,7 @@ export default function StructureImage() {
                         variant="destructive"
                         size="icon"
                         className="h-10 w-10 rounded-full shadow-lg hover:scale-110 active:scale-90 transition-all"
-                        onClick={() => deleteImage(img.id)}
+                        onClick={() => setDeleteId(img.id)}
                         disabled={uploading}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -305,6 +309,16 @@ export default function StructureImage() {
         </div>
       </div>
 
-    </div>
+
+      <DeleteConfirmDialog
+        open={deleteId !== null}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+        onConfirm={deleteImage}
+        loading={deleteLoading}
+        title="Delete Visual"
+        description="Are you sure you want to permanently remove this visual record from the structure? This cannot be undone."
+      />
+    </div >
   );
 }
+

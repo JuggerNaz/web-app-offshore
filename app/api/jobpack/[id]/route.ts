@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request, context: any) {
   const { id } = await context.params;
@@ -45,7 +45,8 @@ export async function PUT(request: Request, context: any) {
 
 export async function DELETE(request: Request, context: any) {
   const { id } = await context.params;
-  const supabase = createClient();
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
 
   const { error } = await supabase.from("jobpack").delete().eq("id", Number(id));
 
