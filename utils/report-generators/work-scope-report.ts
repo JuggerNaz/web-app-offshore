@@ -172,6 +172,13 @@ export const generateWorkScopeReport = async (
         // doc.setFontSize(7);
         // doc.setFont("helvetica", "normal");
         // doc.text(`Platform: ${structure.str_name || "N/A"}`, 10, 24);
+        // Report Number in Header
+        if (config?.reportNoPrefix) {
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(255, 255, 255);
+            doc.text(`${config.reportNoPrefix}-${config.reportYear}`, pageWidth - 10, 24, { align: "right" });
+        }
     };
 
     // We should pre-fetch contractor for the header usage
@@ -215,13 +222,15 @@ export const generateWorkScopeReport = async (
 
         let yPos = 35;
 
-        // Custom Report Ref Header for this page
-        doc.setTextColor(255, 255, 255);
+        // Custom Report Ref Sub-Header (Moved from Header)
         if (reportNum !== "Pending Assignment") {
-            const meta = reportMeta[reportNum];
-            doc.setFontSize(9);
+            doc.setFillColor(240, 240, 240); // Light Grey
+            doc.rect(10, yPos, pageWidth - 20, 8, "F");
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
             doc.setFont("helvetica", "bold");
-            doc.text(`Scope Ref: ${reportNum}`, pageWidth - 10, 24, { align: "right" });
+            doc.text(`Scope Ref: ${reportNum}`, 14, yPos + 5.5);
+            yPos += 12;
         }
 
         // ===== JOB PACK DETAILS SECTION =====

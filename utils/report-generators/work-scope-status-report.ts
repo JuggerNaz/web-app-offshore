@@ -152,6 +152,14 @@ export const generateWorkScopeStatusReport = async (
             try {
                 const logoData = await loadImage(companySettings.logo_url);
                 doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
+
+                // Report Number under Logo
+                if (config?.reportNoPrefix) {
+                    doc.setFontSize(8);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(255, 255, 255);
+                    doc.text(`${config.reportNoPrefix}-${config.reportYear}`, pageWidth - 16, 26, { align: "center" });
+                }
             } catch (error) { }
         }
 
@@ -274,27 +282,9 @@ export const generateWorkScopeStatusReport = async (
     const structKeys = Object.keys(groupedByStructure).sort();
 
     for (const sKey of structKeys) {
-        const items = groupedByStructure[sKey];
+        const structureItems = groupedByStructure[sKey];
 
-        // Compute Stats for this group
-        const groupStats: Record<string, { total: number, completed: number }> = {};
-        items.forEach(item => {
-            let code = item.inspection_type_code;
-            if (!code && (item as any).inspection_type_id) {
-                code = typeMap[(item as any).inspection_type_id];
-            }
-            if (!code) code = "Unknown";
-
-            if (!groupStats[code]) groupStats[code] = { total: 0, completed: 0 };
-            groupStats[code].total++;
-
-            const status = (item.status || "").toUpperCase();
-            if (['COMPLETED', 'CLOSED', 'APPROVED', 'DONE'].includes(status)) {
-                groupStats[code].completed++;
-            }
-        });
-
-        // Page Break Check (Header needs ~30pts)
+        // Page Break Check (Structure Header needs space)
         if (yPos > pageHeight - 60) {
             doc.addPage();
             await drawHeader(doc.getNumberOfPages());
@@ -311,9 +301,8 @@ export const generateWorkScopeStatusReport = async (
             doc.text(`STRUCTURE: ${sKey.toUpperCase()}`, 16, yPos + 5.5);
             yPos += 14;
         } else {
-            // Standard Header for single structure report
-            // Only draw if first key
-            if (structKeys.length === 1) {
+            // Standard Header for single structure report - only if first key
+            if (structKeys.length === 1 && structKeys.indexOf(sKey) === 0) {
                 doc.setFontSize(11);
                 doc.setTextColor(0, 0, 0);
                 doc.setFont("helvetica", "bold");
@@ -322,80 +311,132 @@ export const generateWorkScopeStatusReport = async (
             }
         }
 
-        // Draw Table for this Group
-        const statKeys = Object.keys(groupStats).sort();
+        // --- Group by Report Number (New Logic) ---
+        const groupedByReport: Record<string, any[]> = {};
+        structureItems.forEach(item => {
+            const rpt = item.report_number || "Pending Assignment";
+            if (!groupedByReport[rpt]) groupedByReport[rpt] = [];
+            groupedByReport[rpt].push(item);
+        });
 
-        // Table Header
-        const col1 = 14;
-        const col2 = 60; // Progress Bar
-        const col3 = pageWidth - 40; // Value
+        const reportKeys = Object.keys(groupedByReport).sort();
 
-        // Headers
-        doc.setFillColor(...headerBlue);
-        doc.rect(col1 - 4, yPos - 5, pageWidth - 20, 8, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.text("Inspection Type", col1, yPos);
-        doc.text("Progress", col2, yPos);
-        doc.text("Status", col3, yPos);
-        yPos += 10;
+        for (const rptKey of reportKeys) {
+            const items = groupedByReport[rptKey];
 
-        for (let index = 0; index < statKeys.length; index++) {
-            const code = statKeys[index];
-            const s = groupStats[code];
-            const pct = s.total > 0 ? (s.completed / s.total) : 0;
-            const pctText = (pct * 100).toFixed(0) + "%";
+            // Compute Stats for this Report Group
+            const groupStats: Record<string, { total: number, completed: number }> = {};
+            items.forEach(item => {
+                let code = item.inspection_type_code;
+                if (!code && (item as any).inspection_type_id) {
+                    code = typeMap[(item as any).inspection_type_id];
+                }
+                if (!code) code = "Unknown";
 
-            // Row Background (Alternating)
-            if (index % 2 === 1) {
-                doc.setFillColor(245, 245, 245);
-                doc.rect(col1 - 4, yPos - 6, pageWidth - 20, 12, "F");
-            }
+                if (!groupStats[code]) groupStats[code] = { total: 0, completed: 0 };
+                groupStats[code].total++;
 
-            // 1. Label
-            const name = typeNameMap[code] || code;
-            doc.setTextColor(0, 0, 0);
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(9);
-            doc.text(name, col1, yPos);
+                const status = (item.status || "").toUpperCase();
+                if (['COMPLETED', 'CLOSED', 'APPROVED', 'DONE'].includes(status)) {
+                    groupStats[code].completed++;
+                }
+            });
 
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(7);
-            doc.setTextColor(100, 100, 100);
-            if (typeNameMap[code]) doc.text(code, col1, yPos + 3.5);
-
-            // 2. Bar
-            const barWidth = 80;
-            const barHeight = 6;
-            const barX = col2;
-            const barY = yPos - 4;
-
-            // Background
-            doc.setFillColor(230, 230, 230);
-            doc.roundedRect(barX, barY, barWidth, barHeight, 1, 1, "F");
-
-            // Fill
-            if (pct > 0) {
-                doc.setFillColor(...completedColor);
-                doc.roundedRect(barX, barY, barWidth * pct, barHeight, 1, 1, "F");
-            }
-
-            // 3. Value
-            doc.setFontSize(9);
-            doc.setTextColor(0, 0, 0);
-            doc.text(`${pctText} (${s.completed}/${s.total})`, col3, yPos);
-
-            yPos += 12; // Row Height
-
-            if (yPos > pageHeight - 30) {
+            // Check space for Report Header + Table Header + at least one row
+            if (yPos > pageHeight - 50) {
                 doc.addPage();
                 await drawHeader(doc.getNumberOfPages());
                 yPos = 35;
             }
-        }
 
-        yPos += 10; // Spacing after table
+            // Draw Report Sub-Header
+            // Only show if we actually have a report num grouping or if specific requirement
+            // User asked for "sub header for the report number"
+            const reportDisplay = rptKey === "Pending Assignment" ? "Items Pending Assignment" : `Report Ref: ${rptKey}`;
+
+            doc.setFillColor(240, 240, 240); // Light Grey
+            doc.rect(14, yPos, pageWidth - 28, 7, "F");
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "bold");
+            doc.text(reportDisplay, 16, yPos + 5);
+            yPos += 12;
+
+            // Draw Table for this Report Group
+            const statKeys = Object.keys(groupStats).sort();
+
+            // Table Header
+            const col1 = 14;
+            const col2 = 60; // Progress Bar
+            const col3 = pageWidth - 40; // Value
+
+            // Headers
+            doc.setFillColor(...headerBlue);
+            doc.rect(col1 - 4, yPos - 5, pageWidth - 20, 8, "F");
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "bold");
+            doc.text("Inspection Type", col1, yPos);
+            doc.text("Progress", col2, yPos);
+            doc.text("Status", col3, yPos);
+            yPos += 10;
+
+            for (let index = 0; index < statKeys.length; index++) {
+                const code = statKeys[index];
+                const s = groupStats[code];
+                const pct = s.total > 0 ? (s.completed / s.total) : 0;
+                const pctText = (pct * 100).toFixed(0) + "%";
+
+                // Row Background (Alternating)
+                if (index % 2 === 1) {
+                    doc.setFillColor(245, 245, 245);
+                    doc.rect(col1 - 4, yPos - 6, pageWidth - 20, 12, "F");
+                }
+
+                // 1. Label
+                const name = typeNameMap[code] || code;
+                doc.setTextColor(0, 0, 0);
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(9);
+                doc.text(name, col1, yPos);
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(7);
+                doc.setTextColor(100, 100, 100);
+                if (typeNameMap[code]) doc.text(code, col1, yPos + 3.5);
+
+                // 2. Bar
+                const barWidth = 80;
+                const barHeight = 6;
+                const barX = col2;
+                const barY = yPos - 4;
+
+                // Background
+                doc.setFillColor(230, 230, 230);
+                doc.roundedRect(barX, barY, barWidth, barHeight, 1, 1, "F");
+
+                // Fill
+                if (pct > 0) {
+                    doc.setFillColor(...completedColor);
+                    doc.roundedRect(barX, barY, barWidth * pct, barHeight, 1, 1, "F");
+                }
+
+                // 3. Value
+                doc.setFontSize(9);
+                doc.setTextColor(0, 0, 0);
+                doc.text(`${pctText} (${s.completed}/${s.total})`, col3, yPos);
+
+                yPos += 12; // Row Height
+
+                if (yPos > pageHeight - 30) {
+                    doc.addPage();
+                    await drawHeader(doc.getNumberOfPages());
+                    yPos = 35;
+                }
+            }
+            yPos += 5; // Spacing after table
+        }
+        yPos += 5; // Spacing after structure block
     }
 
     if (config?.returnBlob) {
