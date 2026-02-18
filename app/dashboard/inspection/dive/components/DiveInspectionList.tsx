@@ -8,6 +8,15 @@ import { Edit2, Trash2, Eye, EyeOff, AlertTriangle, CheckCircle2, FileClock, His
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
+import { getReportHeaderData } from "@/utils/company-settings";
+import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 
 interface DiveInspectionListProps {
     diveJobId?: number;
@@ -32,6 +41,8 @@ export default function DiveInspectionList({
 }: DiveInspectionListProps) {
     const supabase = createClient();
     const [records, setRecords] = useState<any[]>([]);
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [previewRecord, setPreviewRecord] = useState<any>(null);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
@@ -140,6 +151,56 @@ export default function DiveInspectionList({
             toast.error("Failed to load inspection records");
         } finally {
             setLoading(false);
+        }
+    }
+
+    function handlePrintAnomaly(record: any) {
+        setPreviewRecord(record);
+        setPreviewOpen(true);
+    }
+
+    async function generateAnomalyReportBlob() {
+        if (!previewRecord) return;
+        const record = previewRecord;
+
+        try {
+            const settings = await getReportHeaderData();
+
+            // Reconstruct minimal context
+            const jpId = record.insp_dive_jobs?.jobpack_id || jobpackId;
+            const strId = record.structure_id;
+
+            const jp = { id: jpId, name: "Project Reference", metadata: {} };
+            const str = { id: strId, field_name: "Field", str_name: "Structure" };
+
+            const config = {
+                reportNoPrefix: "ANOMALY",
+                reportYear: new Date().getFullYear().toString(),
+                preparedBy: { name: "System", date: new Date().toLocaleDateString() },
+                reviewedBy: { name: "", date: "" },
+                approvedBy: { name: "", date: "" },
+                watermark: { enabled: false, text: "", transparency: 0.1 },
+                showContractorLogo: true,
+                showPageNumbers: true,
+                inspectionId: record.insp_id,
+                returnBlob: true
+            };
+
+            return await generateDefectAnomalyReport(
+                jp,
+                str,
+                "",
+                {
+                    company_name: settings.companyName,
+                    logo_url: settings.companyLogo || undefined,
+                    departmentName: settings.departmentName
+                } as any,
+                config
+            );
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to generate report");
+            throw error;
         }
     }
 
@@ -282,15 +343,40 @@ export default function DiveInspectionList({
                                     </td>
                                     <td className="px-2 py-1.5 align-top text-right">
                                         <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-6 w-6 text-muted-foreground hover:text-blue-600"
-                                                onClick={() => generateInspectionReport(record.insp_id)}
-                                                title="Print Report"
-                                            >
-                                                <FileText className="h-3 w-3" />
-                                            </Button>
+                                            {record.has_anomaly ? (
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 text-muted-foreground hover:text-blue-600"
+                                                            title="Print Reports"
+                                                        >
+                                                            <FileText className="h-3 w-3" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => generateInspectionReport(record.insp_id)}>
+                                                            <FileText className="mr-2 h-3 w-3" />
+                                                            Inspection Report
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handlePrintAnomaly(record)} className="text-red-600 focus:text-red-600">
+                                                            <AlertTriangle className="mr-2 h-3 w-3" />
+                                                            Defect / Anomaly Report
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            ) : (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-muted-foreground hover:text-blue-600"
+                                                    onClick={() => generateInspectionReport(record.insp_id)}
+                                                    title="Print Report"
+                                                >
+                                                    <FileText className="h-3 w-3" />
+                                                </Button>
+                                            )}
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
@@ -317,6 +403,14 @@ export default function DiveInspectionList({
                     </tbody>
                 </table>
             </div >
-        </div >
+            <ReportPreviewDialog
+                open={previewOpen}
+                onOpenChange={setPreviewOpen}
+                title="Anomaly Report Preview"
+                fileName={`Anomaly_Report_${previewRecord?.anomaly_ref_no || 'Draft'}`}
+                generateReport={generateAnomalyReportBlob}
+            />
+        </div>
+
     );
 }

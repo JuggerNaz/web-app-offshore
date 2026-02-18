@@ -10,29 +10,37 @@ export async function GET(request: NextRequest) {
         let sowReportNo = searchParams.get("sow_report_no");
         let jobpackId = searchParams.get("jobpack_id");
         let structureId = searchParams.get("structure_id");
+        let inspectionId = searchParams.get("inspection_id");
 
         // Clean up "undefined" or "null" strings
         if (sowReportNo === "undefined" || sowReportNo === "null") sowReportNo = null;
         if (jobpackId === "undefined" || jobpackId === "null") jobpackId = null;
         if (structureId === "undefined" || structureId === "null") structureId = null;
+        if (inspectionId === "undefined" || inspectionId === "null") inspectionId = null;
 
-        if (!jobpackId) {
-            return NextResponse.json({ error: "JobPack ID is required" }, { status: 400 });
+        if (!jobpackId && !inspectionId) {
+            return NextResponse.json({ error: "JobPack ID or Inspection ID is required" }, { status: 400 });
         }
 
-        console.log(`[AnomalyReport] Req: JobPack=${jobpackId}, Structure=${structureId}, Report=${sowReportNo}`);
+        console.log(`[AnomalyReport] Req: JobPack=${jobpackId}, Structure=${structureId}, Report=${sowReportNo}, Inspection=${inspectionId}`);
 
         // 1. Query v_anomaly_details View
         let query = (supabase as any)
             .from("v_anomaly_details")
-            .select("*")
-            .eq("jobpack_id", jobpackId);
+            .select("*");
+
+        if (jobpackId) {
+            query = query.eq("jobpack_id", jobpackId);
+        }
 
         if (structureId) {
             query = query.eq("structure_id", structureId);
         }
         if (sowReportNo) {
             query = query.eq("sow_report_no", sowReportNo);
+        }
+        if (inspectionId) {
+            query = query.eq("id", inspectionId); // View maps insp_id to 'id'
         }
 
         const { data: anomalies, error: viewError } = await query;

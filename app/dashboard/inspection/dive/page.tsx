@@ -425,11 +425,11 @@ function DiveInspectionContent() {
         if (structureIds.length > 0) {
           const { data: strData } = await supabase
             .from("structure_components")
-            .select("id, component_type")
+            .select("id, code")
             .in("id", structureIds);
 
           if (strData) {
-            const typeMap = new Map(strData.map((s: any) => [s.id, s.component_type]));
+            const typeMap = new Map(strData.map((s: any) => [s.id, s.code]));
             (data as any[]).forEach((j: any) => {
               if (j.structure_id && typeMap.has(j.structure_id)) {
                 // Assign as 'type' to match expected u_structure interface

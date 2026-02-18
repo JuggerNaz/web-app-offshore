@@ -47,9 +47,9 @@ export default function ComponentTree({
         try {
             const { data, error } = await supabase
                 .from("structure_components")
-                .select("id, component_name, component_type, parent_id")
+                .select("id, component_name, code, parent_id")
                 .eq("structure_id", structureId)
-                .order("component_type")
+                .order("code")
                 .order("component_name");
 
             if (error) throw error;
@@ -66,6 +66,7 @@ export default function ComponentTree({
 
             const componentsWithChildren = data?.map((comp: any) => ({
                 ...comp,
+                component_type: comp.code,
                 has_children: data.some((c: any) => c.parent_id === comp.id),
                 inspected: inspectedIds.has(comp.id),
             })) || [];
