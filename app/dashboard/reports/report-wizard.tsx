@@ -63,6 +63,7 @@ interface SelectionState {
     jobPackId: string;
     planningId: string;
     procedureId: string;
+    sowReportNo: string;
 }
 
 // Report Templates Definition
@@ -88,6 +89,7 @@ const REPORT_TEMPLATES = {
         { id: "inspection-report", name: "Inspection Report", icon: CheckSquare, description: "Detailed inspection findings and results", requires: ["jobpack"] },
         { id: "defect-summary", name: "Defect Summary", icon: FileBarChart, description: "Summary of identified defects and issues", requires: ["jobpack"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
+        { id: "defect-anomaly-report", name: "Defect / Anomaly Report", icon: FileCheck, description: "Detailed defect and anomaly report with images", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -104,6 +106,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         jobPackId: "",
         planningId: "",
         procedureId: "",
+        sowReportNo: "",
     });
 
     // Default Configuration
@@ -136,6 +139,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [componentSearch, setComponentSearch] = useState("");
     const [structureSearch, setStructureSearch] = useState("");
     const [jobPackSearch, setJobPackSearch] = useState("");
+    const [availableSowReports, setAvailableSowReports] = useState<string[]>([]);
+    const [isLoadingSowReports, setIsLoadingSowReports] = useState(false);
 
     // Fetch procedures for Defect Criteria
     const { data: proceduresData } = useSWR("/api/defect-criteria/procedures", fetcher);
@@ -155,6 +160,30 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .finally(() => setIsLoadingComponents(false));
         }
     }, [selections.structureId, selections.templateId]);
+
+    // Fetch SOW Reports when JobPack and Structure are selected
+    useEffect(() => {
+        if (selections.jobPackId && selections.structureId && getCurrentTemplate()?.requires.includes("sow_report")) {
+            setIsLoadingSowReports(true);
+            fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.data) {
+                        // Assuming data.data.report_numbers is array of { number: string } or similar
+                        // Fallback to empty array if not present
+                        const numbers = data.data.report_numbers?.map((r: any) => r.number || r) || [];
+                        setAvailableSowReports(numbers);
+                    } else {
+                        setAvailableSowReports([]);
+                    }
+                })
+                .catch(err => {
+                    console.error("Error fetching SOW reports:", err);
+                    setAvailableSowReports([]);
+                })
+                .finally(() => setIsLoadingSowReports(false));
+        }
+    }, [selections.jobPackId, selections.structureId, selections.templateId]);
 
     const getCurrentTemplate = () => {
         if (!selections.category || !selections.templateId) return null;
@@ -187,6 +216,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (template.requires.includes("component") && !selections.componentId) valid = false;
             if (template.requires.includes("jobpack") && !selections.jobPackId) valid = false;
             if (template.requires.includes("planning") && !selections.planningId) valid = false;
+            if (template.requires.includes("sow_report") && !selections.sowReportNo) valid = false;
             return valid;
         }
         return true;
@@ -393,6 +423,31 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                             <span className="ml-2 text-xs text-muted-foreground">{s.str_type}</span>
                                         </SelectItem>
                                     ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    {template.requires.includes("sow_report") && selections.structureId && (
+                        <div className="space-y-3">
+                            <Label>SOW Report Number</Label>
+                            <Select
+                                value={selections.sowReportNo}
+                                onValueChange={(val) => setSelections({ ...selections, sowReportNo: val })}
+                            >
+                                <SelectTrigger className="h-12 w-full bg-white dark:bg-slate-900">
+                                    <SelectValue placeholder="Select a report number..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {isLoadingSowReports ? (
+                                        <div className="p-2 text-sm text-center text-muted-foreground">Loading...</div>
+                                    ) : availableSowReports.length === 0 ? (
+                                        <div className="p-2 text-sm text-center text-muted-foreground">No reports found</div>
+                                    ) : (
+                                        availableSowReports.map((reportNo, idx) => (
+                                            <SelectItem key={`${reportNo}-${idx}`} value={reportNo}>{reportNo}</SelectItem>
+                                        ))
+                                    )}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -737,6 +792,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const { generateJobPackSummaryReport } = await import("@/utils/report-generators/jobpack-summary-report");
         const { generateWorkScopeStatusReport } = await import("@/utils/report-generators/work-scope-status-report");
         const { generateWorkScopeIncompleteReport } = await import("@/utils/report-generators/work-scope-incomplete-report");
+        const { generateDefectAnomalyReport } = await import("@/utils/report-generators/defect-anomaly-report");
 
 
 
@@ -766,6 +822,15 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         // Defect Criteria Report (No Structure Data Required)
         if (selections.templateId === "defect-criteria-report") {
             return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId } as any);
+        }
+
+        // Defect / Anomaly Report (New)
+        if (selections.templateId === "defect-anomaly-report") {
+            const jobPack = await fetchJobPackData();
+            const structure = await fetchStructureData();
+            if (!jobPack || !structure) return null;
+
+            return await generateDefectAnomalyReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
         }
 
         // Job Pack Summary Report
