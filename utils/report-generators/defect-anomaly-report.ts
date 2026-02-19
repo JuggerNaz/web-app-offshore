@@ -233,6 +233,7 @@ export const generateDefectAnomalyReport = async (
     }
 
     let globalPage = 1;
+    const anomalyPageRanges: { start: number; end: number }[] = [];
 
     for (let i = 0; i < anomalies.length; i++) {
         const anomaly = anomalies[i];
@@ -246,6 +247,8 @@ export const generateDefectAnomalyReport = async (
         };
 
         if (i > 0) doc.addPage();
+
+        const startPage = doc.getNumberOfPages();
 
         drawHeader(doc);
 
@@ -379,10 +382,6 @@ export const generateDefectAnomalyReport = async (
                     { content: "Installation:", styles: headStylesString }, { content: install }
                 ],
                 [
-                    { content: "Component:", styles: headStylesString }, { content: compVal },
-                    { content: elevLabel, styles: headStylesString }, { content: elevVal }
-                ],
-                [
                     { content: "Anomaly Ref. No.:", styles: headStylesString }, { content: ref },
                     { content: "Report No.:", styles: headStylesString }, { content: reportNoDisplay }
                 ],
@@ -393,6 +392,10 @@ export const generateDefectAnomalyReport = async (
                 [
                     { content: "DVD/Recording No.:", styles: headStylesString }, { content: recording },
                     { content: rovDiverLabel, styles: headStylesString }, { content: rovDiverVal }
+                ],
+                [
+                    { content: "Component:", styles: headStylesString }, { content: compVal },
+                    { content: elevLabel, styles: headStylesString }, { content: elevVal }
                 ]
             ] as any,
             theme: 'grid',
@@ -591,31 +594,48 @@ export const generateDefectAnomalyReport = async (
         drawSignatories();
 
         globalPage++;
+
+        const endPage = doc.getNumberOfPages();
+        anomalyPageRanges.push({ start: startPage, end: endPage });
     }
 
-    // Add Page Numbers and Date
+    // Add Page Numbers footer and Date to every page
     const totalPages = doc.getNumberOfPages();
-    const dateStr = `Date: ${new Date().toLocaleDateString("en-GB")}`;
+    const printedDateStr = `Printed: ${new Date().toLocaleDateString("en-GB")}`;
 
     for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
 
-        // Date & Page in Header area (right side, under client logo)
-        // Print-Friendly: Dark text. Normal: White text on Blue Header
-        doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-        const clientLogoX = pageWidth - margin - logoSize - logoPadding;
-        const clientLogoCenterX = clientLogoX + (logoSize / 2);
-        const textYStart = margin + logoPadding + logoSize + 4;
-        doc.text(dateStr, clientLogoCenterX, textYStart, { align: "center" });
 
-        // Page Numbers just below the header bar, right-aligned
-        if (config.showPageNumbers) {
-            doc.setTextColor(80, 80, 80);
-            doc.setFontSize(8);
-            doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, margin + headerH + 4, { align: "right" });
+        // Local Page Number (per anomaly)
+        const range = anomalyPageRanges.find(r => i >= r.start && i <= r.end);
+        if (range) {
+            const localPage = i - range.start + 1;
+            const localTotal = range.end - range.start + 1;
+            if (config.showPageNumbers) {
+                doc.setTextColor(80, 80, 80);
+                doc.setFontSize(8);
+                doc.text(`Page ${localPage} of ${localTotal}`, pageWidth - margin, margin + headerH + 4, { align: "right" });
+            }
         }
+
+        // ===== PAGE FOOTER =====
+        const footerLineY = pageHeight - 10;
+
+        // Horizontal line across content width
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.3);
+        doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+
+        // Page number - centered
+        doc.setFontSize(7);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Page ${i} of ${totalPages}`, pageWidth / 2, footerLineY + 4, { align: "center" });
+
+        // Printed date - right aligned
+        doc.text(printedDateStr, pageWidth - margin, footerLineY + 4, { align: "right" });
     }
 
     if (config.returnBlob) {
