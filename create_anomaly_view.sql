@@ -13,15 +13,22 @@ SELECT
     a.defect_category_code as category,
     a.defect_type_code as defect_type,
     a.recommended_action,
+    -- Anomaly Specifics
+    a.status as status,
+    a.is_rectified as rectified,
+    a.rectified_by,
+    a.rectified_date,
+    a.rectified_remarks,
     a.action_priority,
     a.status as anomaly_status,
-    a.is_rectified,
 
     -- Inspection Record
     r.insp_id as id,
     r.inspection_date,
     r.description as observations, 
     r.has_anomaly,
+    r.elevation,
+    r.fp_kp,
 
     -- Tape/Video Info
     r.tape_id,
@@ -42,6 +49,9 @@ SELECT
     jp.name as jobpack_name,
     jp.metadata ->> 'vessel' as main_vessel,
     jp.metadata ->> 'contractor_ref' as contractor_ref,
+    jp.metadata ->> 'contrac' as contractor_id,
+    ull.lib_desc as contractor_name,
+    ull.logo_url,
 
     -- Dive Job Info
     dj.dive_job_id,
@@ -53,6 +63,7 @@ SELECT
     rj.rov_job_id,
     rj.deployment_no,
     rj.rov_operator as rov_name,
+    rj.rov_serial_no as rov_machine,
     rj.start_time as rov_start
 
 FROM insp_anomalies a
@@ -61,4 +72,5 @@ LEFT JOIN structure_components sc ON r.component_id = sc.id
 LEFT JOIN insp_dive_jobs dj ON r.dive_job_id = dj.dive_job_id
 LEFT JOIN insp_rov_jobs rj ON r.rov_job_id = rj.rov_job_id
 LEFT JOIN insp_video_tapes vt ON r.tape_id = vt.tape_id
-LEFT JOIN jobpack jp ON COALESCE(dj.jobpack_id, rj.jobpack_id, r.jobpack_id) = jp.id;
+LEFT JOIN jobpack jp ON COALESCE(dj.jobpack_id, rj.jobpack_id, r.jobpack_id) = jp.id
+LEFT JOIN u_lib_list ull ON ull.lib_code = 'CONTR_NAM' AND ull.lib_id::text = jp.metadata ->> 'contrac';

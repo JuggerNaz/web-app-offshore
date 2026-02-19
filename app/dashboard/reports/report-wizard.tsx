@@ -117,7 +117,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         reviewedBy: { name: "", date: "" },
         approvedBy: { name: "", date: "" },
         watermark: { enabled: true, text: "DRAFT", transparency: 0.1 },
-        showContractorLogo: false,
+        showContractorLogo: true,
         showPageNumbers: true,
     });
 

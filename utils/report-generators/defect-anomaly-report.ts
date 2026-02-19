@@ -85,48 +85,74 @@ export const generateDefectAnomalyReport = async (
     let contractorName = "";
 
     if (config.showContractorLogo) {
-        // Ensure JobPack metadata is available (fetch if missing)
-        // Access 'contrac' field which stores the Contractor Library ID
-        if (!jobPack.metadata || !jobPack.metadata.contrac) {
-            if (jobPack.id) {
+        // 1. Try to get from View Data Details first (Efficient)
+        if (anomalies.length > 0) {
+            const first = anomalies[0];
+            if (first.contractor_name) contractorName = first.contractor_name;
+
+            if (first.logo_url) {
                 try {
-                    const { data: jpData } = await supabase.from('jobpack').select('metadata').eq('id', jobPack.id).single();
-                    if (jpData) {
-                        if (!jobPack.metadata) jobPack.metadata = {};
-                        jobPack.metadata = { ...jobPack.metadata, ...jpData.metadata };
-                    }
-                } catch (e) { console.error("Error fetching jobpack metadata", e); }
+                    const loaded = await loadImage(first.logo_url);
+                    if (loaded) contractorLogo = loaded;
+                } catch (e) {
+                    console.warn("Failed to load logo from view url", e);
+                }
             }
         }
 
-        // 'contrac' in metadata usually holds the library ID
-        // Fallback to 'contractor_ref' from view if 'contrac' missing
-        const contractorId = jobPack.metadata?.contrac ||
-            (anomalies.length > 0 ? anomalies[0].contractor_ref : null);
-
-        if (contractorId) {
-            try {
-                // Fetch logo_url and description (name) from u_lib_list
-                // We check both id (PK) and lib_id (Legacy/User Code) just in case
-                const { data } = await supabase
-                    .from('u_lib_list')
-                    .select('logo_url, lib_desc')
-                    .eq('lib_code', 'CONTR_NAM')
-                    .or(`id.eq.${contractorId},lib_id.eq.${contractorId}`)
-                    .maybeSingle();
-
-                if (data) {
-                    if (data.logo_url) contractorLogo = await loadImage(data.logo_url);
-                    if (data.lib_desc) contractorName = data.lib_desc;
+        // 2. Fallback: Fetch manually if missing (e.g. no anomalies or view missing data)
+        if (!contractorName || !contractorLogo) {
+            // Ensure JobPack metadata is available (fetch if missing)
+            if (!jobPack.metadata || !jobPack.metadata.contrac) {
+                if (jobPack.id) {
+                    try {
+                        const { data: jpData } = await supabase.from('jobpack').select('metadata').eq('id', jobPack.id).single();
+                        if (jpData) {
+                            if (!jobPack.metadata) jobPack.metadata = {};
+                            jobPack.metadata = { ...jobPack.metadata, ...jpData.metadata };
+                        }
+                    } catch (e) { console.error("Error fetching jobpack metadata", e); }
                 }
-            } catch (e) {
-                console.error("Error fetching contractor logo", e);
+            }
+
+            // 'contrac' in metadata usually holds the library ID
+            // Fallback to 'contractor_ref' from view if 'contrac' missing
+            const contractorId = jobPack.metadata?.contrac ||
+                (anomalies.length > 0 ? (anomalies[0].contractor_id || anomalies[0].contractor_ref) : null);
+
+            if (contractorId) {
+                try {
+                    // Fetch logo_url and description (name) from u_lib_list
+                    const cid = String(contractorId);
+                    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cid);
+
+                    let query = supabase
+                        .from('u_lib_list')
+                        .select('logo_url, lib_desc')
+                        .eq('lib_code', 'CONTR_NAM');
+
+                    if (isUUID) {
+                        query = query.or(`id.eq.${cid},lib_id.eq.${cid}`);
+                    } else {
+                        // For non-UUIDs (like 'AMSB'), query lib_id only to avoid type errors on 'id' column
+                        query = query.eq('lib_id', cid);
+                    }
+
+                    const { data } = await query.maybeSingle();
+
+                    if (data) {
+                        if (data.logo_url && !contractorLogo) contractorLogo = await loadImage(data.logo_url);
+                        if (data.lib_desc && !contractorName) contractorName = data.lib_desc;
+                    }
+                } catch (e) {
+                    console.error("Error fetching contractor logo", e);
+                }
             }
         }
     }
 
     // Header Dimensions
-    const headerH = 45; // Increased specificially to avoid overlap
+    const headerH = 45; // Height of the header background
     const logoSize = 25;
     const logoPadding = 5;
 
@@ -139,8 +165,14 @@ export const generateDefectAnomalyReport = async (
         doc.rect(startX, startY, contentWidth, headerH, "F");
 
         // --- Left Side: Contractor Logo + Name ---
+        // Center the name relative to the logo
+        // Logo is at startX + logoPadding. Width 25. Center X = startX + logoPadding + 12.5
+        const logoX = startX + logoPadding;
+        const logoCenterX = logoX + (logoSize / 2);
+
         if (contractorLogo) {
-            doc.addImage(contractorLogo, "JPEG", startX + logoPadding, startY + logoPadding, logoSize, logoSize);
+            // Logo image: X, Y, W, H
+            doc.addImage(contractorLogo, "JPEG", logoX, startY + logoPadding, logoSize, logoSize);
         }
 
         if (contractorName) {
@@ -148,21 +180,23 @@ export const generateDefectAnomalyReport = async (
             doc.setFont("helvetica", "normal");
             doc.setFontSize(7); // Small font
 
-            // Align with logo left edge, below logo
-            // Y = margin + padding + logo + gap
+            // Place text below logo
             const textY = startY + logoPadding + logoSize + 4;
-            const maxNameWidth = 45;
+
+            // Allow more width for centering, but keep it constrained so it doesn't overlap title too much
+            // Title is at center (pageWidth/2). Logo center is ~20-30.
+            // Split text if it's too long
+            const maxNameWidth = 50;
             const nameLines = doc.splitTextToSize(contractorName, maxNameWidth);
-            doc.text(nameLines, startX + logoPadding, textY);
+
+            // Center align the text at logoCenterX
+            doc.text(nameLines, logoCenterX, textY, { align: "center" });
         }
 
         // --- Right Side: Client Logo ---
         if (clientLogo) {
             doc.addImage(clientLogo, "JPEG", pageWidth - margin - logoSize - logoPadding, startY + logoPadding, logoSize, logoSize);
         }
-
-        // Date and Page No placeholders (Simulated visually if needed, but added in loop later)
-        // We leave space below Client Logo
 
         // --- Center: Text ---
         doc.setTextColor(255, 255, 255); // White Text
@@ -179,10 +213,10 @@ export const generateDefectAnomalyReport = async (
         const deptName = companySettings.departmentName || "Engineering Department";
         doc.text(deptName, pageWidth / 2, startY + 18, { align: "center" });
 
-        // Report Title
+        // Report Title (Slightly adjusted Y to fit everything)
         doc.setFont("helvetica", "bold");
         doc.setFontSize(16);
-        doc.text("DEFECT / ANOMALY REPORT", pageWidth / 2, startY + 28, { align: "center" });
+        doc.text("DEFECT / ANOMALY REPORT", pageWidth / 2, startY + 30, { align: "center" });
 
         // Reset Text Color
         doc.setTextColor(0, 0, 0);
@@ -221,26 +255,52 @@ export const generateDefectAnomalyReport = async (
         else if (priority === 'Observation' || priority === 'O') priorityColor = [237, 125, 49];
         else if (priority === 'Medium' || priority === 'M') priorityColor = [253, 224, 71]; // Yellow
 
-        // Determine vessel from various sources
-        const vessel = record.main_vessel || record.dive_vessel || jobPack.metadata?.vessel || "N/A";
+        // Determine vessel 
+        // If jobpack metadata provides multiple vessels (comma separated), they should be displayed.
+        // We prioritize explicit anomaly vessel if present, otherwise jobpack vessel.
+        let vessel = record.main_vessel || record.dive_vessel || jobPack.metadata?.vessel || "N/A";
+
         // Field/Install
         const field = structure.field_name || "N/A";
         const install = structure.str_name || "N/A";
         const ref = anomalyDetails.display_ref_no || "N/A";
-        const inspDate = record.inspection_date ? new Date(record.inspection_date).toLocaleDateString() : "N/A";
+        // Format date to show time if needed? Usually just date.
+        const inspDate = record.inspection_date ? new Date(record.inspection_date).toLocaleDateString("en-GB") : "N/A";
 
-        // Recording Logic
-        const recording = (record.video_ref || record.tape_no || "").trim() || "N/A";
+        // Format video_ref (tape_count_no) as time if it's a number (seconds -> HH:MM:SS)
+        let videoRefTime = record.video_ref || "";
+        if (videoRefTime && !isNaN(Number(videoRefTime))) {
+            const totalSeconds = Number(videoRefTime);
+            if (totalSeconds >= 0) {
+                const h = Math.floor(totalSeconds / 3600);
+                const m = Math.floor((totalSeconds % 3600) / 60);
+                const s = Math.floor(totalSeconds % 60);
 
+                const pad = (n: number) => n.toString().padStart(2, '0');
+                videoRefTime = `${pad(h)}:${pad(m)}:${pad(s)}`;
+            }
+        }
+
+        // Display format: TapeNo (Time)
+        let recording = (record.tape_no || "").trim();
+        if (videoRefTime) {
+            recording += ` (${videoRefTime})`;
+        }
+        recording = recording.trim() || "N/A";
+
+        // Diver / ROV Logic
         let rovDiverVal = "N/A";
         let rovDiverLabel = "ROV/Diver:";
 
         if (record.diver_name) {
             rovDiverVal = record.diver_name;
             rovDiverLabel = "Diver:";
-        } else if (record.rov_name) {
-            rovDiverVal = record.rov_name;
-            rovDiverLabel = "ROV:";
+        } else if (record.rov_name || record.rov_machine) {
+            // ROV Job: ROV Name and Pilot Name
+            const machine = record.rov_machine || "ROV";
+            const pilot = record.rov_name || "Unknown";
+            rovDiverVal = `${machine} / ${pilot}`; // "ROV Name / Pilot Name"
+            rovDiverLabel = "ROV / Pilot:";
         } else if (record.deployment_no) {
             rovDiverVal = record.deployment_no;
             rovDiverLabel = "ROV Dep:";
@@ -296,21 +356,46 @@ export const generateDefectAnomalyReport = async (
         lastY += 5;
 
         doc.setFont("helvetica", "normal");
-        const desc = anomalyDetails.description || "No description provided.";
-        const descLines = doc.splitTextToSize(desc, contentWidth - 4);
+
+        // 1. Component Details & Elevation (First)
+        let compLines: string[] = [];
+        if (record.component_qid) {
+            compLines.push(`Components: ${record.component_qid}`);
+        }
+
+        // Elevation / KP Logic
+        const isPipeline = (structure.str_type || "").toUpperCase().includes("PIPE");
+
+        let locInfo = "";
+        if (isPipeline) {
+            if (record.fp_kp) locInfo = `KP: ${record.fp_kp}`;
+        } else {
+            // Platform default
+            if (record.elevation) locInfo = `Elevation: ${record.elevation}`;
+            else if (record.fp_kp) locInfo = `KP: ${record.fp_kp}`; // Fallback
+        }
+
+        if (locInfo) compLines.push(locInfo);
+        const compText = compLines.join("\n");
+
+        // 2. Observations (Inspection Findings)
+        // If "observations" is just the summary, use it. 
+        const findings = record.observations ? `Inspection Findings: ${record.observations}` : "";
+
+        // 3. Remarks (Original Defect Description)
+        const defectDesc = anomalyDetails.description || "";
+
+        // 4. Rectified Remarks (if any)
+        const rectRemarks = anomalyDetails.rectified_remarks ? `Rectified Remarks: ${anomalyDetails.rectified_remarks}` : "";
+
+        // Combine: Component -> Findings -> Description -> Rectified Remarks
+        const fullText = [compText, findings, defectDesc, rectRemarks].filter(Boolean).join("\n\n");
+
+        const descLines = doc.splitTextToSize(fullText || "No description provided.", contentWidth - 4);
         doc.text(descLines, margin + 2, lastY);
         lastY += (descLines.length * 4) + 5;
 
-        doc.setFontSize(8);
-        doc.text("Refer to photo & sketch shown below for the finding.", margin + 2, lastY);
-        lastY += 8;
-
-        doc.line(margin, lastY, pageWidth - margin, lastY);
-        lastY += 5;
-
-        doc.setFontSize(9);
-        doc.text("Photo/Video Capture/Sketch:", margin + 2, lastY);
-        lastY += 5;
+        // Removed redundant text as requested
 
         const images = record.attachments || [];
 
@@ -324,30 +409,107 @@ export const generateDefectAnomalyReport = async (
         const loadedImages = await Promise.all(validUrls.map(url => loadImage(url)));
         const validImages = loadedImages.filter(img => img.length > 0);
 
+        // Define Footer Height
+        const footerH = 25; // Compact height
+
         if (validImages.length > 0) {
-            const availableH = (pageHeight - margin - 15) - lastY - 10;
+            // First page available height
+            // pageHeight - margin(bottom) - footerH - padding - currentY
+            let availableH = (pageHeight - margin - footerH - 10) - lastY;
 
             for (let j = 0; j < validImages.length; j++) {
-                if (j > 0) {
+                // Determine if image fits
+                // Check minimal height required (e.g. 50mm)
+                if (availableH < 50) {
                     doc.addPage();
                     globalPage++;
                     drawHeader(doc);
                     lastY = margin + headerH + 10;
-                    doc.setFontSize(9);
-                    doc.text("Photo/Video Capture/Sketch (Cont.):", margin + 2, lastY);
-                    lastY += 5;
+                    // Reset availableH for new page
+                    availableH = (pageHeight - margin - footerH - 10) - lastY;
                 }
 
                 const imgW = contentWidth - 10;
-                const imgH = Math.min(availableH, imgW * 0.75);
+                // Constrain image height to available space
+                // Aspect ratio logic?
+                // Just use max available.
+                // But we also want to maintain aspect ratio if possible, or usually landscape photos.
+                // Let's create an Image element to get dims? loadImage returns dataURL.
+                // For simplicity, assume landscape or limit by width.
+
+                // We want to avoid it hitting the footer.
+                // Max height for this image on this page:
+                let imgH = Math.min(availableH, imgW * 0.75);
+
+                // If it's the last image, we might need space for caption?
+                // Caption height ~5
+                imgH -= 10; // Reserve space for caption and gap
 
                 doc.addImage(validImages[j], "JPEG", margin + 5, lastY, imgW, imgH);
                 doc.setFontSize(8);
 
-                const caption = validImages.length > 1 ? `Photo ${j + 1}: ${desc.substring(0, 50)}...` : `Photo 1: ${desc.substring(0, 100)}`;
+                const caption = validImages.length > 1 ? `Photo ${j + 1}: ${defectDesc.substring(0, 50)}...` : `Photo 1: ${defectDesc.substring(0, 100)}`;
                 doc.text(caption, pageWidth / 2, lastY + imgH + 5, { align: "center" });
+
+                // Update lastY for next iteration (if multiple images per anomaly, though usually 1-2)
+                lastY += imgH + 15;
+                availableH -= (imgH + 15);
             }
         }
+        // Draw Signatories at the bottom of the current page (or new page if no space)
+        // Actually, usually "Sign off" is on the bottom of the report page.
+        // We will assume a fixed footer height reserved at the bottom margin.
+
+        // Define Signatory Footer function to be called on each page or just the last?
+        // User requested "footer part". Usually implies on the report page.
+        // Let's add it to the LAST page of the anomaly (where photos end).
+
+        // const footerH = 30; // Already defined as 25 above
+        const footerY = pageHeight - margin - footerH;
+
+        // Check if we need a new page for footer if content overlapped?
+        // Photos logic uses availableH. We should reduce availableH to reserve space for footer.
+        // But for now, let's just draw it at the bottom.
+
+        const drawSignatories = () => {
+            const colW = contentWidth / 3;
+            const names = [
+                { title: "Prepared By", name: config.preparedBy?.name, date: config.preparedBy?.date },
+                { title: "Reviewed By", name: config.reviewedBy?.name, date: config.reviewedBy?.date },
+                { title: "Approved By", name: config.approvedBy?.name, date: config.approvedBy?.date }
+            ];
+
+            doc.setDrawColor(0);
+            doc.setLineWidth(0.1);
+            doc.setFontSize(8);
+
+            names.forEach((p, idx) => {
+                const x = margin + (idx * colW);
+                const y = footerY;
+
+                // Box
+                doc.rect(x, y, colW, footerH);
+
+                // Title
+                doc.setFont("helvetica", "bold");
+                doc.text(p.title, x + 2, y + 3);
+
+                // Name Label
+                doc.setFont("helvetica", "normal");
+                doc.text("Name:", x + 2, y + 9);
+                if (p.name) doc.text(p.name, x + 12, y + 9);
+
+                // Sign Label
+                doc.text("Sign:", x + 2, y + 15);
+
+                // Date Label
+                doc.text("Date:", x + 2, y + 21);
+                if (p.date) doc.text(p.date, x + 12, y + 21);
+            });
+        };
+
+        drawSignatories();
+
         globalPage++;
     }
 
@@ -361,20 +523,15 @@ export const generateDefectAnomalyReport = async (
         doc.setTextColor(255, 255, 255); // White text on Blue Header
         doc.setFont("helvetica", "normal");
 
-        // Position: Below Client Logo, Right Side
-        // Align Right to Page Margin
-        const textRight = pageWidth - margin;
-
-        // Y Position: Below Logo.
-        // Logo Y: margin + padding. Height: logoSize.
-        // End of Logo: margin + padding + logoSize = 15 + 5 + 25 = 45.
-        // Header Height: 45. Bottom at 15+45=60.
-        // Text at Y=49 and Y=53. Fits.
+        // Align Center relative to Client Logo (Right Side)
+        // Client Logo X was: pageWidth - margin - logoSize - logoPadding
+        const clientLogoX = pageWidth - margin - logoSize - logoPadding;
+        const clientLogoCenterX = clientLogoX + (logoSize / 2);
 
         const textYStart = margin + logoPadding + logoSize + 4;
 
-        doc.text(dateStr, textRight, textYStart, { align: "right" });
-        doc.text(`Page ${i} of ${totalPages}`, textRight, textYStart + 5, { align: "right" });
+        doc.text(dateStr, clientLogoCenterX, textYStart, { align: "center" });
+        doc.text(`Page ${i} of ${totalPages}`, clientLogoCenterX, textYStart + 5, { align: "center" });
     }
 
     if (config.returnBlob) {
