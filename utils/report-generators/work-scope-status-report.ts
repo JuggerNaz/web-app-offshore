@@ -33,6 +33,7 @@ interface ReportConfig {
     showContractorLogo: boolean;
     showPageNumbers: boolean;
     returnBlob?: boolean;
+    printFriendly?: boolean;
 }
 
 // Helpers
@@ -141,11 +142,20 @@ export const generateWorkScopeStatusReport = async (
     const pendingColor: [number, number, number] = [229, 231, 235]; // Light Grey
     const partialColor: [number, number, number] = [234, 179, 8]; // Yellow?
 
+    const isPrintFriendly = config?.printFriendly === true;
+
     // --- 1. Draw Header (Reused) ---
     const drawHeader = async (pageNo: number) => {
-        // Top Blue Bar
-        doc.setFillColor(...headerBlue);
-        doc.rect(0, 0, pageWidth, 28, "F");
+        if (isPrintFriendly) {
+            // Print-Friendly: White background with light gray border
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(0, 0, pageWidth, 28);
+        } else {
+            // Normal: Dark Blue Filled Background
+            doc.setFillColor(...headerBlue);
+            doc.rect(0, 0, pageWidth, 28, "F");
+        }
 
         // Logo
         if (companySettings?.logo_url) {
@@ -157,14 +167,14 @@ export const generateWorkScopeStatusReport = async (
                 if (config?.reportNoPrefix) {
                     doc.setFontSize(8);
                     doc.setFont("helvetica", "bold");
-                    doc.setTextColor(255, 255, 255);
+                    doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
                     doc.text(`${config.reportNoPrefix}-${config.reportYear}`, pageWidth - 16, 26, { align: "center" });
                 }
             } catch (error) { }
         }
 
         // Company
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", 10, 9);
@@ -184,6 +194,7 @@ export const generateWorkScopeStatusReport = async (
 
         // Page No
         if (config?.showPageNumbers) {
+            doc.setTextColor(100, 100, 100);
             doc.text(`Page ${pageNo}`, pageWidth - 20, pageHeight - 10, { align: "right" });
         }
     };
@@ -293,9 +304,17 @@ export const generateWorkScopeStatusReport = async (
 
         // Draw Section Header if Multi-Structure
         if (structure.id === 'all') {
-            doc.setFillColor(30, 41, 59); // Dark Slate Blue
-            doc.rect(14, yPos, pageWidth - 28, 8, "F");
-            doc.setTextColor(255, 255, 255);
+            if (isPrintFriendly) {
+                doc.setFillColor(240, 240, 240);
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.3);
+                doc.rect(14, yPos, pageWidth - 28, 8, "FD");
+                doc.setTextColor(0, 0, 0);
+            } else {
+                doc.setFillColor(30, 41, 59); // Dark Slate Blue
+                doc.rect(14, yPos, pageWidth - 28, 8, "F");
+                doc.setTextColor(255, 255, 255);
+            }
             doc.setFontSize(10);
             doc.setFont("helvetica", "bold");
             doc.text(`STRUCTURE: ${sKey.toUpperCase()}`, 16, yPos + 5.5);
@@ -371,9 +390,17 @@ export const generateWorkScopeStatusReport = async (
             const col3 = pageWidth - 40; // Value
 
             // Headers
-            doc.setFillColor(...headerBlue);
-            doc.rect(col1 - 4, yPos - 5, pageWidth - 20, 8, "F");
-            doc.setTextColor(255, 255, 255);
+            if (isPrintFriendly) {
+                doc.setFillColor(240, 240, 240);
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.3);
+                doc.rect(col1 - 4, yPos - 5, pageWidth - 20, 8, "FD");
+                doc.setTextColor(0, 0, 0);
+            } else {
+                doc.setFillColor(...headerBlue);
+                doc.rect(col1 - 4, yPos - 5, pageWidth - 20, 8, "F");
+                doc.setTextColor(255, 255, 255);
+            }
             doc.setFontSize(9);
             doc.setFont("helvetica", "bold");
             doc.text("Inspection Type", col1, yPos);

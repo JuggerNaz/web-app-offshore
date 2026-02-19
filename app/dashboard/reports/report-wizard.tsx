@@ -53,6 +53,7 @@ interface ReportConfig {
     watermark: { enabled: boolean; text: string; transparency: number };
     showContractorLogo: boolean;
     showPageNumbers: boolean;
+    printFriendly: boolean;
 }
 
 interface SelectionState {
@@ -119,6 +120,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         watermark: { enabled: true, text: "DRAFT", transparency: 0.1 },
         showContractorLogo: true,
         showPageNumbers: true,
+        printFriendly: false,
     });
 
     // Data Fetching
@@ -588,6 +590,17 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     id="page-numbers"
                                     checked={config.showPageNumbers}
                                     onCheckedChange={(c: boolean) => setConfig({ ...config, showPageNumbers: c })}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
+                                <div className="space-y-0.5">
+                                    <Label className="cursor-pointer" htmlFor="print-friendly">Print Friendly (Save Ink)</Label>
+                                    <p className="text-[10px] text-muted-foreground">Remove dark backgrounds for hard copy printing</p>
+                                </div>
+                                <Switch
+                                    id="print-friendly"
+                                    checked={config.printFriendly}
+                                    onCheckedChange={(c: boolean) => setConfig({ ...config, printFriendly: c })}
                                 />
                             </div>
                         </CardContent>

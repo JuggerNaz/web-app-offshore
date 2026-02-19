@@ -133,12 +133,20 @@ export const generateWorkScopeReport = async (
     const headerBlue: [number, number, number] = [26, 54, 93];
     const sectionBlue: [number, number, number] = [44, 82, 130];
     const subHeaderGrey: [number, number, number] = [240, 240, 240];
+    const isPrintFriendly = config?.printFriendly === true;
 
     // -- HEADER GENERATION Helper --
     const drawHeader = async (pageNo: number) => {
-        // Main Blue Header
-        doc.setFillColor(...headerBlue);
-        doc.rect(0, 0, pageWidth, 28, "F");
+        if (isPrintFriendly) {
+            // Print-Friendly: White background with light gray border
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(0, 0, pageWidth, 28);
+        } else {
+            // Normal: Dark Blue Filled Background
+            doc.setFillColor(...headerBlue);
+            doc.rect(0, 0, pageWidth, 28, "F");
+        }
 
         // Logo
         if (companySettings?.logo_url) {
@@ -146,13 +154,15 @@ export const generateWorkScopeReport = async (
                 const logoData = await loadImage(companySettings.logo_url);
                 doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
             } catch (error) {
-                doc.setDrawColor(255, 255, 255);
-                doc.rect(pageWidth - 25, 4, 18, 18);
+                if (!isPrintFriendly) {
+                    doc.setDrawColor(255, 255, 255);
+                    doc.rect(pageWidth - 25, 4, 18, 18);
+                }
             }
         }
 
         // Company & Dept
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", 10, 9);
@@ -169,14 +179,11 @@ export const generateWorkScopeReport = async (
         doc.setFontSize(7);
         doc.setFont("helvetica", "normal");
         // Platform removed from header as per request
-        // doc.setFontSize(7);
-        // doc.setFont("helvetica", "normal");
-        // doc.text(`Platform: ${structure.str_name || "N/A"}`, 10, 24);
         // Report Number in Header
         if (config?.reportNoPrefix) {
             doc.setFontSize(10);
             doc.setFont("helvetica", "bold");
-            doc.setTextColor(255, 255, 255);
+            doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
             doc.text(`${config.reportNoPrefix}-${config.reportYear}`, pageWidth - 10, 24, { align: "right" });
         }
     };
@@ -234,9 +241,17 @@ export const generateWorkScopeReport = async (
         }
 
         // ===== JOB PACK DETAILS SECTION =====
-        doc.setFillColor(...sectionBlue);
-        doc.rect(10, yPos, pageWidth - 20, 6, "F");
-        doc.setTextColor(255, 255, 255);
+        if (isPrintFriendly) {
+            doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(10, yPos, pageWidth - 20, 6, "FD");
+            doc.setTextColor(0, 0, 0);
+        } else {
+            doc.setFillColor(...sectionBlue);
+            doc.rect(10, yPos, pageWidth - 20, 6, "F");
+            doc.setTextColor(255, 255, 255);
+        }
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.text("JOB PACK DETAILS", 12, yPos + 4);
@@ -379,9 +394,17 @@ export const generateWorkScopeReport = async (
             }
 
             // Draw Structure Blue Band
-            doc.setFillColor(30, 41, 59); // Dark Slate Blue
-            doc.rect(10, yPos, pageWidth - 20, 8, "F");
-            doc.setTextColor(255, 255, 255);
+            if (isPrintFriendly) {
+                doc.setFillColor(240, 240, 240);
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.3);
+                doc.rect(10, yPos, pageWidth - 20, 8, "FD");
+                doc.setTextColor(0, 0, 0);
+            } else {
+                doc.setFillColor(30, 41, 59); // Dark Slate Blue
+                doc.rect(10, yPos, pageWidth - 20, 8, "F");
+                doc.setTextColor(255, 255, 255);
+            }
             doc.setFontSize(10);
             doc.setFont("helvetica", "bold");
             doc.text(`STRUCTURE: ${structName.toUpperCase()}`, 12, yPos + 5.5);
@@ -480,8 +503,8 @@ export const generateWorkScopeReport = async (
                     body: tableBody,
                     theme: 'grid',
                     headStyles: {
-                        fillColor: sectionBlue,
-                        textColor: [255, 255, 255],
+                        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+                        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                         fontStyle: 'bold',
                         fontSize: 8,
                         halign: 'center',

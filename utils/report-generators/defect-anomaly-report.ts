@@ -21,6 +21,7 @@ export interface ReportConfig {
     showPageNumbers: boolean;
     returnBlob?: boolean;
     inspectionId?: number;
+    printFriendly?: boolean;
 }
 
 const loadImage = (url: string): Promise<string> => {
@@ -152,44 +153,43 @@ export const generateDefectAnomalyReport = async (
     }
 
     // Header Dimensions
-    const headerH = 45; // Height of the header background
-    const logoSize = 25;
-    const logoPadding = 5;
+    const headerH = 28; // Reduced Height
+    const logoSize = 18; // Reduced Logo Size
+    const logoPadding = 4;
+
+    const isPrintFriendly = config.printFriendly === true;
 
     const drawHeader = (doc: jsPDF) => {
         const startX = margin;
         const startY = margin;
 
-        // Blue Rect Background
-        doc.setFillColor(31, 55, 93); // Dark Blue #1f375d
-        doc.rect(startX, startY, contentWidth, headerH, "F");
+        if (isPrintFriendly) {
+            // Print-Friendly: White background with light border (matches table lines)
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(startX, startY, contentWidth, headerH);
+        } else {
+            // Screen/Color: Dark Blue Filled Background
+            doc.setFillColor(31, 55, 93); // Dark Blue #1f375d
+            doc.rect(startX, startY, contentWidth, headerH, "F");
+        }
 
         // --- Left Side: Contractor Logo + Name ---
-        // Center the name relative to the logo
-        // Logo is at startX + logoPadding. Width 25. Center X = startX + logoPadding + 12.5
         const logoX = startX + logoPadding;
         const logoCenterX = logoX + (logoSize / 2);
 
         if (contractorLogo) {
-            // Logo image: X, Y, W, H
             doc.addImage(contractorLogo, "JPEG", logoX, startY + logoPadding, logoSize, logoSize);
         }
 
         if (contractorName) {
-            doc.setTextColor(255, 255, 255);
+            doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
             doc.setFont("helvetica", "normal");
-            doc.setFontSize(7); // Small font
+            doc.setFontSize(6); // Smaller font
 
-            // Place text below logo
-            const textY = startY + logoPadding + logoSize + 4;
-
-            // Allow more width for centering, but keep it constrained so it doesn't overlap title too much
-            // Title is at center (pageWidth/2). Logo center is ~20-30.
-            // Split text if it's too long
-            const maxNameWidth = 50;
+            const textY = startY + logoPadding + logoSize + 3;
+            const maxNameWidth = 40;
             const nameLines = doc.splitTextToSize(contractorName, maxNameWidth);
-
-            // Center align the text at logoCenterX
             doc.text(nameLines, logoCenterX, textY, { align: "center" });
         }
 
@@ -199,24 +199,25 @@ export const generateDefectAnomalyReport = async (
         }
 
         // --- Center: Text ---
-        doc.setTextColor(255, 255, 255); // White Text
+        // Print-Friendly: Dark text on white. Normal: White text on dark blue.
+        doc.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
 
         // Company Name
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(14);
+        doc.setFontSize(12);
         const companyName = (companySettings.company_name || "TANJUNG OFFSHORE SERVICES SDN BHD").toUpperCase();
-        doc.text(companyName, pageWidth / 2, startY + 12, { align: "center" });
+        doc.text(companyName, pageWidth / 2, startY + 8, { align: "center" });
 
         // Department
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         const deptName = companySettings.departmentName || "Engineering Department";
-        doc.text(deptName, pageWidth / 2, startY + 18, { align: "center" });
+        doc.text(deptName, pageWidth / 2, startY + 12, { align: "center" });
 
-        // Report Title (Slightly adjusted Y to fit everything)
+        // Report Title
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
-        doc.text("DEFECT / ANOMALY REPORT", pageWidth / 2, startY + 30, { align: "center" });
+        doc.setFontSize(13);
+        doc.text("DEFECT / ANOMALY REPORT", pageWidth / 2, startY + 20, { align: "center" });
 
         // Reset Text Color
         doc.setTextColor(0, 0, 0);
@@ -249,11 +250,32 @@ export const generateDefectAnomalyReport = async (
         drawHeader(doc);
 
         const priority = anomalyDetails.priority || "Normal";
-        let priorityColor = [255, 255, 255]; // Default white
+        let priorityColor: any = [255, 255, 255]; // Default white
 
-        if (priority === 'High' || priority === 'Critical' || priority === 'H') priorityColor = [249, 115, 22]; // Orange
-        else if (priority === 'Observation' || priority === 'O') priorityColor = [237, 125, 49];
-        else if (priority === 'Medium' || priority === 'M') priorityColor = [253, 224, 71]; // Yellow
+        // Check if DB provides a color (e.g. from u_lib_combo ANMLYCLR)
+        const dbColor = (record as any).priority_color;
+        if (dbColor && typeof dbColor === 'string') {
+            // Handle "R,G,B" format (e.g. "255, 0, 0")
+            if (dbColor.includes(',')) {
+                const parts = dbColor.split(',').map(p => parseInt(p.trim()));
+                if (parts.length === 3 && parts.every(n => !isNaN(n))) {
+                    priorityColor = parts;
+                }
+            }
+            // Handle Hex
+            else if (dbColor.startsWith('#')) {
+                priorityColor = dbColor;
+            }
+            // Handle named colors? (Not standard in RGB array requirement for pdf-autotable unless using hex)
+            else {
+                priorityColor = dbColor;
+            }
+        } else {
+            // Fallback to hardcoded defaults
+            if (priority === 'High' || priority === 'Critical' || priority === 'H') priorityColor = [249, 115, 22]; // Orange
+            else if (priority === 'Observation' || priority === 'O') priorityColor = [237, 125, 49];
+            else if (priority === 'Medium' || priority === 'M') priorityColor = [253, 224, 71]; // Yellow
+        }
 
         // Determine vessel 
         // If jobpack metadata provides multiple vessels (comma separated), they should be displayed.
@@ -261,9 +283,13 @@ export const generateDefectAnomalyReport = async (
         let vessel = record.main_vessel || record.dive_vessel || jobPack.metadata?.vessel || "N/A";
 
         // Field/Install
-        const field = structure.field_name || "N/A";
-        const install = structure.str_name || "N/A";
+        // Field/Install
+        const field = record.field_name || structure.field_name || "N/A";
+        const install = record.structure_name || structure.str_name || "N/A";
         const ref = anomalyDetails.display_ref_no || "N/A";
+        // Report No resolution
+        // Check record first, then jobPack metadata, then fallback
+        const reportNoDisplay = record.sow_report_no || (jobPack.metadata && jobPack.metadata.report_no) || "N/A";
         // Format date to show time if needed? Usually just date.
         const inspDate = record.inspection_date ? new Date(record.inspection_date).toLocaleDateString("en-GB") : "N/A";
 
@@ -306,17 +332,46 @@ export const generateDefectAnomalyReport = async (
             rovDiverLabel = "ROV Dep:";
         }
 
-        const headStylesString = { fillColor: [229, 231, 235], fontStyle: 'bold', lineWidth: 0.1, lineColor: [0, 0, 0] };
+        const headStylesString = isPrintFriendly
+            ? { fillColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.1, lineColor: [0, 0, 0] }
+            : { fillColor: [229, 231, 235], fontStyle: 'bold', lineWidth: 0.1, lineColor: [0, 0, 0] };
 
-        // Increased top margin for table to account for taller header
+
+        // Component & Elevation Vals
+        const compVal = record.component_qid || "";
+        let elevVal = "";
+        let elevLabel = "Elevation:";
+
+        // Check if DB provides unit or assume meters
+        const unit = "m"; // Default unit
+
+        if (record.elevation) {
+            const el = Number(record.elevation);
+            if (!isNaN(el)) {
+                if (el < 0) elevVal = `(-) ${Math.abs(el)}${unit}`;
+                else elevVal = `(+) ${el}${unit}`;
+            } else {
+                elevVal = `${record.elevation}`;
+            }
+        } else if (record.fp_kp) {
+            elevLabel = "KP:";
+            elevVal = `${record.fp_kp}`;
+        } else {
+            elevVal = "N/A";
+        }
+
+        // Details table with consistent column widths
+        const labelColWidth = 32;
+        const valueColWidth = (contentWidth - (labelColWidth * 2)) / 2;
+
         autoTable(doc, {
             startY: margin + headerH + 10,
             head: [],
             body: [
                 [
-                    { content: "Project Description:", styles: { ...headStylesString, cellWidth: 35 } },
-                    { content: record.jobpack_name || jobPack.name || "N/A", styles: { cellWidth: 60 } },
-                    { content: "Priority:", styles: { ...headStylesString, cellWidth: 25 } },
+                    { content: "Project Description:", styles: headStylesString },
+                    { content: record.jobpack_name || jobPack.name || "N/A" },
+                    { content: "Priority:", styles: headStylesString },
                     { content: priority, styles: { fillColor: priorityColor, fontStyle: 'bold', halign: 'center' } }
                 ],
                 [
@@ -324,8 +379,12 @@ export const generateDefectAnomalyReport = async (
                     { content: "Installation:", styles: headStylesString }, { content: install }
                 ],
                 [
+                    { content: "Component:", styles: headStylesString }, { content: compVal },
+                    { content: elevLabel, styles: headStylesString }, { content: elevVal }
+                ],
+                [
                     { content: "Anomaly Ref. No.:", styles: headStylesString }, { content: ref },
-                    { content: "Report No.:", styles: headStylesString }, { content: sowReportNo }
+                    { content: "Report No.:", styles: headStylesString }, { content: reportNoDisplay }
                 ],
                 [
                     { content: "Date :", styles: headStylesString }, { content: inspDate },
@@ -338,48 +397,22 @@ export const generateDefectAnomalyReport = async (
             ] as any,
             theme: 'grid',
             styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+            columnStyles: {
+                0: { cellWidth: labelColWidth },
+                1: { cellWidth: valueColWidth },
+                2: { cellWidth: labelColWidth },
+                3: { cellWidth: valueColWidth }
+            },
             margin: { left: margin, right: margin, top: margin + headerH + 5 }
         });
 
         let lastY = (doc as any).lastAutoTable.finalY + 5;
 
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-        doc.text("Anomaly Description:", margin + 2, lastY + 5);
-        lastY += 10;
-
-        doc.setFont("helvetica", "bold");
+        // --- Anomaly Description Box ---
+        // 1. Prepare Content
         const defectTitle = anomalyDetails.defect_type || anomalyDetails.defect_type_code || "VARIATION TO SPECIFICATION";
-        doc.text(defectTitle.toUpperCase(), margin + 2, lastY);
-        const titleW = doc.getTextWidth(defectTitle.toUpperCase());
-        doc.line(margin + 2, lastY + 1, margin + 2 + titleW, lastY + 1);
-        lastY += 5;
-
-        doc.setFont("helvetica", "normal");
-
-        // 1. Component Details & Elevation (First)
-        let compLines: string[] = [];
-        if (record.component_qid) {
-            compLines.push(`Components: ${record.component_qid}`);
-        }
-
-        // Elevation / KP Logic
-        const isPipeline = (structure.str_type || "").toUpperCase().includes("PIPE");
-
-        let locInfo = "";
-        if (isPipeline) {
-            if (record.fp_kp) locInfo = `KP: ${record.fp_kp}`;
-        } else {
-            // Platform default
-            if (record.elevation) locInfo = `Elevation: ${record.elevation}`;
-            else if (record.fp_kp) locInfo = `KP: ${record.fp_kp}`; // Fallback
-        }
-
-        if (locInfo) compLines.push(locInfo);
-        const compText = compLines.join("\n");
 
         // 2. Observations (Inspection Findings)
-        // If "observations" is just the summary, use it. 
         const findings = record.observations ? `Inspection Findings: ${record.observations}` : "";
 
         // 3. Remarks (Original Defect Description)
@@ -388,12 +421,47 @@ export const generateDefectAnomalyReport = async (
         // 4. Rectified Remarks (if any)
         const rectRemarks = anomalyDetails.rectified_remarks ? `Rectified Remarks: ${anomalyDetails.rectified_remarks}` : "";
 
-        // Combine: Component -> Findings -> Description -> Rectified Remarks
-        const fullText = [compText, findings, defectDesc, rectRemarks].filter(Boolean).join("\n\n");
+        // Combine: Findings -> Description -> Rectified Remarks
+        const fullText = [findings, defectDesc, rectRemarks].filter(Boolean).join("\n\n");
 
-        const descLines = doc.splitTextToSize(fullText || "No description provided.", contentWidth - 4);
-        doc.text(descLines, margin + 2, lastY);
-        lastY += (descLines.length * 4) + 5;
+        // Set font BEFORE splitTextToSize so width calculation matches rendering
+        const descFontSize = 8;
+        const descLineHeight = 3.5; // ~line height for 8pt font
+        const textPadding = 3; // padding from box edge
+        const textAreaWidth = contentWidth - (textPadding * 2); // full usable width inside box
+
+        doc.setFontSize(descFontSize);
+        doc.setFont("helvetica", "normal");
+        const descLines = doc.splitTextToSize(fullText || "No description provided.", textAreaWidth);
+
+        // Calculate Box Height
+        const boxHeaderH = 7;
+        const boxContentH = (descLines.length * descLineHeight) + 6; // padding
+        const totalBoxH = boxHeaderH + boxContentH;
+
+        // Draw Light Box - border only, no background fill
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(margin, lastY, contentWidth, totalBoxH);
+
+        // Draw light background for Anomaly Description sub-header row
+        doc.setFillColor(isPrintFriendly ? 240 : 229, isPrintFriendly ? 240 : 231, isPrintFriendly ? 240 : 235);
+        doc.rect(margin, lastY, contentWidth, boxHeaderH, 'F');
+        // Re-draw border on top of fill
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(margin, lastY, contentWidth, totalBoxH);
+
+        // Title
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Anomaly Description: ${defectTitle.toUpperCase()}`, margin + textPadding, lastY + 5);
+
+        // Content - use same font size as splitTextToSize calculation
+        doc.setFontSize(descFontSize);
+        doc.setFont("helvetica", "normal");
+        doc.text(descLines, margin + textPadding, lastY + boxHeaderH + 4);
+
+        lastY += totalBoxH + 5;
 
         // Removed redundant text as requested
 
@@ -438,22 +506,34 @@ export const generateDefectAnomalyReport = async (
                 // For simplicity, assume landscape or limit by width.
 
                 // We want to avoid it hitting the footer.
-                // Max height for this image on this page:
+                // Constrain image height to available space
                 let imgH = Math.min(availableH, imgW * 0.75);
 
                 // If it's the last image, we might need space for caption?
                 // Caption height ~5
                 imgH -= 10; // Reserve space for caption and gap
 
-                doc.addImage(validImages[j], "JPEG", margin + 5, lastY, imgW, imgH);
+                // Draw Light Box around Image Area
+                doc.setDrawColor(230, 230, 230);
+                doc.setLineWidth(0.5);
+                // Box around image + caption area
+                // rect(x, y, w, h)
+                // Height includes image + caption space (~5)
+                const boxH = imgH + 8;
+                doc.rect(margin, lastY, contentWidth, boxH); // Border only for cleaner look? Or fill? "light color box around the picture too"
+                // Let's do a very light fill or just border. User said "box around", usually implies borderFrame or background. Let's do border.
+
+                // Draw Image centered in the box? Or fit to box?
+                // Image fits width margin+5 to w-10.
+                doc.addImage(validImages[j], "JPEG", margin + 2, lastY + 2, imgW - 4, imgH - 4);
+
                 doc.setFontSize(8);
-
                 const caption = validImages.length > 1 ? `Photo ${j + 1}: ${defectDesc.substring(0, 50)}...` : `Photo 1: ${defectDesc.substring(0, 100)}`;
-                doc.text(caption, pageWidth / 2, lastY + imgH + 5, { align: "center" });
+                doc.text(caption, pageWidth / 2, lastY + imgH + 2, { align: "center" });
 
-                // Update lastY for next iteration (if multiple images per anomaly, though usually 1-2)
-                lastY += imgH + 15;
-                availableH -= (imgH + 15);
+                // Update lastY for next iteration
+                lastY += boxH + 10;
+                availableH -= (boxH + 10);
             }
         }
         // Draw Signatories at the bottom of the current page (or new page if no space)
@@ -513,25 +593,29 @@ export const generateDefectAnomalyReport = async (
         globalPage++;
     }
 
-    // Add Page Numbers and Date to Header
+    // Add Page Numbers and Date
     const totalPages = doc.getNumberOfPages();
     const dateStr = `Date: ${new Date().toLocaleDateString("en-GB")}`;
 
     for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         doc.setFontSize(8);
-        doc.setTextColor(255, 255, 255); // White text on Blue Header
         doc.setFont("helvetica", "normal");
 
-        // Align Center relative to Client Logo (Right Side)
-        // Client Logo X was: pageWidth - margin - logoSize - logoPadding
+        // Date & Page in Header area (right side, under client logo)
+        // Print-Friendly: Dark text. Normal: White text on Blue Header
+        doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
         const clientLogoX = pageWidth - margin - logoSize - logoPadding;
         const clientLogoCenterX = clientLogoX + (logoSize / 2);
-
         const textYStart = margin + logoPadding + logoSize + 4;
-
         doc.text(dateStr, clientLogoCenterX, textYStart, { align: "center" });
-        doc.text(`Page ${i} of ${totalPages}`, clientLogoCenterX, textYStart + 5, { align: "center" });
+
+        // Page Numbers just below the header bar, right-aligned
+        if (config.showPageNumbers) {
+            doc.setTextColor(80, 80, 80);
+            doc.setFontSize(8);
+            doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, margin + headerH + 4, { align: "right" });
+        }
     }
 
     if (config.returnBlob) {

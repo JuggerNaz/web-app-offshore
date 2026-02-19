@@ -159,7 +159,7 @@ export default function DiveInspectionList({
         setPreviewOpen(true);
     }
 
-    async function generateAnomalyReportBlob() {
+    async function generateAnomalyReportBlob(printFriendly?: boolean) {
         if (!previewRecord) return;
         const record = previewRecord;
 
@@ -183,7 +183,8 @@ export default function DiveInspectionList({
                 showContractorLogo: true,
                 showPageNumbers: true,
                 inspectionId: record.insp_id,
-                returnBlob: true
+                returnBlob: true,
+                printFriendly: printFriendly || false
             };
 
             return await generateDefectAnomalyReport(

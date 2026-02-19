@@ -95,10 +95,18 @@ export const generateJobPackSummaryReport = async (
     // Colors
     const headerBlue: [number, number, number] = [26, 54, 93];
     const sectionBlue: [number, number, number] = [44, 82, 130];
+    const isPrintFriendly = config?.printFriendly === true;
 
     // ===== HEADER =====
-    doc.setFillColor(...headerBlue);
-    doc.rect(0, 0, pageWidth, 28, "F");
+    if (isPrintFriendly) {
+        // Print-Friendly: White background with light gray border
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.3);
+        doc.rect(0, 0, pageWidth, 28);
+    } else {
+        doc.setFillColor(...headerBlue);
+        doc.rect(0, 0, pageWidth, 28, "F");
+    }
 
     // Logo
     if (companySettings?.logo_url) {
@@ -106,17 +114,19 @@ export const generateJobPackSummaryReport = async (
             const logoData = await loadImage(companySettings.logo_url);
             doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
         } catch (error) {
-            // Placeholder
-            doc.setDrawColor(255, 255, 255);
-            doc.rect(pageWidth - 25, 4, 18, 18);
-            doc.setFontSize(7);
-            doc.setTextColor(255, 255, 255);
-            doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+            if (!isPrintFriendly) {
+                // Placeholder
+                doc.setDrawColor(255, 255, 255);
+                doc.rect(pageWidth - 25, 4, 18, 18);
+                doc.setFontSize(7);
+                doc.setTextColor(255, 255, 255);
+                doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+            }
         }
     }
 
     // Company & Dept
-    doc.setTextColor(255, 255, 255);
+    doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", 10, 9);
@@ -143,9 +153,17 @@ export const generateJobPackSummaryReport = async (
     let yPos = 35;
 
     // ===== JOB PACK DETAILS =====
-    doc.setFillColor(...sectionBlue);
-    doc.rect(10, yPos, pageWidth - 20, 6, "F");
-    doc.setTextColor(255, 255, 255);
+    if (isPrintFriendly) {
+        doc.setFillColor(240, 240, 240);
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.3);
+        doc.rect(10, yPos, pageWidth - 20, 6, "FD");
+        doc.setTextColor(0, 0, 0);
+    } else {
+        doc.setFillColor(...sectionBlue);
+        doc.rect(10, yPos, pageWidth - 20, 6, "F");
+        doc.setTextColor(255, 255, 255);
+    }
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.text("JOB PACK DETAILS", 12, yPos + 4);
@@ -344,7 +362,7 @@ export const generateJobPackSummaryReport = async (
         head: [['Structure', 'Type', 'Job Type', 'Inspection Scope']],
         body: tableBody,
         theme: 'grid',
-        headStyles: { fillColor: sectionBlue, fontSize: 8, halign: 'left', fontStyle: 'bold' },
+        headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 8, halign: 'left', fontStyle: 'bold' },
         bodyStyles: { fontSize: 8, halign: 'left' },
         columnStyles: {
             0: { cellWidth: 40 },

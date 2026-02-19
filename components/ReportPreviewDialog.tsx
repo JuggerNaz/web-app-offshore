@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Printer, Download, Share2, FileText, Eye } from "lucide-react";
+import { Loader2, Printer, Download, Share2, FileText, Eye, Leaf } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 interface ReportPreviewDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     title: string;
     fileName: string;
-    generateReport: () => Promise<Blob | void>;
+    generateReport: (printFriendly?: boolean) => Promise<Blob | void>;
 }
 
 export function ReportPreviewDialog({
@@ -24,10 +26,11 @@ export function ReportPreviewDialog({
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [blob, setBlob] = useState<Blob | null>(null);
+    const [printFriendly, setPrintFriendly] = useState(false);
 
     useEffect(() => {
         if (open) {
-            loadPreview();
+            loadPreview(printFriendly);
         } else {
             // Cleanup on close
             if (previewUrl) {
@@ -38,10 +41,16 @@ export function ReportPreviewDialog({
         }
     }, [open]);
 
-    const loadPreview = async () => {
+    const loadPreview = async (isPrintFriendly: boolean) => {
         setIsGenerating(true);
+        // Revoke previous URL to avoid memory leaks
+        if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+            setPreviewUrl(null);
+            setBlob(null);
+        }
         try {
-            const result = await generateReport();
+            const result = await generateReport(isPrintFriendly);
             if (result instanceof Blob) {
                 setBlob(result);
                 const url = URL.createObjectURL(result);
@@ -55,6 +64,12 @@ export function ReportPreviewDialog({
         } finally {
             setIsGenerating(false);
         }
+    };
+
+    const handleTogglePrintFriendly = (checked: boolean) => {
+        setPrintFriendly(checked);
+        // Regenerate the report with the new setting
+        loadPreview(checked);
     };
 
     const handlePrint = () => {
@@ -121,6 +136,34 @@ export function ReportPreviewDialog({
                         </span>
                         {title}
                     </DialogTitle>
+
+                    {/* Print Friendly Toggle */}
+                    <div className="flex items-center gap-2">
+                        <div
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer select-none ${printFriendly
+                                    ? 'bg-green-50 border-green-300 dark:bg-green-950/30 dark:border-green-700'
+                                    : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'
+                                }`}
+                            onClick={() => handleTogglePrintFriendly(!printFriendly)}
+                        >
+                            <Leaf className={`w-3.5 h-3.5 transition-colors ${printFriendly ? 'text-green-600 dark:text-green-400' : 'text-slate-400'
+                                }`} />
+                            <Label
+                                htmlFor="print-friendly-toggle"
+                                className={`text-xs font-medium cursor-pointer transition-colors ${printFriendly ? 'text-green-700 dark:text-green-300' : 'text-slate-500'
+                                    }`}
+                            >
+                                Ink Saver
+                            </Label>
+                            <Switch
+                                id="print-friendly-toggle"
+                                checked={printFriendly}
+                                onCheckedChange={handleTogglePrintFriendly}
+                                className="scale-75"
+                                disabled={isGenerating}
+                            />
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex-1 bg-slate-100 dark:bg-slate-950 relative overflow-hidden">

@@ -91,10 +91,18 @@ export const generateInspectionReport = async (
 
         const headerBlue: [number, number, number] = [26, 54, 93];
         const sectionBlue: [number, number, number] = [44, 82, 130];
+        const isPrintFriendly = config?.printFriendly === true;
 
         // --- HEADER ---
-        doc.setFillColor(...headerBlue);
-        doc.rect(0, 0, pageWidth, 28, "F");
+        if (isPrintFriendly) {
+            // Print-Friendly: White background with light gray border
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(0, 0, pageWidth, 28);
+        } else {
+            doc.setFillColor(...headerBlue);
+            doc.rect(0, 0, pageWidth, 28, "F");
+        }
 
         // Logo
         if (companySettings?.logo_url) {
@@ -102,14 +110,14 @@ export const generateInspectionReport = async (
                 const logoData = await loadImage(companySettings.logo_url);
                 doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
             } catch (e) {
-                doc.setTextColor(255, 255, 255);
+                doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
                 doc.setFontSize(8);
                 doc.text("LOGO", pageWidth - 16, 13);
             }
         }
 
         // Company
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", 10, 9);
@@ -133,11 +141,23 @@ export const generateInspectionReport = async (
         let yPos = 35;
 
         // --- INSPECTION DETAILS ---
-        doc.setFillColor(...sectionBlue);
-        doc.rect(10, yPos, pageWidth - 20, 7, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
+        const drawSectionHeader = (text: string, y: number) => {
+            if (isPrintFriendly) {
+                doc.setFillColor(240, 240, 240);
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.3);
+                doc.rect(10, y, pageWidth - 20, 7, "FD");
+                doc.setTextColor(0, 0, 0);
+            } else {
+                doc.setFillColor(...sectionBlue);
+                doc.rect(10, y, pageWidth - 20, 7, "F");
+                doc.setTextColor(255, 255, 255);
+            }
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "bold");
+        };
+
+        drawSectionHeader("INSPECTION DETAILS", yPos);
         doc.text("INSPECTION DETAILS", 12, yPos + 5);
         yPos += 10;
 
@@ -167,11 +187,7 @@ export const generateInspectionReport = async (
         if (isAnomaly && inspection.insp_anomalies && inspection.insp_anomalies.length > 0) {
             const anomaly = inspection.insp_anomalies[0]; // Assuming one anomaly per record for now
 
-            doc.setFillColor(...sectionBlue);
-            doc.rect(10, yPos, pageWidth - 20, 7, "F");
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "bold");
+            drawSectionHeader(`ANOMALY: ${anomaly.anomaly_ref_no || 'Ref N/A'}`, yPos);
             doc.text(`ANOMALY: ${anomaly.anomaly_ref_no || 'Ref N/A'}`, 12, yPos + 5);
             yPos += 10;
 
@@ -219,11 +235,7 @@ export const generateInspectionReport = async (
                 yPos = 20;
             }
 
-            doc.setFillColor(...sectionBlue);
-            doc.rect(10, yPos, pageWidth - 20, 7, "F");
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "bold");
+            drawSectionHeader(`ATTACHMENTS / PHOTOS (${attachments.length})`, yPos);
             doc.text(`ATTACHMENTS / PHOTOS (${attachments.length})`, 12, yPos + 5);
             yPos += 10;
 

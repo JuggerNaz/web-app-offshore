@@ -33,6 +33,7 @@ interface ReportConfig {
     showContractorLogo: boolean;
     showPageNumbers: boolean;
     returnBlob?: boolean;
+    printFriendly?: boolean;
     procedureId?: string;
 }
 
@@ -62,6 +63,7 @@ export const generateDefectCriteriaReport = async (
         const headerBlue: [number, number, number] = [26, 54, 93];
         const sectionBlue: [number, number, number] = [44, 82, 130];
         const tableHeaderColor: [number, number, number] = [240, 240, 240];
+        const isPrintFriendly = config?.printFriendly === true;
 
         // Fetch Data
         let procedures: any[] = [];
@@ -124,8 +126,15 @@ export const generateDefectCriteriaReport = async (
 
         // --- REPORT GENERATION helper ---
         const addHeader = async (pageNum: number) => {
-            doc.setFillColor(...headerBlue);
-            doc.rect(0, 0, pageWidth, 28, "F");
+            if (isPrintFriendly) {
+                // Print-Friendly: White background with light gray border
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.3);
+                doc.rect(0, 0, pageWidth, 28);
+            } else {
+                doc.setFillColor(...headerBlue);
+                doc.rect(0, 0, pageWidth, 28, "F");
+            }
 
             // Logo
             if (companySettings?.logo_url) {
@@ -134,14 +143,14 @@ export const generateDefectCriteriaReport = async (
                     doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
                 } catch (e) {
                     // fallback text
-                    doc.setTextColor(255, 255, 255);
+                    doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
                     doc.setFontSize(8);
                     doc.text("LOGO", pageWidth - 16, 13);
                 }
             }
 
             // Company Name
-            doc.setTextColor(255, 255, 255);
+            doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
             doc.setFontSize(16);
             doc.setFont("helvetica", "bold");
             doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", 10, 9);
@@ -209,10 +218,17 @@ export const generateDefectCriteriaReport = async (
             }
 
             // Procedure Header
-            doc.setFillColor(...sectionBlue);
-            doc.rect(10, currentY, pageWidth - 20, 8, "F");
-
-            doc.setTextColor(255, 255, 255);
+            if (isPrintFriendly) {
+                doc.setFillColor(240, 240, 240);
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.3);
+                doc.rect(10, currentY, pageWidth - 20, 8, "FD");
+                doc.setTextColor(0, 0, 0);
+            } else {
+                doc.setFillColor(...sectionBlue);
+                doc.rect(10, currentY, pageWidth - 20, 8, "F");
+                doc.setTextColor(255, 255, 255);
+            }
             doc.setFontSize(10);
             doc.setFont("helvetica", "bold");
             const procTitle = `${proc.procedureNumber} - ${proc.procedureName} (Ver. ${proc.version})`;

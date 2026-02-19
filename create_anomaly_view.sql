@@ -53,6 +53,9 @@ SELECT
     ull.lib_desc as contractor_name,
     ull.logo_url,
 
+    -- Priority Color (from u_lib_combo ANMLYCLR)
+    pac.code_2 as priority_color,
+
     -- Dive Job Info
     dj.dive_job_id,
     dj.dive_no,
@@ -64,13 +67,26 @@ SELECT
     rj.deployment_no,
     rj.rov_operator as rov_name,
     rj.rov_serial_no as rov_machine,
-    rj.start_time as rov_start
+    rj.start_time as rov_start,
+
+    -- Structure Details
+    vsd.str_type,
+    vsd.title as structure_name,
+    vsd.pfield as field_name
 
 FROM insp_anomalies a
 JOIN insp_records r ON a.inspection_id = r.insp_id
+LEFT JOIN v_structure_details vsd ON r.structure_id = vsd.str_id -- Using newly created view
 LEFT JOIN structure_components sc ON r.component_id = sc.id
 LEFT JOIN insp_dive_jobs dj ON r.dive_job_id = dj.dive_job_id
 LEFT JOIN insp_rov_jobs rj ON r.rov_job_id = rj.rov_job_id
 LEFT JOIN insp_video_tapes vt ON r.tape_id = vt.tape_id
 LEFT JOIN jobpack jp ON COALESCE(dj.jobpack_id, rj.jobpack_id, r.jobpack_id) = jp.id
-LEFT JOIN u_lib_list ull ON ull.lib_code = 'CONTR_NAM' AND ull.lib_id::text = jp.metadata ->> 'contrac';
+LEFT JOIN u_lib_list ull ON ull.lib_code = 'CONTR_NAM' AND ull.lib_id::text = jp.metadata ->> 'contrac'
+-- Join for Priority Color Code: ANMLYCLR maps Priority ID (code1) to Color (code2)
+LEFT JOIN u_lib_combo pac ON pac.lib_code = 'ANMLYCLR' AND (pac.lib_delete IS NULL OR pac.lib_delete = 0) AND pac.code_1 = ( 
+    SELECT lib_id FROM u_lib_list 
+    WHERE lib_code ='AMLY_TYP' 
+    AND (lib_delete IS NULL OR lib_delete = 0) 
+    AND lib_desc = a.priority_code
+);
