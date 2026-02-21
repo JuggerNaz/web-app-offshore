@@ -88,9 +88,11 @@ const REPORT_TEMPLATES = {
     ],
     inspection: [
         { id: "inspection-report", name: "Inspection Report", icon: CheckSquare, description: "Detailed inspection findings and results", requires: ["jobpack"] },
-        { id: "defect-summary", name: "Defect Summary", icon: FileBarChart, description: "Summary of identified defects and issues", requires: ["jobpack"] },
+        { id: "defect-summary", name: "Defect Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
         { id: "defect-anomaly-report", name: "Defect / Anomaly Report", icon: FileCheck, description: "Detailed defect and anomaly report with images", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diver-log-report", name: "Diver Log Report", icon: FileText, description: "Chronological diver log grouped by dive number with inspection findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "video-log-report", name: "Video Log Report", icon: FileText, description: "Video log entries grouped by tape number with timecodes and dive references", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -806,6 +808,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const { generateWorkScopeStatusReport } = await import("@/utils/report-generators/work-scope-status-report");
         const { generateWorkScopeIncompleteReport } = await import("@/utils/report-generators/work-scope-incomplete-report");
         const { generateDefectAnomalyReport } = await import("@/utils/report-generators/defect-anomaly-report");
+        const { generateDiverLogReport } = await import("@/utils/report-generators/diver-log-report");
+        const { generateVideoLogReport } = await import("@/utils/report-generators/video-log-report");
+        const { generateDefectSummaryReport } = await import("@/utils/report-generators/defect-summary-report");
 
 
 
@@ -837,13 +842,39 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId } as any);
         }
 
-        // Defect / Anomaly Report (New)
+        // Defect Summary Report
+        if (selections.templateId === "defect-summary") {
+            const jobPack = await fetchJobPackData();
+            const structure = selections.structureId ? await fetchStructureData() : null;
+            if (!jobPack) return null;
+            return await generateDefectSummaryReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+        }
+
+        // Defect / Anomaly Report
         if (selections.templateId === "defect-anomaly-report") {
             const jobPack = await fetchJobPackData();
             const structure = await fetchStructureData();
             if (!jobPack || !structure) return null;
 
             return await generateDefectAnomalyReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+        }
+
+        // Diver Log Report
+        if (selections.templateId === "diver-log-report") {
+            const jobPack = await fetchJobPackData();
+            const structure = await fetchStructureData();
+            if (!jobPack || !structure) return null;
+
+            return await generateDiverLogReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+        }
+
+        // Video Log Report
+        if (selections.templateId === "video-log-report") {
+            const jobPack = await fetchJobPackData();
+            const structure = await fetchStructureData();
+            if (!jobPack || !structure) return null;
+
+            return await generateVideoLogReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
         }
 
         // Job Pack Summary Report
