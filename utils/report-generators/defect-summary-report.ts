@@ -44,12 +44,12 @@ function priorityStyle(
 
 // Priority sort order
 const PRIORITY_ORDER: Record<string, number> = {
-    critical: 1, c: 1, "priority 1": 1,
-    high: 2, h: 2, "priority 2": 2,
-    medium: 3, m: 3, "priority 3": 3,
-    low: 4, l: 4, "priority 4": 4,
-    observation: 5, o: 5, "priority 5": 5, "priority 6": 6,
-    informational: 7,
+    critical: 1, c: 1, "priority 1": 1, p1: 1,
+    high: 2, h: 2, "priority 2": 2, p2: 2,
+    medium: 3, m: 3, "priority 3": 3, p3: 3,
+    low: 4, l: 4, "priority 4": 4, p4: 4,
+    observation: 5, o: 5, "priority 5": 5, p5: 5, "priority 6": 6, p6: 6,
+    informational: 7, info: 7, i: 7
 };
 
 function prioritySortKey(priority: string): number {
@@ -294,6 +294,105 @@ export const generateDefectSummaryReport = async (
         return yy + boxH + 4;
     };
 
+    const drawSummaryDashboard = (d: jsPDF, y: number, anomalies: any[], colorMap: ColorMap) => {
+        const counts: Record<string, number> = {};
+        anomalies.forEach(a => {
+            const p = (a.priority || "Unknown");
+            counts[p] = (counts[p] || 0) + 1;
+        });
+
+        const sortedLabels = Object.keys(counts).sort((a, b) => prioritySortKey(a) - prioritySortKey(b));
+
+        const chartW = contentWidth * 0.55;
+        const tableW = contentWidth * 0.40;
+        const dashH = 45;
+        const gap = contentWidth * 0.05;
+
+        // Draw Section Title
+        d.setFontSize(9);
+        d.setFont("helvetica", "bold");
+        d.setFillColor(240, 240, 240);
+        d.rect(margin, y, contentWidth, 7, "F");
+        d.setTextColor(31, 55, 93);
+        d.text("ANOMALY STATISTICAL SUMMARY", margin + 2, y + 5);
+        d.setTextColor(0, 0, 0);
+
+        // --- 1. Draw Bar Chart ---
+        const chartX = margin;
+        const chartY = y + 10;
+        const innerH = dashH - 15;
+        const barAreaW = chartW - 25;
+
+        const maxCount = Math.max(...Object.values(counts), 5);
+        const scale = innerH / maxCount;
+
+        // Draw Axes
+        d.setDrawColor(150);
+        d.setLineWidth(0.2);
+        d.line(chartX + 15, chartY, chartX + 15, chartY + innerH); // Y axis
+        d.line(chartX + 15, chartY + innerH, chartX + chartW, chartY + innerH); // X axis
+
+        // Grid lines (Horizontal)
+        d.setLineDashPattern([1, 1], 0);
+        for (let i = 1; i <= 5; i++) {
+            const gy = chartY + innerH - (maxCount * (i / 5)) * scale;
+            d.line(chartX + 15, gy, chartX + chartW, gy);
+        }
+        d.setLineDashPattern([], 0);
+
+        const barW = Math.min(15, (barAreaW / (sortedLabels.length || 1)) * 0.6);
+        const barGap = (barAreaW / (sortedLabels.length || 1)) * 0.4;
+
+        sortedLabels.forEach((label, i) => {
+            const count = counts[label];
+            const { bg } = priorityStyle(label, colorMap);
+            const x = chartX + 20 + i * (barW + barGap);
+            const h = count * scale;
+
+            d.setFillColor(...bg);
+            d.rect(x, chartY + innerH - h, barW, h, "F");
+            d.setDrawColor(0);
+            d.setLineWidth(0.1);
+            d.rect(x, chartY + innerH - h, barW, h, "S");
+
+            d.setFontSize(6);
+            d.setTextColor(0);
+            const shortLabel = label.length > 12 ? label.substring(0, 10) + ".." : label;
+            d.text(shortLabel, x + barW / 2, chartY + innerH + 3, { align: "center" });
+
+            d.setFont("helvetica", "bold");
+            d.text(String(count), x + barW / 2, chartY + innerH - h - 1, { align: "center" });
+            d.setFont("helvetica", "normal");
+        });
+
+        // --- 2. Draw Summary Table ---
+        const tableX = margin + chartW + gap;
+        const tableY = y + 10;
+
+        autoTable(d, {
+            startY: tableY,
+            margin: { left: tableX },
+            tableWidth: tableW,
+            head: [["Priority Level", "Total Count"]],
+            body: sortedLabels.map(l => {
+                const { bg, text } = priorityStyle(l, colorMap);
+                return [
+                    { content: l.toUpperCase(), styles: { fillColor: bg, textColor: text, fontStyle: "bold" as const, halign: "left" as const } },
+                    { content: String(counts[l]), styles: { halign: "center" as const, fontStyle: "bold" as const } }
+                ];
+            }),
+            theme: "grid",
+            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+            headStyles: {
+                fillColor: isPrintFriendly ? [230, 230, 230] : [31, 55, 93],
+                textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+                halign: "center"
+            },
+        });
+
+        return Math.max((d as any).lastAutoTable.finalY + 5, chartY + dashH);
+    };
+
     // ── Draw footer line ─────────────────────────────────────────────────────
     const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
         d.setDrawColor(180, 180, 180);
@@ -413,10 +512,11 @@ export const generateDefectSummaryReport = async (
         findings: contentWidth - 8 - 28 - 30 - 35 - 22 - 20, // ~130mm
     };
 
-    // First page: draw header and sub-header, then table from there
+    // First page: draw header and sub-header, then dashboard, then table
     drawHeader(doc);
     const subHeaderEndY = drawSubHeader(doc, margin + headerH + 5);
-    const legendEndY = drawLegend(doc, subHeaderEndY + 2);
+    const dashEndY = drawSummaryDashboard(doc, subHeaderEndY + 2, anomalies, priorityColorMap);
+    const legendEndY = drawLegend(doc, dashEndY + 2);
 
     autoTable(doc, {
         startY: legendEndY + 2,

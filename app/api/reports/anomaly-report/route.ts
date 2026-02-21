@@ -63,26 +63,37 @@ export async function GET(request: NextRequest) {
 
         console.log(`[AnomalyReport] Found ${anomalies.length} anomalies via View.`);
 
-        // 2. Fetch Attachments (Inspection Record Level Only)
+        // 2. Fetch Attachments (Both Inspection and Anomaly level)
         const inspIds = anomalies.map((a: any) => a.id).filter(Boolean);
+        const anomalyIds = anomalies.map((a: any) => a.anomaly_id).filter(Boolean);
 
         let attachments: any[] = [];
 
-        if (inspIds.length > 0) {
+        if (inspIds.length > 0 || anomalyIds.length > 0) {
             const { data: attData } = await (supabase as any)
                 .from("attachment")
                 .select("*")
-                .eq("source_type", "inspection")
-                .in("source_id", inspIds);
+                .or(`and(source_type.eq.inspection,source_id.in.(${inspIds.join(',')})),and(source_type.eq.anomaly,source_id.in.(${anomalyIds.join(',')}))`);
+
             if (attData) attachments.push(...attData);
         }
 
         // 3. Merge Attachments
         const result = anomalies.map((a: any) => {
             const relAttachments = attachments.filter((att: any) => {
-                // strict check for inspection type and matching ID
-                return att.source_type === 'inspection' && String(att.source_id) === String(a.id);
+                const isInsp = att.source_type === 'inspection' && String(att.source_id) === String(a.id);
+                const isAnom = att.source_type === 'anomaly' && String(att.source_id) === String(a.anomaly_id);
+                return isInsp || isAnom;
             });
+
+            // Sort by meta.sort_order
+            relAttachments.sort((ra, rb) => {
+                const orderA = ra.meta?.sort_order ?? 999999;
+                const orderB = rb.meta?.sort_order ?? 999999;
+                if (orderA !== orderB) return orderA - orderB;
+                return new Date(ra.created_at).getTime() - new Date(rb.created_at).getTime();
+            });
+
             return {
                 ...a,
                 attachments: relAttachments

@@ -19,7 +19,7 @@ import {
     videoLogsAtom,
     type VideoLog
 } from "@/lib/video-recorder/video-state";
-import AttachmentManager from "./AttachmentManager";
+import AttachmentManager, { type Attachment, type PendingFile } from "./AttachmentManager";
 
 interface InspectionProperty {
     name: string;
@@ -99,7 +99,7 @@ export default function InspectionRecordingDialog({
     const [originalHasAnomaly, setOriginalHasAnomaly] = useState(false);
 
     // Attachments
-    const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+    const [pendingAttachments, setPendingAttachments] = useState<PendingFile[]>([]);
 
     // Fetch lists
     useEffect(() => {
@@ -673,20 +673,21 @@ export default function InspectionRecordingDialog({
             const payload: any = {
                 dive_job_id: diveJob.dive_job_id,
                 structure_id: diveJob.structure_id,
-                component_id: sowItem?.component_id || currentRecord?.component_id,
-                component_type: sowItem?.component_type || currentRecord?.component_type || 'Unknown',
+                component_id: currentRecord?.component_id || sowItem?.component_id,
+                component_type: currentRecord?.component_type || sowItem?.component_type || 'Unknown',
                 jobpack_id: diveJob.jobpack_id,
-                sow_report_no: sowItem?.report_number || diveJob.sow_report_no,
+                sow_report_no: currentRecord?.sow_report_no || sowItem?.report_number || diveJob.sow_report_no,
 
                 // Ensure ID is passed for schema lookup. Prefer existing record's logic if available.
-                inspection_type_id: sowItem?.inspection_type_id || currentRecord?.inspection_type_id || currentRecord?.inspection_type?.id,
-                inspection_type_code: sowItem?.inspection_code || sowItem?.inspection_type?.code || currentRecord?.inspection_type_code || currentRecord?.inspection_type?.code || 'GEN',
-
-                inspection_date: new Date().toISOString(),
-                inspection_time: new Date().toLocaleTimeString('en-GB', { hour12: false }), // HH:MM:SS
+                inspection_type_id: currentRecord?.inspection_type_id || currentRecord?.inspection_type?.id || sowItem?.inspection_type_id,
+                inspection_type_code: currentRecord?.inspection_type_code || currentRecord?.inspection_type?.code || sowItem?.inspection_code || sowItem?.inspection_type?.code || 'GEN',
 
                 description: commonData.description,
-                inspection_data: formData, // JSON Data
+                inspection_data: {
+                    ...formData,
+                    _meta_timecode: commonData.tapeCounter,
+                    structure_name: platformTitle || 'Unknown'
+                },
 
                 tape_id: commonData.tapeId ? parseInt(commonData.tapeId) : null,
                 tape_count_no: tapeSeconds !== null ? tapeSeconds.toString() : null, // Store as string representation of seconds
@@ -698,22 +699,20 @@ export default function InspectionRecordingDialog({
 
                 status: status,
                 incomplete_reason: commonData.isIncomplete ? commonData.incompleteReason : null,
-
-                cr_user: currentUserId,
                 workunit: diveJob.workunit || '000'
-            };
-
-            // Store timecode and structure name in inspection_data as metadata
-            payload.inspection_data = {
-                ...payload.inspection_data,
-                _meta_timecode: commonData.tapeCounter,
-                structure_name: platformTitle || 'Unknown'
             };
 
             let insertedRecord;
 
             if (currentRecord?.insp_id) {
-                // Update existing
+                // UPDATE: Maintain cr_date/cr_user, update md_date/md_user
+                payload.md_date = new Date().toISOString();
+                payload.md_user = currentUserId;
+
+                // Preserve original inspection date/time explicitly
+                payload.inspection_date = currentRecord.inspection_date;
+                payload.inspection_time = currentRecord.inspection_time;
+
                 const { data, error: updateError } = await supabase
                     .from('insp_records')
                     .update(payload)
@@ -724,7 +723,12 @@ export default function InspectionRecordingDialog({
                 if (updateError) throw updateError;
                 insertedRecord = data;
             } else {
-                // Insert new
+                // INSERT: Set initial cr_date/cr_user and inspection date/time
+                payload.cr_date = new Date().toISOString();
+                payload.cr_user = currentUserId;
+                payload.inspection_date = new Date().toISOString();
+                payload.inspection_time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+
                 const { data, error: insertError } = await supabase
                     .from('insp_records')
                     .insert(payload)
@@ -810,7 +814,6 @@ export default function InspectionRecordingDialog({
                     rectified_date: anomalyData.isRectified ? (anomalyData.rectifiedDate || new Date().toISOString()) : null,
                     rectified_by: anomalyData.isRectified ? (anomalyData.rectifiedBy || currentUserId) : null,
 
-                    cr_user: currentUserId,
                     workunit: diveJob.workunit || '000'
                 };
 
@@ -818,11 +821,17 @@ export default function InspectionRecordingDialog({
 
                 let anomalyError;
                 if (anomalyData.id) {
-                    // Update
+                    // Update: Track modification
+                    anomalyPayload.md_date = new Date().toISOString();
+                    anomalyPayload.md_user = currentUserId;
+
                     const { error } = await supabase.from('insp_anomalies').update(anomalyPayload).eq('anomaly_id', anomalyData.id);
                     anomalyError = error;
                 } else {
-                    // Insert
+                    // Insert: Track creation
+                    anomalyPayload.cr_date = new Date().toISOString();
+                    anomalyPayload.cr_user = currentUserId;
+
                     const { error } = await supabase.from('insp_anomalies').insert(anomalyPayload);
                     anomalyError = error;
                 }
@@ -846,7 +855,8 @@ export default function InspectionRecordingDialog({
             if (insertedRecord?.insp_id && pendingAttachments.length > 0) {
                 toast.info(`Uploading ${pendingAttachments.length} attachments...`);
 
-                for (const file of pendingAttachments) {
+                for (const pendingObj of pendingAttachments) {
+                    const { file, title, description } = pendingObj;
                     const fileExt = file.name.split('.').pop();
                     // Clean filename to avoid issues
                     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -873,7 +883,12 @@ export default function InspectionRecordingDialog({
                             source_type: 'inspection',
                             path: filePath,
                             user_id: currentUserId,
-                            meta: { size: file.size, type: file.type }
+                            meta: {
+                                size: file.size,
+                                type: file.type,
+                                title: title,
+                                description: description
+                            }
                         });
 
                     if (attError) {
@@ -1007,13 +1022,13 @@ export default function InspectionRecordingDialog({
 
         // 2. AI Analysis
         if (pendingAttachments.length > 0) {
-            const file = pendingAttachments[pendingAttachments.length - 1]; // Use latest
-            if (file.type.startsWith('image/')) {
+            const pendingObj = pendingAttachments[pendingAttachments.length - 1]; // Use latest
+            if (pendingObj.file.type.startsWith('image/')) {
                 const toastId = toast.loading("Analyzing image with AI...");
                 try {
                     const promise = new Promise<string>((resolve, reject) => {
                         const reader = new FileReader();
-                        reader.readAsDataURL(file);
+                        reader.readAsDataURL(pendingObj.file);
                         reader.onload = () => resolve(reader.result as string);
                         reader.onerror = error => reject(error);
                     });

@@ -249,7 +249,16 @@ export const generateInspectionReport = async (
             for (let i = 0; i < attachments.length; i++) {
                 const att = attachments[i];
 
-                if (yPos + imgHeight > pageHeight - 10) {
+                // Robust meta parsing
+                let meta = att.meta || {};
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                }
+
+                const title = meta.title || att.name || `Photo ${i + 1}`;
+                const description = meta.description || "";
+
+                if (yPos + imgHeight + 25 > pageHeight - 10) {
                     doc.addPage();
                     yPos = 20;
                 }
@@ -259,25 +268,42 @@ export const generateInspectionReport = async (
                 const url = publicUrlData.publicUrl;
 
                 try {
-                    const imgData = await loadImage(url);
-                    doc.addImage(imgData, 'JPEG', currentX, yPos, imgWidth, imgHeight);
+                    const colCenterX = currentX + (imgWidth / 2);
 
-                    // Add caption/filename
+                    // Draw Title above (Centered in Column)
                     doc.setFontSize(8);
-                    doc.setTextColor(50, 50, 50);
-                    doc.text(att.name || `Photo ${i + 1}`, currentX, yPos + imgHeight + 4);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(31, 55, 93);
+                    doc.text(title.toUpperCase(), colCenterX, yPos + 4, { align: "center", maxWidth: imgWidth });
+
+                    const imgData = await loadImage(url);
+                    doc.addImage(imgData, 'JPEG', currentX, yPos + 7, imgWidth, imgHeight);
+
+                    // Draw Description below (Centered in Column)
+                    const descY = yPos + imgHeight + 11;
+                    doc.setFontSize(7);
+                    doc.setTextColor(60, 60, 60);
+
+                    if (description) {
+                        doc.setFont("helvetica", "normal");
+                        const splitDesc = doc.splitTextToSize(description, imgWidth);
+                        doc.text(splitDesc, colCenterX, descY, { align: "center" });
+                    } else {
+                        doc.setFont("helvetica", "italic");
+                        doc.text(`Photo ${i + 1}`, colCenterX, descY, { align: "center" });
+                    }
 
                 } catch (e) {
                     console.error("Failed to load image for PDF", e);
                     doc.setDrawColor(200, 200, 200);
-                    doc.rect(currentX, yPos, imgWidth, imgHeight);
-                    doc.text("Image Load Failed", currentX + 5, yPos + 10);
+                    doc.rect(currentX, yPos + 7, imgWidth, imgHeight);
+                    doc.text("Image Load Failed", currentX + 5, yPos + 15);
                 }
 
                 // Grid Logic
                 if ((i + 1) % cols === 0) {
                     currentX = 10;
-                    yPos += imgHeight + 10;
+                    yPos += imgHeight + 25;
                 } else {
                     currentX += imgWidth + gap;
                 }

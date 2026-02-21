@@ -469,74 +469,97 @@ export const generateDefectAnomalyReport = async (
         // Removed redundant text as requested
 
         const images = record.attachments || [];
+        const processedImages: { data: string; att: any }[] = [];
 
-        const imageUrls = await Promise.all(images.map((img: any) => {
-            if (!img.path) return "";
-            const bucket = img.bucket_id || "attachments";
-            return `/api/attachment/download?path=${encodeURIComponent(img.path)}&bucket=${bucket}`;
-        }));
-
-        const validUrls = imageUrls.filter(u => u.length > 0);
-        const loadedImages = await Promise.all(validUrls.map(url => loadImage(url)));
-        const validImages = loadedImages.filter(img => img.length > 0);
+        // Load images while maintaining association with their metadata
+        for (const att of images) {
+            if (!att.path) continue;
+            const bucket = att.bucket_id || "attachments";
+            const url = `/api/attachment/download?path=${encodeURIComponent(att.path)}&bucket=${bucket}`;
+            try {
+                const data = await loadImage(url);
+                if (data) {
+                    // Robust meta parsing
+                    let meta = att.meta || {};
+                    if (typeof meta === 'string') {
+                        try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                    }
+                    processedImages.push({ data, att: { ...att, meta } });
+                }
+            } catch (e) {
+                console.warn("Failed to load image for report", att.name);
+            }
+        }
 
         // Define Footer Height
         const footerH = 25; // Compact height
 
-        if (validImages.length > 0) {
-            // First page available height
-            // pageHeight - margin(bottom) - footerH - padding - currentY
+        if (processedImages.length > 0) {
             let availableH = (pageHeight - margin - footerH - 10) - lastY;
 
-            for (let j = 0; j < validImages.length; j++) {
-                // Determine if image fits
-                // Check minimal height required (e.g. 50mm)
-                if (availableH < 50) {
+            for (let j = 0; j < processedImages.length; j++) {
+                const { data: imgData, att: attObj } = processedImages[j];
+                const meta = attObj.meta || {};
+                const title = meta.title || attObj.name || `Attachment ${j + 1}`;
+                const description = meta.description || "";
+
+                const imgW = contentWidth - 10;
+
+                // Content Preparation - Centered look (no labels as requested)
+                const titleText = title.toUpperCase();
+                const splitDesc = doc.splitTextToSize(description || `Photo ${j + 1}`, imgW - 10);
+
+                // Heights
+                const headerH_box = 8;
+                const footerH_box = (splitDesc.length * 4) + 6;
+                const minImgH = 40;
+
+                // Check page jump
+                if (availableH < (headerH_box + footerH_box + minImgH + 10)) {
                     doc.addPage();
                     globalPage++;
                     drawHeader(doc);
                     lastY = margin + headerH + 10;
-                    // Reset availableH for new page
                     availableH = (pageHeight - margin - footerH - 10) - lastY;
                 }
 
-                const imgW = contentWidth - 10;
-                // Constrain image height to available space
-                // Aspect ratio logic?
-                // Just use max available.
-                // But we also want to maintain aspect ratio if possible, or usually landscape photos.
-                // Let's create an Image element to get dims? loadImage returns dataURL.
-                // For simplicity, assume landscape or limit by width.
+                // Target Image Height (Landscape preferred)
+                let targetImgH = Math.min(availableH - headerH_box - footerH_box - 10, imgW * 0.7);
+                const totalBlockH = headerH_box + targetImgH + footerH_box;
 
-                // We want to avoid it hitting the footer.
-                // Constrain image height to available space
-                let imgH = Math.min(availableH, imgW * 0.75);
+                // 1. Draw Container Box
+                doc.setDrawColor(200, 200, 200);
+                doc.setLineWidth(0.2);
+                doc.rect(margin, lastY, contentWidth, totalBlockH);
 
-                // If it's the last image, we might need space for caption?
-                // Caption height ~5
-                imgH -= 10; // Reserve space for caption and gap
-
-                // Draw Light Box around Image Area
-                doc.setDrawColor(230, 230, 230);
-                doc.setLineWidth(0.5);
-                // Box around image + caption area
-                // rect(x, y, w, h)
-                // Height includes image + caption space (~5)
-                const boxH = imgH + 8;
-                doc.rect(margin, lastY, contentWidth, boxH); // Border only for cleaner look? Or fill? "light color box around the picture too"
-                // Let's do a very light fill or just border. User said "box around", usually implies borderFrame or background. Let's do border.
-
-                // Draw Image centered in the box? Or fit to box?
-                // Image fits width margin+5 to w-10.
-                doc.addImage(validImages[j], "JPEG", margin + 2, lastY + 2, imgW - 4, imgH - 4);
-
+                // 2. Draw Header for Title (Centered)
+                doc.setFillColor(245, 245, 245);
+                doc.rect(margin, lastY, contentWidth, headerH_box, 'F');
                 doc.setFontSize(8);
-                const caption = validImages.length > 1 ? `Photo ${j + 1}: ${defectDesc.substring(0, 50)}...` : `Photo 1: ${defectDesc.substring(0, 100)}`;
-                doc.text(caption, pageWidth / 2, lastY + imgH + 2, { align: "center" });
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(31, 55, 93);
+                doc.text(titleText, pageWidth / 2, lastY + 5.5, { align: "center" });
 
-                // Update lastY for next iteration
-                lastY += boxH + 10;
-                availableH -= (boxH + 10);
+                // 3. Draw Image
+                doc.addImage(imgData, "JPEG", margin + 5, lastY + headerH_box + 2, imgW, targetImgH - 4);
+
+                // 4. Draw Footer for Description (Centered)
+                const footerY_pos = lastY + headerH_box + targetImgH;
+                doc.setFontSize(8);
+                doc.setTextColor(60, 60, 60);
+                doc.setFont("helvetica", "normal");
+
+                if (description) {
+                    doc.text(splitDesc, pageWidth / 2, footerY_pos + 4, { align: "center" });
+                } else {
+                    doc.setFont("helvetica", "italic");
+                    doc.text(`Photo ${j + 1}`, pageWidth / 2, footerY_pos + 4, { align: "center" });
+                }
+
+                // Update Y for next photo
+                const blockGap = 10;
+                lastY += totalBlockH + blockGap;
+                availableH -= (totalBlockH + blockGap);
             }
         }
         // Draw Signatories at the bottom of the current page (or new page if no space)
