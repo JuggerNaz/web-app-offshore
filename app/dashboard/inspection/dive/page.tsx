@@ -32,6 +32,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 // Import components
 import DiveJobSetupDialog from "./components/DiveJobSetupDialog";
 import DiveLiveDataDialog from "./components/DiveLiveDataDialog";
@@ -254,6 +262,8 @@ function DiveInspectionContent() {
   const [movementDialogOpen, setMovementDialogOpen] = useState(false);
   const [componentTreeDialogOpen, setComponentTreeDialogOpen] = useState(false);
   const [specDialogOpen, setSpecDialogOpen] = useState(false);
+  const [specMode, setSpecMode] = useState<'view' | 'create'>('view');
+  const [createDefaultCode, setCreateDefaultCode] = useState<string>("");
 
   // Global state
   const setUrlId = useSetAtom(urlId);
@@ -597,6 +607,17 @@ function DiveInspectionContent() {
     } = await supabase.auth.getUser();
 
     try {
+      if (actionLabel === "Complete") {
+        await supabase
+          .from("insp_dive_jobs")
+          .update({ status: "COMPLETED" })
+          .eq("dive_job_id", selectedDiveJob.dive_job_id);
+
+        toast.success("Dive Completed");
+        checkExistingDiveJob();
+        return;
+      }
+
       const { error } = await supabase.from("insp_dive_movements").insert({
         dive_job_id: selectedDiveJob.dive_job_id,
         movement_type: actionLabel,
@@ -617,14 +638,7 @@ function DiveInspectionContent() {
 
         toast.success("Dive Completed");
 
-        // Remove from active list and select next available if any
-        const updatedList = activeDiveJobs.filter(
-          (j) => j.dive_job_id !== selectedDiveJob.dive_job_id
-        );
-        setActiveDiveJobs(updatedList);
-        setCompletedDiveJobs((prev) => [...prev, { ...selectedDiveJob, status: "COMPLETED" }]);
-
-        setSelectedJobId(updatedList.length > 0 ? updatedList[0].dive_job_id : null);
+        checkExistingDiveJob();
       } else {
         toast.success(`Logged: ${actionLabel}`);
         loadLatestData(); // Refresh immediately
@@ -880,10 +894,10 @@ function DiveInspectionContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-950 dark:via-blue-950/10 dark:to-slate-950">
-      <div className="container max-w-[1920px] mx-auto px-4 py-6">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-950 dark:via-blue-950/10 dark:to-slate-950">
+      <div className="flex flex-col flex-1 min-h-0 w-full max-w-[1920px] mx-auto px-4 py-3 pb-0">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-3 shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg shadow-blue-500/20">
               <LifeBuoy className="h-7 w-7" />
@@ -925,7 +939,7 @@ function DiveInspectionContent() {
         </div>
 
         {/* Deployment Selection Tabs */}
-        <div className="mb-6">
+        <div className="mb-3 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -933,61 +947,75 @@ function DiveInspectionContent() {
               </h2>
               <Badge variant="secondary">{activeDiveJobs.length + completedDiveJobs.length}</Badge>
             </div>
-            <Button
-              onClick={() => {
-                setIsEditing(false);
-                setSetupDialogOpen(true);
-              }}
-              variant="default"
-              className="bg-blue-600 hover:bg-blue-700 gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              New Deployment
-            </Button>
+            <div className="flex items-center gap-3">
+              {completedDiveJobs.length > 0 && (
+                <div className="flex items-center gap-2 hidden md:flex">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Completed:</span>
+                  <Select
+                    value={(completedDiveJobs.find(c => c.dive_job_id === selectedJobId) && String(selectedJobId)) || "none"}
+                    onValueChange={(val) => {
+                      if (val !== "none") setSelectedJobId(Number(val));
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px] h-9 text-xs bg-white dark:bg-slate-900">
+                      <SelectValue placeholder="Select Deployment" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" className="text-muted-foreground italic">None active...</SelectItem>
+                      {completedDiveJobs.map((job) => (
+                        <SelectItem key={job.dive_job_id} value={String(job.dive_job_id)}>
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 w-1.5 rounded-full bg-slate-400 shrink-0" />
+                            <span>{job.dive_no} - {job.diver_name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <Button
+                onClick={() => {
+                  setIsEditing(false);
+                  setSetupDialogOpen(true);
+                }}
+                variant="default"
+                className="bg-blue-600 hover:bg-blue-700 gap-2 h-9"
+              >
+                <Plus className="h-4 w-4" />
+                New Deployment
+              </Button>
+            </div>
           </div>
 
-          {activeDiveJobs.length > 0 || completedDiveJobs.length > 0 ? (
+          {activeDiveJobs.length > 0 ? (
             <Tabs
               value={String(selectedJobId)}
               onValueChange={(v) => setSelectedJobId(Number(v))}
               className="w-full"
             >
-              <TabsList className="bg-white/50 dark:bg-slate-900/50 p-1 border border-slate-200 dark:border-slate-800 h-auto flex-wrap justify-start gap-2">
+              <TabsList className="bg-white/50 dark:bg-slate-900/50 p-1 border border-slate-200 dark:border-slate-800 h-auto flex-wrap justify-start gap-2 max-w-full overflow-x-auto">
                 {activeDiveJobs.map((job) => (
                   <TabsTrigger
                     key={job.dive_job_id}
                     value={String(job.dive_job_id)}
-                    className="h-10 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-900 dark:data-[state=active]:bg-blue-900/40 dark:data-[state=active]:text-blue-100"
+                    className="h-10 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-900 dark:data-[state=active]:bg-blue-900/40 dark:data-[state=active]:text-blue-100 min-w-[120px]"
                   >
                     <div className="flex items-center gap-2">
                       <div className="flex flex-col items-start text-xs">
                         <span className="font-bold">{job.dive_no}</span>
-                        <span className="text-muted-foreground">{job.diver_name}</span>
+                        <span className="text-muted-foreground truncate max-w-[80px]">{job.diver_name}</span>
                       </div>
-                      <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                    </div>
-                  </TabsTrigger>
-                ))}
-
-                {completedDiveJobs.length > 0 && <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-2" />}
-
-                {completedDiveJobs.map((job) => (
-                  <TabsTrigger
-                    key={job.dive_job_id}
-                    value={String(job.dive_job_id)}
-                    className="h-10 opacity-75 data-[state=active]:opacity-100 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-slate-100 grayscale hover:grayscale-0"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="flex flex-col items-start text-xs">
-                        <span className="font-bold">{job.dive_no}</span>
-                        <span className="text-muted-foreground">{job.diver_name}</span>
-                      </div>
-                      <span className="flex h-2 w-2 rounded-full bg-slate-400" />
+                      <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse ml-auto" />
                     </div>
                   </TabsTrigger>
                 ))}
               </TabsList>
             </Tabs>
+          ) : completedDiveJobs.length > 0 ? (
+            <div className="p-3 text-center text-xs text-muted-foreground bg-slate-100/50 dark:bg-slate-900/30 rounded-lg border border-dashed border-slate-200 dark:border-slate-800">
+              No active deployments. Create a new one or select a completed deployment from the dropdown.
+            </div>
           ) : (
             <Card className="p-8 border-dashed border-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
               <div className="text-center space-y-4">
@@ -1023,9 +1051,9 @@ function DiveInspectionContent() {
 
         {/* Dashboard Cards Grid */}
         {selectedDiveJob && (
-          <div className="grid grid-cols-12 gap-4">
+          <div className="flex flex-col flex-1 min-h-0">
             {/* Deployment Info Banner */}
-            <Card className="col-span-12 p-4 border-l-4 border-l-blue-600 bg-white dark:bg-slate-900 shadow-sm">
+            <Card className="shrink-0 mb-3 p-3 border-l-4 border-l-blue-600 bg-white dark:bg-slate-900 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-6">
                   <div>
@@ -1074,454 +1102,472 @@ function DiveInspectionContent() {
               </div>
             </Card>
 
-            {/* Left Column Stack: Live Data & Components */}
-            <div className="col-span-12 lg:col-span-3 xl:col-span-2 flex flex-col h-[calc(100vh-240px)] min-w-0">
-              <ScrollArea className="flex-1 w-full">
-                <div className="space-y-4 pb-4 pr-3 pl-1">
-                  {/* Live Dive Data Card */}
-                  <Card
-                    className="w-full p-3 shadow-md hover:shadow-lg transition-shadow cursor-pointer border-blue-200 dark:border-blue-900 relative overflow-hidden"
-                    onClick={() => setLiveDataDialogOpen(true)}
-                  >
-                    <div className="space-y-3 relative z-10">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Waves className="h-4 w-4 text-blue-600" />
-                          <h3 className="font-bold text-sm">Live Data</h3>
-                        </div>
-                        <Button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setLiveDataDialogOpen(true);
-                          }}
-                          disabled={!selectedDiveJob}
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-blue-600 hover:bg-blue-50"
-                          title="Monitor"
-                        >
-                          <Timer className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      {selectedDiveJob ? (
-                        <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 space-y-2">
-                          <div className="flex items-center justify-between min-w-0 gap-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[9px] text-blue-900 dark:text-blue-100 font-medium uppercase tracking-wide truncate">
-                                Elapsed Time
-                              </p>
-                              <p className="text-lg xl:text-xl font-black font-mono text-blue-600 truncate">
-                                {elapsedTime}
-                              </p>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 shrink-0 text-red-500 hover:bg-red-50 hover:text-red-600"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleUndoLastAction();
-                              }}
-                              title="Undo Last Action"
-                            >
-                              <RotateCcw className="h-3 w-3" />
-                            </Button>
+            <div className="flex-1 grid grid-cols-12 gap-3 min-h-0 pb-3">
+              {/* Left Column Stack: Live Data & Components */}
+              <div className="col-span-12 lg:col-span-3 xl:col-span-2 flex flex-col h-full min-w-0 min-h-0">
+                <ScrollArea className="h-full w-full">
+                  <div className="space-y-4 pb-4 pr-3 pl-1">
+                    {/* Live Dive Data Card */}
+                    <Card
+                      className="w-full p-3 shadow-md hover:shadow-lg transition-shadow cursor-pointer border-blue-200 dark:border-blue-900 relative overflow-hidden"
+                      onClick={() => setLiveDataDialogOpen(true)}
+                    >
+                      <div className="space-y-3 relative z-10">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Waves className="h-4 w-4 text-blue-600" />
+                            <h3 className="font-bold text-sm">Live Data</h3>
                           </div>
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLiveDataDialogOpen(true);
+                            }}
+                            disabled={!selectedDiveJob}
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 text-blue-600 hover:bg-blue-50"
+                            title="Monitor"
+                          >
+                            <Timer className="h-4 w-4" />
+                          </Button>
+                        </div>
 
-                          <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
-                            <div className="flex flex-col gap-2">
-                              <div className="w-full">
-                                <p className="text-[9px] text-muted-foreground uppercase">Action</p>
-                                <p className="font-bold text-xs lg:text-sm text-slate-900 dark:text-slate-100 truncate w-full">
-                                  {latestMovement ? latestMovement.movement_type : "Ready"}
+                        {selectedDiveJob ? (
+                          <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 space-y-2">
+                            <div className="flex items-center justify-between min-w-0 gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[9px] text-blue-900 dark:text-blue-100 font-medium uppercase tracking-wide truncate">
+                                  Elapsed Time
+                                </p>
+                                <p className="text-lg xl:text-xl font-black font-mono text-blue-600 truncate">
+                                  {elapsedTime}
                                 </p>
                               </div>
-                              {latestMovement && selectedDiveJob.status !== "COMPLETED" && (
-                                <div className="w-full">
-                                  <p className="text-[9px] text-muted-foreground uppercase">Next</p>
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-white/50 hover:bg-white hover:text-blue-600 cursor-pointer transition-colors text-[10px] h-5 px-1.5 w-full justify-center"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const next = getNextAction(latestMovement.movement_type);
-                                      if (next !== "Complete") handleQuickLog(next);
-                                    }}
-                                  >
-                                    <span className="truncate">
-                                      {getNextAction(latestMovement.movement_type)}
-                                    </span>
-                                  </Badge>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800 border-dashed border-2 border-slate-200 dark:border-slate-700">
-                          <p className="text-xs text-muted-foreground text-center">
-                            Not Configured
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-
-                  {/* Component Tree Card */}
-                  <Card
-                    className={`w-full p-3 shadow-md hover:shadow-lg transition-shadow cursor-pointer border-green-200 dark:border-green-900 ${selectedComponent
-                      ? "bg-green-50/50 dark:bg-green-950/10 ring-1 ring-green-500"
-                      : ""
-                      }`}
-                    onClick={() => {
-                      if (selectedComponent) {
-                        setSpecDialogOpen(true);
-                      } else {
-                        setComponentTreeDialogOpen(true);
-                      }
-                    }}
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <ClipboardList className="h-4 w-4 text-green-600" />
-                          <h3 className="font-bold text-sm">Component</h3>
-                        </div>
-                        <Button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setComponentTreeDialogOpen(true);
-                          }}
-                          disabled={!selectedDiveJob}
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-green-600 hover:bg-green-50"
-                          title={selectedComponent ? "Change" : "Select"}
-                        >
-                          <Play className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      <div
-                        className={`p-3 rounded-lg border ${selectedComponent
-                          ? "bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800"
-                          : "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900"
-                          }`}
-                      >
-                        <p className="text-[9px] lg:text-[10px] text-green-900 dark:text-green-100 font-medium mb-1 uppercase tracking-wide">
-                          {selectedComponent ? "Selected ID" : "No Selection"}
-                        </p>
-                        <p className="text-xs lg:text-sm xl:text-base font-bold text-green-600 truncate">
-                          {selectedComponent
-                            ? selectedComponent.q_id || selectedComponent.component_qid
-                            : "Click to select"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Assigned Tasks Mini-List */}
-                    {selectedComponent && assignedTasks.length > 0 && (
-                      <div className="pt-2 border-t border-green-200 dark:border-green-800">
-                        <p className="text-[10px] text-muted-foreground uppercase mb-1.5">
-                          Assigned Tasks
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {assignedTasks.map((task) => {
-                            const typeName =
-                              task.inspection_type?.code || task.inspection_name || "UNK";
-                            const isCompleted = task.status === "completed";
-                            return (
-                              <Badge
-                                key={task.id}
-                                variant={isCompleted ? "default" : "outline"}
-                                className={`text-[9px] h-4 px-1.5 gap-1 ${isCompleted
-                                  ? "bg-green-600 hover:bg-green-700"
-                                  : "bg-white text-slate-600 border-slate-200"
-                                  }`}
-                              >
-                                {typeName}
-                              </Badge>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-
-                  {/* Inspection Types Card */}
-                  {selectedComponent && sowRecordId && (
-                    <DiveInspectionTypeCard
-                      sowId={sowRecordId}
-                      componentId={selectedComponent.id}
-                      componentQid={selectedComponent.q_id || selectedComponent.component_qid}
-                      componentType={
-                        selectedComponent.component_type ||
-                        selectedComponent.type ||
-                        selectedComponent.code
-                      }
-                      assignedTasks={assignedTasks}
-                      onTasksUpdated={fetchAssignedTasks}
-                      reportNumber={sowReportNumber || selectedDiveJob?.sow_report_no}
-                      diveJob={selectedDiveJob}
-                    />
-                  )}
-                </div>
-              </ScrollArea>
-            </div>
-
-            {/* Middle Column: Inspection & Movement Logs */}
-            <div
-              className={`col-span-12 flex flex-col h-[calc(100vh-240px)] transition-all duration-300 min-w-0 ${videoMode === "embedded"
-                ? "lg:col-span-5 xl:col-span-5"
-                : "lg:col-span-7 xl:col-span-8"
-                }`}
-            >
-              <ScrollArea className="flex-1 w-full">
-                <div className="space-y-4 pb-4 pr-3 pl-1">
-                  {/* Inspection Records Card */}
-                  <Card className="w-full p-3 shadow-md hover:shadow-lg transition-shadow cursor-pointer border-orange-200 dark:border-orange-900">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <ClipboardList className="h-4 w-4 text-orange-600 shrink-0" />
-                          <h3 className="font-bold text-sm truncate">Inspection Records</h3>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Badge variant="secondary" className="h-5 text-[10px] px-1.5">
-                            {inspectionCount}
-                          </Badge>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
                               <Button
-                                disabled={!selectedDiveJob || assignedTasks.length === 0}
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs gap-1 border-orange-200 text-orange-700 hover:bg-orange-50 hover:text-orange-800"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0 text-red-500 hover:bg-red-50 hover:text-red-600"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUndoLastAction();
+                                }}
+                                title="Undo Last Action"
                               >
-                                <Play className="h-3 w-3 fill-current" />
-                                Record
+                                <RotateCcw className="h-3 w-3" />
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuLabel>Select Inspection Type</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              {assignedTasks.map((task) => (
-                                <DropdownMenuItem
-                                  key={task.id}
-                                  onClick={() => {
-                                    setSelectedSowTask(task);
-                                    setInspectionDialogOpen(true);
-                                  }}
-                                  className="flex items-center justify-between cursor-pointer"
-                                >
-                                  <span>
-                                    {task.inspection_type?.code ||
-                                      task.inspection_name ||
-                                      "Inspection"}
-                                  </span>
-                                  {task.status === "completed" && (
+                            </div>
+
+                            <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
+                              <div className="flex flex-col gap-2">
+                                <div className="w-full">
+                                  <p className="text-[9px] text-muted-foreground uppercase">Action</p>
+                                  <p className="font-bold text-xs lg:text-sm text-slate-900 dark:text-slate-100 truncate w-full">
+                                    {latestMovement ? latestMovement.movement_type : "Ready"}
+                                  </p>
+                                </div>
+                                {latestMovement && selectedDiveJob.status !== "COMPLETED" && (
+                                  <div className="w-full">
+                                    <p className="text-[9px] text-muted-foreground uppercase">Next</p>
                                     <Badge
                                       variant="outline"
-                                      className="text-[10px] h-4 px-1 border-green-200 text-green-700 bg-green-50"
+                                      className="bg-white/50 hover:bg-white hover:text-blue-600 cursor-pointer transition-colors text-[10px] h-5 px-1.5 w-full justify-center"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const next = getNextAction(latestMovement.movement_type);
+                                        handleQuickLog(next);
+                                      }}
                                     >
-                                      Done
+                                      <span className="truncate">
+                                        {getNextAction(latestMovement.movement_type)}
+                                      </span>
                                     </Badge>
-                                  )}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800 border-dashed border-2 border-slate-200 dark:border-slate-700">
+                            <p className="text-xs text-muted-foreground text-center">
+                              Not Configured
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+
+                    {/* Component Tree Card */}
+                    <Card
+                      className={`w-full p-3 shadow-md hover:shadow-lg transition-shadow cursor-pointer border-green-200 dark:border-green-900 ${selectedComponent
+                        ? "bg-green-50/50 dark:bg-green-950/10 ring-1 ring-green-500"
+                        : ""
+                        }`}
+                      onClick={() => {
+                        if (selectedComponent) {
+                          setSpecMode('view');
+                          setSpecDialogOpen(true);
+                        } else {
+                          setComponentTreeDialogOpen(true);
+                        }
+                      }}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ClipboardList className="h-4 w-4 text-green-600" />
+                            <h3 className="font-bold text-sm">Component</h3>
+                          </div>
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setComponentTreeDialogOpen(true);
+                            }}
+                            disabled={!selectedDiveJob}
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 text-green-600 hover:bg-green-50"
+                            title={selectedComponent ? "Change" : "Select"}
+                          >
+                            <Play className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        <div
+                          className={`p-3 rounded-lg border ${selectedComponent
+                            ? "bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800"
+                            : "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900"
+                            }`}
+                        >
+                          <p className="text-[9px] lg:text-[10px] text-green-900 dark:text-green-100 font-medium mb-1 uppercase tracking-wide">
+                            {selectedComponent ? "Selected ID" : "No Selection"}
+                          </p>
+                          <p className="text-xs lg:text-sm xl:text-base font-bold text-green-600 truncate">
+                            {selectedComponent
+                              ? selectedComponent.q_id || selectedComponent.component_qid
+                              : "Click to select"}
+                          </p>
                         </div>
                       </div>
 
-                      {/* Assigned Tasks Badges Removed per request */}
+                      {/* Assigned Tasks Mini-List */}
+                      {selectedComponent && assignedTasks.length > 0 && (
+                        <div className="pt-2 border-t border-green-200 dark:border-green-800">
+                          <p className="text-[10px] text-muted-foreground uppercase mb-1.5">
+                            Assigned Tasks
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {assignedTasks.map((task) => {
+                              const typeName =
+                                task.inspection_type?.code || task.inspection_name || "UNK";
+                              const isCompleted = task.status === "completed";
+                              return (
+                                <Badge
+                                  key={task.id}
+                                  variant={isCompleted ? "default" : "outline"}
+                                  className={`text-[9px] h-4 px-1.5 gap-1 ${isCompleted
+                                    ? "bg-green-600 hover:bg-green-700"
+                                    : "bg-white text-slate-600 border-slate-200"
+                                    }`}
+                                >
+                                  {typeName}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </Card>
 
-                      <DiveInspectionList
-                        diveJobId={selectedDiveJob?.dive_job_id}
-                        // componentId={selectedComponent?.id} // Disabled to show all records for deployment
-                        // No type filtering for list as requested
-                        selectedType={null}
-                        onEdit={(record) => {
-                          setRecordToEdit(record);
-                          setInspectionDialogOpen(true);
-                        }}
-                        onDelete={() => {
-                          loadLatestData();
-                          setLastUpdated(new Date().toISOString());
-                        }}
-                        timestamp={lastUpdated}
+                    {/* Inspection Types Card */}
+                    {selectedComponent && sowRecordId && (
+                      <DiveInspectionTypeCard
+                        sowId={sowRecordId}
+                        componentId={selectedComponent.id}
+                        componentQid={selectedComponent.q_id || selectedComponent.component_qid}
+                        componentType={
+                          selectedComponent.component_type ||
+                          selectedComponent.type ||
+                          selectedComponent.code
+                        }
+                        assignedTasks={assignedTasks}
+                        onTasksUpdated={fetchAssignedTasks}
+                        reportNumber={sowReportNumber || selectedDiveJob?.sow_report_no}
+                        diveJob={selectedDiveJob}
                       />
-                    </div>
-                  </Card>
-                </div>
-              </ScrollArea>
-            </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
 
-            {/* Right Column: Video Recorder */}
-            <div
-              className={`col-span-12 flex flex-col h-[calc(100vh-240px)] transition-all duration-300 min-w-0 ${videoMode === "embedded"
-                ? "lg:col-span-4 xl:col-span-5"
-                : "lg:col-span-2 xl:col-span-2"
-                }`}
-            >
-              <Card className="w-full h-full p-0 overflow-hidden shadow-lg border-purple-200 dark:border-purple-900 flex flex-col relative group shrink-0">
-                {videoMode === "embedded" ? (
-                  selectedDiveJob ? (
-                    <DiveVideoRecorder
-                      className="h-full w-full border-none rounded-none"
-                      diveJob={selectedDiveJob}
-                      isFloating={false}
-                      onToggleMode={() => setVideoMode("modal")}
-                      refreshKey={lastUpdated}
-                    />
+              {/* Middle Column: Inspection & Movement Logs */}
+              <div
+                className={`col-span-12 flex flex-col h-full transition-all duration-300 min-w-0 min-h-0 ${videoMode === "embedded"
+                  ? "lg:col-span-5 xl:col-span-5"
+                  : "lg:col-span-7 xl:col-span-8"
+                  }`}
+              >
+                <ScrollArea className="h-full w-full">
+                  <div className="space-y-4 pb-4 pr-3 pl-1">
+                    {/* Inspection Records Card */}
+                    <Card className="w-full p-3 shadow-md hover:shadow-lg transition-shadow cursor-pointer border-orange-200 dark:border-orange-900">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <ClipboardList className="h-4 w-4 text-orange-600 shrink-0" />
+                            <h3 className="font-bold text-sm truncate">Inspection Records</h3>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Badge variant="secondary" className="h-5 text-[10px] px-1.5">
+                              {inspectionCount}
+                            </Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  disabled={!selectedDiveJob || assignedTasks.length === 0}
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs gap-1 border-orange-200 text-orange-700 hover:bg-orange-50 hover:text-orange-800"
+                                >
+                                  <Play className="h-3 w-3 fill-current" />
+                                  Record
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuLabel>Select Inspection Type</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {assignedTasks.map((task) => (
+                                  <DropdownMenuItem
+                                    key={task.id}
+                                    onClick={() => {
+                                      setSelectedSowTask(task);
+                                      setInspectionDialogOpen(true);
+                                    }}
+                                    className="flex items-center justify-between cursor-pointer"
+                                  >
+                                    <span>
+                                      {task.inspection_type?.code ||
+                                        task.inspection_name ||
+                                        "Inspection"}
+                                    </span>
+                                    {task.status === "completed" && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] h-4 px-1 border-green-200 text-green-700 bg-green-50"
+                                      >
+                                        Done
+                                      </Badge>
+                                    )}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+
+                        {/* Assigned Tasks Badges Removed per request */}
+
+                        <DiveInspectionList
+                          diveJobId={selectedDiveJob?.dive_job_id}
+                          // componentId={selectedComponent?.id} // Disabled to show all records for deployment
+                          // No type filtering for list as requested
+                          selectedType={null}
+                          onEdit={(record) => {
+                            setRecordToEdit(record);
+                            setInspectionDialogOpen(true);
+                          }}
+                          onDelete={() => {
+                            loadLatestData();
+                            setLastUpdated(new Date().toISOString());
+                          }}
+                          timestamp={lastUpdated}
+                        />
+                      </div>
+                    </Card>
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {/* Right Column: Video Recorder */}
+              <div
+                className={`col-span-12 flex flex-col h-full transition-all duration-300 min-w-0 min-h-0 ${videoMode === "embedded"
+                  ? "lg:col-span-4 xl:col-span-5"
+                  : "lg:col-span-2 xl:col-span-2"
+                  }`}
+              >
+                <Card className="w-full h-full p-0 overflow-hidden shadow-lg border-purple-200 dark:border-purple-900 flex flex-col relative group min-h-0">
+                  {videoMode === "embedded" ? (
+                    selectedDiveJob ? (
+                      <DiveVideoRecorder
+                        className="h-full w-full border-none rounded-none"
+                        diveJob={selectedDiveJob}
+                        isFloating={false}
+                        onToggleMode={() => setVideoMode("modal")}
+                        refreshKey={lastUpdated}
+                      />
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 bg-purple-50/50 dark:bg-purple-900/10">
+                        <div className="p-4 bg-purple-100 dark:bg-purple-900/40 rounded-full">
+                          <Camera className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg">Video System</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Setup deployment to enable video logging
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => {
+                            setIsEditing(false);
+                            setSetupDialogOpen(true);
+                          }}
+                          variant="outline"
+                        >
+                          Setup Deployment
+                        </Button>
+                      </div>
+                    )
                   ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 bg-purple-50/50 dark:bg-purple-900/10">
-                      <div className="p-4 bg-purple-100 dark:bg-purple-900/40 rounded-full">
-                        <Camera className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+                    <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 p-6 text-center space-y-4">
+                      <div className="p-4 bg-primary/10 rounded-full animate-pulse">
+                        <Camera className="h-8 w-8 text-primary" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-lg">Video System</h3>
+                        <h3 className="font-bold text-lg">Video Undocked</h3>
                         <p className="text-sm text-muted-foreground">
-                          Setup deployment to enable video logging
+                          Video is currently {videoMode === "modal" ? "in full screen" : "floating"}.
                         </p>
                       </div>
-                      <Button
-                        onClick={() => {
-                          setIsEditing(false);
-                          setSetupDialogOpen(true);
-                        }}
-                        variant="outline"
-                      >
-                        Setup Deployment
+                      <Button variant="outline" onClick={() => setVideoMode("embedded")}>
+                        Restore to Dashboard
                       </Button>
                     </div>
-                  )
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 p-6 text-center space-y-4">
-                    <div className="p-4 bg-primary/10 rounded-full animate-pulse">
-                      <Camera className="h-8 w-8 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg">Video Undocked</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Video is currently {videoMode === "modal" ? "in full screen" : "floating"}.
-                      </p>
-                    </div>
-                    <Button variant="outline" onClick={() => setVideoMode("embedded")}>
-                      Restore to Dashboard
-                    </Button>
-                  </div>
-                )}
-              </Card>
+                  )}
+                </Card>
+              </div>
             </div>
           </div>
-        )}
-      </div>
+        )
+        }
 
-      {/* Dialogs */}
-      <DiveJobSetupDialog
-        open={setupDialogOpen}
-        onOpenChange={setSetupDialogOpen}
-        jobpackId={jobpackId}
-        sowId={sowReportNumber}
-        structureId={effectiveStructureId?.toString() || null}
-        onJobCreated={handleDiveJobCreated}
-        existingJob={isEditing ? selectedDiveJob : null}
-      />
+        {/* Dialogs */}
+        <DiveJobSetupDialog
+          open={setupDialogOpen}
+          onOpenChange={setSetupDialogOpen}
+          jobpackId={jobpackId}
+          sowId={sowReportNumber}
+          structureId={effectiveStructureId?.toString() || null}
+          onJobCreated={handleDiveJobCreated}
+          existingJob={isEditing ? selectedDiveJob : null}
+        />
 
-      {selectedDiveJob && (
-        <>
-          <DiveLiveDataDialog
-            open={liveDataDialogOpen}
-            onOpenChange={setLiveDataDialogOpen}
-            diveJob={selectedDiveJob}
-          />
-
-          <DiveVideoDialog
-            open={videoDialogOpen}
-            onOpenChange={setVideoDialogOpen}
-            diveJob={selectedDiveJob}
-            onToggleMode={() => setVideoMode("floating")}
-            refreshKey={lastUpdated}
-          />
-
-          {videoMode === "floating" && (
-            <div className="fixed bottom-6 right-6 z-50 w-[480px] aspect-video shadow-2xl rounded-xl overflow-hidden ring-1 ring-slate-200 dark:ring-slate-800 bg-background animate-in slide-in-from-bottom-10 fade-in duration-300">
-              <DiveVideoRecorder
-                className="h-full w-full"
+        {
+          selectedDiveJob && (
+            <>
+              <DiveLiveDataDialog
+                open={liveDataDialogOpen}
+                onOpenChange={setLiveDataDialogOpen}
                 diveJob={selectedDiveJob}
-                isFloating={true}
-                onClose={() => setVideoMode("embedded")}
-                onToggleMode={() => setVideoMode("modal")}
+                onActionLogged={checkExistingDiveJob}
+              />
+
+              <DiveVideoDialog
+                open={videoDialogOpen}
+                onOpenChange={setVideoDialogOpen}
+                diveJob={selectedDiveJob}
+                onToggleMode={() => setVideoMode("floating")}
                 refreshKey={lastUpdated}
               />
-            </div>
-          )}
 
-          <InspectionRecordingDialog
-            open={inspectionDialogOpen}
-            onOpenChange={(open) => {
-              setInspectionDialogOpen(open);
-              if (!open) {
-                setRecordToEdit(null);
-                setSelectedSowTask(null);
-              }
-            }}
-            platformTitle={platformTitle}
-            sowItem={
-              recordToEdit
-                ? assignedTasks.find(
-                  (t) => t.inspection_type_id === recordToEdit.inspection_type_id
-                )
-                : selectedSowTask || assignedTasks[0]
-            }
-            diveJob={selectedDiveJob}
-            currentRecord={recordToEdit}
-            structureType={
-              selectedDiveJob?.u_structure?.type?.toLowerCase()?.includes("pipeline")
-                ? "pipeline"
-                : "platform"
-            }
-            onSaved={() => {
-              loadLatestData();
-              fetchAssignedTasks();
-              // checkExistingDiveJob(); // Removed to prevent resetting active job filter/state
-              setRecordToEdit(null);
-              setSelectedSowTask(null);
-              // Add small delay to ensure DB propagation for list refresh
-              setTimeout(() => {
-                setLastUpdated(new Date().toISOString());
-              }, 500);
-            }}
-          />
+              {videoMode === "floating" && (
+                <div className="fixed bottom-6 right-6 z-50 w-[480px] aspect-video shadow-2xl rounded-xl overflow-hidden ring-1 ring-slate-200 dark:ring-slate-800 bg-background animate-in slide-in-from-bottom-10 fade-in duration-300">
+                  <DiveVideoRecorder
+                    className="h-full w-full"
+                    diveJob={selectedDiveJob}
+                    isFloating={true}
+                    onClose={() => setVideoMode("embedded")}
+                    onToggleMode={() => setVideoMode("modal")}
+                    refreshKey={lastUpdated}
+                  />
+                </div>
+              )}
 
-          <DiveMovementDialog
-            open={movementDialogOpen}
-            onOpenChange={setMovementDialogOpen}
-            diveJob={selectedDiveJob}
-            onMovementSaved={loadLatestData}
-          />
+              <InspectionRecordingDialog
+                open={inspectionDialogOpen}
+                onOpenChange={(open) => {
+                  setInspectionDialogOpen(open);
+                  if (!open) {
+                    setRecordToEdit(null);
+                    setSelectedSowTask(null);
+                  }
+                }}
+                platformTitle={platformTitle}
+                sowItem={
+                  recordToEdit
+                    ? assignedTasks.find(
+                      (t) => t.inspection_type_id === recordToEdit.inspection_type_id
+                    )
+                    : selectedSowTask || assignedTasks[0]
+                }
+                diveJob={selectedDiveJob}
+                currentRecord={recordToEdit}
+                structureType={
+                  selectedDiveJob?.u_structure?.type?.toLowerCase()?.includes("pipeline")
+                    ? "pipeline"
+                    : "platform"
+                }
+                onSaved={() => {
+                  loadLatestData();
+                  fetchAssignedTasks();
+                  // checkExistingDiveJob(); // Removed to prevent resetting active job filter/state
+                  setRecordToEdit(null);
+                  setSelectedSowTask(null);
+                  // Add small delay to ensure DB propagation for list refresh
+                  setTimeout(() => {
+                    setLastUpdated(new Date().toISOString());
+                  }, 500);
+                }}
+              />
 
-          <ComponentTreeDialog
-            open={componentTreeDialogOpen}
-            onOpenChange={setComponentTreeDialogOpen}
-            structureId={effectiveStructureId?.toString() || null}
-            jobpackId={jobpackId}
-            sowId={sowId}
-            onComponentSelect={handleComponentSelect}
-            selectedComponent={selectedComponent}
-          />
+              <DiveMovementDialog
+                open={movementDialogOpen}
+                onOpenChange={setMovementDialogOpen}
+                diveJob={selectedDiveJob}
+                onMovementSaved={loadLatestData}
+              />
 
-          <ComponentSpecDialog
-            open={specDialogOpen}
-            onOpenChange={setSpecDialogOpen}
-            component={selectedComponent}
-          // mode="view"
-          />
-        </>
-      )}
-    </div>
+              <ComponentTreeDialog
+                open={componentTreeDialogOpen}
+                onOpenChange={setComponentTreeDialogOpen}
+                structureId={effectiveStructureId?.toString() || null}
+                jobpackId={jobpackId}
+                sowId={sowId}
+                onComponentSelect={handleComponentSelect}
+                selectedComponent={selectedComponent}
+                onCreateNew={(typeCode: string) => {
+                  setComponentTreeDialogOpen(false);
+                  setSpecMode('create');
+                  setCreateDefaultCode(typeCode);
+                  setSpecDialogOpen(true);
+                }}
+              />
+
+              <ComponentSpecDialog
+                open={specDialogOpen}
+                onOpenChange={(open) => {
+                  setSpecDialogOpen(open);
+                  if (!open) { setSpecMode('view'); setCreateDefaultCode(""); }
+                }}
+                component={specMode === 'create' ? null : selectedComponent}
+                mode={specMode}
+                defaultCode={createDefaultCode}
+                createdFrom="diving_inspection"
+              />
+            </>
+          )
+        }
+      </div >
+    </div >
   );
 }
 

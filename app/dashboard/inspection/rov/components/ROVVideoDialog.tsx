@@ -1,7 +1,8 @@
+"use client";
+
 import {
     Dialog,
     DialogContent,
-    DialogHeader,
     DialogTitle,
     DialogDescription
 } from "@/components/ui/dialog";
@@ -11,27 +12,32 @@ interface ROVVideoDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     rovJob: any;
+    onToggleMode?: () => void;
+    refreshKey?: string | number;
 }
 
 export default function ROVVideoDialog({
     open,
     onOpenChange,
     rovJob,
+    onToggleMode,
+    refreshKey
 }: ROVVideoDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-4 bg-transparent border-none shadow-none text-white">
-                <DialogHeader className="hidden">
-                    <DialogTitle>ROV Video</DialogTitle>
-                    <DialogDescription>ROV Video Recording</DialogDescription>
-                </DialogHeader>
-                <div className="flex-1 min-h-0 bg-background rounded-lg border shadow-xl overflow-hidden relative">
-                    <DiveVideoRecorder
-                        diveJob={rovJob}
-                        onClose={() => onOpenChange(false)}
-                        className="h-full w-full border-none rounded-none"
-                    />
+            <DialogContent className="max-w-6xl h-[95vh] flex flex-col p-0 gap-0 overflow-hidden bg-background border-none shadow-2xl sm:rounded-xl">
+                <div className="sr-only">
+                    <DialogTitle>Video Inspection</DialogTitle>
+                    <DialogDescription>Live video feed and recording tools</DialogDescription>
                 </div>
+                <DiveVideoRecorder
+                    diveJob={rovJob}
+                    onClose={() => onOpenChange(false)}
+                    onToggleMode={onToggleMode}
+                    isFloating={false}
+                    className="flex-1 w-full h-full border-none rounded-none shadow-none"
+                    refreshKey={refreshKey}
+                />
             </DialogContent>
         </Dialog>
     );

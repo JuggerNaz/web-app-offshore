@@ -20,7 +20,7 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import InspectionRecordingDialog from "./InspectionRecordingDialog";
+import ROVInspectionRecordingDialog from "./ROVInspectionRecordingDialog";
 
 interface InspectionType {
     id: number;
@@ -42,7 +42,7 @@ interface SOWItem {
     component_id?: number;
 }
 
-interface DiveInspectionTypeCardProps {
+interface ROVInspectionTypeCardProps {
     sowId: number | null;
     componentId: number | null;
     componentQid?: string;
@@ -51,10 +51,10 @@ interface DiveInspectionTypeCardProps {
     onTasksUpdated: () => void;
     className?: string;
     reportNumber?: string;
-    diveJob?: any; // Added diveJob
+    rovJob?: any; // Added rovJob
 }
 
-export default function DiveInspectionTypeCard({
+export default function ROVInspectionTypeCard({
     sowId,
     componentId,
     componentQid,
@@ -63,8 +63,8 @@ export default function DiveInspectionTypeCard({
     onTasksUpdated,
     className,
     reportNumber,
-    diveJob
-}: DiveInspectionTypeCardProps) {
+    rovJob
+}: ROVInspectionTypeCardProps) {
     const supabase = createClient();
     const activeTapeId = useAtomValue(videoTapeIdAtom);
 
@@ -311,11 +311,11 @@ export default function DiveInspectionTypeCard({
                     </Popover>
                 )}
 
-                <InspectionRecordingDialog
+                <ROVInspectionRecordingDialog
                     open={recordingOpen}
                     onOpenChange={setRecordingOpen}
                     sowItem={selectedTask}
-                    diveJob={diveJob}
+                    rovJob={rovJob}
                     onSaved={onTasksUpdated}
                 />
             </div>

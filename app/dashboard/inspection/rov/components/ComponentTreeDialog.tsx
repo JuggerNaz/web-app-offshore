@@ -11,7 +11,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Database, ChevronRight, ChevronDown, Check } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Database, ChevronRight, ChevronDown, Check, Plus, Trash2, ArchiveRestore } from "lucide-react";
+import specAdditionalDetails from "@/utils/spec-additional-details.json";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 
@@ -23,6 +25,7 @@ interface ComponentTreeDialogProps {
     sowId: string | null;
     onComponentSelect: (component: any) => void;
     selectedComponent: any;
+    onCreateNew?: (typeCode: string) => void;
 }
 
 export default function ComponentTreeDialog({
@@ -33,6 +36,7 @@ export default function ComponentTreeDialog({
     sowId,
     onComponentSelect,
     selectedComponent,
+    onCreateNew
 }: ComponentTreeDialogProps) {
     const supabase = createClient();
     const [components, setComponents] = useState<any[]>([]);
@@ -40,6 +44,17 @@ export default function ComponentTreeDialog({
     const [searchTerm, setSearchTerm] = useState("");
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(false);
+    const [filterMode, setFilterMode] = useState<"sow" | "all">("sow");
+    const [createType, setCreateType] = useState("");
+
+    // Extract unique types from spec details for creation
+    const componentTypes = specAdditionalDetails.data
+        .filter(d => d.code)
+        .reduce((acc: any[], current) => {
+            const x = acc.find(item => item.code === current.code);
+            if (!x) return acc.concat([current]);
+            return acc;
+        }, []);
 
     useEffect(() => {
         if (open) {
@@ -124,6 +139,13 @@ export default function ComponentTreeDialog({
             }
 
             setComponents(finalComponents);
+
+            // Auto-switch to 'all' if there are no SOW components
+            if (finalComponents.filter(c => c.sowItems?.length > 0).length === 0) {
+                setFilterMode("all");
+            } else {
+                setFilterMode("sow");
+            }
             console.log(`Loaded ${finalComponents.length} components.`);
 
         } catch (error) {
@@ -159,7 +181,52 @@ export default function ComponentTreeDialog({
         }
     }
 
+    async function handleDelete(id: number, e: React.MouseEvent) {
+        e.stopPropagation();
+        if (!window.confirm("Are you sure you want to permanently delete this component? This cannot be undone.")) return;
+        try {
+            const { error } = await supabase.from("structure_components").delete().eq("id", id);
+            if (error) throw error;
+            toast.success("Component deleted");
+            if (internalSelection?.id === id) setInternalSelection(null);
+            loadComponents();
+        } catch (err: any) {
+            toast.error("Failed to delete component");
+            console.error(err);
+        }
+    }
+
+    async function handleArchive(id: number, e: React.MouseEvent) {
+        e.stopPropagation();
+        if (!window.confirm("Archive this component? It will be hidden from normal operations.")) return;
+        try {
+            // Wait, we need to check if is_archived column exists or use metadata flag
+            // for safety we inject is_archived: true into metadata if no column exists, but usually there's a status or we just delete. Let's try to update status or metadata
+            const comp = components.find(c => c.id === id);
+            let meta: any = {};
+            try { meta = typeof comp.metadata === "string" ? JSON.parse(comp.metadata) : (comp.metadata || {}); } catch (e) { }
+            meta.is_archived = true;
+
+            const { error } = await supabase.from("structure_components").update({ metadata: meta }).eq("id", id);
+            if (error) throw error;
+            toast.success("Component archived");
+            loadComponents();
+        } catch (err: any) {
+            toast.error("Failed to archive component");
+            console.error(err);
+        }
+    }
+
     const filteredComponents = components.filter((c: any) => {
+        // Exclude archived components
+        try {
+            const meta = typeof c.metadata === "string" ? JSON.parse(c.metadata) : (c.metadata || {});
+            if (meta.is_archived) return false;
+        } catch (e) { }
+
+        const hasSOW = c.sowItems && c.sowItems.length > 0;
+        if (filterMode === "sow" && !hasSOW) return false;
+
         if (!searchTerm) return true;
         const searchLower = searchTerm.trim().toLowerCase();
         const id = c.q_id || "";
@@ -171,40 +238,81 @@ export default function ComponentTreeDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl max-h-[90vh]">
-                <DialogHeader>
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/20">
-                            <Database className="h-6 w-6 text-green-600" />
-                        </div>
-                        <div>
-                            <DialogTitle className="text-xl">Component Tree</DialogTitle>
-                            <DialogDescription>
-                                Select a component for inspection
-                            </DialogDescription>
+            <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-4 md:p-6 rounded-[1.5rem] bg-slate-50 dark:bg-slate-900 overflow-hidden">
+                <DialogHeader className="shrink-0 mb-2">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/20">
+                                <Database className="h-6 w-6 text-green-600" />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-xl">Component Tree</DialogTitle>
+                                <DialogDescription>
+                                    Select a component for inspection
+                                </DialogDescription>
+                            </div>
                         </div>
                     </div>
                 </DialogHeader>
 
-                <div className="space-y-4">
-                    {/* Info Banner */}
-                    {sowCount > 0 && (
-                        <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900">
-                            <p className="text-xs text-blue-900 dark:text-blue-100">
-                                📋 {sowCount} components linked to SOW Report
-                            </p>
+                <div className="flex-1 min-h-0 flex flex-col space-y-4">
+                    {/* Toolbars */}
+                    <div className="flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-slate-950 p-2 md:p-3 rounded-xl border shadow-sm shrink-0">
+                        {/* Filter Toggle */}
+                        <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
+                            <Button
+                                variant={filterMode === "sow" ? "default" : "ghost"}
+                                size="sm"
+                                onClick={() => setFilterMode("sow")}
+                                className="h-8 text-xs font-bold"
+                            >
+                                SOW Listed ({sowCount})
+                            </Button>
+                            <Button
+                                variant={filterMode === "all" ? "default" : "ghost"}
+                                size="sm"
+                                onClick={() => setFilterMode("all")}
+                                className="h-8 text-xs font-bold"
+                            >
+                                All Components
+                            </Button>
                         </div>
-                    )}
 
-                    {/* Search */}
-                    <Input
-                        placeholder="Search components..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+                        {/* Search & Create */}
+                        <div className="flex items-center gap-2 flex-1 min-w-[300px] justify-end">
+                            <Input
+                                placeholder="Search..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="max-w-[200px] h-9"
+                            />
+                            {onCreateNew && (
+                                <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200 dark:border-slate-800">
+                                    <Select value={createType} onValueChange={setCreateType}>
+                                        <SelectTrigger className="w-[110px] h-9">
+                                            <SelectValue placeholder="Type..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {componentTypes.map(t => (
+                                                <SelectItem key={t.code} value={t.code}>{t.code?.toUpperCase()}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button
+                                        size="sm"
+                                        className="h-9 gap-1 whitespace-nowrap"
+                                        disabled={!createType}
+                                        onClick={() => onCreateNew(createType)}
+                                    >
+                                        <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Create</span>
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
 
                     {/* Component List */}
-                    <div className="max-h-[500px] overflow-y-auto border rounded-lg">
+                    <div className="flex-1 overflow-y-auto border bg-white dark:bg-slate-950 rounded-xl shadow-inner relative">
                         {loading ? (
                             <div className="p-8 text-center text-muted-foreground">
                                 Loading components...
@@ -231,12 +339,19 @@ export default function ComponentTreeDialog({
                                                 }`}
                                             onClick={() => handleSelect(component)}
                                         >
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex-1">
-                                                    <p className="font-semibold text-sm">
-                                                        {componentId || "Unnamed Component"}
-                                                    </p>
-                                                    <div className="text-xs text-muted-foreground space-y-0.5 mt-1">
+                                            <div className="flex items-start justify-between group">
+                                                <div className="flex-1 min-w-0 pr-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">
+                                                            {componentId || "Unnamed Component"}
+                                                        </p>
+                                                        {component.code && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                                                {component.code}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground space-y-0.5 mt-2">
                                                         {hasSOW && (
                                                             <div className="mb-3 pb-2 border-b border-dashed border-gray-200 dark:border-gray-800">
                                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -296,9 +411,34 @@ export default function ComponentTreeDialog({
                                                         })()}
                                                     </div>
                                                 </div>
-                                                {isSelected && (
-                                                    <Check className="h-5 w-5 text-green-600" />
-                                                )}
+                                                <div className="flex flex-col items-center gap-2 shrink-0">
+                                                    {isSelected && (
+                                                        <Check className="h-6 w-6 text-green-600 drop-shadow-sm" />
+                                                    )}
+                                                    {/* Actions (only for non-SOW) */}
+                                                    {!hasSOW && (
+                                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1 mt-auto pb-1">
+                                                            <Button
+                                                                title="Archive Component"
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-7 w-7 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded"
+                                                                onClick={(e) => handleArchive(component.id, e)}
+                                                            >
+                                                                <ArchiveRestore className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                            <Button
+                                                                title="Delete Component"
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 rounded"
+                                                                onClick={(e) => handleDelete(component.id, e)}
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -309,7 +449,7 @@ export default function ComponentTreeDialog({
 
                     {/* Selected Component Info */}
                     {internalSelection && (
-                        <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900">
+                        <div className="p-3 md:p-4 rounded-xl bg-green-50/80 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 shrink-0">
                             <p className="text-xs font-medium text-green-900 dark:text-green-100 mb-1">
                                 Selected Component
                             </p>
@@ -344,9 +484,9 @@ export default function ComponentTreeDialog({
                     )}
                 </div>
 
-                <DialogFooter className="mt-4">
+                <DialogFooter className="mt-2 shrink-0">
                     <Button
-                        className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold h-12 text-base shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
+                        className="w-full bg-green-600 hover:bg-green-700 text-white font-bold h-12 text-base shadow-sm hover:shadow-md transition-all active:scale-[0.98] rounded-xl"
                         onClick={handleConfirm}
                         disabled={!internalSelection}
                     >

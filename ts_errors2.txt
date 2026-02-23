@@ -1,0 +1,14 @@
+﻿app/dashboard/inspection/rov/components/ROVInspectionTypeCard.tsx(318,21): error TS2322: Type '{ open: boolean; onOpenChange: Dispatch<SetStateAction<boolean>>; sowItem: any; diveJob: any; onSaved: () => void; }' is not assignable to type 'IntrinsicAttributes & ROVInspectionRecordingDialogProps & { structureType?: "platform" | "pipeline" | undefined; }'.
+  Property 'diveJob' does not exist on type 'IntrinsicAttributes & ROVInspectionRecordingDialogProps & { structureType?: "platform" | "pipeline" | undefined; }'.
+app/dashboard/inspection/rov/page.tsx(1288,32): error TS2304: Cannot find name 'Activity'.
+app/dashboard/inspection/rov/page.tsx(1345,25): error TS2322: Type '{ sowId: number; componentId: any; componentQid: any; componentType: any; assignedTasks: any[]; onTasksUpdated: () => Promise<void>; reportNumber: string | undefined; diveJob: ROVJob; }' is not assignable to type 'IntrinsicAttributes & ROVInspectionTypeCardProps'.
+  Property 'diveJob' does not exist on type 'IntrinsicAttributes & ROVInspectionTypeCardProps'.
+app/dashboard/inspection/rov/page.tsx(1519,17): error TS2322: Type '{ open: boolean; onOpenChange: Dispatch<SetStateAction<boolean>>; diveJob: ROVJob; onActionLogged: () => Promise<void>; }' is not assignable to type 'IntrinsicAttributes & ROVLiveDataDialogProps'.
+  Property 'diveJob' does not exist on type 'IntrinsicAttributes & ROVLiveDataDialogProps'.
+app/dashboard/inspection/rov/page.tsx(1526,17): error TS2322: Type '{ open: boolean; onOpenChange: (open: boolean) => void; diveJob: ROVJob; onToggleMode: () => void; refreshKey: string; }' is not assignable to type 'IntrinsicAttributes & ROVVideoDialogProps'.
+  Property 'diveJob' does not exist on type 'IntrinsicAttributes & ROVVideoDialogProps'.
+app/dashboard/inspection/rov/page.tsx(1561,17): error TS2322: Type '{ open: boolean; onOpenChange: (open: boolean) => void; platformTitle: string; sowItem: any; diveJob: ROVJob; currentRecord: any; structureType: "platform" | "pipeline"; onSaved: () => void; }' is not assignable to type 'IntrinsicAttributes & ROVInspectionRecordingDialogProps & { structureType?: "platform" | "pipeline" | undefined; }'.
+  Property 'diveJob' does not exist on type 'IntrinsicAttributes & ROVInspectionRecordingDialogProps & { structureType?: "platform" | "pipeline" | undefined; }'.
+app/dashboard/inspection/rov/page.tsx(1584,17): error TS2322: Type '{ open: boolean; onOpenChange: Dispatch<SetStateAction<boolean>>; diveJob: ROVJob; onMovementSaved: () => Promise<void>; }' is not assignable to type 'IntrinsicAttributes & ROVMovementDialogProps'.
+  Property 'diveJob' does not exist on type 'IntrinsicAttributes & ROVMovementDialogProps'.
+

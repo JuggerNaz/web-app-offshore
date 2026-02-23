@@ -18,8 +18,8 @@ import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-an
 import { getReportHeaderData } from "@/utils/company-settings";
 import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 
-interface DiveInspectionListProps {
-    diveJobId?: number;
+interface ROVInspectionListProps {
+    rovJobId?: number;
     componentId?: number;
     diveNo?: string;
     jobpackId?: string | number;
@@ -29,8 +29,8 @@ interface DiveInspectionListProps {
     timestamp?: string; // Force refresh
 }
 
-export default function DiveInspectionList({
-    diveJobId,
+export default function ROVInspectionList({
+    rovJobId,
     componentId,
     diveNo,
     jobpackId,
@@ -38,7 +38,7 @@ export default function DiveInspectionList({
     onEdit,
     onDelete,
     timestamp
-}: DiveInspectionListProps) {
+}: ROVInspectionListProps) {
     const supabase = createClient();
     const [records, setRecords] = useState<any[]>([]);
     const [previewOpen, setPreviewOpen] = useState(false);
@@ -46,7 +46,7 @@ export default function DiveInspectionList({
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (diveJobId || componentId || (diveNo && jobpackId)) {
+        if (rovJobId || componentId || (diveNo && jobpackId)) {
             fetchRecords();
         } else {
             setRecords([]);
@@ -54,14 +54,14 @@ export default function DiveInspectionList({
 
         // Realtime subscription setup
         const channel = supabase
-            .channel(`insp_records_list_${diveJobId || componentId || 'global'}`)
+            .channel(`insp_records_list_${rovJobId || componentId || 'global'}`)
             .on(
                 'postgres_changes',
                 {
                     event: '*',
                     schema: 'public',
                     table: 'insp_records',
-                    filter: diveJobId ? `dive_job_id=eq.${diveJobId}` : undefined
+                    filter: rovJobId ? `rov_job_id=eq.${rovJobId}` : undefined
                 },
                 (payload) => {
                     console.log('Realtime update received:', payload);
@@ -73,12 +73,12 @@ export default function DiveInspectionList({
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [diveJobId, componentId, diveNo, jobpackId, selectedType, timestamp, supabase]);
+    }, [rovJobId, componentId, diveNo, jobpackId, selectedType, timestamp, supabase]);
 
     async function fetchRecords() {
         setLoading(true);
         try {
-            console.log("Fetching inspection records...", { diveJobId, componentId, timestamp });
+            console.log("Fetching inspection records...", { rovJobId, componentId, timestamp });
 
             let query = supabase
                 .from('insp_records')
@@ -86,14 +86,14 @@ export default function DiveInspectionList({
                     *,
                     inspection_type!left(id, code, name),
                     structure_components:component_id!left (q_id),
-                    insp_dive_jobs!left(dive_no, jobpack_id)
+                    insp_rov_jobs!left(deployment_no, jobpack_id)
                 `)
                 .order('inspection_date', { ascending: false })
                 .order('inspection_time', { ascending: false })
                 .order('insp_id', { ascending: false });
 
-            if (diveJobId) {
-                query = query.eq('dive_job_id', diveJobId);
+            if (rovJobId) {
+                query = query.eq('rov_job_id', rovJobId);
             } else if (componentId) {
                 query = query.eq('component_id', componentId);
             }
@@ -167,7 +167,7 @@ export default function DiveInspectionList({
             const settings = await getReportHeaderData();
 
             // Reconstruct minimal context
-            const jpId = record.insp_dive_jobs?.jobpack_id || jobpackId;
+            const jpId = record.insp_rov_jobs?.jobpack_id || jobpackId;
             const strId = record.structure_id;
 
             const jp = { id: jpId, name: "Project Reference", metadata: {} };

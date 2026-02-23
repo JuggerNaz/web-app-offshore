@@ -12,6 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { MapPin, Plus } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
@@ -23,6 +30,15 @@ interface ROVMovementDialogProps {
     onMovementSaved: () => void;
 }
 
+const ROV_MOVEMENT_TYPES = [
+    "ROV_DEPLOYED",
+    "ROV_TRANSITING",
+    "ROV_AT_WORKSITE",
+    "ROV_WORKING",
+    "ROV_LEAVING_WORKSITE",
+    "ROV_RECOVERED",
+];
+
 export default function ROVMovementDialog({
     open,
     onOpenChange,
@@ -32,9 +48,9 @@ export default function ROVMovementDialog({
     const supabase = createClient();
 
     const [formData, setFormData] = useState({
-        location: "",
-        activity: "",
-        notes: "",
+        movement_type: "",
+        remarks: "",
+        depth: "",
     });
 
     const [saving, setSaving] = useState(false);
@@ -47,8 +63,8 @@ export default function ROVMovementDialog({
             return;
         }
 
-        if (!formData.location || !formData.activity) {
-            toast.error("Location and activity are required");
+        if (!formData.movement_type) {
+            toast.error("Movement Type is required");
             return;
         }
 
@@ -57,10 +73,10 @@ export default function ROVMovementDialog({
         try {
             const { error } = await supabase.from("insp_rov_movements").insert({
                 rov_job_id: rovJob.rov_job_id,
-                timestamp: new Date().toISOString(),
-                location: formData.location,
-                activity: formData.activity,
-                notes: formData.notes,
+                movement_time: new Date().toISOString(),
+                movement_type: formData.movement_type,
+                remarks: formData.remarks,
+                depth_meters: formData.depth ? parseFloat(formData.depth) : null,
             });
 
             if (error) throw error;
@@ -71,9 +87,9 @@ export default function ROVMovementDialog({
 
             // Reset form
             setFormData({
-                location: "",
-                activity: "",
-                notes: "",
+                movement_type: "",
+                remarks: "",
+                depth: "",
             });
         } catch (error: any) {
             console.error("Error logging movement:", error);
@@ -85,16 +101,16 @@ export default function ROVMovementDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-xl">
                 <DialogHeader>
                     <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/20">
-                            <MapPin className="h-6 w-6 text-indigo-600" />
+                        <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/20">
+                            <MapPin className="h-6 w-6 text-cyan-600" />
                         </div>
                         <div>
-                            <DialogTitle className="text-xl">Log Movement</DialogTitle>
+                            <DialogTitle className="text-xl">Log ROV Movement</DialogTitle>
                             <DialogDescription>
-                                Record ROV location and activity
+                                Add manual movement log for the current deployment
                             </DialogDescription>
                         </div>
                     </div>
@@ -102,45 +118,54 @@ export default function ROVMovementDialog({
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-2">
-                        <Label htmlFor="location">Location *</Label>
-                        <Input
-                            id="location"
-                            value={formData.location}
-                            onChange={(e) =>
-                                setFormData({ ...formData, location: e.target.value })
+                        <Label htmlFor="movement_type">Movement Type *</Label>
+                        <Select
+                            value={formData.movement_type}
+                            onValueChange={(value) =>
+                                setFormData({ ...formData, movement_type: value })
                             }
-                            placeholder="e.g., Leg A1, Column B2, Node 3"
-                            required
+                        >
+                            <SelectTrigger id="movement_type">
+                                <SelectValue placeholder="Select movement type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {ROV_MOVEMENT_TYPES.map((type) => (
+                                    <SelectItem key={type} value={type}>
+                                        {type.replace(/_/g, " ")}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="depth">Depth (meters)</Label>
+                        <Input
+                            id="depth"
+                            type="number"
+                            step="0.1"
+                            value={formData.depth}
+                            onChange={(e) =>
+                                setFormData({ ...formData, depth: e.target.value })
+                            }
+                            placeholder="e.g., 45.5"
                         />
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="activity">Activity *</Label>
-                        <Input
-                            id="activity"
-                            value={formData.activity}
-                            onChange={(e) =>
-                                setFormData({ ...formData, activity: e.target.value })
-                            }
-                            placeholder="e.g., Visual inspection, CP reading"
-                            required
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="notes">Notes</Label>
+                        <Label htmlFor="remarks">Remarks / Location</Label>
                         <Textarea
-                            id="notes"
-                            value={formData.notes}
+                            id="remarks"
+                            value={formData.remarks}
                             onChange={(e) =>
-                                setFormData({ ...formData, notes: e.target.value })
+                                setFormData({ ...formData, remarks: e.target.value })
                             }
-                            placeholder="Additional details..."
+                            placeholder="e.g., Visual inspection at Leg A1..."
                             rows={3}
                         />
                     </div>
 
-                    <Button type="submit" disabled={saving} className="w-full gap-2">
+                    <Button type="submit" disabled={saving} className="w-full gap-2 bg-gradient-to-r from-cyan-600 to-cyan-700">
                         <Plus className="h-4 w-4" />
                         {saving ? "Logging..." : "Add Movement"}
                     </Button>

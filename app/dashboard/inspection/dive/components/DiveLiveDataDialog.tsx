@@ -43,6 +43,7 @@ interface DiveLiveDataDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     diveJob: any;
+    onActionLogged?: () => void;
 }
 
 interface DiveLog {
@@ -76,6 +77,7 @@ export default function DiveLiveDataDialog({
     open,
     onOpenChange,
     diveJob,
+    onActionLogged,
 }: DiveLiveDataDialogProps) {
     const supabase = createClient();
     const [logs, setLogs] = useState<DiveLog[]>([]);
@@ -199,6 +201,16 @@ export default function DiveLiveDataDialog({
         } else {
             setLogs(prev => [...prev, data]);
             toast.success(`Logged: ${action.label}`);
+
+            // If it's the final action, complete the deployment
+            if (["Arrived Surface", "TUP Complete", "Bell on Surface"].includes(action.label)) {
+                await supabase
+                    .from("insp_dive_jobs")
+                    .update({ status: "COMPLETED" })
+                    .eq("dive_job_id", diveJob.dive_job_id);
+                toast.success("Dive Deployment Completed");
+            }
+            if (onActionLogged) onActionLogged();
         }
         setLoading(false);
     }

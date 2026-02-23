@@ -340,6 +340,13 @@ export default function DiveVideoRecorder({
     async function createTape() {
         if (!newTapeNo) return;
 
+        // VALIDATION: Must have an active job
+        const hasActiveJob = diveJob && (diveJob.dive_job_id || diveJob.rov_job_id);
+        if (!hasActiveJob) {
+            toast.error("Cannot create or save tape details without an active Deployment/Dive number.");
+            return;
+        }
+
         const { data: { user } } = await supabase.auth.getUser();
 
         const payload: any = {
@@ -475,6 +482,13 @@ export default function DiveVideoRecorder({
         if (existing) {
             setTapeId(existing.tape_id);
             return existing.tape_id;
+        }
+
+        // VALIDATION: Must have an active job
+        const hasActiveJob = diveJob && (diveJob.dive_job_id || diveJob.rov_job_id);
+        if (!hasActiveJob) {
+            toast.error("Cannot create or save tape details without an active Deployment/Dive number.");
+            return null;
         }
 
         const { data: { user } } = await supabase.auth.getUser();

@@ -19,7 +19,7 @@ import {
     videoLogsAtom,
     type VideoLog
 } from "@/lib/video-recorder/video-state";
-import AttachmentManager, { type Attachment, type PendingFile } from "./AttachmentManager";
+import AttachmentManager, { type Attachment, type PendingFile } from "../../dive/components/AttachmentManager";
 
 interface InspectionProperty {
     name: string;
@@ -30,26 +30,26 @@ interface InspectionProperty {
     default?: any;
 }
 
-interface InspectionRecordingDialogProps {
+interface ROVInspectionRecordingDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     sowItem: any;
-    diveJob: any;
+    rovJob: any;
     onSaved: () => void;
     currentRecord?: any; // To support editing later
     platformTitle?: string;
 }
 
-export default function InspectionRecordingDialog({
+export default function ROVInspectionRecordingDialog({
     open,
     onOpenChange,
     sowItem,
-    diveJob,
+    rovJob,
     onSaved,
     currentRecord,
     platformTitle,
     structureType = 'platform' // Default to platform if not provided
-}: InspectionRecordingDialogProps & { structureType?: 'platform' | 'pipeline' }) {
+}: ROVInspectionRecordingDialogProps & { structureType?: 'platform' | 'pipeline' }) {
     const supabase = createClient();
 
     // Video State Atoms
@@ -70,7 +70,14 @@ export default function InspectionRecordingDialog({
         incompleteReason: "",
         hasAnomaly: false,
         inspectionDate: "",
-        inspectionTime: ""
+        inspectionTime: "",
+        // Mock ROV Data String
+        rovHeading: "142.5",
+        rovDepth: "45.2",
+        rovPitch: "-2.4",
+        rovAltitude: "12.0",
+        rovRoll: "1.1",
+        rovCp: "-950"
     });
 
     // Anomaly State
@@ -246,7 +253,13 @@ export default function InspectionRecordingDialog({
                     incompleteReason: fetchedRecord.incomplete_reason || "",
                     hasAnomaly: fetchedRecord.has_anomaly || false,
                     inspectionDate: fetchedRecord.inspection_date ? fetchedRecord.inspection_date.split('T')[0] : new Date().toISOString().split('T')[0],
-                    inspectionTime: fetchedRecord.inspection_time || new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    inspectionTime: fetchedRecord.inspection_time || new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    rovHeading: "142.5",
+                    rovDepth: "45.2",
+                    rovPitch: "-2.4",
+                    rovAltitude: "12.0",
+                    rovRoll: "1.1",
+                    rovCp: "-950"
                 });
 
                 if (fetchedRecord.has_anomaly) {
@@ -324,7 +337,13 @@ export default function InspectionRecordingDialog({
                     incompleteReason: "",
                     hasAnomaly: false,
                     inspectionDate: new Date().toISOString().split('T')[0],
-                    inspectionTime: new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    inspectionTime: new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    rovHeading: "142.5",
+                    rovDepth: "45.2",
+                    rovPitch: "-2.4",
+                    rovAltitude: "12.0",
+                    rovRoll: "1.1",
+                    rovCp: "-950"
                 });
 
                 // Auto-fill Elevation/FPKP
@@ -577,9 +596,9 @@ export default function InspectionRecordingDialog({
     async function generateAnomalyRef(isUpdate: boolean, currentRef: string, isRectified: boolean): Promise<{ refNo: string, seqNo?: number }> {
         const year = new Date().getFullYear();
         // Platform Name: need to get it. 
-        // diveJob only has structure_id. We need name. 
+        // rovJob only has structure_id. We need name. 
         // We can fetch it or use what we have. 
-        // diveJob?.structure?.name is not directly available, but we have `sowItem?.inspection_name` or `currentRecord?.structure_name`?
+        // rovJob?.structure?.name is not directly available, but we have `sowItem?.inspection_name` or `currentRecord?.structure_name`?
         // Let's fetch structure name if missing.
         let platformName = "PLAT";
         // Try to get from existing data first
@@ -587,7 +606,7 @@ export default function InspectionRecordingDialog({
             platformName = platformTitle;
         } else if (currentRecord?.structure_name) {
             platformName = currentRecord.structure_name;
-        } else if (diveJob?.structure_id) {
+        } else if (rovJob?.structure_id) {
             // Robust fetch logic with fallback
             let structureData: any = null;
             let usedTable = "";
@@ -596,7 +615,7 @@ export default function InspectionRecordingDialog({
             const { data: sData, error: sError } = await supabase
                 .from('structure')
                 .select('*') // Select * to avoid column errors
-                .eq('str_id', diveJob.structure_id)
+                .eq('str_id', rovJob.structure_id)
                 .single();
 
             if (!sError && sData) {
@@ -608,7 +627,7 @@ export default function InspectionRecordingDialog({
                 const { data: uData, error: uError } = await supabase
                     .from('u_structure')
                     .select('*')
-                    .eq('str_id', diveJob.structure_id)
+                    .eq('str_id', rovJob.structure_id)
                     .single();
 
                 if (!uError && uData) {
@@ -694,7 +713,7 @@ export default function InspectionRecordingDialog({
                 // To do it right:
                 // We really need a backend function for this to be safe.
                 // Client side approximate:
-                // Count current anomalies for this dive job?
+                // Count current anomalies for this rov job?
                 // Let's use a simple counter for this Job.
                 .limit(1);
 
@@ -707,20 +726,20 @@ export default function InspectionRecordingDialog({
 
 
     async function handleSave() {
-        if (!diveJob || (!sowItem && !currentRecord)) {
+        if (!rovJob || (!sowItem && !currentRecord)) {
             toast.error("Missing inspection context");
             return;
         }
 
-        // Date Time Validation against Dive Job
-        if (commonData.inspectionDate && commonData.inspectionTime && diveJob.dive_date) {
+        // Date Time Validation against ROV Job
+        if (commonData.inspectionDate && commonData.inspectionTime && rovJob.dive_date) {
             const inspDate = new Date(`${commonData.inspectionDate}T${commonData.inspectionTime.length === 5 ? commonData.inspectionTime + ':00' : commonData.inspectionTime}`).getTime();
 
             // Try to find AT_WORKSITE and LEAVING_WORKSITE movements
             const { data: movements } = await supabase
-                .from('insp_dive_movements')
+                .from('insp_rov_movements')
                 .select('movement_type, movement_time')
-                .eq('dive_job_id', diveJob.dive_job_id);
+                .eq('rov_job_id', rovJob.rov_job_id);
 
             if (movements && movements.length > 0) {
                 const atWorksite = movements.find(m => m.movement_type === 'AT_WORKSITE');
@@ -767,12 +786,12 @@ export default function InspectionRecordingDialog({
 
             // Prepare payload
             const payload: any = {
-                dive_job_id: diveJob.dive_job_id,
-                structure_id: diveJob.structure_id,
+                rov_job_id: rovJob.rov_job_id,
+                structure_id: rovJob.structure_id,
                 component_id: currentRecord?.component_id || sowItem?.component_id,
                 component_type: currentRecord?.component_type || sowItem?.component_type || 'Unknown',
-                jobpack_id: diveJob.jobpack_id,
-                sow_report_no: currentRecord?.sow_report_no || sowItem?.report_number || diveJob.sow_report_no,
+                jobpack_id: rovJob.jobpack_id,
+                sow_report_no: currentRecord?.sow_report_no || sowItem?.report_number || rovJob.sow_report_no,
 
                 // Ensure ID is passed for schema lookup. Prefer existing record's logic if available.
                 inspection_type_id: currentRecord?.inspection_type_id || currentRecord?.inspection_type?.id || sowItem?.inspection_type_id,
@@ -782,7 +801,13 @@ export default function InspectionRecordingDialog({
                 inspection_data: {
                     ...formData,
                     _meta_timecode: commonData.tapeCounter,
-                    structure_name: platformTitle || 'Unknown'
+                    structure_name: platformTitle || 'Unknown',
+                    rov_heading: commonData.rovHeading,
+                    rov_depth: commonData.rovDepth,
+                    rov_pitch: commonData.rovPitch,
+                    rov_altitude: commonData.rovAltitude,
+                    rov_roll: commonData.rovRoll,
+                    rov_cp: commonData.rovCp
                 },
 
                 tape_id: commonData.tapeId ? parseInt(commonData.tapeId) : null,
@@ -795,7 +820,7 @@ export default function InspectionRecordingDialog({
 
                 status: status,
                 incomplete_reason: commonData.isIncomplete ? commonData.incompleteReason : null,
-                workunit: diveJob.workunit || '000'
+                workunit: rovJob.workunit || '000'
             };
 
             let insertedRecord;
@@ -845,7 +870,7 @@ export default function InspectionRecordingDialog({
 
                 if (!platformTitle) {
                     // Only fetch if prop is missing (secondary fallback)
-                    const { data: strData } = await supabase.from('u_structure').select('str_desc').eq('str_id', diveJob.structure_id).maybeSingle();
+                    const { data: strData } = await supabase.from('u_structure').select('str_desc').eq('str_id', rovJob.structure_id).maybeSingle();
                     if (strData?.str_desc) platformName = strData.str_desc;
                 }
 
@@ -858,7 +883,7 @@ export default function InspectionRecordingDialog({
                     const year = new Date().getFullYear();
                     // Get Max Seq
                     const { data: maxData } = await supabase
-                        .rpc('get_max_anomaly_sequence', { structure_id_input: diveJob.structure_id, year_input: year }); // Ideal, but RPC might not exist.
+                        .rpc('get_max_anomaly_sequence', { structure_id_input: rovJob.structure_id, year_input: year }); // Ideal, but RPC might not exist.
 
                     // Fallback to simplistic count
                     const { count } = await supabase.from('insp_anomalies').select('*', { count: 'exact', head: true });
@@ -910,7 +935,7 @@ export default function InspectionRecordingDialog({
                     rectified_date: anomalyData.isRectified ? (anomalyData.rectifiedDate || new Date().toISOString()) : null,
                     rectified_by: anomalyData.isRectified ? (anomalyData.rectifiedBy || currentUserId) : null,
 
-                    workunit: diveJob.workunit || '000'
+                    workunit: rovJob.workunit || '000'
                 };
 
                 if (seqNo > 0) anomalyPayload.sequence_no = seqNo;
@@ -1014,7 +1039,7 @@ export default function InspectionRecordingDialog({
                         .eq('id', sowItem.id);
 
                     if (sowError) console.error("Error updating SOW item:", sowError);
-                } else if (diveJob?.sow_report_no && (currentRecord?.component_id || sowItem?.component_id)) {
+                } else if (rovJob?.sow_report_no && (currentRecord?.component_id || sowItem?.component_id)) {
                     // Update fallback
                     const { error: sowError } = await supabase
                         .from('u_sow_items')
@@ -1023,7 +1048,7 @@ export default function InspectionRecordingDialog({
                             notes: commonData.isIncomplete ? commonData.incompleteReason : (commonData.hasAnomaly ? 'Anomaly Reported' : 'Inspection recorded'),
                             last_inspection_date: commonData.inspectionDate || new Date().toISOString().split('T')[0]
                         })
-                        .eq('report_number', diveJob.sow_report_no)
+                        .eq('report_number', rovJob.sow_report_no)
                         .eq('component_id', currentRecord?.component_id || sowItem?.component_id);
 
                     if (sowError) console.error("Error updating SOW item (fallback):", sowError);
@@ -1045,7 +1070,7 @@ export default function InspectionRecordingDialog({
                         remarks: remarks,
                         inspection_id: insertedRecord.insp_id, // Link to the inspection record
                         cr_user: currentUserId,
-                        workunit: diveJob.workunit || '000',
+                        workunit: rovJob.workunit || '000',
                     });
 
                     if (logError) {
