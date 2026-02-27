@@ -35,6 +35,7 @@ export function ElevationDialog() {
   const onSubmit = async (values: z.infer<typeof ElevationSchema>) => {
     const elevObject = {
       ...values,
+      elv: values.orient === "BELOW" ? -Math.abs(values.elv || 0) : Math.abs(values.elv || 0),
       plat_id: pageId,
       cr_user: "",
     };

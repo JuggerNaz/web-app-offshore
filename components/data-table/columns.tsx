@@ -23,6 +23,8 @@ import { Trash2, Edit2, Plus, Calendar, CheckCircle, FileText } from "lucide-rea
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
 import { DeleteConfirmDialog } from "@/components/dialogs/delete-confirm-dialog";
+import Image from "next/image";
+import { ImageIcon } from "lucide-react";
 
 export type Platform = Database["public"]["Tables"]["platform"]["Row"];
 export type Comment = Database["public"]["Tables"]["comment"]["Row"];
@@ -38,6 +40,7 @@ export type StructureSelect = {
   str_type: string;
 };
 export type Attachment = Database["public"]["Tables"]["attachment"]["Row"];
+export type ExtendedAttachment = Attachment & { source_name?: string };
 export type Component = {
   comp_id: string;
   description: string;
@@ -821,30 +824,52 @@ export const attachments: ColumnDef<Attachment>[] = [
     header: "Url",
     cell: ({ row }) => {
       const attachment: Attachment = row.original;
-      const { fileUrl, fileName } = processAttachmentUrl(attachment);
+      return <AttachmentUrlCell attachment={attachment} />
+    },
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => <AttachmentActions row={row} />,
+  },
+];
 
-      // Ensure we have a valid URL
-      if (!fileUrl) {
-        return <span className="text-gray-500">No file URL</span>;
-      }
-
-      // Truncate filename for display
-      const displayText = truncateText(fileName, 30);
-
+export const globalAttachments: ColumnDef<ExtendedAttachment>[] = [
+  {
+    accessorKey: "created_at",
+    header: "Created At",
+    cell: ({ row }) => {
+      const date: string = row.getValue("created_at");
+      return <div>{moment(date).format("MMMM Do, YYYY")}</div>;
+    },
+  },
+  {
+    accessorKey: "source_name",
+    header: "Source (Platform)",
+    cell: ({ row }) => {
+      const name = row.original.source_name || "Unknown";
+      const type = row.original.source_type || "N/A";
       return (
-        <div className="flex items-center gap-2">
-          <a
-            href={fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 max-w-[200px]"
-            title={fileUrl}
-          >
-            <span className="truncate">{displayText}</span>
-            <ExternalLink className="h-3 w-3 flex-shrink-0" />
-          </a>
+        <div className="flex flex-col">
+          <span className="font-bold text-xs">{name}</span>
+          <span className="text-[10px] text-slate-500 uppercase">{type}</span>
         </div>
       );
+    },
+  },
+  {
+    accessorKey: "name",
+    header: "Name",
+  },
+  {
+    accessorKey: "user_name",
+    header: "User",
+  },
+  {
+    accessorKey: "path",
+    header: "Url",
+    cell: ({ row }) => {
+      const attachment: Attachment = row.original;
+      return <AttachmentUrlCell attachment={attachment} />
     },
   },
   {
@@ -902,6 +927,65 @@ function AttachmentActions({ row }: { row: any }) {
         title="Delete Attachment"
         description="Are you sure you want to permanently delete this attachment? This action cannot be undone."
       />
+    </div>
+  );
+}
+
+function AttachmentUrlCell({ attachment }: { attachment: Attachment }) {
+  const [showPreview, setShowPreview] = useState(false);
+  const { fileUrl, fileName } = processAttachmentUrl(attachment);
+
+  if (!fileUrl) {
+    return <span className="text-gray-500 text-xs">No file URL</span>;
+  }
+
+  const displayText = truncateText(fileName, 30);
+
+  // Check if file is likely an image based on common extensions
+  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        <a
+          href={fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 max-w-[200px] text-xs font-medium transition-colors"
+          title={fileUrl}
+        >
+          <span className="truncate">{displayText}</span>
+          <ExternalLink className="h-3 w-3 flex-shrink-0 opacity-70" />
+        </a>
+
+        {isImage && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowPreview(!showPreview)}
+            className={`h-7 px-2 text-[10px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 transition-all
+              ${showPreview
+                ? "bg-slate-800 text-white border-slate-800 hover:bg-slate-700 hover:text-white dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-slate-300"
+                : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800"
+              }`}
+          >
+            <ImageIcon className="h-3 w-3" />
+            {showPreview ? "Hide" : "Preview"}
+          </Button>
+        )}
+      </div>
+
+      {showPreview && isImage && (
+        <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-50 dark:bg-slate-900/50 relative group">
+          <div className="p-1 items-center justify-center flex max-h-[250px] overflow-hidden">
+            <img
+              src={fileUrl}
+              alt={fileName}
+              className="object-contain max-h-[240px] w-auto h-auto rounded-lg shadow-sm"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

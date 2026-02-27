@@ -26,6 +26,7 @@ import { urlId, urlType } from "@/utils/client-state";
 import { toast } from "sonner";
 import specAdditionalDetails from "@/utils/spec-additional-details.json";
 import { Wrench, Settings2, Save, X, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type Component = {
   id: number;
@@ -149,7 +150,11 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
     top_und: "",
     comp_group: "",
     associated_comp_id: null as number | null,
-    additionalInfo: {} as Record<string, any>,
+    additionalInfo: {
+      wall_thk: "",
+      depth: "",
+      diameter: "",
+    } as Record<string, any>,
   });
 
   const getTemplate = (code: string | null, type: string) => {
@@ -167,7 +172,12 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
       const template = getTemplate(effectiveCode, pageType);
       setFormData(prev => ({
         ...prev,
-        additionalInfo: { ...template }
+        additionalInfo: {
+          ...template,
+          wall_thk: "",
+          depth: "",
+          diameter: "",
+        }
       }));
     }
   }, [effectiveCode, isCreateMode, pageType]);
@@ -200,7 +210,13 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
-        additionalInfo: component.metadata?.additionalInfo ?? getTemplate(component.code, pageType),
+        additionalInfo: {
+          ...getTemplate(component.code, pageType),
+          ...component.metadata?.additionalInfo,
+          wall_thk: component.metadata?.additionalInfo?.wall_thk ?? "",
+          depth: component.metadata?.additionalInfo?.depth ?? "",
+          diameter: component.metadata?.additionalInfo?.diameter ?? "",
+        },
       });
     } else if (isCreateMode) {
       // Ensure a clean slate when switching back to create mode
@@ -209,7 +225,12 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         q_id: "",
         id_no: "",
         code: defaultCode || "",
-        additionalInfo: getTemplate(defaultCode || "", pageType),
+        additionalInfo: {
+          ...getTemplate(defaultCode || "", pageType),
+          wall_thk: "",
+          depth: "",
+          diameter: "",
+        },
       }));
     }
   }, [isCreateMode, component, defaultCode, pageType]);
@@ -309,7 +330,11 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         top_und: "",
         comp_group: "",
         associated_comp_id: null,
-        additionalInfo: {},
+        additionalInfo: {
+          wall_thk: "",
+          depth: "",
+          diameter: "",
+        },
       });
     } catch (error) {
       console.error("Error creating component:", error);
@@ -383,8 +408,8 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
             {/* Specifications Tab */}
             <TabsContent value="specifications" className="space-y-8 mt-0 outline-none">
               <div className="grid grid-cols-12 gap-6 bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
-                {/* Row 1: Q ID, ID No, Code */}
-                <div className="col-span-4 space-y-2">
+                {/* Row 1: Q ID, Code */}
+                <div className="col-span-10 space-y-2">
                   <Label htmlFor="qId" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Q Id</Label>
                   <Input
                     id="qId"
@@ -393,25 +418,19 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                     onChange={(e) => handleInputChange("q_id", e.target.value)}
                     readOnly={!(isCreateMode || isEditMode)}
                   />
-                </div>
-                <div className="col-span-6 space-y-2">
-                  <Label htmlFor="idNo" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">ID No</Label>
-                  <Input
-                    id="idNo"
-                    className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 font-mono text-blue-600 dark:text-blue-400 h-11"
-                    value={
+                  <p className="text-[10px] font-mono font-bold text-slate-400 ml-1">
+                    ID No: {
                       isCreateMode
-                        ? buildIdNo(
+                        ? (buildIdNo(
                           formData.code || defaultCode || "",
                           formData.s_node,
                           formData.f_node,
                           formData.dist,
                           formData.clk_pos
-                        )
-                        : (component?.id_no || "")
+                        ) || "-")
+                        : (component?.id_no || "-")
                     }
-                    readOnly
-                  />
+                  </p>
                 </div>
                 <div className="col-span-2 space-y-2">
                   <Label htmlFor="code" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Code</Label>
@@ -509,7 +528,7 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                       onChange={(e) => handleInputChange("dist", e.target.value)}
                       readOnly={!(isCreateMode || isEditMode)}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">M</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">m</span>
                   </div>
                 </div>
 
@@ -524,7 +543,7 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                       onChange={(e) => handleInputChange("elv_1", e.target.value)}
                       readOnly={!(isCreateMode || isEditMode)}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">M</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">m</span>
                   </div>
                 </div>
                 <div className="col-span-4 space-y-2">
@@ -537,7 +556,7 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                       onChange={(e) => handleInputChange("elv_2", e.target.value)}
                       readOnly={!(isCreateMode || isEditMode)}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">M</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">m</span>
                   </div>
                 </div>
                 <div className="col-span-4 space-y-2">
@@ -673,7 +692,14 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                     <div className="grid grid-cols-2 gap-x-12 gap-y-6 px-1">
                       {Object.entries(formData.additionalInfo).map(([key, value]) => {
                         if (key === 'del') return null;
-                        const label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
+                        let label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                        if (key === 'wall_thk') label = "Wall Thickness";
+
+                        let unit = null;
+                        if (key === 'wall_thk' || key === 'diameter') unit = "mm";
+                        if (key === 'depth') unit = "m";
+
                         return (
                           <div key={key} className="space-y-2">
                             <Label htmlFor={key} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
@@ -688,13 +714,23 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                                 />
                               </div>
                             ) : (
-                              <Input
-                                id={key}
-                                value={value || ""}
-                                onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
-                                readOnly={!(isCreateMode || isEditMode)}
-                                className="h-11 rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-mono text-xs text-cyan-600 dark:text-cyan-400"
-                              />
+                              <div className="relative">
+                                <Input
+                                  id={key}
+                                  value={value || ""}
+                                  onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
+                                  readOnly={!(isCreateMode || isEditMode)}
+                                  className={cn(
+                                    "h-11 rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-mono text-xs text-cyan-600 dark:text-cyan-400",
+                                    unit && "pr-10"
+                                  )}
+                                />
+                                {unit && (
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 tracking-tighter">
+                                    {unit}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         );

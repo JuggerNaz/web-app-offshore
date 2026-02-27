@@ -22,11 +22,15 @@ export interface InspectionState {
     description: string;
     isAnomaly: boolean;
     anomalyReference: string;
+    cpValues: string[];
+    marineGrowthType: string;
 
     // Step 4: Evidence
     evidence: {
         timecode: string | null;
-        frameCaptured: boolean;
+        frameCount: number;
+        isRecording: boolean;
+        videoCaptured: boolean;
         segmentMarked: boolean;
     };
 
@@ -68,10 +72,14 @@ const initialState: InspectionState = {
     description: "",
     isAnomaly: false,
     anomalyReference: "",
+    cpValues: [""],
+    marineGrowthType: "",
 
     evidence: {
         timecode: null,
-        frameCaptured: false,
+        frameCount: 0,
+        isRecording: false,
+        videoCaptured: false,
         segmentMarked: false,
     },
 
@@ -113,7 +121,10 @@ export function InspectionProvider({ children }: { children: ReactNode }) {
             (!state.isAnomaly || !!state.anomalyReference);
 
         // Evidence is optional but "Linked" status depends on it
-        const evidenceValid = !!state.evidence.timecode || state.evidence.frameCaptured;
+        const evidenceValid =
+            !!state.evidence.timecode ||
+            state.evidence.frameCount > 0 ||
+            state.evidence.videoCaptured;
 
         const missingFields = [];
         if (!componentValid) missingFields.push("Component ID");

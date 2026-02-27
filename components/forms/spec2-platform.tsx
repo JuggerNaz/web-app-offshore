@@ -61,8 +61,8 @@ export default function Spec2Platform() {
     </div>
   );
 
-  const elevationsAbove = data?.data?.filter((x: { orient: string }) => x.orient === "ABOVE") || [];
-  const elevationsBelow = data?.data?.filter((x: { orient: string }) => x.orient === "BELOW") || [];
+  const elevationsAbove = [...(data?.data?.filter((x: any) => x.orient === "ABOVE") || [])].sort((a: any, b: any) => parseFloat(a.elv || "0") - parseFloat(b.elv || "0"));
+  const elevationsBelow = [...(data?.data?.filter((x: any) => x.orient === "BELOW") || [])].sort((a: any, b: any) => Math.abs(parseFloat(a.elv || "0")) - Math.abs(parseFloat(b.elv || "0")));
 
   return (
     <div className="w-full space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">

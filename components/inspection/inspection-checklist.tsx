@@ -12,7 +12,7 @@ export function InspectionChecklist() {
         { id: 'component', label: 'Component Selected', status: validation.component },
         { id: 'position', label: 'Position Confirmed', status: validation.position },
         { id: 'observation', label: 'Observation Entered', status: validation.observation },
-        { id: 'evidence', label: 'Evidence Linked', status: validation.evidence },
+        { id: 'evidence', label: 'Video Linked', status: validation.evidence },
         { id: 'saved', label: 'Event Saved', status: validation.saved },
     ];
 

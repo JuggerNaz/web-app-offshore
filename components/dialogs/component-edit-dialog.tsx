@@ -26,6 +26,7 @@ import { comments, attachments } from "@/components/data-table/columns";
 import { ComponentCommentDialog } from "./component-comment-dialog";
 import { ComponentAttachmentDialog } from "./component-attachment-dialog";
 import { Wrench, Settings2, Save, X, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // Keep in sync with other component types
 export type EditableComponent = {
@@ -155,6 +156,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
 
   useEffect(() => {
     if (open && component) {
+      const template = getTemplate(component.code, pageType);
       setFormData({
         q_id: component.q_id || "",
         id_no: component.id_no || "",
@@ -173,7 +175,12 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
-        additionalInfo: component.metadata?.additionalInfo ?? getTemplate(component.code, pageType),
+        additionalInfo: {
+          ...template,
+          ...component.metadata?.additionalInfo,
+          wall_thk: component.metadata?.additionalInfo?.wall_thk ?? "",
+          depth: component.metadata?.additionalInfo?.depth ?? "",
+        },
       });
     }
   }, [open, component]);
@@ -308,8 +315,8 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
             {/* Specifications Tab */}
             <TabsContent value="specifications" className="space-y-8 mt-0 outline-none">
               <div className="grid grid-cols-12 gap-6 bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
-                {/* Row 1: Q ID, ID No, Code */}
-                <div className="col-span-4 space-y-2">
+                {/* Row 1: Q ID, Code */}
+                <div className="col-span-10 space-y-2">
                   <Label htmlFor="edit-qId" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Q Id</Label>
                   <Input
                     id="edit-qId"
@@ -317,15 +324,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                     value={formData.q_id}
                     onChange={(e) => handleChange("q_id", e.target.value)}
                   />
-                </div>
-                <div className="col-span-6 space-y-2">
-                  <Label htmlFor="edit-idNo" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">ID No</Label>
-                  <Input
-                    id="edit-idNo"
-                    className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 font-mono text-blue-600 dark:text-blue-400 h-11"
-                    value={generatedIdNo || component?.id_no || ""}
-                    readOnly
-                  />
+                  <p className="text-[10px] font-mono font-bold text-slate-400 ml-1">
+                    ID No: {generatedIdNo || component?.id_no || "-"}
+                  </p>
                 </div>
                 <div className="col-span-2 space-y-2">
                   <Label htmlFor="edit-code" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Code</Label>
@@ -424,7 +425,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                       value={formData.dist}
                       onChange={(e) => handleChange("dist", e.target.value)}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">M</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">m</span>
                   </div>
                 </div>
 
@@ -438,7 +439,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                       value={formData.elv_1}
                       onChange={(e) => handleChange("elv_1", e.target.value)}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">M</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">m</span>
                   </div>
                 </div>
                 <div className="col-span-4 space-y-2">
@@ -450,7 +451,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                       value={formData.elv_2}
                       onChange={(e) => handleChange("elv_2", e.target.value)}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">M</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">m</span>
                   </div>
                 </div>
                 <div className="col-span-4 space-y-2">
@@ -573,7 +574,13 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                     <div className="grid grid-cols-2 gap-x-12 gap-y-6 px-1">
                       {Object.entries(formData.additionalInfo).map(([key, value]) => {
                         if (key === 'del') return null;
-                        const label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                        let label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                        if (key === 'wall_thk') label = "Wall Thickness";
+
+                        let unit = null;
+                        if (key === 'wall_thk' || key === 'diameter') unit = "mm";
+                        if (key === 'depth') unit = "m";
+
                         return (
                           <div key={key} className="space-y-2">
                             <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
@@ -587,12 +594,22 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                                 />
                               </div>
                             ) : (
-                              <Input
-                                id={`edit-${key}`}
-                                value={value || ""}
-                                onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
-                                className="h-11 rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-mono text-xs text-cyan-600 dark:text-cyan-400"
-                              />
+                              <div className="relative">
+                                <Input
+                                  id={`edit-${key}`}
+                                  value={value || ""}
+                                  onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
+                                  className={cn(
+                                    "h-11 rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-mono text-xs text-cyan-600 dark:text-cyan-400",
+                                    unit && "pr-10"
+                                  )}
+                                />
+                                {unit && (
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 tracking-tighter">
+                                    {unit}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         );

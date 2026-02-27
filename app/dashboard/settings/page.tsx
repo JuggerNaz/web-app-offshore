@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Settings, Building2, Video, Activity, AlertTriangle, User } from "lucide-react";
+import { Settings, Building2, Video, Activity, AlertTriangle, User, FileText } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SettingsPage() {
@@ -200,6 +200,7 @@ export default function SettingsPage() {
                             </CardContent>
                         </Card>
                     </Link>
+
                 </div>
 
                 {/* Info Card */}
