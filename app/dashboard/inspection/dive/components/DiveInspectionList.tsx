@@ -21,6 +21,7 @@ import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 interface DiveInspectionListProps {
     diveJobId?: number;
     componentId?: number;
+    tapeId?: number;
     diveNo?: string;
     jobpackId?: string | number;
     selectedType?: string | null;
@@ -32,6 +33,7 @@ interface DiveInspectionListProps {
 export default function DiveInspectionList({
     diveJobId,
     componentId,
+    tapeId,
     diveNo,
     jobpackId,
     selectedType,
@@ -73,7 +75,7 @@ export default function DiveInspectionList({
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [diveJobId, componentId, diveNo, jobpackId, selectedType, timestamp, supabase]);
+    }, [diveJobId, componentId, tapeId, diveNo, jobpackId, selectedType, timestamp, supabase]);
 
     async function fetchRecords() {
         setLoading(true);
@@ -96,6 +98,11 @@ export default function DiveInspectionList({
                 query = query.eq('dive_job_id', diveJobId);
             } else if (componentId) {
                 query = query.eq('component_id', componentId);
+            }
+
+            // Filter by tape if provided
+            if (tapeId) {
+                query = query.eq('tape_id', tapeId);
             }
 
             if (selectedType) {

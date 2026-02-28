@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
 import { enumerateDevices, detectMissingDependencies, type DeviceInfo, type MissingDependency } from '@/lib/video-recorder/device-capabilities';
 import { loadSettings, saveSettings, resetSettings, getSmartDefaults, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
 import { createMediaRecorder, startRecording, saveFile, generateFilename, getPhotoExtension, FORMAT_CONFIGS } from '@/lib/video-recorder/media-recorder';
@@ -10,6 +12,7 @@ import { useToast } from '@/components/ui/toast';
 import { VideoPlayer } from '@/components/video-player';
 
 export default function VideoRecorderSettings() {
+    const router = useRouter();
     const { showToast } = useToast();
 
     const toast = ({ title, description, variant }: { title?: string, description: string, variant?: 'default' | 'destructive' }) => {
@@ -581,19 +584,30 @@ export default function VideoRecorderSettings() {
         <div className="flex-1 w-full p-2 lg:p-6 overflow-y-auto">
             <div className="max-w-6xl mx-auto pb-8">
                 {/* Header */}
-                <div className="mb-8">
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 bg-purple-600/10 rounded-lg">
-                            <span className="text-2xl">🎥</span>
+                <div className="mb-0 flex items-center gap-4">
+                    <button
+                        onClick={() => router.back()}
+                        className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all group border border-transparent hover:border-slate-200 dark:hover:border-slate-700 shadow-sm hover:shadow"
+                        title="Go Back"
+                    >
+                        <ArrowLeft className="w-6 h-6 text-slate-600 dark:text-slate-400 group-hover:text-blue-600 transition-colors" />
+                    </button>
+                    <div>
+                        <div className="flex items-center gap-3 mb-1">
+                            <div className="p-2 bg-gradient-to-br from-purple-600/20 to-pink-500/20 rounded-lg border border-purple-500/20">
+                                <span className="text-2xl">🎥</span>
+                            </div>
+                            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
+                                Video Capture
+                            </h1>
                         </div>
-                        <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
-                            Video Capture
-                        </h1>
+                        <p className="text-muted-foreground ml-1">
+                            Configure camera, audio, and recording preferences for your workstation
+                        </p>
                     </div>
-                    <p className="text-muted-foreground ml-14">
-                        Configure camera, audio, and recording preferences for your workstation
-                    </p>
                 </div>
+
+                <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-800 to-transparent my-8" />
 
                 {/* Missing Dependencies Warnings */}
                 {dependencies.length > 0 && (

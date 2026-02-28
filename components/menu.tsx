@@ -137,7 +137,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             actionHref="/dashboard/planning/form"
           />
           <MenuLink
-            href="/dashboard/inspection"
+            href="/dashboard/inspection-v2"
             isCollapsed={isCollapsed}
             label="Inspection"
             icon={<ClipboardCheck className="h-[18px] w-[18px]" />}

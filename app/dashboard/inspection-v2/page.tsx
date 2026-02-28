@@ -347,7 +347,11 @@ export default function InspectionLanding() {
             return;
         }
 
-        router.push(`/dashboard/inspection/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${selectedSOW}&mode=DIVING`);
+        const jpName = selectedJobPackData?.jobpack_no || selectedJobPackData?.jobpack_title || '';
+        const structName = selectedStructureData?.name || '';
+        const sowReport = selectedSOWData?.report_number || '';
+
+        router.push(`/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${selectedSOW}&mode=DIVING&jpName=${encodeURIComponent(jpName)}&structName=${encodeURIComponent(structName)}&sowReport=${encodeURIComponent(sowReport)}`);
     }
 
     const selectedJobPackData = jobPacks.find((jp) => jp.id.toString() === selectedJobPack);

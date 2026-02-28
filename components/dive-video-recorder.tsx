@@ -32,7 +32,6 @@ import {
     Minimize2,
     X,
     Pause,
-    Disc,
     FileText,
     History,
     Mic,
@@ -51,7 +50,6 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { loadSettings, type WorkstationSettings } from "@/lib/video-recorder/settings-manager";
@@ -1000,109 +998,183 @@ export default function DiveVideoRecorder({
     return (
 
         <div className={`flex flex-col bg-background overflow-hidden relative pointer-events-auto ${className || 'h-[85vh] w-[90vw] rounded-lg border shadow-xl'}`}>
-            {/* Header */}
-            <div className="px-3 py-2 border-b flex items-center justify-between shrink-0 bg-background z-10 gap-2 h-14">
+            {/* Header: Dark Title Bar matching "1. DIVER LOG" style */}
+            <div className="px-3 py-2 border-b flex items-center justify-between shrink-0 bg-slate-800 dark:bg-slate-950 z-10 gap-2">
                 <div className="flex items-center gap-2 overflow-hidden flex-1">
-                    <div className="p-1.5 rounded-lg bg-primary/10 shrink-0">
-                        <Disc className={`h-4 w-4 text-primary ${isRecording ? 'animate-spin' : ''}`} />
+                    <span className="text-sm font-bold text-white tracking-wide">2. VIDEO SESSION RECORD</span>
+                    {isRecording && (
+                        <span className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            <span className="text-[10px] font-bold text-red-400 uppercase">REC</span>
+                        </span>
+                    )}
+                </div>
+                <div className="flex items-center gap-1">
+                    {tapeId && !isRecording && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                            title="Edit Tape Details"
+                            onClick={() => {
+                                const currentTape = jobTapes.find(t => t.tape_id === tapeId);
+                                setEditTapeNo(tapeNo || "");
+                                setEditTapeStatus(currentTape?.status || "ACTIVE");
+                                setEditTapeChapter(currentTape?.chapter_no || "");
+                                setEditTapeRemarks(currentTape?.remarks || "");
+                                setIsEditTapeOpen(true);
+                            }}
+                        >
+                            <Pencil className="h-3 w-3" />
+                        </Button>
+                    )}
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" onClick={() => setShowSettings(!showSettings)} title="Capture Settings">
+                        <Settings className={`h-3.5 w-3.5 ${showSettings ? 'text-white' : ''}`} />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" onClick={onClose} title="Close">
+                        <X className="h-3.5 w-3.5" />
+                    </Button>
+                </div>
+            </div>
+
+            {/* Edit Tape Dialog */}
+            <Dialog open={isEditTapeOpen} onOpenChange={setIsEditTapeOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Edit Tape Details</DialogTitle>
+                        <DialogDescription>Update tape number, chapter, or status.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="name" className="text-right">Tape No</Label>
+                            <Input id="name" value={editTapeNo} onChange={(e) => setEditTapeNo(e.target.value)} className="col-span-3" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="chapter" className="text-right">Chapter</Label>
+                            <Input id="chapter" value={editTapeChapter} onChange={(e) => setEditTapeChapter(e.target.value)} className="col-span-3" placeholder="e.g. 01" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="remarks" className="text-right">Remarks</Label>
+                            <Input id="remarks" value={editTapeRemarks} onChange={(e) => setEditTapeRemarks(e.target.value)} className="col-span-3" placeholder="Optional notes" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="status" className="text-right">Status</Label>
+                            <Select value={editTapeStatus} onValueChange={setEditTapeStatus}>
+                                <SelectTrigger className="col-span-3">
+                                    <SelectValue placeholder="Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ACTIVE">Active</SelectItem>
+                                    <SelectItem value="FULL">Full</SelectItem>
+                                    <SelectItem value="CLOSED">Closed</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                    <div className="flex flex-col min-w-0">
-                        <Label htmlFor="tapeNo" className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Tape ID</Label>
-                        <div className="flex items-center gap-1">
-                            {/* Tape Selector - ALways show if we have tapes, or if active list is fetched */}
-                            {jobTapes.length > 0 && (
-                                <Select
-                                    value={tapeId ? String(tapeId) : "new_tape_placeholder"}
-                                    onValueChange={(val) => {
-                                        if (val === "new_tape_option") {
-                                            // Trigger New Tape Dialog
-                                            const base = diveJob?.sow_report_no || 'TAPE';
-                                            const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
-                                            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-                                            setNewTapeNo(`${base}-${date}-${random}`);
-                                            setNewTapeChapter("");
-                                            setNewTapeRemarks("");
-                                            setIsNewTapeOpen(true);
-                                        } else {
-                                            const selected = jobTapes.find(t => String(t.tape_id) === val);
-                                            if (selected) {
-                                                setTapeId(selected.tape_id);
-                                                setTapeNo(selected.tape_no);
-                                            }
-                                        }
-                                    }}
-                                    disabled={isRecording}
-                                >
-                                    <SelectTrigger className="h-7 text-xs font-mono font-bold border-none p-0 focus:ring-0 w-auto bg-transparent gap-1 min-w-[120px]">
-                                        <SelectValue placeholder="Select Tape" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {jobTapes.map(t => (
-                                            <SelectItem key={t.tape_id} value={String(t.tape_id)}>
-                                                <span className="flex items-center gap-2">
-                                                    {t.tape_no}
-                                                    {t.status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-green-500" />}
-                                                </span>
-                                            </SelectItem>
-                                        ))}
-                                        <Separator className="my-1" />
-                                        <SelectItem value="new_tape_option" className="text-primary font-semibold">
+                    <DialogFooter>
+                        <Button onClick={updateTapeDetails}>Save changes</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* New Tape Dialog */}
+            <Dialog open={isNewTapeOpen} onOpenChange={setIsNewTapeOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Create New Tape</DialogTitle>
+                        <DialogDescription>Initialize a new recording sequence.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="new_name" className="text-right">Tape No</Label>
+                            <Input id="new_name" value={newTapeNo} onChange={(e) => setNewTapeNo(e.target.value)} className="col-span-3" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="new_chapter" className="text-right">Chapter</Label>
+                            <Input id="new_chapter" value={newTapeChapter} onChange={(e) => setNewTapeChapter(e.target.value)} className="col-span-3" placeholder="e.g. 01" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="new_remarks" className="text-right">Remarks</Label>
+                            <Input id="new_remarks" value={newTapeRemarks} onChange={(e) => setNewTapeRemarks(e.target.value)} className="col-span-3" placeholder="Optional notes" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={createTape}>Create Tape</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Tape Bar: Selection + Chapter + Status + Counter */}
+            <div className="px-3 py-1.5 border-b bg-slate-50 dark:bg-slate-900/50 flex items-center gap-3 shrink-0">
+                {/* Tape No. Selector */}
+                <div className="flex items-center gap-1.5">
+                    <Label className="text-[9px] uppercase text-muted-foreground font-bold tracking-wider whitespace-nowrap">Tape No.</Label>
+                    {jobTapes.length > 0 ? (
+                        <Select
+                            value={tapeId ? String(tapeId) : "new_tape_placeholder"}
+                            onValueChange={(val) => {
+                                if (val === "new_tape_option") {
+                                    const base = diveJob?.sow_report_no || 'TAPE';
+                                    const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
+                                    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                                    setNewTapeNo(`${base}-${date}-${random}`);
+                                    setNewTapeChapter("");
+                                    setNewTapeRemarks("");
+                                    setIsNewTapeOpen(true);
+                                } else {
+                                    const selected = jobTapes.find(t => String(t.tape_id) === val);
+                                    if (selected) {
+                                        setTapeId(selected.tape_id);
+                                        setTapeNo(selected.tape_no);
+                                    }
+                                }
+                            }}
+                            disabled={isRecording}
+                        >
+                            <SelectTrigger className="h-7 text-xs font-mono font-bold bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 min-w-[140px]">
+                                <SelectValue placeholder="Select Tape" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {jobTapes.map(t => {
+                                    const isActive = t.status === 'ACTIVE';
+                                    const isFull = t.status === 'FULL';
+                                    return (
+                                        <SelectItem key={t.tape_id} value={String(t.tape_id)}>
                                             <span className="flex items-center gap-2">
-                                                <Plus className="h-3 w-3" /> New Tape Sequence
+                                                <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-green-500 animate-pulse' :
+                                                    isFull ? 'bg-amber-500' : 'bg-slate-400'
+                                                    }`} />
+                                                <span className="font-mono text-xs">{t.tape_no}</span>
+                                                {t.chapter_no && (
+                                                    <span className="text-[9px] text-muted-foreground">Ch.{t.chapter_no}</span>
+                                                )}
                                             </span>
                                         </SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            )}
-
-                            {/* Fallback Input if NO tapes exist at all */}
-                            {jobTapes.length === 0 && (
-                                <Input
-                                    id="tapeNo"
-                                    value={tapeNo}
-                                    onChange={(e) => setTapeNo(e.target.value)}
-                                    className="h-6 text-xs font-mono font-bold border-none p-0 focus-visible:ring-0 w-40 bg-transparent truncate"
-                                    placeholder="Prefix-Date-Seq"
-                                    disabled={isRecording}
-                                />
-                            )}
-
-                            {/* New Tape Dialog */}
-                            <Dialog open={isNewTapeOpen} onOpenChange={setIsNewTapeOpen}>
-                                <DialogContent className="sm:max-w-[425px]">
-                                    <DialogHeader>
-                                        <DialogTitle>Create New Tape</DialogTitle>
-                                        <DialogDescription>
-                                            Initialize a new recording sequence.
-                                        </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="grid gap-4 py-4">
-                                        <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="new_name" className="text-right">Tape No</Label>
-                                            <Input id="new_name" value={newTapeNo} onChange={(e) => setNewTapeNo(e.target.value)} className="col-span-3" />
-                                        </div>
-                                        <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="new_chapter" className="text-right">Chapter</Label>
-                                            <Input id="new_chapter" value={newTapeChapter} onChange={(e) => setNewTapeChapter(e.target.value)} className="col-span-3" placeholder="e.g. 01" />
-                                        </div>
-                                        <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="new_remarks" className="text-right">Remarks</Label>
-                                            <Input id="new_remarks" value={newTapeRemarks} onChange={(e) => setNewTapeRemarks(e.target.value)} className="col-span-3" placeholder="Optional notes" />
-                                        </div>
-                                    </div>
-                                    <DialogFooter>
-                                        <Button onClick={createTape}>Create Tape</Button>
-                                    </DialogFooter>
-                                </DialogContent>
-                            </Dialog>
-
-                            {/* Manual New Tape Trigger if list is empty but we want to be explicit */}
-                            {jobTapes.length === 0 && !isRecording && (
+                                    );
+                                })}
+                                <Separator className="my-1" />
+                                <SelectItem value="new_tape_option" className="text-primary font-semibold">
+                                    <span className="flex items-center gap-2">
+                                        <Plus className="h-3 w-3" /> New Tape
+                                    </span>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    ) : (
+                        <div className="flex items-center gap-1">
+                            <Input
+                                id="tapeNo"
+                                value={tapeNo}
+                                onChange={(e) => setTapeNo(e.target.value)}
+                                className="h-7 text-xs font-mono font-bold w-36 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600"
+                                placeholder="Tape No."
+                                disabled={isRecording}
+                            />
+                            {!isRecording && (
                                 <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-5 w-5 hover:bg-muted"
-                                    title="New Tape Sequence"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs gap-1 border-purple-300 text-purple-700 hover:bg-purple-50"
                                     onClick={() => {
                                         const base = diveJob?.sow_report_no || 'TAPE';
                                         const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -1113,107 +1185,69 @@ export default function DiveVideoRecorder({
                                         setIsNewTapeOpen(true);
                                     }}
                                 >
-                                    <Plus className="h-3 w-3" />
+                                    <Plus className="h-3 w-3" /> New
                                 </Button>
                             )}
-
-                            {/* Edit Button */}
-                            {tapeId && !isRecording && (
-                                <Dialog open={isEditTapeOpen} onOpenChange={setIsEditTapeOpen}>
-                                    <DialogTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-5 w-5 hover:bg-muted"
-                                            title="Edit Tape Info"
-                                            onClick={() => {
-                                                const currentTape = jobTapes.find(t => t.tape_id === tapeId);
-                                                setEditTapeNo(tapeNo || "");
-                                                setEditTapeStatus(currentTape?.status || "ACTIVE");
-                                                setEditTapeChapter(currentTape?.chapter_no || "");
-                                                setEditTapeRemarks(currentTape?.remarks || "");
-                                            }}
-                                        >
-                                            <Pencil className="h-3 w-3" />
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent className="sm:max-w-[425px]">
-                                        <DialogHeader>
-                                            <DialogTitle>Edit Tape Details</DialogTitle>
-                                            <DialogDescription>
-                                                Update tape number or status.
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <div className="grid gap-4 py-4">
-                                            <div className="grid grid-cols-4 items-center gap-4">
-                                                <Label htmlFor="name" className="text-right">Tape No</Label>
-                                                <Input id="name" value={editTapeNo} onChange={(e) => setEditTapeNo(e.target.value)} className="col-span-3" />
-                                            </div>
-                                            <div className="grid grid-cols-4 items-center gap-4">
-                                                <Label htmlFor="chapter" className="text-right">Chapter</Label>
-                                                <Input id="chapter" value={editTapeChapter} onChange={(e) => setEditTapeChapter(e.target.value)} className="col-span-3" placeholder="e.g. 01" />
-                                            </div>
-                                            <div className="grid grid-cols-4 items-center gap-4">
-                                                <Label htmlFor="remarks" className="text-right">Remarks</Label>
-                                                <Input id="remarks" value={editTapeRemarks} onChange={(e) => setEditTapeRemarks(e.target.value)} className="col-span-3" placeholder="Optional notes" />
-                                            </div>
-                                            <div className="grid grid-cols-4 items-center gap-4">
-                                                <Label htmlFor="status" className="text-right">Status</Label>
-                                                <Select value={editTapeStatus} onValueChange={setEditTapeStatus}>
-                                                    <SelectTrigger className="col-span-3">
-                                                        <SelectValue placeholder="Status" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="ACTIVE">Active</SelectItem>
-                                                        <SelectItem value="FULL">Full</SelectItem>
-                                                        <SelectItem value="CLOSED">Closed</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                        </div>
-                                        <DialogFooter>
-                                            <Button onClick={updateTapeDetails}>Save changes</Button>
-                                        </DialogFooter>
-                                    </DialogContent>
-                                </Dialog>
-                            )}
-
                         </div>
-                    </div>
+                    )}
                 </div>
 
-                <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSnapshot} disabled={!isStreaming} title="Snap Photo">
-                        <Camera className="h-4 w-4" />
+                {/* Chapter Display */}
+                {tapeId && (() => {
+                    const currentTape = jobTapes.find(t => t.tape_id === tapeId);
+                    return currentTape?.chapter_no ? (
+                        <div className="flex items-center gap-1">
+                            <Label className="text-[9px] uppercase text-muted-foreground font-bold tracking-wider">Chap</Label>
+                            <div className="h-7 min-w-[32px] px-1.5 flex items-center justify-center rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 font-mono text-xs font-bold">
+                                {currentTape.chapter_no}
+                            </div>
+                        </div>
+                    ) : null;
+                })()}
+
+                {/* Active/Status badge */}
+                {tapeId && (() => {
+                    const currentTape = jobTapes.find(t => t.tape_id === tapeId);
+                    if (!currentTape) return null;
+                    const isActive = currentTape.status === 'ACTIVE';
+                    const isFull = currentTape.status === 'FULL';
+                    return (
+                        <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 h-5 rounded-full border ${isActive ? 'border-green-300 text-green-700 bg-green-50 dark:bg-green-900/20 dark:border-green-800 dark:text-green-300' :
+                            isFull ? 'border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-900/20' :
+                                'border-slate-300 text-slate-500 bg-slate-50 dark:bg-slate-800'
+                            }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : isFull ? 'bg-amber-500' : 'bg-slate-400'
+                                }`} />
+                            {currentTape.status}
+                        </span>
+                    );
+                })()}
+
+                {/* Spacer + Counter + tools */}
+                <div className="ml-auto flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleSnapshot} disabled={!isStreaming} title="Snap Photo">
+                        <Camera className="h-3.5 w-3.5" />
                     </Button>
 
-                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-mono font-bold transition-colors border ${isTaskRunning ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-900/20 dark:border-green-900' : 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900/20 dark:border-slate-800'}`} title="Task Timer">
-                        {isTaskRunning && <div className={`w-2 h-2 rounded-full bg-current ${!isTaskPaused && 'animate-pulse'}`} />}
+                    <div className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-mono font-bold transition-colors border ${isTaskRunning ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-900/20 dark:border-green-900' : 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900/20 dark:border-slate-800'}`} title="Task Timer">
+                        {isTaskRunning && <div className={`w-1.5 h-1.5 rounded-full bg-current ${!isTaskPaused && 'animate-pulse'}`} />}
                         {timeCode}
                     </div>
 
-                    <div className="h-6 w-px bg-border mx-1" />
+                    <div className="h-5 w-px bg-border mx-0.5" />
 
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsVideoVisible(!isVideoVisible)} title={isVideoVisible ? "Hide Preview" : "Show Preview"}>
-                        {isVideoVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsVideoVisible(!isVideoVisible)} title={isVideoVisible ? "Hide Preview" : "Show Preview"}>
+                        {isVideoVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                     </Button>
 
                     {!isOfflineMode && (
                         <p className="hidden" /> // Placeholder removed
                     )}
-                    <Button variant={showLogPanel ? "secondary" : "ghost"} size="sm" className="h-8 gap-2" onClick={() => setShowLogPanel(!showLogPanel)} title="Show Quick Actions">
-                        <History className="h-4 w-4" />
+                    <Button variant={showLogPanel ? "secondary" : "ghost"} size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setShowLogPanel(!showLogPanel)} title="Show Quick Actions">
+                        <History className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">Logs</span>
                     </Button>
                 </div>
-
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowSettings(!showSettings)} title="Capture Settings">
-                    <Settings className={`h-4 w-4 ${showSettings ? 'text-primary' : ''}`} />
-                </Button>
-
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={onClose} title="Close">
-                    <X className="h-4 w-4" />
-                </Button>
             </div>
 
             {/* Main Video Area */}

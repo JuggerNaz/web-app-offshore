@@ -21,6 +21,7 @@ import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 interface ROVInspectionListProps {
     rovJobId?: number;
     componentId?: number;
+    tapeId?: number;
     diveNo?: string;
     jobpackId?: string | number;
     selectedType?: string | null;
@@ -32,6 +33,7 @@ interface ROVInspectionListProps {
 export default function ROVInspectionList({
     rovJobId,
     componentId,
+    tapeId,
     diveNo,
     jobpackId,
     selectedType,
@@ -73,7 +75,7 @@ export default function ROVInspectionList({
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [rovJobId, componentId, diveNo, jobpackId, selectedType, timestamp, supabase]);
+    }, [rovJobId, componentId, tapeId, diveNo, jobpackId, selectedType, timestamp, supabase]);
 
     async function fetchRecords() {
         setLoading(true);
@@ -96,6 +98,11 @@ export default function ROVInspectionList({
                 query = query.eq('rov_job_id', rovJobId);
             } else if (componentId) {
                 query = query.eq('component_id', componentId);
+            }
+
+            // Filter by tape if provided
+            if (tapeId) {
+                query = query.eq('tape_id', tapeId);
             }
 
             if (selectedType) {
