@@ -49,29 +49,31 @@ export class CanvasOverlayManager {
     }
 
     private setupEventListeners() {
-        this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
-        this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
-        this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
-        this.canvas.addEventListener('mouseleave', this.handleMouseUp.bind(this));
+        this.canvas.addEventListener('mousedown', this.handleMouseDown);
+        this.canvas.addEventListener('mousemove', this.handleMouseMove);
+        this.canvas.addEventListener('mouseup', this.handleMouseUp);
+        this.canvas.addEventListener('mouseleave', this.handleMouseUp);
 
         // Touch support
-        this.canvas.addEventListener('touchstart', this.handleTouchStart.bind(this));
-        this.canvas.addEventListener('touchmove', this.handleTouchMove.bind(this));
-        this.canvas.addEventListener('touchend', this.handleMouseUp.bind(this));
+        this.canvas.addEventListener('touchstart', this.handleTouchStart);
+        this.canvas.addEventListener('touchmove', this.handleTouchMove);
+        this.canvas.addEventListener('touchend', this.handleMouseUp);
     }
 
-    private getMousePos(e: MouseEvent | TouchEvent): { x: number; y: number } {
+    private getMousePos(e: any): { x: number; y: number } {
         const rect = this.canvas.getBoundingClientRect();
         const scaleX = this.canvas.width / rect.width;
         const scaleY = this.canvas.height / rect.height;
 
-        if (e instanceof MouseEvent) {
+        // Use property checking instead of instanceof to support PiP window contexts
+        if (e.clientX !== undefined) {
             return {
                 x: (e.clientX - rect.left) * scaleX,
                 y: (e.clientY - rect.top) * scaleY,
             };
         } else {
-            const touch = e.touches[0] || e.changedTouches[0];
+            const touch = e.touches?.[0] || e.changedTouches?.[0];
+            if (!touch) return { x: 0, y: 0 };
             return {
                 x: (touch.clientX - rect.left) * scaleX,
                 y: (touch.clientY - rect.top) * scaleY,
@@ -79,8 +81,9 @@ export class CanvasOverlayManager {
         }
     }
 
-    private handleMouseDown(e: MouseEvent) {
+    private handleMouseDown = (e: MouseEvent) => {
         const pos = this.getMousePos(e);
+        if (isNaN(pos.x) || isNaN(pos.y)) return;
 
         // Handle select tool
         if (this.state.tool === 'select') {
@@ -205,7 +208,7 @@ export class CanvasOverlayManager {
         return Math.sqrt(dx * dx + dy * dy);
     }
 
-    private handleMouseMove(e: MouseEvent) {
+    private handleMouseMove = (e: MouseEvent) => {
         if (!this.state.isDrawing || !this.currentObject) return;
 
         const pos = this.getMousePos(e);
@@ -219,7 +222,7 @@ export class CanvasOverlayManager {
         this.redraw();
     }
 
-    private handleMouseUp() {
+    private handleMouseUp = () => {
         if (!this.state.isDrawing) return;
         this.state.isDrawing = false;
 
@@ -232,12 +235,12 @@ export class CanvasOverlayManager {
         this.redraw();
     }
 
-    private handleTouchStart(e: TouchEvent) {
+    private handleTouchStart = (e: TouchEvent) => {
         e.preventDefault();
         this.handleMouseDown(e as any);
     }
 
-    private handleTouchMove(e: TouchEvent) {
+    private handleTouchMove = (e: TouchEvent) => {
         e.preventDefault();
         this.handleMouseMove(e as any);
     }
@@ -332,6 +335,13 @@ export class CanvasOverlayManager {
     }
 
     public redraw() {
+        // Ensure canvas internal resolution matches display size
+        const rect = this.canvas.getBoundingClientRect();
+        if (this.canvas.width !== Math.floor(rect.width) || this.canvas.height !== Math.floor(rect.height)) {
+            this.canvas.width = Math.floor(rect.width);
+            this.canvas.height = Math.floor(rect.height);
+        }
+
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -375,6 +385,17 @@ export class CanvasOverlayManager {
     public clear() {
         this.objects = [];
         this.saveToHistory();
+        this.redraw();
+    }
+
+    public getObjects(): DrawingObject[] {
+        return this.objects;
+    }
+
+    public setObjects(objects: DrawingObject[]) {
+        this.objects = objects;
+        this.history = [[...objects]];
+        this.historyIndex = 0;
         this.redraw();
     }
 

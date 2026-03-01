@@ -19,7 +19,8 @@ import Link from "next/link";
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
-import { Trash2, Edit2, Plus, Calendar, CheckCircle, FileText } from "lucide-react";
+import { Trash2, Edit2, Plus, Calendar, CheckCircle, FileText, Printer } from "lucide-react";
+import { JobPackSummaryPreviewDialog } from "@/components/dialogs/jobpack-summary-preview-dialog";
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
 import { DeleteConfirmDialog } from "@/components/dialogs/delete-confirm-dialog";
@@ -579,6 +580,7 @@ function JobpackActions({ row }: { row: any }) {
   const metadata = item.metadata as any || {};
   const structureStatus = metadata.structure_status || {};
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const isJobClosed = item.status === "CLOSED";
@@ -636,6 +638,9 @@ function JobpackActions({ row }: { row: any }) {
               <FileText size={16} className="mr-2 text-blue-600" /> SOW
             </Link>
           </DropdownMenuItem>
+          <DropdownMenuItem className="cursor-pointer" onClick={() => setSummaryOpen(true)}>
+            <Printer size={16} className="mr-2 text-indigo-600" /> Print Summary Report
+          </DropdownMenuItem>
           <DropdownMenuItem
             className={canDelete ? "cursor-pointer text-red-600 font-bold" : "cursor-not-allowed opacity-50 text-slate-400"}
             onClick={() => canDelete && setDeleteOpen(true)}
@@ -653,6 +658,12 @@ function JobpackActions({ row }: { row: any }) {
         loading={loading}
         title="Delete Job Pack"
         description={`Are you sure you want to delete this Work Pack?${hasInspections ? " WARNING: This Job Pack has assigned inspections which will also be deleted." : ""}`}
+      />
+
+      <JobPackSummaryPreviewDialog
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+        jobPack={item}
       />
     </div>
   );

@@ -74,9 +74,10 @@ type ComponentSpecDialogProps = {
   onOpenChange: (open: boolean) => void;
   mode?: 'view' | 'create';
   defaultCode?: string | null;
+  createdFrom?: string;
 };
 
-export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'view', defaultCode }: ComponentSpecDialogProps) {
+export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'view', defaultCode, createdFrom }: ComponentSpecDialogProps) {
   const isCreateMode = mode === 'create';
   const isEditMode = false; // edit handled by separate dialog
   const [structureId] = useAtom(urlId);
@@ -267,6 +268,7 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         comp_group: formData.comp_group,
         associated_comp_id: formData.associated_comp_id,
         additionalInfo: formData.additionalInfo,
+        created_from: createdFrom || undefined,
       };
 
       // Prepare the component data for create

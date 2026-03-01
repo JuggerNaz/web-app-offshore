@@ -14,6 +14,7 @@ import {
   Compass,
   Database,
   LayoutDashboard,
+  ClipboardCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -59,6 +60,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<LayoutDashboard className="h-[18px] w-[18px]" />}
             text="Analytics"
           />
+
         </div>
 
         {/* Assets Section */}
@@ -136,11 +138,25 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             actionHref="/dashboard/planning/form"
           />
           <MenuLink
+            href="/dashboard/inspection-v2"
+            isCollapsed={isCollapsed}
+            label="Inspection"
+            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+            text="Inspection"
+          />
+          <MenuLink
             href="/dashboard/reports"
             isCollapsed={isCollapsed}
             label="Reports"
             icon={<FileText className="h-[18px] w-[18px]" />}
             text="Reports"
+          />
+          <MenuLink
+            href="/dashboard/inspection"
+            isCollapsed={isCollapsed}
+            label="Inspection"
+            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+            text="Inspection"
           />
         </div>
 
