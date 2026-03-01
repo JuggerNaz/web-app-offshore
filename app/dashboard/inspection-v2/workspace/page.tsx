@@ -246,7 +246,7 @@ function V10PreviewLayout() {
 
     // Dynamic Form States
     const [dynamicProps, setDynamicProps] = useState<Record<string, any>>({});
-    const [findingType, setFindingType] = useState<"Pass" | "Anomaly" | "Incomplete">("Pass");
+    const [findingType, setFindingType] = useState<"Pass" | "Anomaly" | "Finding" | "Incomplete">("Pass");
     const [anomalyData, setAnomalyData] = useState<{
         defectCode: string,
         priority: string,
@@ -1094,6 +1094,22 @@ function V10PreviewLayout() {
     // Handle method switch overriding deps
     useEffect(() => {
         async function fetchDeps() {
+            // Clear current states when switching modes
+            setDeployments([]);
+            setActiveDep(null);
+            setCurrentRecords([]);
+            setVideoEvents([]);
+            setJobTapes([]);
+            setSelectedComp(null);
+            setActiveSpec(null);
+            setVidState("IDLE");
+            setVidTimer(0);
+            setTapeNo("");
+            setTapeId(null);
+            setCurrentMovement("Awaiting Deployment");
+            setDiveStartTime(null);
+            setDiveEndTime(null);
+
             if (!jobPackId) return;
             const table = inspMethod === "DIVING" ? 'insp_dive_jobs' : 'insp_rov_jobs';
             const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
@@ -1194,10 +1210,10 @@ function V10PreviewLayout() {
 
             // Then fetch SOW items for the selected `sow_id`
             const { data: sowItems } = await supabase.from('u_sow_items')
-                .select('*')
+                .select('*, inspection_type:inspection_type_id!left(id, code, name)')
                 .eq('sow_id', sowId);
 
-            const assignedCompsMap = new Map<number, string[]>();
+            const assignedCompsMap = new Map<number, { code: string; status: string }[]>();
 
             if (sowItems) {
                 sowItems.forEach(item => {
@@ -1214,7 +1230,7 @@ function V10PreviewLayout() {
                         }
                         const taskToLog = item.inspection_code || item.inspection_name;
                         if (taskToLog) {
-                            assignedCompsMap.get(matchingComp.id)?.push(taskToLog);
+                            assignedCompsMap.get(matchingComp.id)?.push({ code: taskToLog, status: item.status || 'pending' });
                         }
                     }
                 });
@@ -1231,13 +1247,35 @@ function V10PreviewLayout() {
                 const startElev = md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || '-';
                 const endElev = md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || '-';
 
+                const taskItems = assignedCompsMap.get(comp.id) || [];
+
+                // Calculate display elevation: use the lower of elv_1 / elv_2
+                const elv1Num = parseFloat(String(startElev).replace(/[^\d.-]/g, ''));
+                const elv2Num = parseFloat(String(endElev).replace(/[^\d.-]/g, ''));
+                const hasElv1 = !isNaN(elv1Num);
+                const hasElv2 = !isNaN(elv2Num);
+                let displayDepth = comp.water_depth || '-0.0m';
+                let lowestElev = '-';
+                if (hasElv1 && hasElv2) {
+                    lowestElev = String(Math.min(elv1Num, elv2Num));
+                    displayDepth = `${lowestElev}m`;
+                } else if (hasElv1) {
+                    lowestElev = String(elv1Num);
+                    displayDepth = `${elv1Num}m`;
+                } else if (hasElv2) {
+                    lowestElev = String(elv2Num);
+                    displayDepth = `${elv2Num}m`;
+                }
+
                 const obj = {
                     id: comp.id,
                     name: comp.q_id || comp.name || `Node ${comp.id}`,
-                    depth: comp.water_depth || "-0.0m",
+                    depth: displayDepth,
+                    lowestElev,
                     startNode, endNode, startElev, endElev,
                     raw: comp,
-                    tasks: assignedCompsMap.get(comp.id) || []
+                    tasks: taskItems.map(t => t.code),
+                    taskStatuses: taskItems
                 };
 
                 if (isAssigned) {
@@ -1393,10 +1431,11 @@ function V10PreviewLayout() {
             inspection_time: format(new Date(), 'HH:mm:ss'),
             observation: recordNotes,
             status: findingType === 'Incomplete' ? 'INCOMPLETE' : 'COMPLETED',
-            has_anomaly: findingType === 'Anomaly',
+            has_anomaly: findingType === 'Anomaly' || findingType === 'Finding',
+            record_category: findingType === 'Finding' ? 'FINDING' : (findingType === 'Anomaly' ? 'ANOMALY' : null),
             tape_id: tId,
             tape_count_no: vidTimer,
-            elevation: isNaN(parseFloat(selectedComp.elevation1)) ? 0 : parseFloat(selectedComp.elevation1),
+            elevation: selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? parseFloat(selectedComp.lowestElev) : (isNaN(parseFloat(selectedComp.elevation1)) ? 0 : parseFloat(selectedComp.elevation1)),
             inspection_data: {
                 ...dynamicProps,
                 _meta_timecode: formatTime(vidTimer),
@@ -1430,7 +1469,10 @@ function V10PreviewLayout() {
             .eq('component_id', selectedComp.id)
             .filter('inspection_type_id', it?.id ? 'eq' : 'is', it?.id || null);
 
-        if (findingType === 'Anomaly') {
+        if (findingType === 'Anomaly' || findingType === 'Finding') {
+            const isAnomaly = findingType === 'Anomaly';
+            const prefix = isAnomaly ? 'A' : 'F';
+            const rpcName = isAnomaly ? 'get_next_anomaly_sequence' : 'get_next_anomaly_sequence';
             const { data: existingAnomaly } = await supabase.from('insp_anomalies').select('anomaly_id').eq('inspection_id', opData.insp_id).maybeSingle();
 
             const anomalyPayload: any = {
@@ -1438,21 +1480,22 @@ function V10PreviewLayout() {
                 defect_type_code: anomalyData.defectCode,
                 priority_code: anomalyData.priority,
                 defect_category_code: anomalyData.defectType,
-                status: anomalyData.rectify ? 'CLOSED' : 'OPEN', // Assuming RECTIFIED maps to CLOSED or similar
+                status: anomalyData.rectify ? 'CLOSED' : 'OPEN',
                 defect_description: anomalyData.description,
                 recommended_action: anomalyData.recommendedAction,
                 rectified_date: anomalyData.rectifiedDate || null,
                 rectified_remarks: anomalyData.rectifiedRemarks,
                 severity: anomalyData.severity,
+                record_category: isAnomaly ? 'ANOMALY' : 'FINDING',
                 cr_user: user?.id || 'system'
             };
 
             if (existingAnomaly) {
                 await supabase.from('insp_anomalies').update(anomalyPayload).eq('anomaly_id', existingAnomaly.anomaly_id);
             } else {
-                const { data: sequenceData } = await supabase.rpc('get_next_anomaly_sequence', { p_structure_id: parseInt(structureId || "0") });
+                const { data: sequenceData } = await supabase.rpc(rpcName, { p_structure_id: parseInt(structureId || "0") });
                 const seq = sequenceData || Math.floor(Math.random() * 1000);
-                const refNo = `${new Date().getFullYear()} / ${headerData.platformName?.slice(0, 3).toUpperCase()} / A-${seq.toString().padStart(3, '0')}`;
+                const refNo = `${new Date().getFullYear()} / ${headerData.platformName?.slice(0, 3).toUpperCase()} / ${prefix}-${seq.toString().padStart(3, '0')}`;
                 anomalyPayload.anomaly_ref_no = refNo;
                 anomalyPayload.sequence_no = seq;
                 await supabase.from('insp_anomalies').insert(anomalyPayload);
@@ -1510,7 +1553,7 @@ function V10PreviewLayout() {
         setEditingRecordId(fullRecord.insp_id);
         setRecordNotes(fullRecord.observation || "");
         setDynamicProps(fullRecord.inspection_data || {});
-        setFindingType(fullRecord.has_anomaly ? "Anomaly" : (fullRecord.status === 'INCOMPLETE' ? "Incomplete" : "Pass"));
+        setFindingType(fullRecord.has_anomaly ? (fullRecord.record_category === 'FINDING' ? "Finding" : "Anomaly") : (fullRecord.status === 'INCOMPLETE' ? "Incomplete" : "Pass"));
         setIncompleteReason(fullRecord.inspection_data?.incomplete_reason || "");
 
         const anomalyObj = fullRecord.insp_anomalies?.[0] || fullRecord.anomaly_details;
@@ -1778,31 +1821,82 @@ function V10PreviewLayout() {
             </header>
 
             {/* DEPLOYMENTS SUB-HEADER */}
-            <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-2 flex gap-2 shrink-0 overflow-x-auto items-center">
+            <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex items-center gap-3 shrink-0">
                 {deployments.length === 0 && !activeDep && (
                     <div className="flex items-center gap-2 text-slate-400 px-2 py-1">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         <span className="text-[10px] font-bold uppercase tracking-wider">Loading deployments...</span>
                     </div>
                 )}
-                {deployments.map(dep => (
-                    <button
-                        key={dep.id}
-                        onClick={() => setActiveDep(dep)}
-                        className={`relative shrink-0 flex items-center justify-between p-2 min-w-[100px] rounded-lg border transition-all shadow-sm ${activeDep?.id === dep.id
-                            ? "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800"
-                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500"
-                            }`}
-                    >
-                        <div className="flex flex-col items-start gap-0.5">
-                            <span className={`font-black uppercase text-sm leading-none ${activeDep?.id === dep.id ? 'text-blue-900 dark:text-blue-200' : 'text-slate-700 dark:text-slate-300'}`}>{dep.jobNo || dep.id}</span>
-                            <span className={`text-[11px] font-semibold leading-none ${activeDep?.id === dep.id ? 'text-slate-500 dark:text-blue-400/70' : 'text-slate-400 dark:text-slate-500'}`}>{dep.name || 'Unknown'}</span>
+
+                {/* Active Dive Display */}
+                {activeDep && (
+                    <div className="flex items-center gap-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-1.5 shadow-sm">
+                        <span className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse shrink-0" />
+                        <div className="flex flex-col">
+                            <span className="font-black uppercase text-sm leading-none text-blue-900 dark:text-blue-200">{activeDep.jobNo || activeDep.id}</span>
+                            <span className="text-[10px] font-semibold leading-none text-slate-500 dark:text-blue-400/70 mt-0.5">{activeDep.name || 'Unknown'}</span>
                         </div>
-                        <span className={`w-2.5 h-2.5 rounded-full ml-3 ${activeDep?.id === dep.id ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-slate-300 dark:bg-slate-600'}`}></span>
-                    </button>
-                ))}
-                <button onClick={() => setIsDiveSetupOpen(true)} className="shrink-0 flex items-center gap-1 px-3 py-2 text-[10px] font-bold text-slate-400 hover:text-blue-600 uppercase tracking-wider transition-colors">
-                    <Plus className="w-3 h-3" /> New {inspMethod === 'DIVING' ? 'Dive' : 'ROV'}
+                        {activeDep.raw?.status && (
+                            <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full ml-1 ${activeDep.raw.status === 'COMPLETED' ? 'bg-slate-200 text-slate-600' :
+                                'bg-green-100 text-green-700 border border-green-200'
+                                }`}>{activeDep.raw.status === 'COMPLETED' ? 'Done' : 'Active'}</span>
+                        )}
+                    </div>
+                )}
+
+                {/* Separator */}
+                {deployments.length > 1 && <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 shrink-0" />}
+
+                {/* History Selector - for completed / other dives */}
+                {deployments.length > 1 && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold text-slate-500 hover:text-blue-600 uppercase tracking-wider transition-colors bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-blue-300 hover:bg-blue-50/50 shadow-sm">
+                                <History className="w-3 h-3" />
+                                <span className="hidden sm:inline">History</span>
+                                <span className="bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 text-[9px] font-black px-1 rounded-full min-w-[16px] text-center">{deployments.length - 1}</span>
+                                <ChevronDown className="w-3 h-3 opacity-50" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-64 p-1">
+                            <div className="px-2 py-1.5 text-[9px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-100 mb-1">
+                                All {inspMethod === 'DIVING' ? 'Dives' : 'Deployments'} ({deployments.length})
+                            </div>
+                            {deployments.map(dep => {
+                                const isActive = activeDep?.id === dep.id;
+                                const isCompleted = dep.raw?.status === 'COMPLETED';
+                                return (
+                                    <DropdownMenuItem
+                                        key={dep.id}
+                                        onClick={() => setActiveDep(dep)}
+                                        className={`flex items-center justify-between cursor-pointer rounded-md px-2 py-2 ${isActive ? 'bg-blue-50 dark:bg-blue-950/40' : ''}`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]' : isCompleted ? 'bg-slate-300' : 'bg-blue-400'}`} />
+                                            <div className="flex flex-col">
+                                                <span className={`font-bold text-xs uppercase leading-none ${isActive ? 'text-blue-700' : 'text-slate-800 dark:text-slate-200'}`}>{dep.jobNo || dep.id}</span>
+                                                <span className="text-[10px] text-slate-400 leading-none mt-0.5">{dep.name || 'Unknown'}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            {isCompleted && (
+                                                <span className="text-[8px] font-bold uppercase bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">Done</span>
+                                            )}
+                                            {isActive && (
+                                                <Check className="w-3.5 h-3.5 text-blue-600" />
+                                            )}
+                                        </div>
+                                    </DropdownMenuItem>
+                                );
+                            })}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
+
+                {/* + New Dive/ROV */}
+                <button onClick={() => setIsDiveSetupOpen(true)} className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-black text-white uppercase tracking-wider transition-all ml-auto bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md shadow-blue-500/30 hover:shadow-lg hover:shadow-blue-500/40 border border-blue-500">
+                    <Plus className="w-3.5 h-3.5" /> New {inspMethod === 'DIVING' ? 'Dive' : 'ROV'}
                 </button>
             </div>
 
@@ -1988,15 +2082,21 @@ function V10PreviewLayout() {
                             {tapeId && (() => {
                                 const currentTape = jobTapes.find(t => t.tape_id === tapeId);
                                 if (!currentTape) return null;
-                                const isActive = currentTape.status === 'ACTIVE';
-                                const isFull = currentTape.status === 'FULL';
+                                // Determine effective status: if last video event is Stop/END, mark as Completed
+                                const lastEvent = videoEvents.find(ev => ev.logType === 'video_log');
+                                const isStoppedByEvent = lastEvent && (lastEvent.action === 'Stop Tape' || lastEvent.action === 'END');
+                                const effectiveStatus = isStoppedByEvent ? 'COMPLETED' : currentTape.status;
+                                const isActive = effectiveStatus === 'ACTIVE';
+                                const isFull = effectiveStatus === 'FULL';
+                                const isCompleted = effectiveStatus === 'COMPLETED';
                                 return (
                                     <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 h-5 rounded-full border ${isActive ? 'border-green-300 text-green-700 bg-green-50' :
-                                            isFull ? 'border-amber-300 text-amber-700 bg-amber-50' :
+                                        isFull ? 'border-amber-300 text-amber-700 bg-amber-50' :
+                                            isCompleted ? 'border-slate-400 text-slate-600 bg-slate-100' :
                                                 'border-slate-300 text-slate-500 bg-slate-50'
                                         }`}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : isFull ? 'bg-amber-500' : 'bg-slate-400'}`} />
-                                        {currentTape.status}
+                                        <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : isFull ? 'bg-amber-500' : isCompleted ? 'bg-slate-500' : 'bg-slate-400'}`} />
+                                        {isCompleted ? 'Completed' : effectiveStatus}
                                     </span>
                                 );
                             })()}
@@ -2203,11 +2303,60 @@ function V10PreviewLayout() {
                                         <div className="w-full max-w-[350px]">
                                             <div className="text-[11px] font-bold uppercase text-slate-400 tracking-widest mb-4">Select Scope to Inspect ({selectedComp.name})</div>
                                             <div className="space-y-3">
-                                                {selectedComp.tasks && selectedComp.tasks.map((t: string) => (
-                                                    <Button key={t} onClick={() => setActiveSpec(t)} className="w-full h-12 bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 font-bold shadow-sm flex justify-between">
-                                                        <span>Start {t}</span> <ArrowRight className="w-4 h-4 text-blue-300" />
-                                                    </Button>
-                                                ))}
+                                                {selectedComp.tasks && selectedComp.tasks.map((t: string) => {
+                                                    const taskStatus = selectedComp.taskStatuses?.find((ts: any) => ts.code === t);
+                                                    const status = taskStatus?.status || 'pending';
+                                                    const isCompleted = status === 'completed';
+                                                    const isIncomplete = status === 'incomplete';
+                                                    const hasAnomaly = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id);
+                                                    const isRectified = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id && r.insp_anomalies?.[0]?.status === 'CLOSED');
+                                                    return (
+                                                        <Button key={t} onClick={() => setActiveSpec(t)} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${isCompleted && !hasAnomaly ? 'border-green-200 hover:bg-green-50/50' :
+                                                            hasAnomaly && !isRectified ? 'border-red-200 hover:bg-red-50/30' :
+                                                                hasAnomaly && isRectified ? 'border-teal-200 hover:bg-teal-50/30' :
+                                                                    isIncomplete ? 'border-amber-200 hover:bg-amber-50/30' :
+                                                                        'border-blue-200 hover:bg-blue-50'
+                                                            }`}>
+                                                            <div className="flex items-center gap-2.5">
+                                                                {/* Status indicator dot */}
+                                                                <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${isCompleted && !hasAnomaly ? 'bg-green-500' :
+                                                                    hasAnomaly && !isRectified ? 'bg-red-500 animate-pulse' :
+                                                                        hasAnomaly && isRectified ? 'bg-teal-500' :
+                                                                            isIncomplete ? 'bg-amber-500' :
+                                                                                'bg-slate-300'
+                                                                    }`}>
+                                                                    {isCompleted && !hasAnomaly && <Check className="w-2 h-2 text-white" />}
+                                                                    {hasAnomaly && !isRectified && <AlertTriangle className="w-2 h-2 text-white" />}
+                                                                </div>
+                                                                <div className="flex flex-col items-start">
+                                                                    <span className={`text-sm ${isCompleted && !hasAnomaly ? 'text-green-700' :
+                                                                        hasAnomaly && !isRectified ? 'text-red-700' :
+                                                                            hasAnomaly && isRectified ? 'text-teal-700' :
+                                                                                isIncomplete ? 'text-amber-700' :
+                                                                                    'text-blue-700'
+                                                                        }`}>Start {t}</span>
+                                                                    <span className={`text-[9px] font-medium uppercase tracking-wider ${isCompleted && !hasAnomaly ? 'text-green-500' :
+                                                                        hasAnomaly && !isRectified ? 'text-red-500' :
+                                                                            hasAnomaly && isRectified ? 'text-teal-500' :
+                                                                                isIncomplete ? 'text-amber-500' :
+                                                                                    'text-slate-400'
+                                                                        }`}>
+                                                                        {isCompleted && !hasAnomaly ? '✓ Completed' :
+                                                                            hasAnomaly && !isRectified ? '⚠ Anomaly Registered' :
+                                                                                hasAnomaly && isRectified ? '✓ Rectified' :
+                                                                                    isIncomplete ? '◐ Incomplete' :
+                                                                                        '○ Pending'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            <ArrowRight className={`w-4 h-4 ${isCompleted && !hasAnomaly ? 'text-green-300' :
+                                                                hasAnomaly ? 'text-red-300' :
+                                                                    isIncomplete ? 'text-amber-300' :
+                                                                        'text-blue-300'
+                                                                }`} />
+                                                        </Button>
+                                                    );
+                                                })}
                                                 <div className="py-2"><Separator /></div>
 
                                                 <select
@@ -2233,10 +2382,7 @@ function V10PreviewLayout() {
                                                     ))}
                                                 </select>
 
-                                                <div className="py-2"><Separator /></div>
-                                                <Button onClick={() => setActiveSpec("General")} variant="outline" className="w-full h-12 font-bold border-slate-200 text-slate-600">
-                                                    Log General Finding
-                                                </Button>
+
                                             </div>
                                         </div>
                                     </div>
@@ -2259,8 +2405,16 @@ function V10PreviewLayout() {
                                                 <div className="grid grid-cols-2 gap-5">
                                                     <div className="space-y-1">
                                                         <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><MapPin className="w-3 h-3" /> Verification Depth</label>
-                                                        <Input defaultValue={selectedComp.depth} className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500" />
+                                                        <Input defaultValue={selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? `${selectedComp.lowestElev}m` : selectedComp.depth} className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500" />
                                                     </div>
+                                                    {(selectedComp.startElev !== '-' || selectedComp.endElev !== '-') && (
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">Elevation Range</label>
+                                                            <div className="h-10 px-3 flex items-center text-sm font-bold bg-slate-50 border border-slate-200 rounded-md text-slate-600">
+                                                                {selectedComp.startElev}m → {selectedComp.endElev}m
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 {/* Dynamic Spec Forms based on Inspection Type */}
@@ -2305,118 +2459,129 @@ function V10PreviewLayout() {
 
                                                 <div className="space-y-3 p-4 border-2 border-slate-200 rounded-lg bg-white shadow-sm">
                                                     <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">Inspection Result</label>
-                                                    <div className="flex gap-2">
-                                                        <Button variant={findingType === 'Pass' ? 'default' : 'outline'} onClick={() => setFindingType('Pass')} className={`flex-1 h-12 font-bold text-[11px] transition-all ${findingType === 'Pass' ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><CheckCircle2 className="w-4 h-4 mr-1.5" /> Acceptable / Pass</Button>
-                                                        <Button variant={findingType === 'Anomaly' ? 'default' : 'outline'} onClick={() => setFindingType('Anomaly')} className={`flex-1 h-12 font-bold text-[11px] transition-all ${findingType === 'Anomaly' ? 'bg-red-600 hover:bg-red-700 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><AlertCircle className="w-4 h-4 mr-1.5" /> Register Anomaly</Button>
-                                                        <Button variant={findingType === 'Incomplete' ? 'default' : 'outline'} onClick={() => setFindingType('Incomplete')} className={`flex-1 h-12 font-bold text-[11px] transition-all ${findingType === 'Incomplete' ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><FileClock className="w-4 h-4 mr-1.5" /> Task Incomplete</Button>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <Button variant={findingType === 'Pass' ? 'default' : 'outline'} onClick={() => setFindingType('Pass')} className={`h-12 font-bold text-[11px] transition-all ${findingType === 'Pass' ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><CheckCircle2 className="w-4 h-4 mr-1.5" /> Acceptable / Pass</Button>
+                                                        <Button variant={findingType === 'Anomaly' ? 'default' : 'outline'} onClick={() => setFindingType('Anomaly')} className={`h-12 font-bold text-[11px] transition-all ${findingType === 'Anomaly' ? 'bg-red-600 hover:bg-red-700 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><AlertCircle className="w-4 h-4 mr-1.5" /> Register Anomaly</Button>
+                                                        <Button variant={findingType === 'Finding' ? 'default' : 'outline'} onClick={() => setFindingType('Finding')} className={`h-12 font-bold text-[11px] transition-all ${findingType === 'Finding' ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><Search className="w-4 h-4 mr-1.5" /> Register Finding</Button>
+                                                        <Button variant={findingType === 'Incomplete' ? 'default' : 'outline'} onClick={() => setFindingType('Incomplete')} className={`h-12 font-bold text-[11px] transition-all ${findingType === 'Incomplete' ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><FileClock className="w-4 h-4 mr-1.5" /> Task Incomplete</Button>
                                                     </div>
 
-                                                    {findingType === 'Anomaly' && (
-                                                        <div className="pt-4 mt-2 border-t border-red-50 space-y-4 animate-in fade-in slide-in-from-top-2">
-                                                            <div className="flex justify-between items-center text-[10px] font-black uppercase text-red-600 tracking-tighter">
-                                                                <span className="flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> Anomaly Information</span>
-                                                                <span className="bg-red-50 px-2 py-0.5 rounded font-mono">Ref: {new Date().getFullYear()} / {headerData.platformName?.slice(0, 3).toUpperCase()} / A-AUTO (Draft)</span>
-                                                            </div>
-
-                                                            <div className="grid grid-cols-2 gap-4">
-                                                                <div className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Defect Code *</label>
-                                                                    <select
-                                                                        value={anomalyData.defectCode}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, defectCode: e.target.value })}
-                                                                        className="flex h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-semibold focus:ring-red-500"
-                                                                    >
-                                                                        <option value="">Select Code</option>
-                                                                        {defectCodes.map(c => (
-                                                                            <option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>
-                                                                        ))}
-                                                                    </select>
+                                                    {(findingType === 'Anomaly' || findingType === 'Finding') && (() => {
+                                                        const isAnomaly = findingType === 'Anomaly';
+                                                        const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
+                                                        const refPrefix = isAnomaly ? 'A' : 'F';
+                                                        const accentColor = isAnomaly ? 'red' : 'orange';
+                                                        const borderClass = isAnomaly ? 'border-red-50' : 'border-orange-50';
+                                                        const titleColorClass = isAnomaly ? 'text-red-600' : 'text-orange-600';
+                                                        const refBgClass = isAnomaly ? 'bg-red-50' : 'bg-orange-50';
+                                                        const ringClass = isAnomaly ? 'focus:ring-red-500' : 'focus:ring-orange-500';
+                                                        return (
+                                                            <div className={`pt-4 mt-2 border-t ${borderClass} space-y-4 animate-in fade-in slide-in-from-top-2`}>
+                                                                <div className={`flex justify-between items-center text-[10px] font-black uppercase ${titleColorClass} tracking-tighter`}>
+                                                                    <span className="flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> {categoryLabel} Information</span>
+                                                                    <span className={`${refBgClass} px-2 py-0.5 rounded font-mono`}>Ref: {new Date().getFullYear()} / {headerData.platformName?.slice(0, 3).toUpperCase()} / {refPrefix}-AUTO (Draft)</span>
                                                                 </div>
-                                                                <div className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Priority *</label>
-                                                                    <select
-                                                                        value={anomalyData.priority}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, priority: e.target.value })}
-                                                                        className="flex h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-semibold focus:ring-red-500"
-                                                                    >
-                                                                        <option value="">Select Priority</option>
-                                                                        {priorities.map(p => (
-                                                                            <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-                                                            </div>
 
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Defect Type</label>
-                                                                <select
-                                                                    value={anomalyData.defectType}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, defectType: e.target.value })}
-                                                                    className="flex h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-semibold focus:ring-red-500"
-                                                                >
-                                                                    <option value="">Select Type</option>
-                                                                    {allDefectTypes.map(t => (
-                                                                        <option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Anomaly Description</label>
-                                                                <textarea
-                                                                    value={anomalyData.description}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, description: e.target.value })}
-                                                                    placeholder="Detailed description of the anomaly..."
-                                                                    className="w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-slate-50 focus:ring-red-500"
-                                                                ></textarea>
-                                                            </div>
-
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Recommended Action</label>
-                                                                <textarea
-                                                                    value={anomalyData.recommendedAction}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, recommendedAction: e.target.value })}
-                                                                    placeholder="Recommended remedial action..."
-                                                                    className="w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-slate-50 focus:ring-red-500"
-                                                                ></textarea>
-                                                            </div>
-
-                                                            <div className="p-3 border border-green-100 bg-green-50/50 rounded-lg space-y-3">
-                                                                <div className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        id="rectifyCheck"
-                                                                        checked={anomalyData.rectify}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, rectify: e.target.checked })}
-                                                                        className="w-4 h-4 rounded text-green-600 focus:ring-green-500"
-                                                                    />
-                                                                    <label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800">Rectify Anomaly</label>
-                                                                </div>
-                                                                {anomalyData.rectify && (
-                                                                    <div className="space-y-3 animate-in fade-in zoom-in-95">
-                                                                        <div className="space-y-1">
-                                                                            <label className="text-[9px] font-bold text-slate-400 uppercase">Rectified Date</label>
-                                                                            <Input
-                                                                                type="date"
-                                                                                value={anomalyData.rectifiedDate}
-                                                                                onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedDate: e.target.value })}
-                                                                                className="h-8 text-xs bg-white"
-                                                                            />
-                                                                        </div>
-                                                                        <div className="space-y-1">
-                                                                            <label className="text-[9px] font-bold text-slate-400 uppercase">Rectification Remarks</label>
-                                                                            <textarea
-                                                                                value={anomalyData.rectifiedRemarks}
-                                                                                onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedRemarks: e.target.value })}
-                                                                                placeholder="How was it rectified?"
-                                                                                className="w-full min-h-[50px] rounded border border-slate-300 p-2 text-xs bg-white"
-                                                                            ></textarea>
-                                                                        </div>
+                                                                <div className="grid grid-cols-2 gap-4">
+                                                                    <div className="space-y-1.5">
+                                                                        <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Code' : 'Finding Code'} *</label>
+                                                                        <select
+                                                                            value={anomalyData.defectCode}
+                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, defectCode: e.target.value })}
+                                                                            className={`flex h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                        >
+                                                                            <option value="">Select Code</option>
+                                                                            {defectCodes.map(c => (
+                                                                                <option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>
+                                                                            ))}
+                                                                        </select>
                                                                     </div>
-                                                                )}
+                                                                    <div className="space-y-1.5">
+                                                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Priority *</label>
+                                                                        <select
+                                                                            value={anomalyData.priority}
+                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, priority: e.target.value })}
+                                                                            className={`flex h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                        >
+                                                                            <option value="">Select Priority</option>
+                                                                            {priorities.map(p => (
+                                                                                <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="space-y-1.5">
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Type' : 'Finding Type'}</label>
+                                                                    <select
+                                                                        value={anomalyData.defectType}
+                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, defectType: e.target.value })}
+                                                                        className={`flex h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                    >
+                                                                        <option value="">Select Type</option>
+                                                                        {allDefectTypes.map(t => (
+                                                                            <option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+
+                                                                <div className="space-y-1.5">
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">{categoryLabel} Description</label>
+                                                                    <textarea
+                                                                        value={anomalyData.description}
+                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, description: e.target.value })}
+                                                                        placeholder={`Detailed description of the ${categoryLabel.toLowerCase()}...`}
+                                                                        className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-slate-50 ${ringClass}`}
+                                                                    ></textarea>
+                                                                </div>
+
+                                                                <div className="space-y-1.5">
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Recommended Action</label>
+                                                                    <textarea
+                                                                        value={anomalyData.recommendedAction}
+                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, recommendedAction: e.target.value })}
+                                                                        placeholder="Recommended remedial action..."
+                                                                        className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-slate-50 ${ringClass}`}
+                                                                    ></textarea>
+                                                                </div>
+
+                                                                <div className="p-3 border border-green-100 bg-green-50/50 rounded-lg space-y-3">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            id="rectifyCheck"
+                                                                            checked={anomalyData.rectify}
+                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, rectify: e.target.checked })}
+                                                                            className="w-4 h-4 rounded text-green-600 focus:ring-green-500"
+                                                                        />
+                                                                        <label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800">Rectify {categoryLabel}</label>
+                                                                    </div>
+                                                                    {anomalyData.rectify && (
+                                                                        <div className="space-y-3 animate-in fade-in zoom-in-95">
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">Rectified Date</label>
+                                                                                <Input
+                                                                                    type="date"
+                                                                                    value={anomalyData.rectifiedDate}
+                                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedDate: e.target.value })}
+                                                                                    className="h-8 text-xs bg-white"
+                                                                                />
+                                                                            </div>
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">Rectification Remarks</label>
+                                                                                <textarea
+                                                                                    value={anomalyData.rectifiedRemarks}
+                                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedRemarks: e.target.value })}
+                                                                                    placeholder="How was it rectified?"
+                                                                                    className="w-full min-h-[50px] rounded border border-slate-300 p-2 text-xs bg-white"
+                                                                                ></textarea>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        );
+                                                    })()}
 
                                                     {findingType === 'Incomplete' && (
                                                         <div className="pt-3 animate-in fade-in slide-in-from-top-2">
@@ -2498,10 +2663,19 @@ function V10PreviewLayout() {
                                                     <Badge variant="outline" className="text-[8px] h-3.5 px-1 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-0.5">
                                                         {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
                                                     </Badge>
-                                                    {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                                        <div className="text-[9px] font-mono text-muted-foreground flex items-center gap-1 mt-0.5">
-                                                            <div className="w-1 h-1 rounded-full bg-blue-500"></div>
-                                                            {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
+                                                    {(r.tape_id || r.inspection_data?._meta_timecode || r.tape_count_no) && (
+                                                        <div className="mt-1 flex flex-col gap-0.5">
+                                                            {r.tape_id && (
+                                                                <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">
+                                                                    {jobTapes.find(t => t.tape_id === r.tape_id)?.tape_no || `TAPE ID: ${r.tape_id}`}
+                                                                </span>
+                                                            )}
+                                                            {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
+                                                                <div className="text-[9px] font-mono text-muted-foreground flex items-center gap-1">
+                                                                    <div className="w-1 h-1 rounded-full bg-blue-500" />
+                                                                    {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </td>
@@ -2591,12 +2765,46 @@ function V10PreviewLayout() {
                                         <div>
                                             <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
                                             <div className="space-y-1">
-                                                {componentsSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
-                                                    <button key={c.id} onClick={() => { setSelectedComp(c); setActiveSpec(null); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
-                                                        <div className="flex justify-between font-bold"><span>{c.name}</span><span className="font-mono opacity-75">{c.depth}</span></div>
-                                                        <div className="text-[10px] mt-1 opacity-85 font-mono">Tasks: {c.tasks?.join(', ')}</div>
-                                                    </button>
-                                                ))}
+                                                {componentsSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
+                                                    const isSelected = selectedComp?.id === c.id;
+                                                    return (
+                                                        <button key={c.id} onClick={() => { setSelectedComp(c); setActiveSpec(null); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
+                                                            <div className="flex justify-between font-bold"><span>{c.name}</span><span className="font-mono opacity-75 text-[10px]">{c.depth}</span></div>
+                                                            {(c.startNode !== '-' || c.endNode !== '-') && (
+                                                                <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
+                                                            )}
+                                                            <div className="flex flex-wrap gap-1 mt-1.5">
+                                                                {c.taskStatuses?.length > 0 ? c.taskStatuses.map((ts: any, idx: number) => {
+                                                                    const s = ts.status || 'pending';
+                                                                    const hasAnom = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === ts.code || r.inspection_type_code === ts.code) && r.component_id === c.id);
+                                                                    return (
+                                                                        <span key={idx} className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isSelected ? (
+                                                                            hasAnom ? 'bg-red-400/30 text-red-100' :
+                                                                                s === 'completed' ? 'bg-green-400/30 text-green-100' :
+                                                                                    s === 'incomplete' ? 'bg-amber-400/30 text-amber-100' :
+                                                                                        'bg-white/20 text-blue-100'
+                                                                        ) : (
+                                                                            hasAnom ? 'bg-red-50 text-red-700 border border-red-200' :
+                                                                                s === 'completed' ? 'bg-green-50 text-green-700 border border-green-200' :
+                                                                                    s === 'incomplete' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                                                                        'bg-slate-50 text-slate-500 border border-slate-200'
+                                                                        )
+                                                                            }`}>
+                                                                            <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500' :
+                                                                                s === 'completed' ? 'bg-green-500' :
+                                                                                    s === 'incomplete' ? 'bg-amber-500' :
+                                                                                        'bg-slate-400'
+                                                                                }`} />
+                                                                            {ts.code}
+                                                                        </span>
+                                                                    );
+                                                                }) : (
+                                                                    <span className={`text-[10px] font-mono ${isSelected ? 'opacity-85' : 'opacity-85'}`}>Tasks: {c.tasks?.join(', ')}</span>
+                                                                )}
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                         <div>
@@ -2604,7 +2812,10 @@ function V10PreviewLayout() {
                                             <div className="space-y-1">
                                                 {componentsNonSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
                                                     <button key={c.id} onClick={() => { setSelectedComp(c); setActiveSpec(null); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
-                                                        <div className="flex justify-between font-bold"><span>{c.name}</span><span className="font-mono opacity-75">{c.depth}</span></div>
+                                                        <div className="flex justify-between font-bold"><span>{c.name}</span><span className="font-mono opacity-75 text-[10px]">{c.depth}</span></div>
+                                                        {(c.startNode !== '-' || c.endNode !== '-') && (
+                                                            <div className={`text-[9px] font-mono mt-0.5 ${selectedComp?.id === c.id ? 'text-slate-300' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
+                                                        )}
                                                     </button>
                                                 ))}
                                             </div>
