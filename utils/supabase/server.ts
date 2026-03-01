@@ -14,11 +14,12 @@ export const createClient = () => {
           const cookieStore = await cookies(); // Resolve the promise
           return cookieStore.getAll(); // Access the getAll method
         },
-        setAll(cookiesToSet) {
+        async setAll(cookiesToSet) {
           try {
-            cookiesToSet.forEach(async ({ name, value, options }) => {
-              (await cookieStore).set(name, value, options);
-            });
+            const cookieStore = await cookies();
+            for (const { name, value, options } of cookiesToSet) {
+              cookieStore.set(name, value, options);
+            }
           } catch (error) {
             // The `set` method was called from a Server Component.
             // This can be ignored if you have middleware refreshing

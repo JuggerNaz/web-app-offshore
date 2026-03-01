@@ -3,8 +3,8 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 
-const loadImage = (url: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
+const loadImage = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
+    return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = "Anonymous";
         img.src = url;
@@ -15,13 +15,89 @@ const loadImage = (url: string): Promise<string> => {
             const ctx = canvas.getContext("2d");
             if (ctx) {
                 ctx.drawImage(img, 0, 0);
-                resolve(canvas.toDataURL("image/png"));
+
+        try {
+            const imageData = ctx.getImageData(0, 0, img.width, img.height);
+            const data = imageData.data;
+            const width = img.width;
+            const height = img.height;
+            
+            const isWhite = (i: number) => data[i] > 230 && data[i+1] > 230 && data[i+2] > 230 && data[i+3] > 0;
+            
+            const stack: {x: number, y: number}[] = [];
+            const visited = new Uint8Array(width * height);
+            
+            const pushIfWhite = (x: number, y: number) => {
+                if (x < 0 || x >= width || y < 0 || y >= height) return;
+                const idx = y * width + x;
+                if (!visited[idx]) {
+                    const p = idx * 4;
+                    if (isWhite(p)) {
+                        visited[idx] = 1;
+                        stack.push({x, y});
+                    }
+                }
+            };
+            
+            for (let x = 0; x < width; x++) { pushIfWhite(x, 0); pushIfWhite(x, height - 1); }
+            for (let y = 0; y < height; y++) { pushIfWhite(0, y); pushIfWhite(width - 1, y); }
+            
+            while (stack.length > 0) {
+                const pt = stack.pop();
+                if (!pt) continue;
+                const {x, y} = pt;
+                const p = (y * width + x) * 4;
+                data[p + 3] = 0; 
+                
+                pushIfWhite(x + 1, y);
+                pushIfWhite(x - 1, y);
+                pushIfWhite(x, y + 1);
+                pushIfWhite(x, y - 1);
+            }
+            
+            // Edge smoothing
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const p = (y * width + x) * 4;
+                    if (data[p + 3] !== 0) {
+                        const hasTransparentNeighbor = 
+                            data[((y)*width + x - 1)*4 + 3] === 0 ||
+                            data[((y)*width + x + 1)*4 + 3] === 0 ||
+                            data[((y - 1)*width + x)*4 + 3] === 0 ||
+                            data[((y + 1)*width + x)*4 + 3] === 0;
+                        if (hasTransparentNeighbor) {
+                            const avgColor = (data[p] + data[p+1] + data[p+2]) / 3;
+                            if (avgColor > 200) {
+                                data[p+3] = Math.max(0, 255 - (avgColor - 180) * 3); 
+                            }
+                        }
+                    }
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        } catch(e) { console.error("Canvas transparency error", e); }
+
+                resolve({ data: canvas.toDataURL("image/png"), width: img.width, height: img.height });
             } else {
-                reject(new Error("Canvas context is null"));
+                resolve(null);
             }
         };
-        img.onerror = (err) => reject(err);
+        img.onerror = () => resolve(null);
     });
+};
+
+const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y: number, alignX = 'left', alignY = 'center') => {
+    if (!logo || !logo.data) return;
+    const ratio = Math.min(maxW / logo.width, maxH / logo.height);
+    const w = logo.width * ratio;
+    const h = logo.height * ratio;
+    let dx = x;
+    let dy = y;
+    if (alignX === 'right') dx = x + maxW - w;
+    if (alignX === 'center') dx = x + (maxW - w) / 2;
+    if (alignY === 'center') dy = y + (maxH - h) / 2;
+    if (alignY === 'bottom') dy = y + maxH - h;
+    doc.addImage(logo.data, 'PNG', dx, dy, w, h);
 };
 
 interface JobPackData {
@@ -133,26 +209,36 @@ export const generateWorkScopeReport = async (
     const headerBlue: [number, number, number] = [26, 54, 93];
     const sectionBlue: [number, number, number] = [44, 82, 130];
     const subHeaderGrey: [number, number, number] = [240, 240, 240];
+    const isPrintFriendly = config?.printFriendly === true;
 
     // -- HEADER GENERATION Helper --
     const drawHeader = async (pageNo: number) => {
-        // Main Blue Header
-        doc.setFillColor(...headerBlue);
-        doc.rect(0, 0, pageWidth, 28, "F");
+        if (isPrintFriendly) {
+            // Print-Friendly: White background with light gray border
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(0, 0, pageWidth, 28);
+        } else {
+            // Normal: Dark Blue Filled Background
+            doc.setFillColor(...headerBlue);
+            doc.rect(0, 0, pageWidth, 28, "F");
+        }
 
         // Logo
         if (companySettings?.logo_url) {
             try {
                 const logoData = await loadImage(companySettings.logo_url);
-                doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
+                drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
             } catch (error) {
-                doc.setDrawColor(255, 255, 255);
-                doc.rect(pageWidth - 25, 4, 18, 18);
+                if (!isPrintFriendly) {
+                    doc.setDrawColor(255, 255, 255);
+                    doc.rect(pageWidth - 25, 4, 18, 18);
+                }
             }
         }
 
         // Company & Dept
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", 10, 9);
@@ -169,9 +255,13 @@ export const generateWorkScopeReport = async (
         doc.setFontSize(7);
         doc.setFont("helvetica", "normal");
         // Platform removed from header as per request
-        // doc.setFontSize(7);
-        // doc.setFont("helvetica", "normal");
-        // doc.text(`Platform: ${structure.str_name || "N/A"}`, 10, 24);
+        // Report Number in Header
+        if (config?.reportNoPrefix) {
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
+            doc.text(`${config.reportNoPrefix}-${config.reportYear}`, pageWidth - 10, 24, { align: "right" });
+        }
     };
 
     // We should pre-fetch contractor for the header usage
@@ -215,19 +305,29 @@ export const generateWorkScopeReport = async (
 
         let yPos = 35;
 
-        // Custom Report Ref Header for this page
-        doc.setTextColor(255, 255, 255);
+        // Custom Report Ref Sub-Header (Moved from Header)
         if (reportNum !== "Pending Assignment") {
-            const meta = reportMeta[reportNum];
-            doc.setFontSize(9);
+            doc.setFillColor(240, 240, 240); // Light Grey
+            doc.rect(10, yPos, pageWidth - 20, 8, "F");
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
             doc.setFont("helvetica", "bold");
-            doc.text(`Scope Ref: ${reportNum}`, pageWidth - 10, 24, { align: "right" });
+            doc.text(`Scope Ref: ${reportNum}`, 14, yPos + 5.5);
+            yPos += 12;
         }
 
         // ===== JOB PACK DETAILS SECTION =====
-        doc.setFillColor(...sectionBlue);
-        doc.rect(10, yPos, pageWidth - 20, 6, "F");
-        doc.setTextColor(255, 255, 255);
+        if (isPrintFriendly) {
+            doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(10, yPos, pageWidth - 20, 6, "FD");
+            doc.setTextColor(0, 0, 0);
+        } else {
+            doc.setFillColor(...sectionBlue);
+            doc.rect(10, yPos, pageWidth - 20, 6, "F");
+            doc.setTextColor(255, 255, 255);
+        }
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.text("JOB PACK DETAILS", 12, yPos + 4);
@@ -276,7 +376,7 @@ export const generateWorkScopeReport = async (
         if (contractor.logoUrl) {
             try {
                 const cLogo = await loadImage(contractor.logoUrl);
-                doc.addImage(cLogo, 'PNG', leftColX, contentStart + 9, 20, 20);
+                drawLogo(doc, cLogo, 20, 20, leftColX, contentStart + 9, 'left', 'middle');
                 logoH = 20;
             } catch (e) { }
         }
@@ -370,9 +470,17 @@ export const generateWorkScopeReport = async (
             }
 
             // Draw Structure Blue Band
-            doc.setFillColor(30, 41, 59); // Dark Slate Blue
-            doc.rect(10, yPos, pageWidth - 20, 8, "F");
-            doc.setTextColor(255, 255, 255);
+            if (isPrintFriendly) {
+                doc.setFillColor(240, 240, 240);
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.3);
+                doc.rect(10, yPos, pageWidth - 20, 8, "FD");
+                doc.setTextColor(0, 0, 0);
+            } else {
+                doc.setFillColor(30, 41, 59); // Dark Slate Blue
+                doc.rect(10, yPos, pageWidth - 20, 8, "F");
+                doc.setTextColor(255, 255, 255);
+            }
             doc.setFontSize(10);
             doc.setFont("helvetica", "bold");
             doc.text(`STRUCTURE: ${structName.toUpperCase()}`, 12, yPos + 5.5);
@@ -471,8 +579,8 @@ export const generateWorkScopeReport = async (
                     body: tableBody,
                     theme: 'grid',
                     headStyles: {
-                        fillColor: sectionBlue,
-                        textColor: [255, 255, 255],
+                        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+                        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                         fontStyle: 'bold',
                         fontSize: 8,
                         halign: 'center',
