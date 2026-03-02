@@ -1216,7 +1216,25 @@ function V10PreviewLayout() {
             const assignedCompsMap = new Map<number, { code: string; status: string }[]>();
 
             if (sowItems) {
+                // Fetch full inspection types to get their metadata since it's not joined completely
+                const { data: allTypesData } = await supabase.from('inspection_type').select('*');
+                const typesMap = new Map();
+                if (allTypesData) {
+                    allTypesData.forEach(t => typesMap.set(t.id, t));
+                }
+
                 sowItems.forEach(item => {
+                    const fullTypeData = typesMap.get(item.inspection_type?.id);
+                    const md = fullTypeData?.metadata || {};
+                    const isRov = md.rov === 1 || md.rov === "1" || md.rov === true || md.job_type?.includes('ROV');
+                    const isDiving = md.diving === 1 || md.diving === "1" || md.diving === true || md.job_type?.includes('DIVING');
+
+                    let isCompatible = true;
+                    if (inspMethod === 'DIVING') isCompatible = isDiving;
+                    if (inspMethod === 'ROV') isCompatible = isRov;
+
+                    if (!isCompatible) return; // Skip item if it doesn't match the current mode
+
                     // match by q_id or component_id or type
                     const matchingComp = allComps.find(c =>
                         (item.component_qid && c.q_id === item.component_qid) ||
@@ -1274,8 +1292,8 @@ function V10PreviewLayout() {
                     lowestElev,
                     startNode, endNode, startElev, endElev,
                     raw: comp,
-                    tasks: taskItems.map(t => t.code),
-                    taskStatuses: taskItems
+                    tasks: Array.from(new Set(taskItems.map(t => t.code))),
+                    taskStatuses: Array.from(new Map(taskItems.map(item => [item.code, item])).values())
                 };
 
                 if (isAssigned) {
@@ -1289,13 +1307,16 @@ function V10PreviewLayout() {
             setComponentsNonSow(unassigned);
         }
         fetchComps();
-    }, [sowId, structureId, supabase]);
+    }, [sowId, structureId, inspMethod, supabase]);
 
     useEffect(() => {
         async function fetchInitialLists() {
             // Fetch Inspection Types
             const { data: typesData } = await supabase.from('inspection_type').select('*').order('name');
-            if (typesData) setAllInspectionTypes(typesData);
+            if (typesData) {
+                const uniqueTypes = Array.from(new Map(typesData.map(item => [item.code, item])).values());
+                setAllInspectionTypes(uniqueTypes);
+            }
 
             // Fetch Anomaly Lists from Library
             const { data: codes } = await supabase.from('u_lib_list').select('lib_id, lib_desc').eq('lib_code', 'AMLY_COD').order('lib_desc');
@@ -2375,7 +2396,13 @@ function V10PreviewLayout() {
                                                     className="w-full h-12 px-3 bg-white border-dashed border-2 text-center border-slate-300 text-slate-500 font-bold hover:border-blue-400 focus:outline-none appearance-none cursor-pointer rounded-md"
                                                 >
                                                     <option value="">+ Add Additional Inspection Type</option>
-                                                    {allInspectionTypes.map(it => (
+                                                    {allInspectionTypes.filter(it => {
+                                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || it.metadata?.job_type?.includes('ROV');
+                                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || it.metadata?.job_type?.includes('DIVING');
+                                                        if (inspMethod === 'DIVING') return isDiving;
+                                                        if (inspMethod === 'ROV') return isRov;
+                                                        return true; // Fallback
+                                                    }).map(it => (
                                                         <option key={it.id} value={it.id.toString()}>
                                                             {it.code} - {it.name}
                                                         </option>
@@ -2420,8 +2447,13 @@ function V10PreviewLayout() {
                                                 {/* Dynamic Spec Forms based on Inspection Type */}
                                                 {(() => {
                                                     const activeIt = allInspectionTypes.find(t => t.code === activeSpec || t.name === activeSpec);
-                                                    const props = Array.isArray(activeIt?.default_properties) ? activeIt.default_properties : [];
-                                                    if (props.length === 0) return null;
+                                                    let props = [];
+                                                    if (typeof activeIt?.default_properties === 'string') {
+                                                        try { props = JSON.parse(activeIt.default_properties); } catch (e) { }
+                                                    } else if (Array.isArray(activeIt?.default_properties)) {
+                                                        props = activeIt.default_properties;
+                                                    }
+                                                    if (!Array.isArray(props) || props.length === 0) return null;
 
                                                     return (
                                                         <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">

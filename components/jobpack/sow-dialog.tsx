@@ -30,6 +30,7 @@ interface SOWDialogProps {
         id: number;
         code: string;
         name: string;
+        metadata?: any;
     }>;
     components: Array<{
         id: number;
@@ -1023,14 +1024,37 @@ export function SOWDialog({
                                                         <th className="p-2 text-left font-bold text-slate-600 dark:text-slate-400 border-r border-b border-slate-200 dark:border-slate-700 w-[240px] sticky left-0 bg-slate-50 dark:bg-slate-800 z-30 shadow-[4px_0_16px_-4px_rgba(0,0,0,0.05)]">
                                                             Component Details
                                                         </th>
-                                                        {filteredInspectionTypes.map((inspection) => (
-                                                            <th key={inspection.id} className="p-1 border-b border-slate-200 dark:border-slate-700 min-w-[50px] relative group hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors bg-slate-50 dark:bg-slate-800">
-                                                                <div className="writing-mode-vertical text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 whitespace-normal leading-snug transform rotate-180 py-2 h-32 w-full flex items-center justify-center text-center tracking-wider" style={{ writingMode: 'vertical-rl' }} title={`${inspection.code} - ${inspection.name}`}>
-                                                                    {inspection.name}
-                                                                </div>
-                                                                <div className="absolute inset-x-0 bottom-0 h-1 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                                            </th>
-                                                        ))}
+                                                        {filteredInspectionTypes.map((inspection) => {
+                                                            const isRov = inspection.metadata?.rov === 1 || inspection.metadata?.rov === "1" || inspection.metadata?.rov === true || inspection.metadata?.job_type?.includes('ROV');
+                                                            const isDiving = inspection.metadata?.diving === 1 || inspection.metadata?.diving === "1" || inspection.metadata?.diving === true || inspection.metadata?.job_type?.includes('DIVING');
+
+                                                            let barColor = "bg-blue-500";
+                                                            let textColor = "text-slate-500 dark:text-slate-400";
+                                                            let hoverBg = "hover:bg-blue-50/50 dark:hover:bg-blue-900/20";
+
+                                                            if (isRov && !isDiving) {
+                                                                barColor = "bg-blue-500";
+                                                                textColor = "text-blue-600 dark:text-blue-400 font-bold";
+                                                                hoverBg = "hover:bg-blue-50/50 dark:hover:bg-blue-900/20";
+                                                            } else if (isDiving && !isRov) {
+                                                                barColor = "bg-amber-500";
+                                                                textColor = "text-amber-600 dark:text-amber-400 font-bold";
+                                                                hoverBg = "hover:bg-amber-50/50 dark:hover:bg-amber-900/20";
+                                                            } else if (isRov && isDiving) {
+                                                                barColor = "bg-purple-500";
+                                                                textColor = "text-purple-600 dark:text-purple-400 font-bold";
+                                                                hoverBg = "hover:bg-purple-50/50 dark:hover:bg-purple-900/20";
+                                                            }
+
+                                                            return (
+                                                                <th key={inspection.id} className={`p-1 border-b border-slate-200 dark:border-slate-700 min-w-[50px] relative group transition-colors bg-slate-50 dark:bg-slate-800 ${hoverBg}`}>
+                                                                    <div className={`writing-mode-vertical text-[10px] uppercase font-bold whitespace-normal leading-snug transform rotate-180 py-2 h-32 w-full flex items-center justify-center text-center tracking-wider ${textColor}`} style={{ writingMode: 'vertical-rl' }} title={`${inspection.code} - ${inspection.name}`}>
+                                                                        {inspection.name}
+                                                                    </div>
+                                                                    <div className={`absolute inset-x-0 bottom-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity ${barColor}`}></div>
+                                                                </th>
+                                                            );
+                                                        })}
                                                     </tr>
                                                 </thead>
                                                 <tbody>
