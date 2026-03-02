@@ -2,6 +2,103 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 
 // Helper to load image for PDF
+const loadLogo = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = url;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+
+        try {
+            const imageData = ctx.getImageData(0, 0, img.width, img.height);
+            const data = imageData.data;
+            const width = img.width;
+            const height = img.height;
+            
+            const isWhite = (i: number) => data[i] > 230 && data[i+1] > 230 && data[i+2] > 230 && data[i+3] > 0;
+            
+            const stack: {x: number, y: number}[] = [];
+            const visited = new Uint8Array(width * height);
+            
+            const pushIfWhite = (x: number, y: number) => {
+                if (x < 0 || x >= width || y < 0 || y >= height) return;
+                const idx = y * width + x;
+                if (!visited[idx]) {
+                    const p = idx * 4;
+                    if (isWhite(p)) {
+                        visited[idx] = 1;
+                        stack.push({x, y});
+                    }
+                }
+            };
+            
+            for (let x = 0; x < width; x++) { pushIfWhite(x, 0); pushIfWhite(x, height - 1); }
+            for (let y = 0; y < height; y++) { pushIfWhite(0, y); pushIfWhite(width - 1, y); }
+            
+            while (stack.length > 0) {
+                const pt = stack.pop();
+                if (!pt) continue;
+                const {x, y} = pt;
+                const p = (y * width + x) * 4;
+                data[p + 3] = 0; 
+                
+                pushIfWhite(x + 1, y);
+                pushIfWhite(x - 1, y);
+                pushIfWhite(x, y + 1);
+                pushIfWhite(x, y - 1);
+            }
+            
+            // Edge smoothing
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const p = (y * width + x) * 4;
+                    if (data[p + 3] !== 0) {
+                        const hasTransparentNeighbor = 
+                            data[((y)*width + x - 1)*4 + 3] === 0 ||
+                            data[((y)*width + x + 1)*4 + 3] === 0 ||
+                            data[((y - 1)*width + x)*4 + 3] === 0 ||
+                            data[((y + 1)*width + x)*4 + 3] === 0;
+                        if (hasTransparentNeighbor) {
+                            const avgColor = (data[p] + data[p+1] + data[p+2]) / 3;
+                            if (avgColor > 200) {
+                                data[p+3] = Math.max(0, 255 - (avgColor - 180) * 3); 
+                            }
+                        }
+                    }
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        } catch(e) { console.error("Canvas transparency error", e); }
+
+        resolve({ data: canvas.toDataURL("image/png"), width: img.width, height: img.height });
+      } else {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+  });
+};
+
+const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y: number, alignX = 'left', alignY = 'center') => {
+    if (!logo || !logo.data) return;
+    const ratio = Math.min(maxW / logo.width, maxH / logo.height);
+    const w = logo.width * ratio;
+    const h = logo.height * ratio;
+    let dx = x;
+    let dy = y;
+    if (alignX === 'right') dx = x + maxW - w;
+    if (alignX === 'center') dx = x + (maxW - w) / 2;
+    if (alignY === 'center') dy = y + (maxH - h) / 2;
+    if (alignY === 'bottom') dy = y + maxH - h;
+    doc.addImage(logo.data, 'PNG', dx, dy, w, h);
+};
+
 const loadImage = (url: string): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -89,6 +186,7 @@ export interface ReportConfig {
   showContractorLogo: boolean;
   showPageNumbers: boolean;
   returnBlob?: boolean;
+  printFriendly?: boolean;
 }
 
 export const generateStructureReport = async (
@@ -127,32 +225,41 @@ const generatePipelineReport = async (
   // Colors
   const headerBlue: [number, number, number] = [26, 54, 93];
   const sectionBlue: [number, number, number] = [44, 82, 130];
+  const isPrintFriendly = config?.printFriendly === true;
 
   // ===== HEADER WITH LOGO =====
-  doc.setFillColor(...headerBlue);
-  doc.rect(0, 0, pageWidth, 28, "F");
+  if (isPrintFriendly) {
+    // Print-Friendly: White background with light gray border
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    doc.rect(0, 0, pageWidth, 28);
+  } else {
+    doc.setFillColor(...headerBlue);
+    doc.rect(0, 0, pageWidth, 28, "F");
+  }
 
   // Logo area (right side)
   if (companySettings?.logo_url) {
     try {
       // Load and add the actual logo image with padding
-      const logoData = await loadImage(companySettings.logo_url);
-      // Box is 18x18, logo is 16x16 with 1mm padding on each side
-      doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
+      const logoData = await loadLogo(companySettings.logo_url);
+      drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
     } catch (error) {
       console.error("Error loading company logo:", error);
-      // Fallback to placeholder box if image fails to load
-      doc.setDrawColor(255, 255, 255);
-      doc.setLineWidth(0.5);
-      doc.rect(pageWidth - 25, 4, 18, 18);
-      doc.setFontSize(7);
-      doc.setTextColor(255, 255, 255);
-      doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+      if (!isPrintFriendly) {
+        // Fallback to placeholder box if image fails to load
+        doc.setDrawColor(255, 255, 255);
+        doc.setLineWidth(0.5);
+        doc.rect(pageWidth - 25, 4, 18, 18);
+        doc.setFontSize(7);
+        doc.setTextColor(255, 255, 255);
+        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+      }
     }
   }
 
   // Company Name
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
   const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
@@ -185,6 +292,24 @@ const generatePipelineReport = async (
   // Define autoTable helper for jsPDF
   const autoTable = (doc as any).autoTable || require('jspdf-autotable').default;
 
+  // Helper to draw section header bar (print-friendly aware)
+  const drawSectionBar = (x: number, y: number, w: number, h: number, text: string, textX: number, textY: number) => {
+    if (isPrintFriendly) {
+      doc.setFillColor(240, 240, 240);
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.3);
+      doc.rect(x, y, w, h, "FD");
+      doc.setTextColor(0, 0, 0);
+    } else {
+      doc.setFillColor(sectionBlue[0], sectionBlue[1], sectionBlue[2]);
+      doc.rect(x, y, w, h, "F");
+      doc.setTextColor(255, 255, 255);
+    }
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.text(text, textX, textY);
+  };
+
   // Helper function for compact field rendering
   const drawCompactField = (label: string, value: any, x: number, y: number, width: number) => {
     doc.setFontSize(7);
@@ -211,12 +336,7 @@ const generatePipelineReport = async (
   const colWidth = 60;
 
   // COLUMN 1: General Info
-  doc.setFillColor(...sectionBlue);
-  doc.rect(col1X, yPos, colWidth, 5, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("GENERAL INFO", col1X + 2, yPos + 3.5);
+  drawSectionBar(col1X, yPos, colWidth, 5, "GENERAL INFO", col1X + 2, yPos + 3.5);
 
   let col1Y = yPos + 5;
   doc.setDrawColor(200, 200, 200);
@@ -231,12 +351,7 @@ const generatePipelineReport = async (
   doc.rect(col1X, genStart, colWidth, col1Y - genStart);
 
   // COLUMN 2: Technical Parameters
-  doc.setFillColor(...sectionBlue);
-  doc.rect(col2X, yPos, colWidth, 5, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("TECHNICAL PARAMS", col2X + 2, yPos + 3.5);
+  drawSectionBar(col2X, yPos, colWidth, 5, "TECHNICAL PARAMS", col2X + 2, yPos + 3.5);
 
   let col2Y = yPos + 5;
   const techStart = col2Y;
@@ -250,12 +365,7 @@ const generatePipelineReport = async (
   doc.rect(col2X, techStart, colWidth, col2Y - techStart);
 
   // COLUMN 3: Location & Path
-  doc.setFillColor(...sectionBlue);
-  doc.rect(col3X, yPos, colWidth, 5, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("LOCATION & PATH", col3X + 2, yPos + 3.5);
+  drawSectionBar(col3X, yPos, colWidth, 5, "LOCATION & PATH", col3X + 2, yPos + 3.5);
 
   let col3Y = yPos + 5;
   const locStart = col3Y;
@@ -272,12 +382,7 @@ const generatePipelineReport = async (
   yPos = Math.max(col1Y, col2Y, col3Y) + 3;
 
   // ===== BURIAL & PROTECTION (Full Width) =====
-  doc.setFillColor(...sectionBlue);
-  doc.rect(10, yPos, pageWidth - 20, 5, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("BURIAL & PROTECTION", 12, yPos + 3.5);
+  drawSectionBar(10, yPos, pageWidth - 20, 5, "BURIAL & PROTECTION", 12, yPos + 3.5);
   yPos += 5;
 
   const burialStart = yPos;
@@ -291,12 +396,7 @@ const generatePipelineReport = async (
   yPos += 3;
 
   // ===== GEODETIC PARAMETERS (Full Width) =====
-  doc.setFillColor(...sectionBlue);
-  doc.rect(10, yPos, pageWidth - 20, 5, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("GEODETIC PARAMETERS", 12, yPos + 3.5);
+  drawSectionBar(10, yPos, pageWidth - 20, 5, "GEODETIC PARAMETERS", 12, yPos + 3.5);
   yPos += 5;
 
   const geoStart = yPos;
@@ -330,12 +430,7 @@ const generatePipelineReport = async (
 
   // ===== COMMENTS =====
   if ((structure.comments || structure.description) && yPos < pageHeight - 20) {
-    doc.setFillColor(...sectionBlue);
-    doc.rect(10, yPos, pageWidth - 20, 4, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(7);
-    doc.setFont("helvetica", "bold");
-    doc.text("COMMENTS", 12, yPos + 3);
+    drawSectionBar(10, yPos, pageWidth - 20, 4, "COMMENTS", 12, yPos + 3);
 
     yPos += 4;
     const commentText = structure.comments || structure.description || "";
@@ -430,32 +525,40 @@ const generatePlatformReport = async (
   // Colors
   const headerBlue: [number, number, number] = [26, 54, 93];
   const sectionBlue: [number, number, number] = [44, 82, 130];
+  const isPrintFriendly = config?.printFriendly === true;
 
   // ===== HEADER WITH LOGO =====
-  doc.setFillColor(...headerBlue);
-  doc.rect(0, 0, pageWidth, 28, "F");
+  if (isPrintFriendly) {
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    doc.rect(0, 0, pageWidth, 28);
+  } else {
+    doc.setFillColor(...headerBlue);
+    doc.rect(0, 0, pageWidth, 28, "F");
+  }
 
   // Logo area (right side) - Bigger Square layout
   if (companySettings?.logo_url) {
     try {
       // Load and add the actual logo image with padding
-      const logoData = await loadImage(companySettings.logo_url);
-      // Box is 18x18, logo is 16x16 with 1mm padding on each side
-      doc.addImage(logoData, 'PNG', pageWidth - 24, 5, 16, 16);
+      const logoData = await loadLogo(companySettings.logo_url);
+      drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
     } catch (error) {
       console.error("Error loading company logo:", error);
-      // Fallback to placeholder box if image fails to load
-      doc.setDrawColor(255, 255, 255);
-      doc.setLineWidth(0.5);
-      doc.rect(pageWidth - 25, 4, 18, 18);
-      doc.setFontSize(7);
-      doc.setTextColor(255, 255, 255);
-      doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+      if (!isPrintFriendly) {
+        // Fallback to placeholder box if image fails to load
+        doc.setDrawColor(255, 255, 255);
+        doc.setLineWidth(0.5);
+        doc.rect(pageWidth - 25, 4, 18, 18);
+        doc.setFontSize(7);
+        doc.setTextColor(255, 255, 255);
+        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+      }
     }
   }
 
   // Company Name - LARGEST (left side)
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
   const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
@@ -488,6 +591,24 @@ const generatePlatformReport = async (
   // Define autoTable helper for jsPDF
   const autoTable = (doc as any).autoTable || require('jspdf-autotable').default;
 
+  // Helper to draw section header bar (print-friendly aware)
+  const drawSectionBar = (x: number, y: number, w: number, h: number, text: string, textX: number, textY: number) => {
+    if (isPrintFriendly) {
+      doc.setFillColor(240, 240, 240);
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.3);
+      doc.rect(x, y, w, h, "FD");
+      doc.setTextColor(0, 0, 0);
+    } else {
+      doc.setFillColor(sectionBlue[0], sectionBlue[1], sectionBlue[2]);
+      doc.rect(x, y, w, h, "F");
+      doc.setTextColor(255, 255, 255);
+    }
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.text(text, textX, textY);
+  };
+
   // Helper function for compact field rendering
   const drawCompactField = (label: string, value: string, x: number, y: number, width: number) => {
     doc.setFontSize(7);
@@ -513,12 +634,7 @@ const generatePlatformReport = async (
   const colWidth = 60;
 
   // COLUMN 1: General Info
-  doc.setFillColor(...sectionBlue);
-  doc.rect(col1X, yPos, colWidth, 5, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("GENERAL INFO", col1X + 2, yPos + 3.5);
+  drawSectionBar(col1X, yPos, colWidth, 5, "GENERAL INFO", col1X + 2, yPos + 3.5);
 
   let col1Y = yPos + 5;
   doc.setDrawColor(200, 200, 200);
@@ -534,12 +650,7 @@ const generatePlatformReport = async (
   doc.rect(col1X, genStart, colWidth, col1Y - genStart);
 
   // COLUMN 2: Configuration
-  doc.setFillColor(...sectionBlue);
-  doc.rect(col2X, yPos, colWidth, 5, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("CONFIGURATION", col2X + 2, yPos + 3.5);
+  drawSectionBar(col2X, yPos, colWidth, 5, "CONFIGURATION", col2X + 2, yPos + 3.5);
 
   let col2Y = yPos + 5;
   const configStart = col2Y;
@@ -554,12 +665,7 @@ const generatePlatformReport = async (
   doc.rect(col2X, configStart, colWidth, col2Y - configStart);
 
   // COLUMN 3: Location & Dimensions
-  doc.setFillColor(...sectionBlue);
-  doc.rect(col3X, yPos, colWidth, 5, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("LOCATION & DIMS", col3X + 2, yPos + 3.5);
+  drawSectionBar(col3X, yPos, colWidth, 5, "LOCATION & DIMS", col3X + 2, yPos + 3.5);
 
   let col3Y = yPos + 5;
   const locStart = col3Y;
@@ -585,12 +691,7 @@ const generatePlatformReport = async (
   const uniquePhotos = Array.from(new Set(photos.filter(url => typeof url === 'string' && url.length > 0))).slice(0, 3);
 
   if (uniquePhotos.length > 0) {
-    doc.setFillColor(...sectionBlue);
-    doc.rect(10, yPos, pageWidth - 20, 5, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.text(`STRUCTURE VISUALS (${uniquePhotos.length})`, 12, yPos + 3.5);
+    drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUALS (${uniquePhotos.length})`, 12, yPos + 3.5);
     yPos += 5;
 
     const gap = 5;
@@ -640,12 +741,7 @@ const generatePlatformReport = async (
   }
 
   // ===== INVENTORY STATISTICS (Full Width, Compact Grid) =====
-  doc.setFillColor(...sectionBlue);
-  doc.rect(10, yPos, pageWidth - 20, 5, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("INVENTORY STATISTICS", 12, yPos + 3.5);
+  drawSectionBar(10, yPos, pageWidth - 20, 5, "INVENTORY STATISTICS", 12, yPos + 3.5);
   yPos += 5;
 
   // Create compact inventory grid (5 columns x 2 rows)
@@ -700,12 +796,7 @@ const generatePlatformReport = async (
   if (structure.legs && structure.legs.length > 0) {
     if (yPos > pageHeight - 30) { doc.addPage(); yPos = 15; }
 
-    doc.setFillColor(...sectionBlue);
-    doc.rect(10, yPos, pageWidth - 20, 5, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.text(`PLATFORM LEGS (${structure.legs.length} Active)`, 12, yPos + 3.5);
+    drawSectionBar(10, yPos, pageWidth - 20, 5, `PLATFORM LEGS (${structure.legs.length} Active)`, 12, yPos + 3.5);
     yPos += 5;
 
     // Display legs in compact grid
@@ -748,12 +839,7 @@ const generatePlatformReport = async (
 
     // ELEVATIONS TABLE (Left)
     if (hasElevations) {
-      doc.setFillColor(...sectionBlue);
-      doc.rect(10, tablesStartY, (pageWidth - 25) / 2, 5, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "bold");
-      doc.text("ELEVATIONS (m)", 12, tablesStartY + 3.5);
+      drawSectionBar(10, tablesStartY, (pageWidth - 25) / 2, 5, "ELEVATIONS (m)", 12, tablesStartY + 3.5);
 
       const elevWidth = (pageWidth - 25) / 2;
       autoTable(doc, {
@@ -764,7 +850,7 @@ const generatePlatformReport = async (
           elev.elv || elev.value || elev.elevation || "N/A"
         ]),
         theme: 'grid',
-        headStyles: { fillColor: sectionBlue, fontSize: 7, halign: 'center' },
+        headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 7, halign: 'center' },
         bodyStyles: { fontSize: 6, halign: 'center' },
         margin: { left: 10 },
         tableWidth: elevWidth,
@@ -778,12 +864,7 @@ const generatePlatformReport = async (
       // Start slightly right of center (pageWidth/2 + 2.5) to create 5mm gap
       const rightTableX = pageWidth / 2 + 2.5;
 
-      doc.setFillColor(...sectionBlue);
-      doc.rect(rightTableX, tablesStartY, (pageWidth - 25) / 2, 5, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "bold");
-      doc.text("PLATFORM LEVELS", rightTableX + 2, tablesStartY + 3.5);
+      drawSectionBar(rightTableX, tablesStartY, (pageWidth - 25) / 2, 5, "PLATFORM LEVELS", rightTableX + 2, tablesStartY + 3.5);
 
       autoTable(doc, {
         startY: tablesStartY + 5,
@@ -794,7 +875,7 @@ const generatePlatformReport = async (
           level.elv_to || level.end_elv || 0
         ]),
         theme: 'grid',
-        headStyles: { fillColor: sectionBlue, fontSize: 7, halign: 'center' },
+        headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 7, halign: 'center' },
         bodyStyles: { fontSize: 6, halign: 'center' },
         margin: { left: rightTableX },
         tableWidth: (pageWidth - 25) / 2,
@@ -809,12 +890,7 @@ const generatePlatformReport = async (
   if (structure.faces && structure.faces.length > 0) {
     if (yPos > pageHeight - 30) { doc.addPage(); yPos = 15; }
 
-    doc.setFillColor(...sectionBlue);
-    doc.rect(10, yPos, pageWidth - 20, 5, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.text("PLATFORM FACES", 12, yPos + 3.5);
+    drawSectionBar(10, yPos, pageWidth - 20, 5, "PLATFORM FACES", 12, yPos + 3.5);
     yPos += 5;
 
     autoTable(doc, {
@@ -826,7 +902,7 @@ const generatePlatformReport = async (
         face.face_to || face.to || "N/A"
       ]),
       theme: 'grid',
-      headStyles: { fillColor: sectionBlue, fontSize: 7, halign: 'center' },
+      headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 7, halign: 'center' },
       bodyStyles: { fontSize: 6, halign: 'center' },
       margin: { left: 10, right: 10 },
       tableWidth: 'auto',
@@ -838,12 +914,7 @@ const generatePlatformReport = async (
 
   // ===== COMMENTS (if space available) =====
   if ((structure.comments || structure.description) && yPos < pageHeight - 30) {
-    doc.setFillColor(...sectionBlue);
-    doc.rect(10, yPos, pageWidth - 20, 4, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(7);
-    doc.setFont("helvetica", "bold");
-    doc.text("COMMENTS", 12, yPos + 3);
+    drawSectionBar(10, yPos, pageWidth - 20, 4, "COMMENTS", 12, yPos + 3);
 
     yPos += 4;
     const commentText = structure.comments || structure.description || "";

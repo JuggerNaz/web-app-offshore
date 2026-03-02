@@ -232,7 +232,7 @@ export default function StructureImage() {
                       <div className="flex flex-col min-w-0">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 font-mono truncate max-w-xs">{img.meta?.original_file_name || img.name}</span>
                         <span className="text-[9px] font-bold text-slate-400 mt-0.5">
-                          {moment(img.updated_at || img.created_at).format("DD MMM YYYY HH:mm")}
+                          Last updated: {moment(img.updated_at || img.created_at).format("DD MMM YYYY HH:mm")}
                         </span>
                       </div>
                       <div className="flex items-center gap-4">

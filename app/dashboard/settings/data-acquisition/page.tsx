@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { ArrowLeft, Wifi, Cable, Activity, Settings2, Play, Square, Trash2, Download, Upload, Building2, GitBranch } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -57,6 +58,9 @@ const STORAGE_KEYS = {
 };
 
 export default function DataAcquisitionPage() {
+    const searchParams = useSearchParams();
+    const returnTo = searchParams.get('returnTo') || '/dashboard/settings';
+
     // Structure Type
     const [structureType, setStructureType] = useState<StructureType>('platform');
 
@@ -661,11 +665,11 @@ export default function DataAcquisitionPage() {
                 {/* Header */}
                 <div className="mb-8">
                     <Link
-                        href="/dashboard/settings"
+                        href={returnTo}
                         className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors"
                     >
                         <ArrowLeft className="w-4 h-4" />
-                        Back to Settings
+                        Back
                     </Link>
                     <div className="flex items-center gap-3 mb-2">
                         <div className="p-2 bg-purple-600/10 rounded-lg">
