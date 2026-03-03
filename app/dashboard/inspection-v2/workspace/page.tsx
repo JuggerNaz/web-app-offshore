@@ -1807,7 +1807,7 @@ function V10PreviewLayout() {
             <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0">
                 <div className="flex items-center gap-4">
                     <h1 className="text-lg font-black uppercase tracking-widest flex items-center gap-2 text-blue-400">
-                        <Activity className="w-5 h-5" /> Cockpit
+                        <Activity className="w-5 h-5" /> INSPECTION
                     </h1>
                     <div className="h-5 w-px bg-slate-700"></div>
 
@@ -1931,8 +1931,11 @@ function V10PreviewLayout() {
                     {/* 1. Diver / ROV Log */}
                     <Card className="flex flex-col border-slate-200 shadow-sm rounded-md shrink-0 mb-2">
                         <div className="bg-[#1f2937] text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md">
-                            <span>{inspMethod === "DIVING" ? "1. DIVER LOG" : "1. ROV DEPLOYMENT"}</span>
+                            <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DEPLOYMENT"}</span>
                             <div className="flex items-center gap-2 text-slate-300">
+                                <button onClick={() => setIsDiveSetupOpen(true)} className="flex items-center gap-1 p-1 hover:text-white transition" title="Dive deployment">
+                                    <Plus className="w-4 h-4" /> <span className="text-[10px] hidden lg:inline">Dive deployment</span>
+                                </button>
                                 <button onClick={() => setIsMovementLogOpen(true)} className="p-1 hover:text-white transition" title="Edit Events"><Edit className="w-4 h-4" /></button>
                                 <button onClick={() => setIsDiveSetupOpen(true)} className="p-1 hover:text-white transition" title="Settings"><Settings className="w-4 h-4" /></button>
                             </div>
@@ -1987,7 +1990,7 @@ function V10PreviewLayout() {
                         {!pipWindow && (
                             <div className="absolute top-0 w-full bg-gradient-to-b from-black/90 to-transparent p-2 flex justify-between items-center z-50 transition-all">
                                 <span className="text-[10px] text-white font-bold uppercase tracking-widest flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-                                    <Video className="w-3 h-3 text-red-500" /> Stream Control
+                                    <Video className="w-3 h-3 text-red-500" /> LIVE STREAMING CONTROL
                                 </span>
                                 <div className="flex gap-1 items-center">
                                     <button onClick={handlePopOutStream} className="text-white/90 hover:text-white p-1 hover:bg-white/10 rounded transition-colors" title="Pop-out Stream"><Maximize2 className="w-3.5 h-3.5" /></button>
@@ -2012,7 +2015,7 @@ function V10PreviewLayout() {
                         <div className="h-full w-full bg-black flex flex-col overflow-hidden select-none">
                             <div className="bg-slate-900 p-2.5 flex justify-between items-center border-b border-white/10 z-50 shrink-0">
                                 <span className="text-[11px] text-white font-black uppercase tracking-widest flex items-center gap-2">
-                                    <Video className="w-3.5 h-3.5 text-red-500 animate-pulse" /> Stream Control
+                                    <Video className="w-3.5 h-3.5 text-red-500 animate-pulse" /> LIVE STREAMING CONTROL
                                 </span>
                                 <button onClick={() => pipWindow.close()} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"><X className="w-4 h-4" /></button>
                             </div>
@@ -2028,7 +2031,7 @@ function V10PreviewLayout() {
                         {/* Dark Header matching "1. DIVER LOG" style */}
                         <div className="bg-[#1f2937] text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md shrink-0">
                             <span className="flex items-center gap-2">
-                                2. {inspMethod === 'DIVING' ? 'Video Session Record' : 'ROV Video Session'}
+                                VIDEO LOG
                                 {!isDeploymentValid && <Badge className="bg-red-500 text-[8px] h-3.5 px-1 animate-pulse">Save Error</Badge>}
                             </span>
                             <div className="flex items-center gap-2 text-slate-300">
@@ -2652,10 +2655,10 @@ function V10PreviewLayout() {
                         )}
                     </Card>
 
-                    {/* 7. Session Records Table (Records session completed before in the current dive) */}
+                    {/* Session Records Table (Records session completed before in the current dive) */}
                     <Card className="flex flex-col h-[280px] border-slate-200 shadow-sm rounded-md bg-white overflow-hidden shrink-0">
                         <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center">
-                            <span>7. Session Records ({inspMethod === 'DIVING' ? 'Current Dive' : 'Current ROV'})</span>
+                            <span>CAPTURED EVENTS</span>
                             <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
                         </div>
                         <ScrollArea className="flex-1 w-full relative">
