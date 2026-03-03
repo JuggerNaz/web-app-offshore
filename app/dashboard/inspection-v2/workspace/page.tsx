@@ -992,7 +992,30 @@ function V10PreviewLayout() {
         if (action === "Resume") dbAction = "RESUME";
 
         let tId = tapeId;
-        if (!tId && activeDep?.id) {
+
+        // Auto-increment chapter logic if starting a stopped tape
+        if (action === "Start Tape" && vidState === "IDLE" && tId && activeDep?.id) {
+            const { data: existingLogs } = await supabase.from('insp_video_logs').select('video_log_id').eq('tape_id', tId).limit(1);
+            if (existingLogs && existingLogs.length > 0) {
+                const user = (await supabase.auth.getUser()).data.user;
+                const nextChapter = (Number(activeChapter) || 1) + 1;
+                const { data: newTape } = await supabase.from('insp_video_tapes').insert({
+                    tape_no: tapeNo || 'TAPE',
+                    chapter_no: nextChapter,
+                    tape_type: "DIGITAL - PRIMARY",
+                    status: 'ACTIVE',
+                    [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: Number(activeDep.id),
+                    cr_user: user?.id || 'system'
+                }).select().single();
+                if (newTape) {
+                    setJobTapes(prev => [newTape, ...prev]);
+                    setTapeId(newTape.tape_id);
+                    setTapeNo(newTape.tape_no);
+                    setActiveChapter(newTape.chapter_no || 1);
+                    tId = newTape.tape_id;
+                }
+            }
+        } else if (!tId && activeDep?.id) {
             const user = (await supabase.auth.getUser()).data.user;
             const uniqueTapeNo = `${tapeNo || 'TAPE'}-${activeDep.id}-${Date.now()}`;
             const { data: newTape } = await supabase.from('insp_video_tapes').insert({
@@ -2777,7 +2800,7 @@ function V10PreviewLayout() {
                     <Card className="flex flex-col h-[400px] border-slate-200 shadow-sm rounded-md shrink-0 bg-white overflow-hidden">
                         <div className="bg-slate-800 text-white flex items-center justify-between pl-1 pr-3 shrink-0">
                             <div className="flex">
-                                <button onClick={() => setCompView("LIST")} className={`px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${compView === 'LIST' ? 'bg-blue-600 text-white border-b border-blue-600' : 'text-slate-400 hover:text-white border-b border-transparent'}`}>3. Component</button>
+                                <button onClick={() => setCompView("LIST")} className={`px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${compView === 'LIST' ? 'bg-blue-600 text-white border-b border-blue-600' : 'text-slate-400 hover:text-white border-b border-transparent'}`}>COMPONENT LIST</button>
                                 <button onClick={() => setCompView("MODEL_3D")} className={`px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${compView === 'MODEL_3D' ? 'bg-blue-600 text-white border-b border-blue-600' : 'text-slate-400 hover:text-white border-b border-transparent'}`}><Box className="w-3.5 h-3.5 mb-0.5" /> 3D</button>
                             </div>
                             {compView === "LIST" && <Search className="w-3.5 h-3.5 text-slate-400" />}
@@ -2864,7 +2887,7 @@ function V10PreviewLayout() {
                     {/* 4. Historical Records Overview */}
                     <Card className="flex flex-col flex-1 border-slate-200 shadow-sm rounded-md bg-white overflow-hidden min-h-0">
                         <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 flex justify-between items-center shrink-0">
-                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">4. Target History</span>
+                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">HISTORY DATA</span>
                             <History className="w-3 h-3 text-slate-400" />
                         </div>
                         <ScrollArea className="flex-1 p-3">
