@@ -1983,11 +1983,11 @@ function V10PreviewLayout() {
                     )}
 
                     {/* 6. Small Video Stream Area */}
-                    <Card
-                        className={`flex flex-col border-slate-200 shadow-sm rounded-md shrink-0 bg-black overflow-hidden relative ${pipWindow ? 'opacity-50 pointer-events-none' : ''}`}
-                        style={{ height: videoVisible ? '240px' : '44px' }}
-                    >
-                        {!pipWindow && (
+                    {!pipWindow && (
+                        <Card
+                            className="flex flex-col border-slate-200 shadow-sm rounded-md shrink-0 bg-black overflow-hidden relative"
+                            style={{ height: videoVisible ? '240px' : '44px' }}
+                        >
                             <div className="absolute top-0 w-full bg-gradient-to-b from-black/90 to-transparent p-2 flex justify-between items-center z-50 transition-all">
                                 <span className="text-[10px] text-white font-bold uppercase tracking-widest flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                                     <Video className="w-3 h-3 text-red-500" /> LIVE STREAMING CONTROL
@@ -1999,16 +1999,9 @@ function V10PreviewLayout() {
                                     <button onClick={() => setVideoVisible(!videoVisible)} className="text-white/90 hover:text-white p-1 ml-1 hover:bg-white/10 rounded transition-colors">{videoVisible ? <ChevronDown className="w-4 h-4" /> : <Activity className="w-4 h-4" />}</button>
                                 </div>
                             </div>
-                        )}
-
-                        {pipWindow && (
-                            <div className="flex-1 flex items-center justify-center text-slate-500 text-[10px] font-bold uppercase tracking-widest italic p-4 text-center">
-                                Stream is floating in a separate window...
-                            </div>
-                        )}
-
-                        {videoVisible && !pipWindow && renderStreamUI()}
-                    </Card>
+                            {videoVisible && renderStreamUI()}
+                        </Card>
+                    )}
 
                     {/* PiP Portal */}
                     {pipWindow && createPortal(
