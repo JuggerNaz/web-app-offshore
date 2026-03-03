@@ -151,13 +151,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<FileText className="h-[18px] w-[18px]" />}
             text="Reports"
           />
-          <MenuLink
-            href="/dashboard/inspection"
-            isCollapsed={isCollapsed}
-            label="Inspection"
-            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
-            text="Inspection"
-          />
+
         </div>
 
         {/* UTILITIES */}
