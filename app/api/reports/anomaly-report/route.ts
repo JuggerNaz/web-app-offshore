@@ -43,6 +43,12 @@ export async function GET(request: NextRequest) {
             query = query.eq("id", inspectionId); // View maps insp_id to 'id'
         }
 
+        let prefix = searchParams.get("prefix");
+        if (prefix === "undefined" || prefix === "null") prefix = null;
+        if (prefix) {
+            query = query.ilike("display_ref_no", `%${prefix}%`);
+        }
+
         const { data: anomalies, error: viewError } = await query;
 
         if (viewError) {

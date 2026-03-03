@@ -45,8 +45,12 @@ export async function GET(request: NextRequest) {
             .select("*")
             .eq("jobpack_id", jobpackId);
 
+        let prefix = searchParams.get("prefix");
+        if (prefix === "undefined" || prefix === "null") prefix = null;
+
         if (structureId) query = query.eq("structure_id", structureId);
         if (sowReportNo) query = query.eq("sow_report_no", sowReportNo);
+        if (prefix) query = query.ilike("display_ref_no", `%${prefix}%`);
 
         query = query.order("priority", { ascending: true });
 

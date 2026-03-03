@@ -89,8 +89,10 @@ const REPORT_TEMPLATES = {
     inspection: [
         { id: "inspection-report", name: "Inspection Report", icon: CheckSquare, description: "Detailed inspection findings and results", requires: ["jobpack"] },
         { id: "defect-summary", name: "Defect Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "findings-summary", name: "Findings Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all findings with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
         { id: "defect-anomaly-report", name: "Defect / Anomaly Report", icon: FileCheck, description: "Detailed defect and anomaly report with images", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "findings-report", name: "Findings Report", icon: FileCheck, description: "Detailed findings report with images", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diver-log-report", name: "Diver Log Report", icon: FileText, description: "Chronological diver log grouped by dive number with inspection findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "video-log-report", name: "Video Log Report", icon: FileText, description: "Video log entries grouped by tape number with timecodes and dive references", requires: ["jobpack", "structure", "sow_report"] },
     ],
@@ -353,191 +355,307 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const template = getCurrentTemplate();
         if (!template) return null;
 
+        const reqs = template.requires;
+        // Determine grid columns based on requirements to make it side-by-side
+        const cols = Math.min(reqs.length, 3);
+
+        const PanelContainer = ({ children, title, stepNum, disabled }: any) => (
+            <div className={`flex flex-col border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-950 overflow-hidden h-[450px] transition-opacity ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div className="p-4 border-b bg-slate-50/50 dark:bg-slate-900/50">
+                    <Label className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                        <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400 w-5 h-5 flex items-center justify-center rounded-full text-xs">{stepNum}</span>
+                        {title}
+                    </Label>
+                </div>
+                {children}
+            </div>
+        );
+
+        let stepCounter = 1;
+
         return (
-            <div className="space-y-6 max-w-3xl mx-auto">
-                <div className="text-center mb-8">
+            <div className="space-y-6 max-w-6xl mx-auto w-full">
+                <div className="text-center mb-6">
                     <h2 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100">Select Data Source</h2>
                     <p className="text-slate-500">Choose the specific items to include in your {template.name}</p>
                 </div>
 
-                <div className="space-y-6">
-                    {template.requires.includes("jobpack") && (
-                        <div className="space-y-3">
-                            <Label>Job Pack</Label>
-                            <Select
-                                value={selections.jobPackId}
-                                onValueChange={(val) => setSelections({ ...selections, jobPackId: val })}
-                            >
-                                <SelectTrigger className="h-12 w-full bg-white dark:bg-slate-900">
-                                    <SelectValue placeholder="Select a job pack..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <div className="p-2 sticky top-0 bg-white dark:bg-slate-900 z-10">
-                                        <Input
-                                            placeholder="Search job packs..."
-                                            className="h-8"
-                                            value={jobPackSearch}
-                                            onChange={(e) => setJobPackSearch(e.target.value)}
-                                            onKeyDown={(e) => e.stopPropagation()}
-                                        />
-                                    </div>
-                                    {filteredJobPacks.length === 0 ? (
-                                        <div className="p-2 text-sm text-muted-foreground text-center">No job packs found</div>
-                                    ) : (
-                                        filteredJobPacks.map((jp: any) => (
-                                            <SelectItem key={jp.id} value={jp.id.toString()}>
-                                                <span className="font-medium">{jp.name}</span>
-                                                <Badge variant="outline" className="ml-2 text-[10px] h-5">{jp.status || "OPEN"}</Badge>
-                                            </SelectItem>
-                                        ))
-                                    )}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-${cols} gap-6`}>
+
+                    {reqs.includes("jobpack") && (
+                        <PanelContainer title="Job Pack" stepNum={stepCounter++} disabled={false}>
+                            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <Input
+                                        placeholder="Search job packs..."
+                                        className="pl-9 bg-slate-50 dark:bg-slate-900 border-none"
+                                        value={jobPackSearch}
+                                        onChange={(e) => setJobPackSearch(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
+                                {filteredJobPacks.length === 0 ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">No job packs found</div>
+                                ) : (
+                                    filteredJobPacks.map((jp: any) => {
+                                        const isSelected = selections.jobPackId === jp.id.toString();
+                                        return (
+                                            <div
+                                                key={jp.id}
+                                                onClick={() => setSelections({ ...selections, jobPackId: jp.id.toString(), structureId: "", componentId: "", sowReportNo: "" })}
+                                                className={`
+                                                    p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group
+                                                    ${isSelected
+                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                        : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
+                                                `}
+                                            >
+                                                <div className="overflow-hidden">
+                                                    <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{jp.name}</div>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-white dark:bg-slate-900">{jp.status || "OPEN"}</Badge>
+                                                    </div>
+                                                </div>
+                                                {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </PanelContainer>
                     )}
 
-                    {template.requires.includes("structure") && (
-                        <div className="space-y-3">
-                            <Label>Structure</Label>
-                            <Select
-                                value={selections.structureId}
-                                onValueChange={(val) => setSelections({ ...selections, structureId: val, componentId: "" })}
-                            >
-                                <SelectTrigger className="h-12 w-full bg-white dark:bg-slate-900">
-                                    <SelectValue placeholder="Select a structure..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <div className="p-2 sticky top-0 bg-white dark:bg-slate-900 z-10">
-                                        <Input
-                                            placeholder="Search structures..."
-                                            className="h-8"
-                                            value={structureSearch}
-                                            onChange={(e) => setStructureSearch(e.target.value)}
-                                            onKeyDown={(e) => e.stopPropagation()}
-                                        />
-                                    </div>
-                                    <SelectItem value="all">
-                                        <span className="font-bold">ALL STRUCTURES</span>
-                                    </SelectItem>
-                                    {filteredStructures.length === 0 ? (
-                                        <div className="p-2 text-sm text-muted-foreground text-center">No structures found</div>
-                                    ) : filteredStructures.map((s: any) => (
-                                        <SelectItem key={s.id} value={s.id.toString()}>
-                                            <span className="font-medium">{s.str_name}</span>
-                                            <span className="ml-2 text-xs text-muted-foreground">{s.str_type}</span>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                    {reqs.includes("structure") && (
+                        <PanelContainer
+                            title="Structure"
+                            stepNum={stepCounter++}
+                            disabled={reqs.includes("jobpack") && !selections.jobPackId}
+                        >
+                            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <Input
+                                        placeholder="Search structures..."
+                                        className="pl-9 bg-slate-50 dark:bg-slate-900 border-none"
+                                        value={structureSearch}
+                                        onChange={(e) => setStructureSearch(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
+                                {reqs.includes("jobpack") && !selections.jobPackId ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Select a job pack first</div>
+                                ) : (
+                                    <>
+                                        {/* Optional ALL STRUCTURES selection depending on template */}
+                                        {["work-scope-report", "work-scope-status", "work-scope-incomplete"].includes(selections.templateId) && (
+                                            <div
+                                                onClick={() => setSelections({ ...selections, structureId: "all", componentId: "", sowReportNo: "" })}
+                                                className={`
+                                                    p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between mb-2
+                                                    ${selections.structureId === "all"
+                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-blue-300"}
+                                                `}
+                                            >
+                                                <div className="font-bold text-sm">ALL STRUCTURES</div>
+                                                {selections.structureId === "all" && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
+                                            </div>
+                                        )}
+                                        {filteredStructures.length === 0 ? (
+                                            <div className="p-4 text-sm text-center text-muted-foreground mt-4">No structures found</div>
+                                        ) : (
+                                            filteredStructures.map((s: any) => {
+                                                const isSelected = selections.structureId === s.id.toString();
+                                                return (
+                                                    <div
+                                                        key={s.id}
+                                                        onClick={() => setSelections({ ...selections, structureId: s.id.toString(), componentId: "", sowReportNo: "" })}
+                                                        className={`
+                                                            p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group
+                                                            ${isSelected
+                                                                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                                : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
+                                                        `}
+                                                    >
+                                                        <div className="overflow-hidden">
+                                                            <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{s.str_name}</div>
+                                                            <div className="text-xs text-slate-500 truncate mt-0.5">{s.str_type}</div>
+                                                        </div>
+                                                        {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </PanelContainer>
                     )}
 
-                    {template.requires.includes("sow_report") && selections.structureId && (
-                        <div className="space-y-3">
-                            <Label>SOW Report Number</Label>
-                            <Select
-                                value={selections.sowReportNo}
-                                onValueChange={(val) => setSelections({ ...selections, sowReportNo: val })}
-                            >
-                                <SelectTrigger className="h-12 w-full bg-white dark:bg-slate-900">
-                                    <SelectValue placeholder="Select a report number..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {isLoadingSowReports ? (
-                                        <div className="p-2 text-sm text-center text-muted-foreground">Loading...</div>
-                                    ) : availableSowReports.length === 0 ? (
-                                        <div className="p-2 text-sm text-center text-muted-foreground">No reports found</div>
-                                    ) : (
-                                        availableSowReports.map((reportNo, idx) => (
-                                            <SelectItem key={`${reportNo}-${idx}`} value={reportNo}>{reportNo}</SelectItem>
-                                        ))
-                                    )}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                    {reqs.includes("sow_report") && (
+                        <PanelContainer
+                            title="SOW Report"
+                            stepNum={stepCounter++}
+                            disabled={!selections.structureId || selections.structureId === "all"}
+                        >
+                            <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 min-h-[57px] flex items-center">
+                                <span className="text-xs text-slate-500">Available reports for selected structure</span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
+                                {!selections.structureId ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Select a structure first</div>
+                                ) : isLoadingSowReports ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Loading reports...</div>
+                                ) : availableSowReports.length === 0 ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">No report numbers found</div>
+                                ) : (
+                                    availableSowReports.map((reportNo, idx) => {
+                                        const isSelected = selections.sowReportNo === reportNo;
+                                        return (
+                                            <div
+                                                key={`${reportNo}-${idx}`}
+                                                onClick={() => setSelections({ ...selections, sowReportNo: reportNo })}
+                                                className={`
+                                                    p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between
+                                                    ${isSelected
+                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                        : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
+                                                `}
+                                            >
+                                                <div className={`font-medium text-sm ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{reportNo}</div>
+                                                {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0" />}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </PanelContainer>
                     )}
 
-                    {template.requires.includes("component") && selections.structureId && (
-                        <div className="space-y-3">
-                            <Label>Component</Label>
-                            <div className="border rounded-lg bg-white dark:bg-slate-900 p-4 h-[300px] flex flex-col">
-                                <div className="mb-4 relative">
+                    {reqs.includes("component") && (
+                        <PanelContainer
+                            title="Component"
+                            stepNum={stepCounter++}
+                            disabled={!selections.structureId || selections.structureId === "all"}
+                        >
+                            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+                                <div className="relative">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                                     <Input
                                         placeholder="Search components..."
-                                        className="pl-9"
+                                        className="pl-9 bg-slate-50 dark:bg-slate-900 border-none"
                                         value={componentSearch}
                                         onChange={(e) => setComponentSearch(e.target.value)}
                                     />
                                 </div>
-                                <div className="flex-1 overflow-y-auto space-y-2">
-                                    {isLoadingComponents ? (
-                                        <div className="flex items-center justify-center h-full text-muted-foreground">Loading components...</div>
-                                    ) : filteredComponents.length === 0 ? (
-                                        <div className="flex items-center justify-center h-full text-muted-foreground">No components found</div>
-                                    ) : (
-                                        filteredComponents.map((comp) => (
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
+                                {!selections.structureId ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Select a structure first</div>
+                                ) : isLoadingComponents ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Loading components...</div>
+                                ) : filteredComponents.length === 0 ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">No components found</div>
+                                ) : (
+                                    filteredComponents.map((comp) => {
+                                        const isSelected = selections.componentId === comp.id;
+                                        return (
                                             <div
                                                 key={comp.id}
                                                 onClick={() => setSelections({ ...selections, componentId: comp.id })}
                                                 className={`
-                                                    p-3 rounded-md border cursor-pointer transition-all flex items-center justify-between
-                                                    ${selections.componentId === comp.id
-                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                                                        : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"}
+                                                    p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between
+                                                    ${isSelected
+                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                        : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
                                                 `}
                                             >
-                                                <div>
-                                                    <div className="font-medium text-sm">{comp.name}</div>
-                                                    <div className="text-xs text-slate-500">{comp.q_id}</div>
+                                                <div className="overflow-hidden">
+                                                    <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{comp.name}</div>
+                                                    <div className="text-xs text-slate-500 truncate">{comp.q_id}</div>
                                                 </div>
-                                                {selections.componentId === comp.id && <Check className="h-4 w-4 text-blue-500" />}
+                                                {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
                                             </div>
-                                        ))
-                                    )}
-                                </div>
+                                        );
+                                    })
+                                )}
                             </div>
-                        </div>
+                        </PanelContainer>
                     )}
 
-                    {template.requires.includes("planning") && (
-                        <div className="space-y-3">
-                            <Label>Inspection Planning</Label>
-                            <Select
-                                value={selections.planningId}
-                                onValueChange={(val) => setSelections({ ...selections, planningId: val })}
-                            >
-                                <SelectTrigger className="h-12 w-full bg-white dark:bg-slate-900">
-                                    <SelectValue placeholder="Select a planning..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {plannings.map((p) => (
-                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                    {/* Simpler ones can stay as dropdowns or also be panels if preferred. Making them panels for consistency */}
+                    {reqs.includes("planning") && (
+                        <PanelContainer title="Planning" stepNum={stepCounter++}>
+                            <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 min-h-[57px] flex items-center">
+                                <span className="text-xs text-slate-500">Select an inspection plan</span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
+                                {plannings.map((p) => {
+                                    const isSelected = selections.planningId === p.id;
+                                    return (
+                                        <div
+                                            key={p.id}
+                                            onClick={() => setSelections({ ...selections, planningId: p.id })}
+                                            className={`
+                                                p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between
+                                                ${isSelected
+                                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                    : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
+                                            `}
+                                        >
+                                            <div className={`font-medium text-sm ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{p.name}</div>
+                                            {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0" />}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </PanelContainer>
                     )}
 
-                    {template.requires.includes("procedure") && (
-                        <div className="space-y-3">
-                            <Label>Defect Criteria Procedure</Label>
-                            <Select
-                                value={selections.procedureId}
-                                onValueChange={(val) => setSelections({ ...selections, procedureId: val })}
-                            >
-                                <SelectTrigger className="h-12 w-full bg-white dark:bg-slate-900">
-                                    <SelectValue placeholder="Select procedures..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="ALL" className="font-semibold text-primary">All Procedures</SelectItem>
-                                    <Separator className="my-1" />
-                                    {defectProcedures.map((p: any) => (
-                                        <SelectItem key={p.id} value={p.id}>{p.procedureNumber} - {p.procedureName} (v{p.version})</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                    {reqs.includes("procedure") && (
+                        <PanelContainer title="Procedure" stepNum={stepCounter++}>
+                            <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 min-h-[57px] flex items-center">
+                                <span className="text-xs text-slate-500">Defect Criteria Procedure</span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
+                                <div
+                                    onClick={() => setSelections({ ...selections, procedureId: "ALL" })}
+                                    className={`
+                                        p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between mb-2
+                                        ${selections.procedureId === "ALL"
+                                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                            : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-blue-300"}
+                                    `}
+                                >
+                                    <div className="font-bold text-sm">ALL PROCEDURES</div>
+                                    {selections.procedureId === "ALL" && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
+                                </div>
+                                {defectProcedures.map((p: any) => {
+                                    const isSelected = selections.procedureId === p.id;
+                                    return (
+                                        <div
+                                            key={p.id}
+                                            onClick={() => setSelections({ ...selections, procedureId: p.id })}
+                                            className={`
+                                                p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between
+                                                ${isSelected
+                                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                    : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
+                                            `}
+                                        >
+                                            <div className="overflow-hidden">
+                                                <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{p.procedureNumber}</div>
+                                                <div className="text-xs text-slate-500 truncate mt-0.5">{p.procedureName} (v{p.version})</div>
+                                            </div>
+                                            {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </PanelContainer>
                     )}
                 </div>
             </div>
@@ -842,21 +960,28 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId } as any);
         }
 
-        // Defect Summary Report
-        if (selections.templateId === "defect-summary") {
+        // Defect Summary Report / Findings Summary Report
+        if (selections.templateId === "defect-summary" || selections.templateId === "findings-summary") {
             const jobPack = await fetchJobPackData();
             const structure = selections.structureId ? await fetchStructureData() : null;
             if (!jobPack) return null;
-            return await generateDefectSummaryReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+
+            const isFindingsReport = selections.templateId === "findings-summary";
+            const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
+
+            return await generateDefectSummaryReport(jobPack, structure, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
-        // Defect / Anomaly Report
-        if (selections.templateId === "defect-anomaly-report") {
+        // Defect / Anomaly Report / Findings Report
+        if (selections.templateId === "defect-anomaly-report" || selections.templateId === "findings-report") {
             const jobPack = await fetchJobPackData();
             const structure = await fetchStructureData();
             if (!jobPack || !structure) return null;
 
-            return await generateDefectAnomalyReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+            const isFindingsReport = selections.templateId === "findings-report";
+            const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
+
+            return await generateDefectAnomalyReport(jobPack, structure, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
         // Diver Log Report

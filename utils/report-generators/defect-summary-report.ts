@@ -2,6 +2,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
+import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
 // ─── Priority colour mapping ─────────────────────────────────────────────────
@@ -70,102 +71,7 @@ function formatCounter(val: any): string {
     return String(val);
 }
 
-const loadImage = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.src = url;
-        img.onload = () => {
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-                ctx.drawImage(img, 0, 0);
-
-        try {
-            const imageData = ctx.getImageData(0, 0, img.width, img.height);
-            const data = imageData.data;
-            const width = img.width;
-            const height = img.height;
-            
-            const isWhite = (i: number) => data[i] > 230 && data[i+1] > 230 && data[i+2] > 230 && data[i+3] > 0;
-            
-            const stack: {x: number, y: number}[] = [];
-            const visited = new Uint8Array(width * height);
-            
-            const pushIfWhite = (x: number, y: number) => {
-                if (x < 0 || x >= width || y < 0 || y >= height) return;
-                const idx = y * width + x;
-                if (!visited[idx]) {
-                    const p = idx * 4;
-                    if (isWhite(p)) {
-                        visited[idx] = 1;
-                        stack.push({x, y});
-                    }
-                }
-            };
-            
-            for (let x = 0; x < width; x++) { pushIfWhite(x, 0); pushIfWhite(x, height - 1); }
-            for (let y = 0; y < height; y++) { pushIfWhite(0, y); pushIfWhite(width - 1, y); }
-            
-            while (stack.length > 0) {
-                const pt = stack.pop();
-                if (!pt) continue;
-                const {x, y} = pt;
-                const p = (y * width + x) * 4;
-                data[p + 3] = 0; 
-                
-                pushIfWhite(x + 1, y);
-                pushIfWhite(x - 1, y);
-                pushIfWhite(x, y + 1);
-                pushIfWhite(x, y - 1);
-            }
-            
-            // Edge smoothing
-            for (let y = 1; y < height - 1; y++) {
-                for (let x = 1; x < width - 1; x++) {
-                    const p = (y * width + x) * 4;
-                    if (data[p + 3] !== 0) {
-                        const hasTransparentNeighbor = 
-                            data[((y)*width + x - 1)*4 + 3] === 0 ||
-                            data[((y)*width + x + 1)*4 + 3] === 0 ||
-                            data[((y - 1)*width + x)*4 + 3] === 0 ||
-                            data[((y + 1)*width + x)*4 + 3] === 0;
-                        if (hasTransparentNeighbor) {
-                            const avgColor = (data[p] + data[p+1] + data[p+2]) / 3;
-                            if (avgColor > 200) {
-                                data[p+3] = Math.max(0, 255 - (avgColor - 180) * 3); 
-                            }
-                        }
-                    }
-                }
-            }
-            ctx.putImageData(imageData, 0, 0);
-        } catch(e) { console.error("Canvas transparency error", e); }
-
-                resolve({ data: canvas.toDataURL("image/png"), width: img.width, height: img.height });
-            } else {
-                resolve(null);
-            }
-        };
-        img.onerror = () => resolve(null);
-    });
-};
-
-const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y: number, alignX = 'left', alignY = 'center') => {
-    if (!logo || !logo.data) return;
-    const ratio = Math.min(maxW / logo.width, maxH / logo.height);
-    const w = logo.width * ratio;
-    const h = logo.height * ratio;
-    let dx = x;
-    let dy = y;
-    if (alignX === 'right') dx = x + maxW - w;
-    if (alignX === 'center') dx = x + (maxW - w) / 2;
-    if (alignY === 'center') dy = y + (maxH - h) / 2;
-    if (alignY === 'bottom') dy = y + maxH - h;
-    doc.addImage(logo.data, 'PNG', dx, dy, w, h);
-};
+// Main Generator ──────────────────────────────────────────────────────────
 
 // ─── Main Generator ──────────────────────────────────────────────────────────
 export const generateDefectSummaryReport = async (
@@ -185,6 +91,7 @@ export const generateDefectSummaryReport = async (
         if (jobPack?.id) url += `jobpack_id=${jobPack.id}&`;
         if (structure?.id) url += `structure_id=${structure.id}&`;
         if (sowReportNo) url += `sow_report_no=${encodeURIComponent(sowReportNo)}&`;
+        if (config.prefix) url += `prefix=${encodeURIComponent(config.prefix)}&`;
 
         const res = await fetch(url);
         const json = await res.json();
@@ -203,7 +110,7 @@ export const generateDefectSummaryReport = async (
 
     // ── Logos ────────────────────────────────────────────────────────────────
     let clientLogo: any = null;
-    if (companySettings.logo_url) clientLogo = await loadImage(companySettings.logo_url);
+    if (companySettings.logo_url) clientLogo = await loadLogoWithTransparency(companySettings.logo_url);
 
     let contractorLogo: any = null;
     let contractorName = "";
@@ -216,7 +123,7 @@ export const generateDefectSummaryReport = async (
                 let q = supabase.from("u_lib_list").select("logo_url, lib_desc").eq("lib_code", "CONTR_NAM");
                 q = isUUID ? q.or(`id.eq.${cid},lib_id.eq.${cid}`) : (q as any).eq("lib_id", cid);
                 const { data } = await (q as any).maybeSingle();
-                if (data?.logo_url) contractorLogo = await loadImage(data.logo_url);
+                if (data?.logo_url) contractorLogo = await loadLogoWithTransparency(data.logo_url);
                 if (data?.lib_desc) contractorName = data.lib_desc;
             } catch (e) { console.error("Contractor logo error:", e); }
         }
@@ -275,7 +182,8 @@ export const generateDefectSummaryReport = async (
         d.text(companySettings.departmentName || "Engineering Department", pageWidth / 2, sy + 13, { align: "center" });
         d.setFont("helvetica", "bold");
         d.setFontSize(12);
-        d.text("DEFECT SUMMARY REPORT", pageWidth / 2, sy + 21, { align: "center" });
+        const reportTitle = config.isFindingsReport ? "FINDINGS SUMMARY REPORT" : "DEFECT SUMMARY REPORT";
+        d.text(reportTitle, pageWidth / 2, sy + 21, { align: "center" });
         d.setTextColor(0, 0, 0);
     };
 
@@ -395,7 +303,8 @@ export const generateDefectSummaryReport = async (
         d.setFillColor(240, 240, 240);
         d.rect(margin, y, contentWidth, 7, "F");
         d.setTextColor(31, 55, 93);
-        d.text("ANOMALY STATISTICAL SUMMARY", margin + 2, y + 5);
+        const dashTitle = config.isFindingsReport ? "FINDINGS STATISTICAL SUMMARY" : "ANOMALY STATISTICAL SUMMARY";
+        d.text(dashTitle, margin + 2, y + 5);
         d.setTextColor(0, 0, 0);
 
         // --- 1. Draw Bar Chart ---
@@ -495,7 +404,8 @@ export const generateDefectSummaryReport = async (
 
         doc.setFontSize(11);
         doc.setTextColor(100, 100, 100);
-        doc.text("No defect / anomaly records found for the selected filters.", pageWidth / 2, legendEndY + 20, { align: "center" });
+        const noDataMsg = config.isFindingsReport ? "No findings records found for the selected filters." : "No defect / anomaly records found for the selected filters.";
+        doc.text(noDataMsg, pageWidth / 2, legendEndY + 20, { align: "center" });
 
         const totalPages = doc.getNumberOfPages();
         for (let i = 1; i <= totalPages; i++) {
@@ -504,13 +414,17 @@ export const generateDefectSummaryReport = async (
         }
 
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`${config.reportNoPrefix}_DefectSummary.pdf`);
+        const suffix = config.isFindingsReport ? "FindingsSummary" : "DefectSummary";
+        doc.save(`${config.reportNoPrefix}_${suffix}.pdf`);
         return;
     }
 
     // ── Build table rows ──────────────────────────────────────────────────────
     // Columns: # | Anomaly Ref | Tape No (Counter) | Defect Code | Defect Type | Priority | Inspection Findings
-    const tableHead = [["#", "Anomaly Ref No.", "Recording\n(Counter)", "Defect Code", "Defect Type", "Priority", "Inspection Findings"]];
+    const refTitle = config.isFindingsReport ? "Findings Ref No." : "Anomaly Ref No.";
+    const codeTitle = config.isFindingsReport ? "Findings Code" : "Defect Code";
+    const typeTitle = config.isFindingsReport ? "Findings Type" : "Defect Type";
+    const tableHead = [["#", refTitle, "Recording\n(Counter)", codeTitle, typeTitle, "Priority", "Inspection Findings"]];
 
     const tableBody: any[][] = anomalies.map((rec: any, idx: number) => {
         const priority = rec.priority || "—";
@@ -662,7 +576,8 @@ export const generateDefectSummaryReport = async (
     }
 
     if (config.returnBlob) return doc.output("blob");
-    doc.save(`${config.reportNoPrefix}_DefectSummary.pdf`);
+    const suffix = config.isFindingsReport ? "FindingsSummary" : "DefectSummary";
+    doc.save(`${config.reportNoPrefix}_${suffix}.pdf`);
 };
 
 // ─── Signatories ─────────────────────────────────────────────────────────────

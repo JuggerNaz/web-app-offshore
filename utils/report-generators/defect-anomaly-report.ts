@@ -4,6 +4,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
+import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -24,6 +25,8 @@ export interface ReportConfig {
     returnBlob?: boolean;
     inspectionId?: number;
     printFriendly?: boolean;
+    prefix?: string;
+    isFindingsReport?: boolean;
 }
 
 const loadImage = (url: string): Promise<string> => {
@@ -69,6 +72,7 @@ export const generateDefectAnomalyReport = async (
         if (sowReportNo) url += `sow_report_no=${sowReportNo}&`;
         if (structure?.id) url += `structure_id=${structure.id}&`;
         if (config.inspectionId) url += `inspection_id=${config.inspectionId}&`;
+        if (config.prefix) url += `prefix=${config.prefix}&`;
 
         const res = await fetch(url);
         const json = await res.json();
@@ -78,13 +82,13 @@ export const generateDefectAnomalyReport = async (
     }
 
     // Load Client Logo (Right Side)
-    let clientLogo = "";
+    let clientLogo: any = null;
     if (companySettings.logo_url) {
-        clientLogo = await loadImage(companySettings.logo_url);
+        clientLogo = await loadLogoWithTransparency(companySettings.logo_url);
     }
 
     // Load Contractor Logo (Left Side)
-    let contractorLogo = "";
+    let contractorLogo: any = null;
     let contractorName = "";
 
     if (config.showContractorLogo) {
@@ -95,7 +99,7 @@ export const generateDefectAnomalyReport = async (
 
             if (first.logo_url) {
                 try {
-                    const loaded = await loadImage(first.logo_url);
+                    const loaded = await loadLogoWithTransparency(first.logo_url);
                     if (loaded) contractorLogo = loaded;
                 } catch (e) {
                     console.warn("Failed to load logo from view url", e);
@@ -144,7 +148,7 @@ export const generateDefectAnomalyReport = async (
                     const { data } = await query.maybeSingle();
 
                     if (data) {
-                        if (data.logo_url && !contractorLogo) contractorLogo = await loadImage(data.logo_url);
+                        if (data.logo_url && !contractorLogo) contractorLogo = await loadLogoWithTransparency(data.logo_url);
                         if (data.lib_desc && !contractorName) contractorName = data.lib_desc;
                     }
                 } catch (e) {
@@ -181,7 +185,7 @@ export const generateDefectAnomalyReport = async (
         const logoCenterX = logoX + (logoSize / 2);
 
         if (contractorLogo) {
-            doc.addImage(contractorLogo, "JPEG", logoX, startY + logoPadding, logoSize, logoSize);
+            drawLogo(doc, contractorLogo, logoSize, logoSize, logoX, startY + logoPadding, 'center', 'center');
         }
 
         if (contractorName) {
@@ -197,7 +201,7 @@ export const generateDefectAnomalyReport = async (
 
         // --- Right Side: Client Logo ---
         if (clientLogo) {
-            doc.addImage(clientLogo, "JPEG", pageWidth - margin - logoSize - logoPadding, startY + logoPadding, logoSize, logoSize);
+            drawLogo(doc, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, startY + logoPadding, 'center', 'center');
         }
 
         // --- Center: Text ---
@@ -219,7 +223,8 @@ export const generateDefectAnomalyReport = async (
         // Report Title
         doc.setFont("helvetica", "bold");
         doc.setFontSize(13);
-        doc.text("DEFECT / ANOMALY REPORT", pageWidth / 2, startY + 20, { align: "center" });
+        const reportTitle = config.isFindingsReport ? "FINDINGS REPORT" : "DEFECT / ANOMALY REPORT";
+        doc.text(reportTitle, pageWidth / 2, startY + 20, { align: "center" });
 
         // Reset Text Color
         doc.setTextColor(0, 0, 0);
@@ -228,9 +233,11 @@ export const generateDefectAnomalyReport = async (
     if (anomalies.length === 0) {
         drawHeader(doc);
         doc.setFontSize(12);
-        doc.text("No anomalies found.", pageWidth / 2, 80, { align: "center" });
+        const noDataMsg = config.isFindingsReport ? "No findings found." : "No anomalies found.";
+        doc.text(noDataMsg, pageWidth / 2, 80, { align: "center" });
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`${config.reportNoPrefix}_AnomalyReport.pdf`);
+        const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
+        doc.save(`${config.reportNoPrefix}_${fileNameSuffix}.pdf`);
         return;
     }
 
@@ -384,7 +391,7 @@ export const generateDefectAnomalyReport = async (
                     { content: "Installation:", styles: headStylesString }, { content: install }
                 ],
                 [
-                    { content: "Anomaly Ref. No.:", styles: headStylesString }, { content: ref },
+                    { content: config.isFindingsReport ? "Findings Ref. No.:" : "Anomaly Ref. No.:", styles: headStylesString }, { content: ref },
                     { content: "Report No.:", styles: headStylesString }, { content: reportNoDisplay }
                 ],
                 [
@@ -459,7 +466,8 @@ export const generateDefectAnomalyReport = async (
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(0, 0, 0);
-        doc.text(`Anomaly Description: ${defectTitle.toUpperCase()}`, margin + textPadding, lastY + 5);
+        const descriptionTitle = config.isFindingsReport ? `Findings Description: ${defectTitle.toUpperCase()}` : `Anomaly Description: ${defectTitle.toUpperCase()}`;
+        doc.text(descriptionTitle, margin + textPadding, lastY + 5);
 
         // Content - use same font size as splitTextToSize calculation
         doc.setFontSize(descFontSize);
@@ -666,7 +674,8 @@ export const generateDefectAnomalyReport = async (
     if (config.returnBlob) {
         return doc.output("blob");
     } else {
-        doc.save(`${config.reportNoPrefix}_AnomalyReport.pdf`);
+        const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
+        doc.save(`${config.reportNoPrefix}_${fileNameSuffix}.pdf`);
     }
 };
 

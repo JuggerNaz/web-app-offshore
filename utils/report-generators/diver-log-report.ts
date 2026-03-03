@@ -4,102 +4,7 @@ import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
-const loadImage = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.src = url;
-        img.onload = () => {
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-                ctx.drawImage(img, 0, 0);
-
-        try {
-            const imageData = ctx.getImageData(0, 0, img.width, img.height);
-            const data = imageData.data;
-            const width = img.width;
-            const height = img.height;
-            
-            const isWhite = (i: number) => data[i] > 230 && data[i+1] > 230 && data[i+2] > 230 && data[i+3] > 0;
-            
-            const stack: {x: number, y: number}[] = [];
-            const visited = new Uint8Array(width * height);
-            
-            const pushIfWhite = (x: number, y: number) => {
-                if (x < 0 || x >= width || y < 0 || y >= height) return;
-                const idx = y * width + x;
-                if (!visited[idx]) {
-                    const p = idx * 4;
-                    if (isWhite(p)) {
-                        visited[idx] = 1;
-                        stack.push({x, y});
-                    }
-                }
-            };
-            
-            for (let x = 0; x < width; x++) { pushIfWhite(x, 0); pushIfWhite(x, height - 1); }
-            for (let y = 0; y < height; y++) { pushIfWhite(0, y); pushIfWhite(width - 1, y); }
-            
-            while (stack.length > 0) {
-                const pt = stack.pop();
-                if (!pt) continue;
-                const {x, y} = pt;
-                const p = (y * width + x) * 4;
-                data[p + 3] = 0; 
-                
-                pushIfWhite(x + 1, y);
-                pushIfWhite(x - 1, y);
-                pushIfWhite(x, y + 1);
-                pushIfWhite(x, y - 1);
-            }
-            
-            // Edge smoothing
-            for (let y = 1; y < height - 1; y++) {
-                for (let x = 1; x < width - 1; x++) {
-                    const p = (y * width + x) * 4;
-                    if (data[p + 3] !== 0) {
-                        const hasTransparentNeighbor = 
-                            data[((y)*width + x - 1)*4 + 3] === 0 ||
-                            data[((y)*width + x + 1)*4 + 3] === 0 ||
-                            data[((y - 1)*width + x)*4 + 3] === 0 ||
-                            data[((y + 1)*width + x)*4 + 3] === 0;
-                        if (hasTransparentNeighbor) {
-                            const avgColor = (data[p] + data[p+1] + data[p+2]) / 3;
-                            if (avgColor > 200) {
-                                data[p+3] = Math.max(0, 255 - (avgColor - 180) * 3); 
-                            }
-                        }
-                    }
-                }
-            }
-            ctx.putImageData(imageData, 0, 0);
-        } catch(e) { console.error("Canvas transparency error", e); }
-
-                resolve({ data: canvas.toDataURL("image/png"), width: img.width, height: img.height });
-            } else {
-                resolve(null);
-            }
-        };
-        img.onerror = () => resolve(null);
-    });
-};
-
-const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y: number, alignX = 'left', alignY = 'center') => {
-    if (!logo || !logo.data) return;
-    const ratio = Math.min(maxW / logo.width, maxH / logo.height);
-    const w = logo.width * ratio;
-    const h = logo.height * ratio;
-    let dx = x;
-    let dy = y;
-    if (alignX === 'right') dx = x + maxW - w;
-    if (alignX === 'center') dx = x + (maxW - w) / 2;
-    if (alignY === 'center') dy = y + (maxH - h) / 2;
-    if (alignY === 'bottom') dy = y + maxH - h;
-    doc.addImage(logo.data, 'PNG', dx, dy, w, h);
-};
+import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
 
 function formatTimecode(val: any): string {
     if (!val && val !== 0) return "";
@@ -146,7 +51,7 @@ export const generateDiverLogReport = async (
     // ── Logos ────────────────────────────────────────────────────────────────
     let clientLogo: any = null;
     if (companySettings.logo_url) {
-        clientLogo = await loadImage(companySettings.logo_url);
+        clientLogo = await loadLogoWithTransparency(companySettings.logo_url);
     }
 
     let contractorLogo: any = null;
@@ -160,7 +65,7 @@ export const generateDiverLogReport = async (
                 let q = supabase.from("u_lib_list").select("logo_url, lib_desc").eq("lib_code", "CONTR_NAM");
                 q = isUUID ? q.or(`id.eq.${cid},lib_id.eq.${cid}`) : q.eq("lib_id", cid);
                 const { data } = await q.maybeSingle();
-                if (data?.logo_url) contractorLogo = await loadImage(data.logo_url);
+                if (data?.logo_url) contractorLogo = await loadLogoWithTransparency(data.logo_url);
                 if (data?.lib_desc) contractorName = data.lib_desc;
             } catch (e) {
                 console.error("Error fetching contractor logo", e);
