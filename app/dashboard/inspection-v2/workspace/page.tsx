@@ -1982,8 +1982,8 @@ function V10PreviewLayout() {
                         <div className="bg-[#1f2937] text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md">
                             <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DEPLOYMENT"}</span>
                             <div className="flex items-center gap-2 text-slate-300">
-                                <button onClick={() => setIsDiveSetupOpen(true)} className="flex items-center gap-1 p-1 hover:text-white transition" title="Dive deployment">
-                                    <Plus className="w-4 h-4" /> <span className="text-[10px] hidden lg:inline">Dive deployment</span>
+                                <button onClick={() => setIsDiveSetupOpen(true)} className="flex items-center gap-1 p-1 hover:text-white transition" title="New Dive">
+                                    <Plus className="w-4 h-4" /> <span className="text-[10px] hidden lg:inline">New Dive</span>
                                 </button>
                                 <button onClick={() => setIsMovementLogOpen(true)} className="p-1 hover:text-white transition" title="Edit Events"><Edit className="w-4 h-4" /></button>
                                 <button onClick={() => setIsDiveSetupOpen(true)} className="p-1 hover:text-white transition" title="Settings"><Settings className="w-4 h-4" /></button>
