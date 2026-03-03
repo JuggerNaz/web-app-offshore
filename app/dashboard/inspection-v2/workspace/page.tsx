@@ -852,7 +852,8 @@ function V10PreviewLayout() {
 
                 if (lastLog) {
                     const isRecording = lastLog.event_type === "NEW_LOG_START" || lastLog.event_type === "RESUME" || lastLog.event_type === "START_TASK" || lastLog.event_type === "RESUME_TASK";
-                    setVidState(isRecording ? "RECORDING" : "PAUSED");
+                    const isStopped = lastLog.event_type === "END";
+                    setVidState(isRecording ? "RECORDING" : (isStopped ? "IDLE" : "PAUSED"));
 
                     let currentCounter = lastLog.tape_counter_start || 0;
                     if (isRecording) {
@@ -993,12 +994,35 @@ function V10PreviewLayout() {
 
         let tId = tapeId;
 
-        // Auto-increment chapter logic if starting a stopped tape
-        if (action === "Start Tape" && vidState === "IDLE" && tId && activeDep?.id) {
-            const { data: existingLogs } = await supabase.from('insp_video_logs').select('video_log_id').eq('tape_id', tId).limit(1);
+        // Auto-increment chapter logic if starting a tape
+        if (action === "Start Tape" && tId && activeDep?.id) {
+            const { data: existingLogs } = await supabase.from('insp_video_logs')
+                .select('video_log_id, event_type')
+                .eq('tape_id', tId)
+                .order('event_time', { ascending: false })
+                .limit(1);
+
             if (existingLogs && existingLogs.length > 0) {
                 const user = (await supabase.auth.getUser()).data.user;
-                const nextChapter = (Number(activeChapter) || 1) + 1;
+
+                const { data: sameNoTapes } = await supabase.from('insp_video_tapes')
+                    .select('chapter_no')
+                    .eq('tape_no', tapeNo)
+                    .eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', activeDep.id);
+
+                let maxChap = 0;
+                let hasSameTape = false;
+
+                if (sameNoTapes && sameNoTapes.length > 0) {
+                    hasSameTape = true;
+                    sameNoTapes.forEach((t: any) => {
+                        const c = parseInt(t.chapter_no);
+                        if (!isNaN(c) && c > maxChap) maxChap = c;
+                    });
+                }
+
+                const nextChapter = hasSameTape ? (maxChap > 0 ? maxChap + 1 : (Number(activeChapter) || 1) + 1) : 1;
+
                 const { data: newTape } = await supabase.from('insp_video_tapes').insert({
                     tape_no: tapeNo || 'TAPE',
                     chapter_no: nextChapter,
@@ -1007,6 +1031,7 @@ function V10PreviewLayout() {
                     [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: Number(activeDep.id),
                     cr_user: user?.id || 'system'
                 }).select().single();
+
                 if (newTape) {
                     setJobTapes(prev => [newTape, ...prev]);
                     setTapeId(newTape.tape_id);
@@ -1017,10 +1042,11 @@ function V10PreviewLayout() {
             }
         } else if (!tId && activeDep?.id) {
             const user = (await supabase.auth.getUser()).data.user;
-            const uniqueTapeNo = `${tapeNo || 'TAPE'}-${activeDep.id}-${Date.now()}`;
+            const uniqueTapeNo = tapeNo ? tapeNo : `TAPE-${activeDep.id}-${Date.now()}`;
             const { data: newTape } = await supabase.from('insp_video_tapes').insert({
                 tape_no: uniqueTapeNo,
                 tape_type: "DIGITAL - PRIMARY",
+                chapter_no: 1,
                 status: 'ACTIVE',
                 [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: Number(activeDep.id),
                 cr_user: user?.id || 'system'
