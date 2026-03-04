@@ -974,8 +974,11 @@ function V10PreviewLayout() {
 
     const handleLogEvent = async (action: string) => {
         let currentTimer = vidTimer;
-        if (action === "Start Tape" || action === "Stop Tape") {
+        if (action === "Start Tape") {
             currentTimer = 0;
+            setVidTimer(0);
+        } else if (action === "Stop Tape") {
+            // Keep currentTimer as the actual duration for the log record, but visually reset it
             setVidTimer(0);
         }
 
@@ -994,55 +997,26 @@ function V10PreviewLayout() {
 
         let tId = tapeId;
 
-        // Auto-increment chapter logic if starting a tape
-        if (action === "Start Tape" && tId && activeDep?.id) {
-            const { data: existingLogs } = await supabase.from('insp_video_logs')
-                .select('video_log_id, event_type')
-                .eq('tape_id', tId)
-                .order('event_time', { ascending: false })
-                .limit(1);
-
-            if (existingLogs && existingLogs.length > 0) {
-                const user = (await supabase.auth.getUser()).data.user;
-
-                const { data: sameNoTapes } = await supabase.from('insp_video_tapes')
-                    .select('chapter_no')
-                    .eq('tape_no', tapeNo)
-                    .eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', activeDep.id);
-
-                let maxChap = 0;
-                let hasSameTape = false;
-
-                if (sameNoTapes && sameNoTapes.length > 0) {
-                    hasSameTape = true;
-                    sameNoTapes.forEach((t: any) => {
-                        const c = parseInt(t.chapter_no);
-                        if (!isNaN(c) && c > maxChap) maxChap = c;
-                    });
-                }
-
-                const nextChapter = hasSameTape ? (maxChap > 0 ? maxChap + 1 : (Number(activeChapter) || 1) + 1) : 1;
-
-                const { data: newTape } = await supabase.from('insp_video_tapes').insert({
-                    tape_no: tapeNo || 'TAPE',
-                    chapter_no: nextChapter,
-                    tape_type: "DIGITAL - PRIMARY",
-                    status: 'ACTIVE',
-                    [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: Number(activeDep.id),
-                    cr_user: user?.id || 'system'
-                }).select().single();
-
-                if (newTape) {
-                    setJobTapes(prev => [newTape, ...prev]);
-                    setTapeId(newTape.tape_id);
-                    setTapeNo(newTape.tape_no);
-                    setActiveChapter(newTape.chapter_no || 1);
-                    tId = newTape.tape_id;
-                }
-            }
-        } else if (!tId && activeDep?.id) {
+        // Auto-increment chapter logic ON Stop Tape is now at the end of the function.
+        // Fallback for first tape if none exists when starting
+        if (!tId && activeDep?.id) {
             const user = (await supabase.auth.getUser()).data.user;
-            const uniqueTapeNo = tapeNo ? tapeNo : `TAPE-${activeDep.id}-${Date.now()}`;
+            let uniqueTapeNo = tapeNo;
+            if (!uniqueTapeNo) {
+                const base = headerData.sowReportNo || 'SOW_REPORT';
+                const platform = headerData.platformName || 'STRUCTURE';
+                const postfix = inspMethod === 'DIVING' ? 'D' : 'R';
+                let maxSeq = 0;
+                jobTapes.forEach(t => {
+                    const match = t.tape_no.match(/V(\d{3})[DR]$/);
+                    if (match) {
+                        const seq = parseInt(match[1], 10);
+                        if (seq > maxSeq) maxSeq = seq;
+                    }
+                });
+                const nextSeq = String(maxSeq + 1).padStart(3, '0');
+                uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
+            }
             const { data: newTape } = await supabase.from('insp_video_tapes').insert({
                 tape_no: uniqueTapeNo,
                 tape_type: "DIGITAL - PRIMARY",
@@ -1050,12 +1024,52 @@ function V10PreviewLayout() {
                 status: 'ACTIVE',
                 [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: Number(activeDep.id),
                 cr_user: user?.id || 'system'
-            }).select('tape_id').single();
+            }).select().single();
+
             if (newTape) {
+                setJobTapes(prev => [newTape, ...prev]);
                 setTapeId(newTape.tape_id);
+                setTapeNo(newTape.tape_no);
+                setActiveChapter(newTape.chapter_no || 1);
                 tId = newTape.tape_id;
             }
         }
+
+        // AUTO INCREMENT CHAPTER LOGIC HERE (Before inserting the new log)
+        if (action === "Start Tape" && activeDep?.id && tId) {
+            const { data: lastLog } = await supabase.from('insp_video_logs')
+                .select('event_type')
+                .eq('tape_id', tId)
+                .order('event_time', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (lastLog && lastLog.event_type === 'END') {
+                const currentTape = jobTapes.find(t => t.tape_id === tId);
+                const nextChapter = (Number(currentTape?.chapter_no) || 1) + 1;
+                const user = (await supabase.auth.getUser()).data.user;
+
+                const { data: newTape, error: insertErr } = await supabase.from('insp_video_tapes').insert({
+                    tape_no: currentTape?.tape_no || tapeNo || 'TAPE',
+                    chapter_no: nextChapter,
+                    tape_type: currentTape?.tape_type || "DIGITAL - PRIMARY",
+                    status: 'ACTIVE',
+                    [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: Number(activeDep.id),
+                    cr_user: user?.id || 'system'
+                }).select().single();
+
+                if (insertErr) {
+                    toast.error(`Auto-Chapter Error: ${insertErr.message}`);
+                    console.error("[Chapter Increment]", insertErr);
+                } else if (newTape) {
+                    setJobTapes(prev => [newTape, ...prev]);
+                    setTapeId(newTape.tape_id);
+                    setActiveChapter(nextChapter);
+                    tId = newTape.tape_id; // critical! we need the NEW log to be attached to this new tapeId
+                }
+            }
+        }
+
         if (tId) {
             const { data: newLog } = await supabase.from('insp_video_logs').insert({
                 tape_id: tId,
@@ -1069,6 +1083,7 @@ function V10PreviewLayout() {
             if (newLog) {
                 setVideoEvents(prev => prev.map(ev => ev.id === optimisticId ? { ...ev, id: `log_${newLog.video_log_id}`, realId: newLog.video_log_id } : ev));
             }
+
         }
 
         if (action === "Start Tape" || action === "Resume") setVidState("RECORDING");
@@ -1080,8 +1095,39 @@ function V10PreviewLayout() {
         if (!confirm("Delete this event?")) return;
         setVideoEvents(videoEvents.filter(ev => ev.id !== id));
         if (logType === 'video_log') {
+            const { data: logToDel } = await supabase.from('insp_video_logs').select('event_type, tape_id, event_time').eq('video_log_id', realId).single();
             const { error } = await supabase.from('insp_video_logs').delete().eq('video_log_id', realId);
             if (!error) {
+                // Feature: Revert chapter logic if NEW_LOG_START event deleted
+                if (logToDel?.event_type === 'NEW_LOG_START') {
+                    const currentTape = jobTapes.find(t => t.tape_id === logToDel.tape_id);
+                    if (currentTape && Number(currentTape.chapter_no) > 1) {
+                        // We check if this tape has any other logs.
+                        const { data: otherLogs } = await supabase.from('insp_video_logs').select('video_log_id').eq('tape_id', logToDel.tape_id).limit(1);
+                        if (!otherLogs || otherLogs.length === 0) {
+                            await supabase.from('insp_video_tapes').delete().eq('tape_id', logToDel.tape_id);
+
+                            // Find the previous chapter tape to switch back to
+                            const { data: prevTapes } = await supabase.from('insp_video_tapes')
+                                .select('*')
+                                .eq('tape_no', currentTape.tape_no)
+                                .eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', activeDep?.id || 0)
+                                .order('chapter_no', { ascending: false });
+
+                            if (prevTapes && prevTapes.length > 0) {
+                                // Since we just deleted the top one, the next highest is the previous tape
+                                const prevTape = prevTapes.length > 1 && prevTapes[0].tape_id === logToDel.tape_id ? prevTapes[1] : prevTapes[0];
+                                if (tapeId === logToDel.tape_id) {
+                                    setTapeId(prevTape.tape_id);
+                                    setActiveChapter(prevTape.chapter_no);
+                                }
+                                setJobTapes(prev => prev.filter(t => t.tape_id !== logToDel.tape_id));
+                                toast.success("Rolled back tape to previous chapter");
+                            }
+                        }
+                    }
+                }
+
                 // Re-sync timer state after deleting a log event
                 syncDeploymentState();
             }
@@ -1471,10 +1517,26 @@ function V10PreviewLayout() {
             } else {
                 // Create one if none exists
                 const user = (await supabase.auth.getUser()).data.user;
-                const uniqueTapeNo = `${tapeNo || 'TAPE'}-${activeDep.id}-${Date.now()}`;
+                let uniqueTapeNo = tapeNo;
+                if (!uniqueTapeNo) {
+                    const base = headerData.sowReportNo || 'SOW_REPORT';
+                    const platform = headerData.platformName || 'STRUCTURE';
+                    const postfix = inspMethod === 'DIVING' ? 'D' : 'R';
+                    let maxSeq = 0;
+                    jobTapes.forEach(t => {
+                        const match = t.tape_no.match(/V(\d{3})[DR]$/);
+                        if (match) {
+                            const seq = parseInt(match[1], 10);
+                            if (seq > maxSeq) maxSeq = seq;
+                        }
+                    });
+                    const nextSeq = String(maxSeq + 1).padStart(3, '0');
+                    uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
+                }
                 const { data: newTape } = await supabase.from('insp_video_tapes').insert({
                     tape_no: uniqueTapeNo,
                     tape_type: "DIGITAL - PRIMARY",
+                    chapter_no: 1,
                     status: 'ACTIVE',
                     [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: Number(activeDep.id),
                     cr_user: user?.id || 'system'
@@ -2077,7 +2139,7 @@ function V10PreviewLayout() {
                                 {!isDeploymentValid && <Badge className="bg-red-500 text-[8px] h-3.5 px-1 animate-pulse">Save Error</Badge>}
                             </span>
                             <div className="flex items-center gap-2 text-slate-300">
-                                {tapeId && (
+                                {!!tapeId && (
                                     <button
                                         onClick={() => {
                                             const currentTape = jobTapes.find(t => t.tape_id === tapeId);
@@ -2103,11 +2165,22 @@ function V10PreviewLayout() {
                                     value={tapeId ? String(tapeId) : ""}
                                     onChange={(e) => {
                                         if (e.target.value === "__new__") {
-                                            const base = headerData.sowReportNo || 'TAPE';
-                                            const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
-                                            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-                                            setNewTapeNo(`${base}-${date}-${random}`);
-                                            setNewTapeChapter("");
+                                            const base = headerData.sowReportNo || 'SOW_REPORT';
+                                            const platform = headerData.platformName || 'STRUCTURE';
+                                            const postfix = inspMethod === 'DIVING' ? 'D' : 'R';
+
+                                            let maxSeq = 0;
+                                            jobTapes.forEach(t => {
+                                                const match = t.tape_no.match(/V(\d{3})[DR]$/);
+                                                if (match) {
+                                                    const seq = parseInt(match[1], 10);
+                                                    if (seq > maxSeq) maxSeq = seq;
+                                                }
+                                            });
+                                            const nextSeq = String(maxSeq + 1).padStart(3, '0');
+
+                                            setNewTapeNo(`${base} / ${platform} / V${nextSeq}${postfix}`);
+                                            setNewTapeChapter("1");
                                             setNewTapeRemarks("");
                                             setIsNewTapeOpen(true);
                                         } else {
@@ -2133,11 +2206,22 @@ function V10PreviewLayout() {
                                     <span className="font-mono text-xs font-bold text-slate-600 bg-white border border-slate-300 rounded px-2 py-1 min-w-[100px]">{tapeNo || 'No Tape'}</span>
                                     <button
                                         onClick={() => {
-                                            const base = headerData.sowReportNo || 'TAPE';
-                                            const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
-                                            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-                                            setNewTapeNo(`${base}-${date}-${random}`);
-                                            setNewTapeChapter("");
+                                            const base = headerData.sowReportNo || 'SOW_REPORT';
+                                            const platform = headerData.platformName || 'STRUCTURE';
+                                            const postfix = inspMethod === 'DIVING' ? 'D' : 'R';
+
+                                            let maxSeq = 0;
+                                            jobTapes.forEach(t => {
+                                                const match = t.tape_no.match(/V(\d{3})[DR]$/);
+                                                if (match) {
+                                                    const seq = parseInt(match[1], 10);
+                                                    if (seq > maxSeq) maxSeq = seq;
+                                                }
+                                            });
+                                            const nextSeq = String(maxSeq + 1).padStart(3, '0');
+
+                                            setNewTapeNo(`${base} / ${platform} / V${nextSeq}${postfix}`);
+                                            setNewTapeChapter("1");
                                             setNewTapeRemarks("");
                                             setIsNewTapeOpen(true);
                                         }}
@@ -2145,7 +2229,7 @@ function V10PreviewLayout() {
                                     >+ New</button>
                                 </div>
                             )}
-                            {tapeId && (() => {
+                            {!!tapeId && (() => {
                                 const currentTape = jobTapes.find(t => t.tape_id === tapeId);
                                 if (!currentTape) return null;
                                 // Determine effective status: if last video event is Stop/END, mark as Completed
@@ -2197,7 +2281,41 @@ function V10PreviewLayout() {
                                         </select>
                                     </div>
                                 </div>
-                                <div className="flex justify-end">
+                                <div className="flex justify-between mt-4">
+                                    <Button variant="destructive" onClick={async () => {
+                                        if (!tapeId) return;
+                                        const { data: logCheck, error: err1 } = await supabase.from('insp_video_logs').select('video_log_id').eq('tape_id', tapeId).limit(1);
+                                        const { data: recCheck, error: err2 } = await supabase.from('insp_records').select('insp_id').eq('tape_id', tapeId).limit(1);
+                                        if (err1 || err2) { toast.error("Error checking tape dependencies"); return; }
+                                        if ((logCheck && logCheck.length > 0) || (recCheck && recCheck.length > 0)) {
+                                            toast.error("Cannot delete tape: inspection records or event logs exist under this tape.", { duration: 4000 });
+                                            return;
+                                        }
+                                        if (confirm("Are you sure you want to delete this tape? This action cannot be undone.")) {
+                                            const { data: deleted, error } = await supabase.from('insp_video_tapes').delete().eq('tape_id', tapeId).select();
+                                            if (error) { toast.error("Failed to delete tape."); return; }
+                                            if (!deleted || deleted.length === 0) {
+                                                toast.error("Database policy prevented deletion. Please run the SQL file to allow deletes.");
+                                                return;
+                                            }
+                                            toast.success("Tape deleted successfully");
+                                            setJobTapes(prev => {
+                                                const filtered = prev.filter(t => t.tape_id !== tapeId);
+                                                if (filtered.length > 0) {
+                                                    const nextTape = filtered[0];
+                                                    setTapeId(nextTape.tape_id);
+                                                    setTapeNo(nextTape.tape_no);
+                                                    setActiveChapter(nextTape.chapter_no || 1);
+                                                } else {
+                                                    setTapeId(0);
+                                                    setTapeNo("");
+                                                    setActiveChapter(1);
+                                                }
+                                                return filtered;
+                                            });
+                                            setIsEditTapeOpen(false);
+                                        }
+                                    }}>Delete Tape</Button>
                                     <Button onClick={async () => {
                                         if (!tapeId) return;
                                         const { error } = await supabase.from('insp_video_tapes').update({
@@ -2240,6 +2358,17 @@ function V10PreviewLayout() {
                                 <div className="flex justify-end">
                                     <Button onClick={async () => {
                                         if (!activeDep?.id || !newTapeNo) return;
+
+                                        // Validation: Tape number must include SOW report and Structure title if they exist.
+                                        if (headerData.sowReportNo && !newTapeNo.includes(headerData.sowReportNo)) {
+                                            toast.error('Tape No must contain the SOW Report No.');
+                                            return;
+                                        }
+                                        if (headerData.platformName && !newTapeNo.includes(headerData.platformName)) {
+                                            toast.error('Tape No must contain the Structure Title (Platform).');
+                                            return;
+                                        }
+
                                         const insertData: any = {
                                             tape_no: newTapeNo,
                                             chapter_no: newTapeChapter || null,
@@ -2281,19 +2410,31 @@ function V10PreviewLayout() {
                                     <span className="text-[9px] font-bold uppercase text-slate-400 ml-1">Auto Counter</span>
                                     <span className="font-mono text-sm font-black text-cyan-400 tracking-wider bg-black/30 px-2 py-0.5 rounded">{formatTime(vidTimer)}</span>
                                 </div>
-                                <div className="grid grid-cols-4 gap-1">
-                                    <button onClick={() => handleLogEvent("Start Tape")} className="bg-green-600 hover:bg-green-500 text-white rounded py-1.5 text-[9px] font-bold uppercase shadow-sm">Start</button>
-                                    <button onClick={() => handleLogEvent("Pause")} className="bg-amber-500 hover:bg-amber-400 text-amber-950 rounded py-1.5 text-[9px] font-bold uppercase shadow-sm">Pause</button>
-                                    <button onClick={() => handleLogEvent("Resume")} className="bg-blue-600 hover:bg-blue-500 text-white rounded py-1.5 text-[9px] font-bold uppercase shadow-sm">Resume</button>
-                                    <button onClick={() => handleLogEvent("Stop Tape")} className="bg-red-600 hover:bg-red-500 text-white rounded py-1.5 text-[9px] font-bold uppercase shadow-sm">Stop</button>
-                                </div>
+                                {(() => {
+                                    const lastVideoEvent = videoEvents.find(ev => ev.logType === 'video_log');
+                                    const lastAction = lastVideoEvent?.action;
+
+                                    const canStart = !lastAction || lastAction === "Stop Tape";
+                                    const canPause = lastAction === "Start Tape" || lastAction === "Resume";
+                                    const canResume = lastAction === "Pause";
+                                    const canStop = lastAction === "Start Tape" || lastAction === "Pause" || lastAction === "Resume";
+
+                                    return (
+                                        <div className="grid grid-cols-4 gap-1">
+                                            <button disabled={!canStart} onClick={() => handleLogEvent("Start Tape")} className={`bg-green-600 text-white rounded py-1.5 text-[9px] font-bold uppercase shadow-sm transition-all ${canStart ? 'hover:bg-green-500' : 'opacity-40 cursor-not-allowed'}`}>Start</button>
+                                            <button disabled={!canPause} onClick={() => handleLogEvent("Pause")} className={`bg-amber-500 text-amber-950 rounded py-1.5 text-[9px] font-bold uppercase shadow-sm transition-all ${canPause ? 'hover:bg-amber-400' : 'opacity-40 cursor-not-allowed'}`}>Pause</button>
+                                            <button disabled={!canResume} onClick={() => handleLogEvent("Resume")} className={`bg-blue-600 text-white rounded py-1.5 text-[9px] font-bold uppercase shadow-sm transition-all ${canResume ? 'hover:bg-blue-500' : 'opacity-40 cursor-not-allowed'}`}>Resume</button>
+                                            <button disabled={!canStop} onClick={() => handleLogEvent("Stop Tape")} className={`bg-red-600 text-white rounded py-1.5 text-[9px] font-bold uppercase shadow-sm transition-all ${canStop ? 'hover:bg-red-500' : 'opacity-40 cursor-not-allowed'}`}>Stop</button>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
 
                         <div className="px-2 py-1.5 text-[10px] font-bold uppercase text-slate-500 tracking-widest border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
                             <span className="flex items-center gap-2">
                                 Video Log
-                                {tapeId && <span className="font-mono text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 normal-case tracking-normal">Tape: {tapeNo || `#${tapeId}`}</span>}
+                                {!!tapeId && <span className="font-mono text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 normal-case tracking-normal">Tape: {tapeNo || `#${tapeId}`}</span>}
                             </span>
                             <Badge className="h-4 text-[9px] px-1 bg-slate-200 text-slate-600 rounded">{videoEvents.length}</Badge>
                         </div>
