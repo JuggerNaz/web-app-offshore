@@ -428,8 +428,68 @@ const generatePipelineReport = async (
 
   yPos += 3;
 
-  // ===== COMMENTS =====
-  if ((structure.comments || structure.description) && yPos < pageHeight - 20) {
+  // ===== DISCUSSIONS / COMMENTS =====
+  const pipeDiscussions = (structure.discussions || []).filter((d) => !d.is_deleted);
+  if (pipeDiscussions.length > 0) {
+    if (yPos > pageHeight - 40) { doc.addPage(); yPos = 15; }
+
+    drawSectionBar(10, yPos, pageWidth - 20, 5, `COMMENTS (${pipeDiscussions.length})`, 12, yPos + 3.5);
+    yPos += 9;
+
+    // Sort discussions by created_at ascending
+    const sortedPipeDiscussions = [...pipeDiscussions].sort((a: any, b: any) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateA - dateB;
+    });
+
+    for (const disc of sortedPipeDiscussions) {
+      // Check if we need a new page
+      if (yPos > pageHeight - 25) {
+        doc.addPage();
+        yPos = 15;
+        drawSectionBar(10, yPos, pageWidth - 20, 5, `COMMENTS (continued)`, 12, yPos + 3.5);
+        yPos += 9;
+      }
+
+      // Format date
+      const createdAt = disc.created_at ? new Date(disc.created_at) : null;
+      const dateStr = createdAt
+        ? createdAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+        : "Unknown Date";
+
+      // Posted by user
+      const userName = disc.user_name || disc.user_id || "Unknown";
+
+      // Date & user line (small font, gray)
+      doc.setFontSize(5.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(120, 120, 120);
+      doc.text(`${dateStr}  \u2014  ${userName}`, 12, yPos);
+      yPos += 3;
+
+      // Comment text
+      const commentText = disc.text || disc.content || disc.message || "";
+      if (commentText) {
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(30, 30, 30);
+        const textLines = doc.splitTextToSize(commentText, pageWidth - 28);
+        const linesToRender = textLines.slice(0, 6); // Cap at 6 lines per comment
+        doc.text(linesToRender, 12, yPos);
+        yPos += linesToRender.length * 3;
+      }
+
+      // Separator line between comments
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.2);
+      doc.line(12, yPos, pageWidth - 12, yPos);
+      yPos += 3;
+    }
+
+    yPos += 2;
+  } else if ((structure.comments || structure.description) && yPos < pageHeight - 20) {
+    // Fallback: legacy single comment field
     drawSectionBar(10, yPos, pageWidth - 20, 4, "COMMENTS", 12, yPos + 3);
 
     yPos += 4;
@@ -912,8 +972,68 @@ const generatePlatformReport = async (
     yPos = (doc as any).lastAutoTable.finalY + 3;
   }
 
-  // ===== COMMENTS (if space available) =====
-  if ((structure.comments || structure.description) && yPos < pageHeight - 30) {
+  // ===== DISCUSSIONS / COMMENTS =====
+  const discussions = (structure.discussions || []).filter((d) => !d.is_deleted);
+  if (discussions.length > 0) {
+    if (yPos > pageHeight - 40) { doc.addPage(); yPos = 15; }
+
+    drawSectionBar(10, yPos, pageWidth - 20, 5, `COMMENTS (${discussions.length})`, 12, yPos + 3.5);
+    yPos += 9;
+
+    // Sort discussions by created_at ascending
+    const sortedDiscussions = [...discussions].sort((a: any, b: any) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateA - dateB;
+    });
+
+    for (const disc of sortedDiscussions) {
+      // Check if we need a new page
+      if (yPos > pageHeight - 25) {
+        doc.addPage();
+        yPos = 15;
+        drawSectionBar(10, yPos, pageWidth - 20, 5, `COMMENTS (continued)`, 12, yPos + 3.5);
+        yPos += 9;
+      }
+
+      // Format date
+      const createdAt = disc.created_at ? new Date(disc.created_at) : null;
+      const dateStr = createdAt
+        ? createdAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+        : "Unknown Date";
+
+      // Posted by user
+      const userName = disc.user_name || disc.user_id || "Unknown";
+
+      // Date & user line (small font, gray)
+      doc.setFontSize(5.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(120, 120, 120);
+      doc.text(`${dateStr}  \u2014  ${userName}`, 12, yPos);
+      yPos += 3;
+
+      // Comment text
+      const commentText = disc.text || disc.content || disc.message || "";
+      if (commentText) {
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(30, 30, 30);
+        const textLines = doc.splitTextToSize(commentText, pageWidth - 28);
+        const linesToRender = textLines.slice(0, 6); // Cap at 6 lines per comment
+        doc.text(linesToRender, 12, yPos);
+        yPos += linesToRender.length * 3;
+      }
+
+      // Separator line between comments
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.2);
+      doc.line(12, yPos, pageWidth - 12, yPos);
+      yPos += 3;
+    }
+
+    yPos += 2;
+  } else if ((structure.comments || structure.description) && yPos < pageHeight - 30) {
+    // Fallback: legacy single comment field
     drawSectionBar(10, yPos, pageWidth - 20, 4, "COMMENTS", 12, yPos + 3);
 
     yPos += 4;

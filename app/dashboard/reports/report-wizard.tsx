@@ -879,7 +879,23 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         try {
             const res = await fetch(`/api/structures/${selections.structureId}`);
             const data = await res.json();
-            return data.success ? data.data : null;
+            if (!data.success) return null;
+
+            const structureData = data.data;
+
+            // Fetch discussion/comment records for this structure
+            try {
+                const strType = structureData.str_type?.toLowerCase() || "platform";
+                const commentRes = await fetch(`/api/comment/${strType}/${selections.structureId}`);
+                const commentJson = await commentRes.json();
+                if (commentJson.data && Array.isArray(commentJson.data)) {
+                    structureData.discussions = commentJson.data;
+                }
+            } catch (commentErr) {
+                console.error("Error fetching structure comments for report:", commentErr);
+            }
+
+            return structureData;
         } catch (e) {
             console.error("Error fetching structure:", e);
             return null;
