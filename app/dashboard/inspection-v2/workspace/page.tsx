@@ -67,6 +67,8 @@ import { CanvasOverlayManager, type DrawingTool } from '@/lib/video-recorder/can
 import { Card } from "@/components/ui/card";
 import DiveJobSetupDialog from "../../inspection/dive/components/DiveJobSetupDialog";
 import DiveMovementLog from "../../inspection/dive/components/DiveMovementLog";
+import ROVJobSetupDialog from "../../inspection/rov/components/ROVJobSetupDialog";
+import ROVMovementLog from "../../inspection/rov/components/ROVMovementLog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -102,6 +104,17 @@ const BELL_DIVE_ACTIONS = [
     { label: "Bell on Surface", value: "BELL_AT_SURFACE" },
     { label: "TUP Complete", value: "BELL_MATED_TO_CHAMBER" }
 ];
+
+const ROV_MOVEMENT_BRANCHES: Record<string, string[]> = {
+    'Awaiting Deployment': ['Rov On Hire', 'Rov Launched'],
+    'Rov On Hire': ['Rov Launched'],
+    'Rov Launched': ['Rov at the Worksite'],
+    'Rov at the Worksite': ['Rov Leaving the Worksite'],
+    'Rov Leaving the Worksite': ['Rov Recovered', 'Rov Back to TMS'],
+    'Rov Back to TMS': ['Rov Launched', 'Rov Recovered'],
+    'Rov Recovered': ['Rov Launched', 'Rov Off Hire'],
+    'Rov Off Hire': []
+};
 const INITIAL_VIDEO_EVENTS = [
     { id: 1, time: "00:00:00", action: "Start Tape", diveLogId: "DIVE-02" },
     { id: 2, time: "00:15:20", action: "Pause", diveLogId: "DIVE-02" },
@@ -236,9 +249,11 @@ function V10PreviewLayout() {
     // Edit Settings States
     const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
     const [isDiveSetupOpen, setIsDiveSetupOpen] = useState(false);
+    const [isDiveSetupForNew, setIsDiveSetupForNew] = useState(false);
     const [isMovementLogOpen, setIsMovementLogOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState<any>(null);
     const [lastStartEventForEdit, setLastStartEventForEdit] = useState<any>(null);
+    const [manualOverride, setManualOverride] = useState(false);
 
     const [diveStartTime, setDiveStartTime] = useState<string | null>(null);
     const [diveEndTime, setDiveEndTime] = useState<string | null>(null);
@@ -284,10 +299,11 @@ function V10PreviewLayout() {
     const sowParam = searchParams.get('sowReport');
 
     // Header Data
-    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string }>({
+    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, structureType: 'platform' | 'pipeline' }>({
         jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
         platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
-        sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A")
+        sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
+        structureType: 'platform'
     });
 
     useEffect(() => {
@@ -310,6 +326,13 @@ function V10PreviewLayout() {
                 if (structData?.str_name) platformName = structData.str_name;
             }
 
+            // Fetch Structure Type for data acquisition
+            let detectedStructureType: 'platform' | 'pipeline' = 'platform';
+            const { data: strTypeData } = await supabase.from('structure').select('str_type').eq('str_id', Number(structureId)).single();
+            if (strTypeData?.str_type) {
+                detectedStructureType = strTypeData.str_type.toLowerCase().includes('pipeline') ? 'pipeline' : 'platform';
+            }
+
             // Fetch SOW Info
             if (!sowParam) {
                 const { data: sowItemData } = await supabase.from('u_sow_items')
@@ -327,7 +350,7 @@ function V10PreviewLayout() {
                 }
             }
 
-            setHeaderData({ jobpackName, platformName, sowReportNo });
+            setHeaderData({ jobpackName, platformName, sowReportNo, structureType: detectedStructureType });
         }
         fetchHeaderInfo();
     }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam]);
@@ -355,6 +378,239 @@ function V10PreviewLayout() {
             toast.error("Failed to delete record");
         }
     };
+
+    const [dataAcqFields, setDataAcqFields] = useState<Array<{ label: string, targetField: string, value: string }>>([]);
+    const [dataAcqConnected, setDataAcqConnected] = useState(false);
+    const [dataAcqConnecting, setDataAcqConnecting] = useState(false);
+    const [dataAcqError, setDataAcqError] = useState<string | null>(null);
+    const dataAcqSerialRef = useRef<any>(null);
+    const dataAcqReaderRef = useRef<any>(null);
+    const dataAcqBufferRef = useRef<string>('');
+    const dataAcqStreamClosedRef = useRef<any>(null);
+
+    // Data Acquisition Connect
+    const handleDataAcqConnect = async () => {
+        setDataAcqError(null);
+        setDataAcqConnecting(true);
+
+        const DA_STORAGE_KEYS: Record<string, string> = {
+            platform: 'data_acquisition_platform_v1',
+            pipeline: 'data_acquisition_pipeline_v1',
+        };
+        const key = DA_STORAGE_KEYS[headerData.structureType];
+        const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+        let settings: any = null;
+        if (saved) {
+            try { settings = JSON.parse(saved); } catch (e) { /* ignore */ }
+        }
+
+        if (!settings) {
+            setDataAcqError('No settings configured. Go to Settings → Data Acquisition to configure.');
+            setDataAcqConnecting(false);
+            toast.error('Data acquisition settings not found. Please configure in Settings → Data Acquisition.');
+            return;
+        }
+
+        const connType = settings.connection?.type || 'serial';
+
+        if (connType === 'serial') {
+            if (!('serial' in navigator)) {
+                setDataAcqError('Web Serial API not supported. Use Chrome, Edge, or Opera.');
+                setDataAcqConnecting(false);
+                toast.error('Web Serial API is not supported in this browser. Use Chrome, Edge, or Opera.');
+                return;
+            }
+
+            try {
+                const port = await (navigator as any).serial.requestPort();
+                const serialSettings = settings.connection?.serial || {};
+                await port.open({
+                    baudRate: serialSettings.baudRate || 9600,
+                    dataBits: serialSettings.dataBits || 8,
+                    parity: serialSettings.parity || 'none',
+                    stopBits: serialSettings.stopBits || 1,
+                });
+
+                dataAcqSerialRef.current = port;
+                dataAcqBufferRef.current = '';
+
+                const textDecoder = new TextDecoderStream();
+                const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+                dataAcqStreamClosedRef.current = readableStreamClosed;
+                const reader = textDecoder.readable.getReader();
+                dataAcqReaderRef.current = reader;
+
+                setDataAcqConnected(true);
+                setDataAcqConnecting(false);
+                toast.success('Data acquisition connected!');
+
+                // Parse settings
+                const parseMethod = settings.parsing?.method || 'position';
+                const startChar = settings.parsing?.startCharacter || '$';
+                const strLen = settings.parsing?.stringLength || 100;
+                const fields = settings.fields || [];
+
+                // Read loop
+                const readLoop = async () => {
+                    try {
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            if (value) {
+                                dataAcqBufferRef.current += value;
+                                if (dataAcqBufferRef.current.length > 10000) {
+                                    dataAcqBufferRef.current = dataAcqBufferRef.current.slice(-5000);
+                                }
+                            }
+                        }
+                    } catch (e) { /* reader cancelled */ }
+                };
+                readLoop();
+
+                // Parse interval
+                const parseInterval = setInterval(() => {
+                    if (!dataAcqBufferRef.current) return;
+                    const data = dataAcqBufferRef.current;
+                    let processedData = data;
+
+                    if (startChar && strLen > 0) {
+                        let startIndex = data.lastIndexOf(startChar);
+                        if (startIndex !== -1 && (startIndex + strLen > data.length)) {
+                            startIndex = data.lastIndexOf(startChar, startIndex - 1);
+                        }
+                        if (startIndex !== -1 && (startIndex + strLen <= data.length)) {
+                            processedData = data.substring(startIndex, startIndex + strLen);
+                        } else {
+                            return;
+                        }
+                    }
+
+                    setDataAcqFields(prev => prev.map(f => {
+                        const fieldDef = fields.find((fd: any) => (fd.targetField || fd.label) === f.targetField);
+                        if (!fieldDef) return f;
+
+                        let val = '';
+                        if (fieldDef.defaultDataOption === 'system_date') {
+                            val = new Date().toLocaleDateString();
+                        } else if (fieldDef.defaultDataOption === 'system_time') {
+                            val = new Date().toLocaleTimeString();
+                        } else if (parseMethod === 'position') {
+                            const start = parseInt(fieldDef.positionValue || '0');
+                            if (!isNaN(start) && start < processedData.length) {
+                                val = processedData.substring(start, Math.min(start + (fieldDef.length || 1), processedData.length));
+                                if (val.length > 0 && /[a-zA-Z]/.test(val[0])) val = val.substring(1);
+                            }
+                        } else {
+                            const idPrefix = fieldDef.idValue || fieldDef.label;
+                            const escapedPrefix = idPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const regex = new RegExp(`${escapedPrefix}([^,]+)`);
+                            const match = processedData.match(regex);
+                            val = match ? match[1].substring(0, fieldDef.length || 10) : '';
+                            if (val.length > 0 && /[a-zA-Z]/.test(val[0])) val = val.substring(1);
+                        }
+
+                        // Apply modification
+                        if (fieldDef.modify && fieldDef.modify !== 'none' && val && !/[a-zA-Z]/.test(val)) {
+                            const numVal = parseFloat(val);
+                            if (!isNaN(numVal)) {
+                                switch (fieldDef.modify) {
+                                    case 'add': val = (numVal + (fieldDef.modifyValue || 0)).toString(); break;
+                                    case 'subtract': val = (numVal - (fieldDef.modifyValue || 0)).toString(); break;
+                                    case 'multiply': val = (numVal * (fieldDef.modifyValue || 1)).toString(); break;
+                                    case 'divide': val = (fieldDef.modifyValue ? (numVal / fieldDef.modifyValue) : numVal).toString(); break;
+                                }
+                            }
+                        }
+
+                        return { ...f, value: val || '--' };
+                    }));
+                }, 200);
+
+                // Store interval for cleanup
+                (port as any).__parseInterval = parseInterval;
+
+            } catch (error: any) {
+                const msg = error?.message || 'Failed to connect to serial port.';
+                setDataAcqError(msg);
+                setDataAcqConnecting(false);
+                toast.error(`Connection failed: ${msg}`);
+            }
+        } else {
+            // Network connection not yet implemented in browser
+            setDataAcqError('Network (TCP/UDP) connection not supported in browser. Use Serial connection.');
+            setDataAcqConnecting(false);
+            toast.error('Network connections are not supported in browser. Please use Serial connection.');
+        }
+    };
+
+    // Data Acquisition Disconnect
+    const handleDataAcqDisconnect = async () => {
+        try {
+            if (dataAcqReaderRef.current) {
+                await dataAcqReaderRef.current.cancel();
+                dataAcqReaderRef.current = null;
+            }
+            if (dataAcqStreamClosedRef.current) {
+                await dataAcqStreamClosedRef.current.catch(() => { });
+            }
+            if (dataAcqSerialRef.current) {
+                if ((dataAcqSerialRef.current as any).__parseInterval) {
+                    clearInterval((dataAcqSerialRef.current as any).__parseInterval);
+                }
+                await dataAcqSerialRef.current.close();
+                dataAcqSerialRef.current = null;
+            }
+            setDataAcqConnected(false);
+            setDataAcqFields(prev => prev.map(f => ({ ...f, value: '--' })));
+            toast.success('Data acquisition disconnected.');
+        } catch (e: any) {
+            console.error('Error disconnecting data acq:', e);
+            toast.error('Error disconnecting: ' + (e?.message || 'Unknown error'));
+        }
+    };
+
+    useEffect(() => {
+        const DA_STORAGE_KEYS: Record<string, string> = {
+            platform: 'data_acquisition_platform_v1',
+            pipeline: 'data_acquisition_pipeline_v1',
+        };
+
+        const key = DA_STORAGE_KEYS[headerData.structureType];
+        const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+
+        if (saved) {
+            try {
+                const settings = JSON.parse(saved);
+                if (settings.fields && settings.fields.length > 0) {
+                    setDataAcqFields(settings.fields.map((f: any) => ({
+                        label: f.label || '?',
+                        targetField: f.targetField || f.label || 'field',
+                        value: '--'
+                    })));
+                } else {
+                    setDataAcqFields([]);
+                }
+            } catch (e) {
+                setDataAcqFields([]);
+            }
+        } else {
+            // Use defaults based on structure type
+            if (headerData.structureType === 'pipeline') {
+                setDataAcqFields([
+                    { label: 'KP', targetField: 'kilometer_post', value: '--' },
+                    { label: 'D', targetField: 'depth', value: '--' },
+                    { label: 'CP', targetField: 'cp_reading', value: '--' },
+                ]);
+            } else {
+                setDataAcqFields([
+                    { label: 'NI', targetField: 'northing', value: '--' },
+                    { label: 'E', targetField: 'easting', value: '--' },
+                    { label: 'D', targetField: 'depth', value: '--' },
+                    { label: 'CP', targetField: 'cp_reading', value: '--' },
+                ]);
+            }
+        }
+    }, [headerData.structureType]);
 
     // Load Settings on Mount
     useEffect(() => {
@@ -795,7 +1051,12 @@ function V10PreviewLayout() {
 
             if (movs && movs.length > 0) {
                 const last = movs[movs.length - 1];
-                setCurrentMovement(last.movement_type || "Deployed");
+                let mvtLabel = last.movement_type || "Deployed";
+                if (inspMethod === 'DIVING') {
+                    const mappedItem = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.value === mvtLabel || a.label === mvtLabel);
+                    if (mappedItem) mvtLabel = mappedItem.label;
+                }
+                setCurrentMovement(mvtLabel);
                 // Store raw event_time for calculations
                 setDiveStartTime(movs[0].movement_time || movs[0].event_time);
 
@@ -1239,22 +1500,28 @@ function V10PreviewLayout() {
             // This happens if the job records were deleted but the inspection records remain.
             if (results.length === 0) {
                 console.log(`[fetchDeps] No job records found in ${table}. Checking insp_records...`);
+                const targetColumn = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
+
                 const { data: recJobs } = await supabase.from('insp_records')
-                    .select('dive_job_id, rov_job_id')
+                    .select(targetColumn)
                     .eq('jobpack_id', queryJobPackId)
                     .eq('structure_id', Number(structureId))
+                    .not(targetColumn, 'is', null)
                     .limit(10);
 
                 if (recJobs && recJobs.length > 0) {
-                    const uniqueJobIds = Array.from(new Set(recJobs.map(r => r.dive_job_id || r.rov_job_id).filter(id => id !== null)));
+                    const uniqueJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]).filter(id => id !== null)));
                     console.log("[fetchDeps] Discovered job IDs from records:", uniqueJobIds);
-                    // Create virtual job objects
-                    results = uniqueJobIds.map(jid => ({
-                        [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: jid,
-                        dive_no: `JOB-${jid}`,
-                        diver_name: "Legacy Records",
-                        status: 'COMPLETED'
-                    })) as any;
+
+                    if (uniqueJobIds.length > 0) {
+                        // Create virtual job objects
+                        results = uniqueJobIds.map(jid => ({
+                            [targetColumn]: jid,
+                            dive_no: `JOB-${jid}`,
+                            diver_name: "Legacy Records",
+                            status: 'COMPLETED'
+                        })) as any;
+                    }
                 }
             }
 
@@ -1456,7 +1723,7 @@ function V10PreviewLayout() {
             if (actionLabel.toLowerCase().includes('arrived surface') || actionLabel.toLowerCase().includes('recovered')) setDiveEndTime(payload.movement_time);
 
             // Auto-complete deployment if final action
-            if (["Arrived Surface", "TUP Complete", "Bell on Surface", "Recovered", "System on Deck"].includes(actionLabel)) {
+            if (["Arrived Surface", "TUP Complete", "Bell on Surface", "Recovered", "System on Deck", "Rov Off Hire"].includes(actionLabel)) {
                 await supabase.from(jobTable).update({ status: "COMPLETED" }).eq(mvtCol, activeDep.id);
             }
         } else {
@@ -1924,8 +2191,28 @@ function V10PreviewLayout() {
 
                     {/* Mode Toggle */}
                     <div className="flex bg-slate-800 rounded p-1 mr-4">
-                        <button onClick={() => setInspMethod("DIVING")} className={`px-4 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}>DIVING</button>
-                        <button onClick={() => setInspMethod("ROV")} className={`px-4 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}>ROV</button>
+                        <button
+                            onClick={() => {
+                                setInspMethod("DIVING");
+                                const params = new URLSearchParams(searchParams.toString());
+                                params.set("mode", "DIVING");
+                                router.replace(`?${params.toString()}`);
+                            }}
+                            className={`px-4 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        >
+                            DIVING
+                        </button>
+                        <button
+                            onClick={() => {
+                                setInspMethod("ROV");
+                                const params = new URLSearchParams(searchParams.toString());
+                                params.set("mode", "ROV");
+                                router.replace(`?${params.toString()}`);
+                            }}
+                            className={`px-4 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        >
+                            ROV
+                        </button>
                     </div>
 
                     {/* Header Context Info - Inline */}
@@ -2026,12 +2313,153 @@ function V10PreviewLayout() {
                     </DropdownMenu>
                 )}
 
-                {/* + New Dive/ROV */}
-                <button onClick={() => setIsDiveSetupOpen(true)} className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-black text-white uppercase tracking-wider transition-all ml-auto bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md shadow-blue-500/30 hover:shadow-lg hover:shadow-blue-500/40 border border-blue-500">
-                    <Plus className="w-3.5 h-3.5" /> New {inspMethod === 'DIVING' ? 'Dive' : 'ROV'}
-                </button>
+                {/* Inspection Readiness Traffic Light */}
+                {(() => {
+                    const isDepActive = !!activeDep && activeDep.raw?.status !== 'COMPLETED';
+                    const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
+                    const hasTape = !!tapeId;
+                    const isRecording = vidState === 'RECORDING';
+                    const allGreen = (isDepActive && isAtWorksite && hasTape && isRecording) || manualOverride;
+
+                    const items = [
+                        { label: inspMethod === 'DIVING' ? 'Dive Active' : 'ROV Active', ok: isDepActive, hint: `Start a new ${inspMethod === 'DIVING' ? 'Dive' : 'ROV Deployment'} from the left panel` },
+                        { label: 'At Worksite', ok: isAtWorksite, hint: 'Progress movement to At Worksite state' },
+                        { label: 'Tape Ready', ok: hasTape, hint: 'Create or select a video tape' },
+                        { label: 'Recording', ok: isRecording, hint: 'Press START in the Video Log to begin recording' },
+                    ];
+
+                    return (
+                        <div className="flex items-center gap-2 ml-auto">
+                            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 shadow-sm">
+                                {/* Overall Signal */}
+                                <div className={`w-3 h-3 rounded-full shrink-0 transition-all duration-300 ${allGreen ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' :
+                                    (isDepActive && hasTape) ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]' :
+                                        'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]'
+                                    }`} />
+                                <span className={`text-[9px] font-black uppercase tracking-wider ${allGreen ? 'text-green-700 dark:text-green-400' :
+                                    (isDepActive && hasTape) ? 'text-amber-600 dark:text-amber-400' :
+                                        'text-red-600 dark:text-red-400'
+                                    }`}>{allGreen ? 'Ready' : 'Not Ready'}</span>
+
+                                <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-0.5" />
+
+                                {/* Individual Checks */}
+                                {items.map((item, i) => (
+                                    <div key={i} className="relative group">
+                                        <div className={`w-2 h-2 rounded-full transition-all ${item.ok ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'
+                                            }`} />
+                                        {/* Tooltip */}
+                                        <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50">
+                                            <div className={`whitespace-nowrap text-[9px] font-bold px-2 py-1 rounded shadow-lg border ${item.ok ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
+                                                }`}>
+                                                {item.ok ? `✓ ${item.label}` : `✗ ${item.label} — ${item.hint}`}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Manual Override Toggle */}
+                            <button
+                                onClick={() => {
+                                    if (!manualOverride) {
+                                        if (confirm('Enable Manual Entry mode?\n\nThis allows inserting inspection records without live recording prerequisites.\nUse this only to add missing events after inspection is complete.')) {
+                                            setManualOverride(true);
+                                            toast.success('Manual Entry mode enabled. Live checks bypassed.', { duration: 3000 });
+                                        }
+                                    } else {
+                                        setManualOverride(false);
+                                        toast.info?.('Switched back to Live mode.') || toast.success('Switched back to Live mode.');
+                                    }
+                                }}
+                                className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg border transition-all shadow-sm ${manualOverride
+                                    ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                                    : 'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:text-blue-600 hover:border-blue-300'
+                                    }`}
+                                title={manualOverride ? 'Currently in Manual Entry mode (click to switch to Live)' : 'Switch to Manual Entry mode to insert missing records'}
+                            >
+                                {manualOverride ? '⚡ Manual' : '🔴 Live'}
+                            </button>
+                        </div>
+                    );
+                })()}
             </div>
 
+            {/* ROV Data String Bar (Dynamic based on Data Acquisition settings) */}
+            {inspMethod === "ROV" && (
+                <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b-2 border-cyan-700/30 px-3 py-1.5 flex items-center gap-3 shrink-0">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-cyan-300 dark:text-cyan-300 shrink-0">ROV Data</span>
+                    <div className="w-px h-5 bg-cyan-700/50 shrink-0" />
+
+                    {/* Field Blocks */}
+                    <div className="flex-1 flex items-center gap-1.5 overflow-x-auto">
+                        {dataAcqFields.length > 0 ? dataAcqFields.map((field, i) => (
+                            <div key={i} className="flex items-center gap-1.5 bg-slate-700/80 dark:bg-slate-700/80 px-3 py-1 rounded-md border border-slate-600 dark:border-slate-500 shrink-0 min-w-[80px]">
+                                <span className="text-[9px] font-black uppercase text-amber-300 dark:text-amber-300 tracking-wide">{field.targetField.replace(/_/g, ' ')}</span>
+                                <span className="text-[12px] font-mono font-black text-white dark:text-white">{field.value}</span>
+                            </div>
+                        )) : (
+                            <span className="text-[10px] text-amber-300 dark:text-amber-300 italic font-semibold">No fields configured — Go to Settings → Data Acquisition</span>
+                        )}
+                    </div>
+
+                    {/* Right Controls */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* Structure Type Badge */}
+                        <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${headerData.structureType === 'pipeline'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                            }`}>{headerData.structureType}</span>
+
+                        {/* Connect / Disconnect Button */}
+                        <button
+                            onClick={dataAcqConnected ? handleDataAcqDisconnect : handleDataAcqConnect}
+                            disabled={dataAcqConnecting}
+                            className={`relative flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-md border transition-all ${dataAcqConnecting
+                                ? 'bg-amber-600/30 text-amber-300 border-amber-500/40 cursor-wait'
+                                : dataAcqConnected
+                                    ? 'bg-green-600/30 text-green-300 border-green-500/50 hover:bg-red-600/30 hover:text-red-300 hover:border-red-500/50'
+                                    : 'bg-slate-600/50 text-slate-300 border-slate-500/50 hover:bg-cyan-600/30 hover:text-cyan-300 hover:border-cyan-500/50'
+                                }`}
+                            title={dataAcqConnected ? 'Click to disconnect' : dataAcqError || 'Click to connect to data source'}
+                        >
+                            {dataAcqConnecting ? (
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Connecting...</>
+                            ) : dataAcqConnected ? (
+                                <><span className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)] animate-pulse" /> Online</>
+                            ) : (
+                                <><Wifi className="w-3.5 h-3.5" /> Connect</>
+                            )}
+                        </button>
+
+                        {/* Error indicator */}
+                        {dataAcqError && !dataAcqConnected && (
+                            <div className="relative group">
+                                <span className="text-red-400 text-sm cursor-help">⚠</span>
+                                <div className="absolute bottom-full mb-2 right-0 hidden group-hover:block z-50">
+                                    <div className="whitespace-nowrap text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-xl bg-red-900 text-red-200 border border-red-700 max-w-[300px] whitespace-normal">
+                                        {dataAcqError}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Settings Link */}
+                        <Link
+                            href={`/dashboard/settings/data-acquisition?returnTo=${encodeURIComponent(
+                                '/dashboard/inspection-v2/workspace?' + new URLSearchParams({
+                                    ...Object.fromEntries(searchParams.entries()),
+                                    mode: inspMethod
+                                }).toString()
+                            )}`}
+                            className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded-md border border-slate-600 transition-colors"
+                            title="Data Acquisition Settings"
+                        >
+                            <Settings className="w-3.5 h-3.5 text-slate-300" />
+                        </Link>
+                    </div>
+                </div>
+            )}
 
             {/* MAIN 3-COLUMN LAYOUT */}
             <div className="flex-1 flex min-h-0 p-3 gap-3 overflow-hidden">
@@ -2042,56 +2470,92 @@ function V10PreviewLayout() {
                     {/* 1. Diver / ROV Log */}
                     <Card className="flex flex-col border-slate-200 shadow-sm rounded-md shrink-0 mb-2">
                         <div className="bg-[#1f2937] text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md">
-                            <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DEPLOYMENT"}</span>
+                            <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DIVE LOG"}</span>
                             <div className="flex items-center gap-2 text-slate-300">
-                                <button onClick={() => setIsDiveSetupOpen(true)} className="flex items-center gap-1 p-1 hover:text-white transition" title="New Dive">
+                                <button onClick={() => { setIsDiveSetupForNew(true); setIsDiveSetupOpen(true); }} className="flex items-center gap-1 p-1 hover:text-white transition" title="New Dive">
                                     <Plus className="w-4 h-4" /> <span className="text-[10px] hidden lg:inline">New Dive</span>
                                 </button>
                                 <button onClick={() => setIsMovementLogOpen(true)} className="p-1 hover:text-white transition" title="Edit Events"><Edit className="w-4 h-4" /></button>
-                                <button onClick={() => setIsDiveSetupOpen(true)} className="p-1 hover:text-white transition" title="Settings"><Settings className="w-4 h-4" /></button>
+                                <button onClick={() => { setIsDiveSetupForNew(false); setIsDiveSetupOpen(true); }} className="p-1 hover:text-white transition" title="Settings"><Settings className="w-4 h-4" /></button>
                             </div>
                         </div>
-                        <div className="p-4 bg-white space-y-4 rounded-b-md">
-                            <div className="flex justify-between text-xs">
-                                <div><span className="text-slate-400 font-bold block uppercase mb-1">Active Selection</span><span className="font-bold text-slate-800 text-sm">{activeDep?.jobNo || "None"}</span></div>
-                                <div className="text-right"><span className="text-slate-400 font-bold block uppercase mb-1">Time In Water</span><span className="font-mono font-bold text-blue-600 text-sm">{timeInWater}</span></div>
+                        <div className="p-2.5 bg-white space-y-2 rounded-b-md">
+                            <div className="flex justify-between text-xs px-1">
+                                <div><span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-0.5">Active Selection</span><span className="font-bold text-slate-800 text-xs">{activeDep?.jobNo || "None"}</span></div>
+                                <div className="text-right"><span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-0.5">Time In Water</span><span className="font-mono font-bold text-blue-600 text-xs">{timeInWater}</span></div>
                             </div>
 
                             {/* Movement Control */}
-                            <div className="bg-slate-50 border border-slate-100/60 rounded-lg p-3 text-center relative">
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Current Movement</span>
-                                <span className="font-black text-slate-900 text-[17px]">{currentMovement || "Awaiting Deployment"}</span>
+                            <div className="bg-slate-50 border border-slate-100/60 rounded px-2 py-1.5 text-center relative">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Current Movement</span>
+                                <span className="font-black text-slate-900 text-[14px] leading-tight flex items-center justify-center">{currentMovement || "Awaiting Deployment"}</span>
                             </div>
 
-                            <div className="flex gap-2">
-                                <Button onClick={handleMovementPrev} disabled={currentMovement === 'Awaiting Deployment' || currentMovement === diveActionsList[0].label} variant="outline" className="flex-1 h-10 text-sm font-bold text-slate-500 border-slate-200 hover:text-slate-700 bg-white shadow-sm">
-                                    <ArrowLeft className="w-4 h-4 mr-2 text-slate-400" /> Rollback
+                            <div className="flex gap-1.5">
+                                <Button
+                                    onClick={handleMovementPrev}
+                                    disabled={currentMovement === 'Awaiting Deployment' || (inspMethod === 'DIVING' && currentMovement === diveActionsList[0].label)}
+                                    variant="outline"
+                                    className="flex-1 h-7 text-[11px] font-bold text-slate-500 border-slate-200 hover:text-slate-700 bg-white shadow-sm"
+                                >
+                                    <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Rollback
                                 </Button>
-                                <Button onClick={handleMovementNext} disabled={currentMovement === diveActionsList[diveActionsList.length - 1].label} className="flex-[1.5] h-10 text-sm font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm">
-                                    {currentMovement === 'Awaiting Deployment' ? "Next" :
-                                        (diveActionsList.findIndex(a => a.label === currentMovement) < diveActionsList.length - 1
-                                            ? "Next"
-                                            : "Completed")} <ArrowRight className="w-4 h-4 ml-2" />
-                                </Button>
+
+                                {inspMethod === "DIVING" ? (
+                                    <Button
+                                        onClick={handleMovementNext}
+                                        disabled={currentMovement === diveActionsList[diveActionsList.length - 1].label}
+                                        className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm"
+                                    >
+                                        {currentMovement === 'Awaiting Deployment' ? "Next" :
+                                            (diveActionsList.findIndex(a => a.label === currentMovement) < diveActionsList.length - 1
+                                                ? "Next"
+                                                : "Completed")} <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                                    </Button>
+                                ) : (
+                                    (() => {
+                                        const options = ROV_MOVEMENT_BRANCHES[currentMovement || 'Awaiting Deployment'] || [];
+                                        const isCompleted = options.length === 0;
+
+                                        if (isCompleted) {
+                                            return (
+                                                <Button disabled className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm">
+                                                    Completed <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                                                </Button>
+                                            );
+                                        }
+
+                                        if (options.length === 1) {
+                                            return (
+                                                <Button onClick={() => handleMovementLog(options[0])} className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm truncate">
+                                                    Next: {options[0]} <ArrowRight className="w-3.5 h-3.5 ml-1 shrink-0" />
+                                                </Button>
+                                            );
+                                        }
+
+                                        return (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm">
+                                                        Next Action... <ChevronDown className="w-3.5 h-3.5 ml-1 shrink-0" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent>
+                                                    {options.map(opt => (
+                                                        <DropdownMenuItem key={opt} onClick={() => handleMovementLog(opt)} className="text-xs font-bold cursor-pointer">
+                                                            Select: {opt}
+                                                        </DropdownMenuItem>
+                                                    ))}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        );
+                                    })()
+                                )}
                             </div>
                         </div>
                     </Card>
 
-                    {/* 9. ROV Data String (If ROV) */}
-                    {inspMethod === "ROV" && (
-                        <Card className="flex flex-col border-slate-200 shadow-sm rounded-md shrink-0">
-                            <div className="bg-slate-800 text-white px-3 py-2 text-xs font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md">
-                                <span>ROV Data String</span>
-                                <div className="flex items-center gap-2">
-                                    <Wifi className="w-3 h-3 text-green-400" />
-                                    <Link href="/dashboard/settings/data-acquisition" className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded ml-1" title="String Settings"><Settings className="w-3 h-3" /></Link>
-                                </div>
-                            </div>
-                            <div className="p-3 bg-white space-y-2 rounded-b-md h-20 flex flex-col justify-center items-center">
-                                <span className="font-mono text-xs font-bold text-slate-600 border border-slate-200 bg-slate-50 p-2 w-full text-center rounded">CP: 0.98V | DPT: 12.4m</span>
-                            </div>
-                        </Card>
-                    )}
+
 
                     {/* 6. Small Video Stream Area */}
                     {!pipWindow && (
@@ -2826,9 +3290,40 @@ function V10PreviewLayout() {
                                                 </div>
 
                                                 <div className="pt-2 pb-6">
-                                                    <Button disabled={isCommitting} onClick={handleCommitRecord} className="w-full h-14 font-black shadow-lg bg-blue-600 hover:bg-blue-700 text-white text-base tracking-wide rounded-xl">
-                                                        <Save className="w-5 h-5 mr-2" /> {isCommitting ? "Committing..." : "Commit Record & Reset"}
-                                                    </Button>
+                                                    {(() => {
+                                                        const isDepActive = !!activeDep && activeDep.raw?.status !== 'COMPLETED';
+                                                        const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
+                                                        const hasTape = !!tapeId;
+                                                        const isRecording = vidState === 'RECORDING';
+                                                        const canCommit = (isDepActive && isAtWorksite && hasTape && isRecording) || manualOverride;
+
+                                                        const issues: string[] = [];
+                                                        if (!isDepActive) issues.push(`${inspMethod === 'DIVING' ? 'Dive' : 'ROV'} log not active`);
+                                                        if (!isAtWorksite) issues.push('Not at worksite yet');
+                                                        if (!hasTape) issues.push('No tape selected');
+                                                        if (!isRecording) issues.push('Video not recording');
+
+                                                        return (
+                                                            <>
+                                                                {!canCommit && (
+                                                                    <div className="mb-2 p-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-semibold flex items-start gap-2">
+                                                                        <span className="text-amber-500 text-sm leading-none mt-0.5">⚠</span>
+                                                                        <div>
+                                                                            <span className="font-black uppercase text-[9px] tracking-wider block mb-0.5">Checklist incomplete</span>
+                                                                            {issues.map((issue, i) => (
+                                                                                <span key={i} className="block text-amber-700">• {issue}</span>
+                                                                            ))}
+                                                                            <span className="block mt-1 text-[9px] text-amber-500">Enable <b>Manual Entry</b> mode in the header to bypass.</span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                <Button disabled={isCommitting || !canCommit} onClick={handleCommitRecord} className={`w-full h-14 font-black shadow-lg text-white text-base tracking-wide rounded-xl transition-all ${canCommit ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300 cursor-not-allowed'
+                                                                    }`}>
+                                                                    <Save className="w-5 h-5 mr-2" /> {isCommitting ? "Committing..." : "Commit Record & Reset"}
+                                                                </Button>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         </ScrollArea>
@@ -3084,18 +3579,33 @@ function V10PreviewLayout() {
             </div>
 
             {isDiveSetupOpen && (
-                <DiveJobSetupDialog
-                    jobpackId={jobPackId || ""}
-                    structureId={structureId || ""}
-                    sowId={sowIdFull || sowId || ""}
-                    existingJob={(activeDep as any)?.raw}
-                    open={isDiveSetupOpen}
-                    onOpenChange={setIsDiveSetupOpen}
-                    onJobCreated={(job: any) => {
-                        setIsDiveSetupOpen(false);
-                        window.location.reload(); // Refresh to catch newly deployed Job
-                    }}
-                />
+                inspMethod === "DIVING" ? (
+                    <DiveJobSetupDialog
+                        jobpackId={jobPackId || ""}
+                        structureId={structureId || ""}
+                        sowId={sowIdFull || sowId || ""}
+                        existingJob={isDiveSetupForNew ? null : (activeDep as any)?.raw}
+                        open={isDiveSetupOpen}
+                        onOpenChange={setIsDiveSetupOpen}
+                        onJobCreated={(job: any) => {
+                            setIsDiveSetupOpen(false);
+                            window.location.reload(); // Refresh to catch newly deployed Job
+                        }}
+                    />
+                ) : (
+                    <ROVJobSetupDialog
+                        jobpackId={jobPackId || ""}
+                        structureId={structureId || ""}
+                        sowId={sowIdFull || sowId || ""}
+                        existingJob={isDiveSetupForNew ? null : (activeDep as any)?.raw}
+                        open={isDiveSetupOpen}
+                        onOpenChange={setIsDiveSetupOpen}
+                        onJobCreated={(job: any) => {
+                            setIsDiveSetupOpen(false);
+                            window.location.reload();
+                        }}
+                    />
+                )
             )}
 
             {/* Edit Event Dialog Component */}
@@ -3168,7 +3678,7 @@ function V10PreviewLayout() {
                     <div className="bg-white rounded-lg w-[800px] shadow-2xl animate-in zoom-in-95 my-auto shrink-0 relative">
                         <div className="flex justify-between items-center px-6 py-4 border-b pb-4">
                             <h2 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                                <Activity className="w-5 h-5 text-blue-600" /> Dive Movements & Checklists
+                                <Activity className="w-5 h-5 text-blue-600" /> {inspMethod === "DIVING" ? "Dive Movements & Checklists" : "ROV Movements & Log"}
                             </h2>
                             <button onClick={() => {
                                 setIsMovementLogOpen(false);
@@ -3178,7 +3688,11 @@ function V10PreviewLayout() {
                             }} className="rounded-full p-1.5 hover:bg-slate-100"><X className="w-5 h-5 text-slate-500" /></button>
                         </div>
                         <div className="p-6">
-                            <DiveMovementLog diveJob={(activeDep as any)?.raw} />
+                            {inspMethod === "DIVING" ? (
+                                <DiveMovementLog diveJob={(activeDep as any)?.raw} />
+                            ) : (
+                                <ROVMovementLog diveJob={(activeDep as any)?.raw} />
+                            )}
                         </div>
                     </div>
                 </div>

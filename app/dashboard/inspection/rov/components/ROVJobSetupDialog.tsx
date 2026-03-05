@@ -97,17 +97,36 @@ export default function ROVJobSetupDialog({
 
     // AI Treatment: Intelligent Auto-Increment for Deployment Number
     useEffect(() => {
-        if (existingJob || !open || diveHistory.length === 0) return;
+        if (existingJob || !open) return;
 
-        const lastJob = diveHistory[0];
+        // Fetch the absolute most recently created ROV job for the specific Jobpack, Structure, and SOW
+        const fetchLatestDeploymentNo = async () => {
+            try {
+                let query = supabase
+                    .from("insp_rov_jobs")
+                    .select("deployment_no")
+                    .order("cr_date", { ascending: false })
+                    .limit(1);
 
-        if (lastJob && lastJob.deployment_no) {
-            const nextNo = generateNextDeploymentNumber(lastJob.deployment_no);
-            if (nextNo) {
-                setFormData(prev => ({ ...prev, deployment_no: nextNo }));
+                if (jobpackId) query = query.eq("jobpack_id", parseInt(jobpackId));
+                if (structureId) query = query.eq("structure_id", parseInt(structureId));
+                if (sowId) query = query.eq("sow_report_no", sowId);
+
+                const { data, error } = await query.single();
+
+                if (!error && data && data.deployment_no) {
+                    const nextNo = generateNextDeploymentNumber(data.deployment_no);
+                    if (nextNo) {
+                        setFormData(prev => ({ ...prev, deployment_no: nextNo }));
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch absolute latest ROV deployment no", err);
             }
-        }
-    }, [diveHistory, open, existingJob]);
+        };
+
+        fetchLatestDeploymentNo();
+    }, [open, existingJob, jobpackId, structureId, sowId]);
 
     function generateNextDeploymentNumber(current: string): string | null {
         const regex = /^(.*?)(\d+)(\D*)$/;
@@ -130,12 +149,9 @@ export default function ROVJobSetupDialog({
         const now = new Date();
         const year = now.getFullYear().toString();
         const month = (now.getMonth() + 1).toString().padStart(2, "0");
-        const random = Math.floor(Math.random() * 1000)
-            .toString()
-            .padStart(3, "0");
         setFormData((prev) => ({
             ...prev,
-            deployment_no: `ROV-${year}${month}-${random}`,
+            deployment_no: `ROV-${year}${month}-001`,
         }));
     }
 
