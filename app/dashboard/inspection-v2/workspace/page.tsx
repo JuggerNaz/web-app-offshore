@@ -261,6 +261,9 @@ function V10PreviewLayout() {
 
     // Dynamic Form States
     const [dynamicProps, setDynamicProps] = useState<Record<string, any>>({});
+    const [requiredSpec, setRequiredSpec] = useState<any>(null);
+    const [requiredProps, setRequiredProps] = useState<Record<string, any>>({});
+    const [requiredRecordId, setRequiredRecordId] = useState<number | null>(null);
     const [findingType, setFindingType] = useState<"Pass" | "Anomaly" | "Finding" | "Incomplete">("Pass");
     const [anomalyData, setAnomalyData] = useState<{
         defectCode: string,
@@ -1447,6 +1450,62 @@ function V10PreviewLayout() {
         syncDeploymentState();
     };
 
+    // Calibration Required Spec Fetching
+    useEffect(() => {
+        if (!activeSpec || !activeDep?.id) {
+            setRequiredSpec(null);
+            setRequiredProps({});
+            setRequiredRecordId(null);
+            return;
+        }
+
+        const runCheck = async () => {
+            const activeIt = allInspectionTypes.find(t => t.code === activeSpec || t.name === activeSpec);
+            let reqCode: string | null = null;
+            if (activeIt?.metadata && activeIt.metadata.Requires) {
+                reqCode = activeIt.metadata.Requires;
+            } else if (activeIt?.metadata && typeof activeIt.metadata === 'string') {
+                try {
+                    const parsed = JSON.parse(activeIt.metadata);
+                    if (parsed.Requires) reqCode = parsed.Requires;
+                } catch (e) { }
+            }
+
+            if (!reqCode) {
+                setRequiredSpec(null);
+                setRequiredProps({});
+                setRequiredRecordId(null);
+                return;
+            }
+
+            const reqIt = allInspectionTypes.find(t => t.code === reqCode);
+            if (!reqIt) {
+                setRequiredSpec(null);
+                return;
+            }
+            setRequiredSpec(reqIt);
+
+            // Fetch existing calibration record for current dive/rov job
+            const jobCol = inspMethod === 'DIVING' ? 'dive_job_id' : 'rov_job_id';
+            const { data, error } = await supabase.from('insp_records')
+                .select('*')
+                .eq(jobCol, activeDep.id)
+                .eq('inspection_type_code', reqCode)
+                .order('insp_id', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (data && !error) {
+                setRequiredProps(data.inspection_data || {});
+                setRequiredRecordId(data.insp_id);
+            } else {
+                setRequiredProps({});
+                setRequiredRecordId(null);
+            }
+        };
+        runCheck();
+    }, [activeSpec, activeDep?.id, allInspectionTypes, inspMethod]);
+
     // Handle method switch overriding deps
     useEffect(() => {
         async function fetchDeps() {
@@ -1465,6 +1524,9 @@ function V10PreviewLayout() {
             setCurrentMovement("Awaiting Deployment");
             setDiveStartTime(null);
             setDiveEndTime(null);
+            setRequiredSpec(null);
+            setRequiredProps({});
+            setRequiredRecordId(null);
 
             if (!jobPackId) return;
             const table = inspMethod === "DIVING" ? 'insp_dive_jobs' : 'insp_rov_jobs';
@@ -1676,8 +1738,38 @@ function V10PreviewLayout() {
             // Fetch Inspection Types
             const { data: typesData } = await supabase.from('inspection_type').select('*').order('name');
             if (typesData) {
-                const uniqueTypes = Array.from(new Map(typesData.map(item => [item.code, item])).values());
-                setAllInspectionTypes(uniqueTypes);
+                const typeMap = new Map();
+                typesData.forEach(item => {
+                    const key = (item.code || '').trim() || (item.name || '').trim();
+                    if (!key) return; // skip entirely broken records
+
+                    const existing = typeMap.get(key);
+                    if (!existing) {
+                        typeMap.set(key, item);
+                    } else {
+                        // Check if existing or new has any valid default_properties
+                        let existingHasProps = false;
+                        let newHasProps = false;
+
+                        try {
+                            if (typeof existing.default_properties === 'string') existingHasProps = JSON.parse(existing.default_properties).length > 0;
+                            else if (Array.isArray(existing.default_properties)) existingHasProps = existing.default_properties.length > 0;
+                            else if (existing.default_properties && typeof existing.default_properties === 'object') existingHasProps = Object.keys(existing.default_properties).length > 0;
+                        } catch (e) { }
+
+                        try {
+                            if (typeof item.default_properties === 'string') newHasProps = JSON.parse(item.default_properties).length > 0;
+                            else if (Array.isArray(item.default_properties)) newHasProps = item.default_properties.length > 0;
+                            else if (item.default_properties && typeof item.default_properties === 'object') newHasProps = Object.keys(item.default_properties).length > 0;
+                        } catch (e) { }
+
+                        // If current lacks props and the new one has props, override
+                        if (!existingHasProps && newHasProps) {
+                            typeMap.set(key, item);
+                        }
+                    }
+                });
+                setAllInspectionTypes(Array.from(typeMap.values()));
             }
 
             // Fetch Anomaly Lists from Library
@@ -1848,6 +1940,37 @@ function V10PreviewLayout() {
             payload.insp_id = editingRecordId;
         }
 
+        // Commit Calibration/Required Record if needed
+        if (requiredSpec && Object.keys(requiredProps).length > 0) {
+            const reqPayload: any = {
+                [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: activeDep.id,
+                structure_id: parseInt(structureId || "0"),
+                component_id: selectedComp.id,
+                inspection_type_id: requiredSpec.id,
+                inspection_type_code: requiredSpec.code,
+                inspection_date: format(new Date(), 'yyyy-MM-dd'),
+                inspection_time: format(new Date(), 'HH:mm:ss'),
+                status: 'COMPLETED',
+                has_anomaly: false,
+                tape_id: tId,
+                tape_count_no: vidTimer,
+                elevation: payload.elevation,
+                inspection_data: {
+                    ...requiredProps,
+                    _meta_timecode: formatTime(vidTimer),
+                    _is_calibration: true
+                },
+                cr_user: user?.id || 'system'
+            };
+
+            if (requiredRecordId) {
+                await supabase.from('insp_records').update(reqPayload).eq('insp_id', requiredRecordId);
+            } else {
+                const { data: newReqData } = await supabase.from('insp_records').insert(reqPayload).select('insp_id').single();
+                if (newReqData) setRequiredRecordId(newReqData.insp_id);
+            }
+        }
+
         // anomaly_details is handled separately in the insp_anomalies table
 
         const { data: opData, error: opError } = await (editingRecordId
@@ -1927,6 +2050,9 @@ function V10PreviewLayout() {
         setFindingType("Pass");
         setIncompleteReason("");
         setEditingRecordId(null);
+        setRequiredRecordId(null);
+        setRequiredProps({});
+        setRequiredSpec(null);
         setAnomalyData({
             defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
             rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor'
@@ -3096,12 +3222,18 @@ function V10PreviewLayout() {
 
                                                 {/* Dynamic Spec Forms based on Inspection Type */}
                                                 {(() => {
-                                                    const activeIt = allInspectionTypes.find(t => t.code === activeSpec || t.name === activeSpec);
+                                                    const activeSpecClean = (activeSpec || '').trim();
+                                                    const activeIt = allInspectionTypes.find(t => (t.code || '').trim() === activeSpecClean || (t.name || '').trim() === activeSpecClean);
                                                     let props = [];
                                                     if (typeof activeIt?.default_properties === 'string') {
-                                                        try { props = JSON.parse(activeIt.default_properties); } catch (e) { }
+                                                        try {
+                                                            const parsed = JSON.parse(activeIt.default_properties);
+                                                            props = Array.isArray(parsed) ? parsed : (parsed?.properties || parsed?.fields || []);
+                                                        } catch (e) { }
                                                     } else if (Array.isArray(activeIt?.default_properties)) {
                                                         props = activeIt.default_properties;
+                                                    } else if (activeIt?.default_properties && typeof activeIt.default_properties === 'object') {
+                                                        props = activeIt.default_properties.properties || activeIt.default_properties.fields || [];
                                                     }
                                                     if (!Array.isArray(props) || props.length === 0) return null;
 
@@ -3110,7 +3242,7 @@ function V10PreviewLayout() {
                                                             <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Inspection Specification</div>
                                                             <div className="grid grid-cols-2 gap-4">
                                                                 {props.map((p: any, idx: number) => (
-                                                                    <div key={idx} className="space-y-1">
+                                                                    <div key={idx} className={`space-y-1 ${p.type === 'repeater' ? 'col-span-2' : ''}`}>
                                                                         <label className="text-[10px] uppercase font-bold text-slate-500">
                                                                             {p.label || p.name} {p.required && <span className="text-red-500">*</span>}
                                                                         </label>
@@ -3123,6 +3255,53 @@ function V10PreviewLayout() {
                                                                                 <option value="">Select...</option>
                                                                                 {p.options?.map((o: string) => <option key={o} value={o}>{o}</option>)}
                                                                             </select>
+                                                                        ) : p.type === 'repeater' ? (
+                                                                            <div className="space-y-2 border border-slate-200 rounded-lg p-2 bg-white">
+                                                                                {(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : []).map((item: any, itemIdx: number) => (
+                                                                                    <div key={itemIdx} className="flex items-center gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded">
+                                                                                        {p.subFields?.map((sf: any, sfIdx: number) => (
+                                                                                            <Input
+                                                                                                key={sfIdx}
+                                                                                                type={sf.type === 'number' ? 'number' : 'text'}
+                                                                                                placeholder={sf.label || sf.name}
+                                                                                                className="h-8 text-xs bg-white flex-1"
+                                                                                                value={item[sf.name || sf.label] || ""}
+                                                                                                onChange={(e) => {
+                                                                                                    const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
+                                                                                                    nextList[itemIdx] = { ...nextList[itemIdx], [sf.name || sf.label]: e.target.value };
+                                                                                                    setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
+                                                                                                }}
+                                                                                            />
+                                                                                        ))}
+                                                                                        <Button
+                                                                                            variant="ghost"
+                                                                                            size="icon"
+                                                                                            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"
+                                                                                            onClick={(e) => {
+                                                                                                e.preventDefault();
+                                                                                                const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
+                                                                                                nextList.splice(itemIdx, 1);
+                                                                                                setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
+                                                                                            }}
+                                                                                        >
+                                                                                            <Trash2 className="w-4 h-4" />
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                ))}
+                                                                                <Button
+                                                                                    variant="outline"
+                                                                                    size="sm"
+                                                                                    className="w-full text-xs h-7 border-dashed border-slate-300 text-slate-500 hover:text-slate-700 bg-slate-50"
+                                                                                    onClick={(e) => {
+                                                                                        e.preventDefault();
+                                                                                        const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
+                                                                                        nextList.push({});
+                                                                                        setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
+                                                                                    }}
+                                                                                >
+                                                                                    <Plus className="w-3 h-3 mr-1" /> Add {p.label || p.name}
+                                                                                </Button>
+                                                                            </div>
                                                                         ) : (
                                                                             <Input
                                                                                 type={p.type === 'number' ? 'number' : 'text'}
@@ -3130,6 +3309,105 @@ function V10PreviewLayout() {
                                                                                 className="h-9 text-sm bg-white"
                                                                                 value={dynamicProps[p.name || p.label] || ""}
                                                                                 onChange={(e) => setDynamicProps({ ...dynamicProps, [p.name || p.label]: e.target.value })}
+                                                                            />
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                {/* Required Calibration / Secondary Spec Form */}
+                                                {requiredSpec && (() => {
+                                                    let props = [];
+                                                    if (typeof requiredSpec.default_properties === 'string') {
+                                                        try {
+                                                            const parsed = JSON.parse(requiredSpec.default_properties);
+                                                            props = Array.isArray(parsed) ? parsed : (parsed?.properties || parsed?.fields || []);
+                                                        } catch (e) { }
+                                                    } else if (Array.isArray(requiredSpec.default_properties)) {
+                                                        props = requiredSpec.default_properties;
+                                                    } else if (requiredSpec.default_properties && typeof requiredSpec.default_properties === 'object') {
+                                                        props = requiredSpec.default_properties.properties || requiredSpec.default_properties.fields || [];
+                                                    }
+                                                    if (!Array.isArray(props) || props.length === 0) return null;
+
+                                                    return (
+                                                        <div className="p-4 border-2 border-amber-200 bg-amber-50/50 rounded-lg space-y-3">
+                                                            <div className="flex justify-between items-center border-b border-amber-200 pb-2">
+                                                                <div className="text-[10px] font-black uppercase text-amber-800 tracking-widest flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> Requires: {requiredSpec.name || requiredSpec.code}</div>
+                                                                {requiredRecordId && <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200 text-[8px] font-bold uppercase">Linked to existing Record #{requiredRecordId}</Badge>}
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                {props.map((p: any, idx: number) => (
+                                                                    <div key={`req-${idx}`} className={`space-y-1 ${p.type === 'repeater' ? 'col-span-2' : ''}`}>
+                                                                        <label className="text-[10px] uppercase font-bold text-amber-700">
+                                                                            {p.label || p.name} {p.required && <span className="text-red-500">*</span>}
+                                                                        </label>
+                                                                        {p.type === 'select' ? (
+                                                                            <select
+                                                                                className="flex h-9 w-full rounded-md border border-amber-300 bg-white px-3 py-1 text-sm font-semibold focus:ring-amber-500"
+                                                                                value={requiredProps[p.name || p.label] || ""}
+                                                                                onChange={(e) => setRequiredProps({ ...requiredProps, [p.name || p.label]: e.target.value })}
+                                                                            >
+                                                                                <option value="">Select...</option>
+                                                                                {p.options?.map((o: string) => <option key={o} value={o}>{o}</option>)}
+                                                                            </select>
+                                                                        ) : p.type === 'repeater' ? (
+                                                                            <div className="space-y-2 border border-amber-200 rounded-lg p-2 bg-white">
+                                                                                {(Array.isArray(requiredProps[p.name || p.label]) ? requiredProps[p.name || p.label] : []).map((item: any, itemIdx: number) => (
+                                                                                    <div key={itemIdx} className="flex items-center gap-2 p-1.5 bg-amber-50/50 border border-amber-100 rounded">
+                                                                                        {p.subFields?.map((sf: any, sfIdx: number) => (
+                                                                                            <Input
+                                                                                                key={sfIdx}
+                                                                                                type={sf.type === 'number' ? 'number' : 'text'}
+                                                                                                placeholder={sf.label || sf.name}
+                                                                                                className="h-8 text-xs bg-white flex-1 border-amber-200 focus-visible:ring-amber-500"
+                                                                                                value={item[sf.name || sf.label] || ""}
+                                                                                                onChange={(e) => {
+                                                                                                    const nextList = [...(Array.isArray(requiredProps[p.name || p.label]) ? requiredProps[p.name || p.label] : [])];
+                                                                                                    nextList[itemIdx] = { ...nextList[itemIdx], [sf.name || sf.label]: e.target.value };
+                                                                                                    setRequiredProps({ ...requiredProps, [p.name || p.label]: nextList });
+                                                                                                }}
+                                                                                            />
+                                                                                        ))}
+                                                                                        <Button
+                                                                                            variant="ghost"
+                                                                                            size="icon"
+                                                                                            className="h-8 w-8 text-amber-700 hover:text-red-700 hover:bg-amber-100 shrink-0"
+                                                                                            onClick={(e) => {
+                                                                                                e.preventDefault();
+                                                                                                const nextList = [...(Array.isArray(requiredProps[p.name || p.label]) ? requiredProps[p.name || p.label] : [])];
+                                                                                                nextList.splice(itemIdx, 1);
+                                                                                                setRequiredProps({ ...requiredProps, [p.name || p.label]: nextList });
+                                                                                            }}
+                                                                                        >
+                                                                                            <Trash2 className="w-4 h-4" />
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                ))}
+                                                                                <Button
+                                                                                    variant="outline"
+                                                                                    size="sm"
+                                                                                    className="w-full text-xs h-7 border-dashed border-amber-300 text-amber-700 hover:text-amber-800 bg-amber-50"
+                                                                                    onClick={(e) => {
+                                                                                        e.preventDefault();
+                                                                                        const nextList = [...(Array.isArray(requiredProps[p.name || p.label]) ? requiredProps[p.name || p.label] : [])];
+                                                                                        nextList.push({});
+                                                                                        setRequiredProps({ ...requiredProps, [p.name || p.label]: nextList });
+                                                                                    }}
+                                                                                >
+                                                                                    <Plus className="w-3 h-3 mr-1" /> Add {p.label || p.name}
+                                                                                </Button>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <Input
+                                                                                type={p.type === 'number' ? 'number' : 'text'}
+                                                                                placeholder={`Enter ${p.label || p.name}`}
+                                                                                className="h-9 text-sm bg-white border-amber-200 focus-visible:ring-amber-500"
+                                                                                value={requiredProps[p.name || p.label] || ""}
+                                                                                onChange={(e) => setRequiredProps({ ...requiredProps, [p.name || p.label]: e.target.value })}
                                                                             />
                                                                         )}
                                                                     </div>
