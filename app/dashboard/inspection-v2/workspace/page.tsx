@@ -1918,15 +1918,16 @@ function V10PreviewLayout() {
             component_id: selectedComp.id,
             inspection_type_id: it?.id || null,
             inspection_type_code: it?.code || activeSpec,
-            inspection_date: format(new Date(), 'yyyy-MM-dd'),
-            inspection_time: format(new Date(), 'HH:mm:ss'),
+            inspection_date: dynamicProps.inspection_date ? String(dynamicProps.inspection_date) : format(new Date(), 'yyyy-MM-dd'),
+            inspection_time: dynamicProps.inspection_time ? String(dynamicProps.inspection_time) : format(new Date(), 'HH:mm:ss'),
             observation: recordNotes,
             status: findingType === 'Incomplete' ? 'INCOMPLETE' : 'COMPLETED',
             has_anomaly: findingType === 'Anomaly' || findingType === 'Finding',
             record_category: findingType === 'Finding' ? 'FINDING' : (findingType === 'Anomaly' ? 'ANOMALY' : null),
             tape_id: tId,
-            tape_count_no: vidTimer,
-            elevation: selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? parseFloat(selectedComp.lowestElev) : (isNaN(parseFloat(selectedComp.elevation1)) ? 0 : parseFloat(selectedComp.elevation1)),
+            tape_count_no: dynamicProps.tape_count_no || vidTimer,
+            elevation: dynamicProps.elevation !== undefined && dynamicProps.elevation !== '' ? parseFloat(dynamicProps.elevation as string) : (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? parseFloat(selectedComp.lowestElev) : (isNaN(parseFloat(selectedComp.elevation1)) ? 0 : parseFloat(selectedComp.elevation1))),
+            fp_kp: dynamicProps.fp_kp !== undefined ? String(dynamicProps.fp_kp) : null,
             inspection_data: {
                 ...dynamicProps,
                 _meta_timecode: formatTime(vidTimer),
@@ -1948,13 +1949,14 @@ function V10PreviewLayout() {
                 component_id: selectedComp.id,
                 inspection_type_id: requiredSpec.id,
                 inspection_type_code: requiredSpec.code,
-                inspection_date: format(new Date(), 'yyyy-MM-dd'),
-                inspection_time: format(new Date(), 'HH:mm:ss'),
+                inspection_date: payload.inspection_date,
+                inspection_time: payload.inspection_time,
                 status: 'COMPLETED',
                 has_anomaly: false,
                 tape_id: tId,
-                tape_count_no: vidTimer,
+                tape_count_no: dynamicProps.tape_count_no || vidTimer,
                 elevation: payload.elevation,
+                fp_kp: payload.fp_kp,
                 inspection_data: {
                     ...requiredProps,
                     _meta_timecode: formatTime(vidTimer),
@@ -3108,7 +3110,18 @@ function V10PreviewLayout() {
                                                     const hasAnomaly = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id);
                                                     const isRectified = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id && r.insp_anomalies?.[0]?.status === 'CLOSED');
                                                     return (
-                                                        <Button key={t} onClick={() => setActiveSpec(t)} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${isCompleted && !hasAnomaly ? 'border-green-200 hover:bg-green-50/50' :
+                                                        <Button key={t} onClick={() => {
+                                                            setActiveSpec(t);
+                                                            const newProps = { ...dynamicProps };
+                                                            if (dataAcqConnected) {
+                                                                dataAcqFields.forEach(f => {
+                                                                    if (f.value && f.value !== '--' && f.targetField) {
+                                                                        newProps[f.targetField] = f.value;
+                                                                    }
+                                                                });
+                                                                setDynamicProps(newProps);
+                                                            }
+                                                        }} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${isCompleted && !hasAnomaly ? 'border-green-200 hover:bg-green-50/50' :
                                                             hasAnomaly && !isRectified ? 'border-red-200 hover:bg-red-50/30' :
                                                                 hasAnomaly && isRectified ? 'border-teal-200 hover:bg-teal-50/30' :
                                                                     isIncomplete ? 'border-amber-200 hover:bg-amber-50/30' :

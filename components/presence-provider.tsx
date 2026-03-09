@@ -63,7 +63,8 @@ export function PresenceProvider({
             // Also listen to join/leave for instant updates without full sync parsing
             channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
                 setOnlineUserIds(prev => {
-                    const next = new Set(Array.from(prev));
+                    const next = new Set<string>();
+                    prev.forEach(id => next.add(id));
                     next.add(key);
                     if (newPresences && newPresences.length > 0 && newPresences[0].userId) {
                         next.add(newPresences[0].userId);
@@ -74,7 +75,8 @@ export function PresenceProvider({
 
             channel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
                 setOnlineUserIds(prev => {
-                    const next = new Set(Array.from(prev));
+                    const next = new Set<string>();
+                    prev.forEach(id => next.add(id));
                     next.delete(key);
                     if (leftPresences && leftPresences.length > 0 && leftPresences[0].userId) {
                         next.delete(leftPresences[0].userId);

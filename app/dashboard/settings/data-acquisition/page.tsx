@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ArrowLeft, Wifi, Cable, Activity, Settings2, Play, Square, Trash2, Download, Upload, Building2, GitBranch } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { createClient } from '@/utils/supabase/client';
 
 type ConnectionType = 'serial' | 'network';
 type ParseMethod = 'position' | 'id';
@@ -98,6 +99,46 @@ export default function DataAcquisitionPage() {
     const [isWebSerialSupported, setIsWebSerialSupported] = useState(false);
     const dataBufferRef = useRef<string>('');
     const readableStreamClosedRef = useRef<any>(null);
+
+    // Available target fields based on type
+    const [availableTargetFields, setAvailableTargetFields] = useState<{ name: string, label: string }[]>([]);
+
+    useEffect(() => {
+        const fetchTargetFields = async () => {
+            const supabase = createClient();
+            const { data, error } = await supabase
+                .from('inspection_type')
+                .select('default_properties, metadata')
+                .eq('is_active', true);
+
+            if (data && !error) {
+                const uniqueFields = new Map<string, { name: string, label: string }>();
+
+                // Base insp_record generic fields
+                uniqueFields.set('elevation', { name: 'elevation', label: 'Elevation/Depth' });
+                uniqueFields.set('fp_kp', { name: 'fp_kp', label: 'FP/KP (Location)' });
+                uniqueFields.set('tape_count_no', { name: 'tape_count_no', label: 'Tape Counter' });
+                uniqueFields.set('inspection_date', { name: 'inspection_date', label: 'Inspection Date' });
+                uniqueFields.set('inspection_time', { name: 'inspection_time', label: 'Inspection Time' });
+
+                data.forEach(row => {
+                    const metadata = row.metadata as any;
+                    // Filter specifically where ROV applies and matches current structure
+                    if (metadata && metadata.rov === 1 && metadata[structureType] === 1) {
+                        const fields = row.default_properties?.fields || [];
+                        fields.forEach((f: any) => {
+                            if (f.name && f.label && f.type !== 'repeater') {
+                                uniqueFields.set(f.name, { name: f.name, label: f.label });
+                            }
+                        });
+                    }
+                });
+
+                setAvailableTargetFields(Array.from(uniqueFields.values()).sort((a, b) => a.label.localeCompare(b.label)));
+            }
+        };
+        fetchTargetFields();
+    }, [structureType]);
 
     // Check Web Serial API support and get available ports
     useEffect(() => {
@@ -1124,13 +1165,19 @@ export default function DataAcquisitionPage() {
                                                 </select>
                                             </td>
                                             <td className="p-2">
-                                                <input
-                                                    type="text"
+                                                <select
                                                     value={field.targetField}
                                                     onChange={(e) => updateField(field.id, { targetField: e.target.value })}
-                                                    className="w-full bg-background border border-input rounded px-2 py-1 text-sm"
-                                                    placeholder="e.g., northing"
-                                                />
+                                                    className="w-full bg-background border border-input rounded px-2 py-1 text-sm font-medium"
+                                                >
+                                                    <option value="">-- Select Field --</option>
+                                                    {availableTargetFields.map(tf => (
+                                                        <option key={tf.name} value={tf.name}>{tf.label} ({tf.name})</option>
+                                                    ))}
+                                                </select>
+                                                {field.targetField && !availableTargetFields.find(tf => tf.name === field.targetField) && (
+                                                    <div className="text-[10px] text-orange-500 mt-1">Field not in {structureType} specs</div>
+                                                )}
                                             </td>
                                             <td className="p-2">
                                                 <button
