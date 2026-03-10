@@ -5,7 +5,7 @@ import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { createClient } from "@/utils/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Loader2, ImageIcon, Plus, Maximize2, Trash2, ShieldCheck, Activity, AlertCircle } from "lucide-react";
+import { Upload, X, Loader2, ImageIcon, Plus, Maximize2, Trash2, ShieldCheck, Activity, AlertCircle, Save, FileText } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/dialogs/delete-confirm-dialog";
 import { getStoragePublicUrl } from "@/utils/storage";
 import useSWR from "swr";
@@ -33,6 +33,8 @@ interface StructureImageData {
     file_size?: number;
     file_type?: string;
     file_path?: string;
+    title?: string;
+    description?: string;
   };
 }
 
@@ -46,6 +48,9 @@ export default function StructureImage() {
   const [images, setImages] = useState<StructureImageData[]>([]);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", description: "" });
+  const [updating, setUpdating] = useState(false);
 
   const supabase = createClient();
   const sourceType = `${pageType}_structure_image`;
@@ -174,6 +179,41 @@ export default function StructureImage() {
     }
   };
 
+  const startEdit = (img: StructureImageData) => {
+    setEditingId(img.id);
+    setEditForm({
+      title: img.meta?.title || "",
+      description: img.meta?.description || "",
+    });
+  };
+
+  const handleUpdateMeta = async () => {
+    if (!editingId) return;
+
+    try {
+      setUpdating(true);
+      const res = await fetch("/api/attachment", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingId,
+          title: editForm.title,
+          description: editForm.description,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to update");
+
+      toast.success("Visual meta updated successfully");
+      mutate();
+      setEditingId(null);
+    } catch (err: any) {
+      toast.error(err.message || "Update failed");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8 p-6 max-w-7xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
 
@@ -210,12 +250,76 @@ export default function StructureImage() {
                       src={img.meta?.file_url || getStoragePublicUrl("attachments", img.path)}
                       alt={img.name}
                       fill
-                      className="object-contain p-4"
+                      className="object-contain p-4 transition-all duration-700"
                       priority
                     />
 
+                    {/* Title & Description Overlay */}
+                    <div className="absolute top-0 left-0 p-8 z-10 w-full max-w-sm">
+                      {editingId === img.id ? (
+                        <div className="space-y-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl p-6 rounded-3xl border border-white/20 shadow-2xl animate-in zoom-in duration-300">
+                          <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-widest pl-1">Edit Title</h4>
+                          <input
+                            type="text"
+                            value={editForm.title}
+                            onChange={(e) => setEditForm(v => ({ ...v, title: e.target.value }))}
+                            placeholder="Enter image title..."
+                            className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-2xl px-4 py-2 text-sm font-bold focus:ring-2 ring-blue-500/50"
+                          />
+                          <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-widest pl-1">Description</h4>
+                          <textarea
+                            value={editForm.description}
+                            onChange={(e) => setEditForm(v => ({ ...v, description: e.target.value }))}
+                            placeholder="Engineering notes..."
+                            className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-2xl px-4 py-3 text-xs font-medium focus:ring-2 ring-blue-500/50 min-h-[100px] no-scrollbar resize-none"
+                          />
+                          <div className="flex gap-2 pt-2">
+                            <Button
+                              onClick={handleUpdateMeta}
+                              disabled={updating}
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 font-bold text-[10px] uppercase tracking-wider"
+                            >
+                              {updating ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Save className="h-3 w-3 mr-2" />}
+                              Save Changes
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => setEditingId(null)}
+                              className="rounded-xl h-10 px-4 font-bold text-[10px] uppercase tracking-wider"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        (img.meta?.title || img.meta?.description) && (
+                          <div className="bg-slate-900/40 dark:bg-slate-950/40 backdrop-blur-md p-6 rounded-[2.5rem] border border-white/10 shadow-xl max-w-sm animate-in fade-in slide-in-from-left duration-700">
+                            {img.meta?.title && (
+                              <h3 className="text-xl font-black text-white tracking-tight leading-tight mb-2 uppercase break-words">
+                                {img.meta.title}
+                              </h3>
+                            )}
+                            {img.meta?.description && (
+                              <p className="text-[11px] font-medium text-slate-200/80 leading-relaxed line-clamp-4">
+                                {img.meta.description}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      )}
+                    </div>
+
                     {/* Floating Overlay Controls */}
                     <div className="absolute top-6 right-6 flex gap-2">
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="h-10 w-10 rounded-full shadow-lg bg-white/90 dark:bg-slate-900/90 hover:scale-110 active:scale-90 transition-all"
+                        onClick={() => startEdit(img)}
+                        disabled={uploading}
+                      >
+                        <FileText className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="destructive"
                         size="icon"

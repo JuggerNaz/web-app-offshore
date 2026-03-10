@@ -4,18 +4,33 @@ async function check() {
     const envText = fs.readFileSync('.env.local', 'utf8');
     const key = envText.split('NEXT_PUBLIC_SUPABASE_ANON_KEY=')[1].split('\n')[0].trim();
 
-    const url = 'https://zpsmxtdqlpbdwfzctqzd.supabase.co/rest/v1/inspection_type?select=id,code,default_properties,metadata';
+    // First get one to update
+    const getRes = await fetch('https://zpsmxtdqlpbdwfzctqzd.supabase.co/rest/v1/attachment?select=id&limit=1', {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+    });
+    const attachments = await getRes.json();
+    if (attachments.length === 0) {
+        console.log('No attachments found to test');
+        return;
+    }
+    const id = attachments[0].id;
+    console.log(`Testing PATCH on id: ${id}`);
 
-    const res = await fetch(url, {
+    const patchRes = await fetch('https://zpsmxtdqlpbdwfzctqzd.supabase.co/rest/v1/attachment?id=eq.' + id, {
+        method: 'PATCH',
         headers: {
             'apikey': key,
-            'Authorization': `Bearer ${key}`
-        }
+            'Authorization': `Bearer ${key}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        },
+        body: JSON.stringify({
+            meta: { title: 'Test Title', description: 'Test Description' }
+        })
     });
 
-    const data = await res.json();
-    console.log(`Found ${data.length} total types`);
-    console.log(JSON.stringify(data.slice(0, 3), null, 2));
+    const result = await patchRes.json();
+    console.log('PATCH Result:', JSON.stringify(result, null, 2));
 }
 
 check();

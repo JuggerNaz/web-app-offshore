@@ -115,11 +115,13 @@ export default function DataAcquisitionPage() {
                 const uniqueFields = new Map<string, { name: string, label: string }>();
 
                 // Base insp_record generic fields
+                uniqueFields.set('inspection_date', { name: 'inspection_date', label: 'Record Date (System)' });
+                uniqueFields.set('inspection_time', { name: 'inspection_time', label: 'Record Time (System)' });
+                uniqueFields.set('northing', { name: 'northing', label: 'Northing' });
+                uniqueFields.set('easting', { name: 'easting', label: 'Easting' });
                 uniqueFields.set('elevation', { name: 'elevation', label: 'Elevation/Depth' });
                 uniqueFields.set('fp_kp', { name: 'fp_kp', label: 'FP/KP (Location)' });
                 uniqueFields.set('tape_count_no', { name: 'tape_count_no', label: 'Tape Counter' });
-                uniqueFields.set('inspection_date', { name: 'inspection_date', label: 'Inspection Date' });
-                uniqueFields.set('inspection_time', { name: 'inspection_time', label: 'Inspection Time' });
 
                 data.forEach(row => {
                     const metadata = row.metadata as any;

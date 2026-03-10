@@ -48,6 +48,7 @@ import {
     ActivitySquare,
     List,
     Layers,
+    Info,
     Power,
     Waves,
     ClipboardCheck,
@@ -187,6 +188,7 @@ function V10PreviewLayout() {
     const [compView, setCompView] = useState<"LIST" | "MODEL_3D">("LIST");
     const [compSearchTerm, setCompSearchTerm] = useState("");
     const [specDialogOpen, setSpecDialogOpen] = useState(false);
+    const [compSpecDialogOpen, setCompSpecDialogOpen] = useState(false);
 
     // Dynamic Form ID for scrolling
     const FORM_AREA_ID = "inspection-form-area";
@@ -494,9 +496,9 @@ function V10PreviewLayout() {
 
                         let val = '';
                         if (fieldDef.defaultDataOption === 'system_date') {
-                            val = new Date().toLocaleDateString();
+                            val = new Date().toISOString().split('T')[0];
                         } else if (fieldDef.defaultDataOption === 'system_time') {
-                            val = new Date().toLocaleTimeString();
+                            val = new Date().toTimeString().split(' ')[0];
                         } else if (parseMethod === 'position') {
                             const start = parseInt(fieldDef.positionValue || '0');
                             if (!isNaN(start) && start < processedData.length) {
@@ -1699,6 +1701,7 @@ function V10PreviewLayout() {
                 let displayDepth = comp.water_depth || '-0.0m';
                 let lowestElev = '-';
                 if (hasElv1 && hasElv2) {
+                    // if both positive -> lowest (min); if one neg one pos -> neg (min); if both neg -> lowest (min)
                     lowestElev = String(Math.min(elv1Num, elv2Num));
                     displayDepth = `${lowestElev}m`;
                 } else if (hasElv1) {
@@ -1912,24 +1915,42 @@ function V10PreviewLayout() {
 
         const it = allInspectionTypes.find(t => t.name === activeSpec || t.code === activeSpec);
 
+        // Capture latest data acquisition values
+        const currentDataAcq: Record<string, any> = {};
+        if (dataAcqConnected) {
+            dataAcqFields.forEach(f => {
+                if (f.value && f.value !== '--' && f.targetField) {
+                    currentDataAcq[f.targetField] = f.value;
+                }
+            });
+        }
+
+        const activeProps = { ...dynamicProps, ...currentDataAcq };
+
         const payload: any = {
             [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: activeDep.id,
             structure_id: parseInt(structureId || "0"),
             component_id: selectedComp.id,
+            component_type: selectedComp.raw?.code || selectedComp.raw?.metadata?.comp_type || selectedComp.raw?.metadata?.type || null,
+            jobpack_id: jobPackId ? parseInt(jobPackId) : null,
+            sow_report_no: headerData.sowReportNo || null,
             inspection_type_id: it?.id || null,
             inspection_type_code: it?.code || activeSpec,
-            inspection_date: dynamicProps.inspection_date ? String(dynamicProps.inspection_date) : format(new Date(), 'yyyy-MM-dd'),
-            inspection_time: dynamicProps.inspection_time ? String(dynamicProps.inspection_time) : format(new Date(), 'HH:mm:ss'),
-            observation: recordNotes,
+            inspection_date: (activeProps.inspection_date && activeProps.inspection_date !== '--') ? String(activeProps.inspection_date) : format(new Date(), 'yyyy-MM-dd'),
+            inspection_time: (activeProps.inspection_time && activeProps.inspection_time !== '--') ? String(activeProps.inspection_time) : format(new Date(), 'HH:mm:ss'),
+            description: recordNotes,
             status: findingType === 'Incomplete' ? 'INCOMPLETE' : 'COMPLETED',
             has_anomaly: findingType === 'Anomaly' || findingType === 'Finding',
-            record_category: findingType === 'Finding' ? 'FINDING' : (findingType === 'Anomaly' ? 'ANOMALY' : null),
             tape_id: tId,
-            tape_count_no: dynamicProps.tape_count_no || vidTimer,
-            elevation: dynamicProps.elevation !== undefined && dynamicProps.elevation !== '' ? parseFloat(dynamicProps.elevation as string) : (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? parseFloat(selectedComp.lowestElev) : (isNaN(parseFloat(selectedComp.elevation1)) ? 0 : parseFloat(selectedComp.elevation1))),
-            fp_kp: dynamicProps.fp_kp !== undefined ? String(dynamicProps.fp_kp) : null,
+            tape_count_no: (activeProps.tape_count_no && activeProps.tape_count_no !== '--') ? activeProps.tape_count_no : vidTimer,
+            elevation: (() => {
+                const p = activeProps.elevation && activeProps.elevation !== '--' ? parseFloat(activeProps.elevation as string) : NaN;
+                if (!isNaN(p)) return p;
+                return selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? parseFloat(selectedComp.lowestElev) : 0;
+            })(),
+            fp_kp: (activeProps.fp_kp !== undefined && activeProps.fp_kp !== '--') ? String(activeProps.fp_kp) : null,
             inspection_data: {
-                ...dynamicProps,
+                ...activeProps,
                 _meta_timecode: formatTime(vidTimer),
                 _meta_status: findingType,
                 incomplete_reason: findingType === 'Incomplete' ? incompleteReason : null
@@ -1947,6 +1968,9 @@ function V10PreviewLayout() {
                 [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: activeDep.id,
                 structure_id: parseInt(structureId || "0"),
                 component_id: selectedComp.id,
+                component_type: selectedComp.raw?.code || selectedComp.raw?.metadata?.comp_type || selectedComp.raw?.metadata?.type || null,
+                jobpack_id: jobPackId ? parseInt(jobPackId) : null,
+                sow_report_no: headerData.sowReportNo || null,
                 inspection_type_id: requiredSpec.id,
                 inspection_type_code: requiredSpec.code,
                 inspection_date: payload.inspection_date,
@@ -1954,7 +1978,7 @@ function V10PreviewLayout() {
                 status: 'COMPLETED',
                 has_anomaly: false,
                 tape_id: tId,
-                tape_count_no: dynamicProps.tape_count_no || vidTimer,
+                tape_count_no: payload.tape_count_no,
                 elevation: payload.elevation,
                 fp_kp: payload.fp_kp,
                 inspection_data: {
@@ -2145,31 +2169,109 @@ function V10PreviewLayout() {
         const typeIdStr = e.target.value;
         if (!typeIdStr) return;
 
-        if (!selectedComp || !sowId || !activeDep?.id) {
+        if (!selectedComp || !activeDep?.id) {
             e.target.value = "";
             return;
         }
 
         const it = allInspectionTypes.find(t => t.id.toString() === typeIdStr);
-        if (!it) return;
+        if (!it) {
+            e.target.value = "";
+            return;
+        }
 
         const specName = it.code || it.name;
+        const userId = (await supabase.auth.getUser()).data.user?.id || 'system';
+
+        let targetSowId = sowId && !isNaN(parseInt(sowId)) ? parseInt(sowId) : null;
+        let sowReportNo = headerData.sowReportNo;
+
+        // If no strict sowId is passed or valid, refer to u_sow table based on jobpack and structure
+        if (!targetSowId && jobPackId && structureId) {
+            const { data: existingSow } = await supabase.from('u_sow')
+                .select('id, report_number')
+                .eq('jobpack_id', Number(jobPackId))
+                .eq('structure_id', Number(structureId))
+                .limit(1)
+                .maybeSingle();
+
+            if (existingSow) {
+                targetSowId = existingSow.id;
+                if (!sowReportNo) sowReportNo = existingSow.report_number;
+            } else {
+                const { data: newSow, error: newSowError } = await supabase.from('u_sow').insert({
+                    jobpack_id: Number(jobPackId),
+                    structure_id: Number(structureId),
+                    structure_type: headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM',
+                    structure_title: headerData.platformName,
+                    report_number: sowReportNo || `SOW-${new Date().getFullYear()}`,
+                    total_items: 0,
+                    completed_items: 0,
+                    incomplete_items: 0,
+                    pending_items: 0,
+                    status: 'pending',
+                    created_by: userId
+                }).select('id').single();
+
+                if (newSow) {
+                    targetSowId = newSow.id;
+                } else {
+                    console.error("Failed to auto-create u_sow entry:", newSowError);
+                    toast.error("Could not link or create SOW index record.");
+                    e.target.value = "";
+                    return;
+                }
+            }
+        }
+
+        if (!targetSowId) {
+            toast.error("Error: Could not determine active SOW.");
+            e.target.value = "";
+            return;
+        }
 
         const { error } = await supabase.from('u_sow_items').insert({
-            sow_id: parseInt(sowId),
+            sow_id: targetSowId,
             component_id: selectedComp.id,
+            component_qid: selectedComp.name || selectedComp.q_id || selectedComp.raw?.name || null,
+            component_type: selectedComp.raw?.type || null,
             inspection_type_id: it.id,
             status: 'pending',
-            report_number: headerData.sowReportNo,
+            report_number: sowReportNo,
             inspection_code: it.code,
             inspection_name: it.name,
             elevation_required: false,
-            cr_user: (await supabase.auth.getUser()).data.user?.id || 'system'
+            created_by: userId
         });
 
         if (!error) {
+            // "also refer the u_sow table" -> keep totals synchronized
+            const { data: sowData } = await supabase.from('u_sow')
+                .select('total_items, pending_items')
+                .eq('id', targetSowId)
+                .maybeSingle();
+
+            if (sowData) {
+                await supabase.from('u_sow').update({
+                    total_items: (sowData.total_items || 0) + 1,
+                    pending_items: (sowData.pending_items || 0) + 1,
+                    updated_by: userId,
+                    updated_at: new Date().toISOString()
+                }).eq('id', targetSowId);
+            }
+
             const newTasks = [...(selectedComp.tasks || []), specName];
             setSelectedComp({ ...selectedComp, tasks: newTasks });
+
+            // Optimistically update existing task lists immediately if possible
+            const newTaskStatus = { code: specName, status: 'pending' };
+            const newStatuses = [...(selectedComp.taskStatuses || []), newTaskStatus];
+            setSelectedComp((prev: any) => ({ ...prev, taskStatuses: newStatuses, tasks: newTasks }));
+
+            toast.success(`Successfully added ${it.name} to scope!`);
+        } else {
+            console.error("Failed to insert u_sow_item:", error);
+            toast.error("Failed to add inspection type: " + (error.message || "Unknown anomaly"));
         }
         e.target.value = "";
     };
@@ -3208,10 +3310,16 @@ function V10PreviewLayout() {
                                         <div className="p-3 bg-blue-600 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700">
                                             <span className="font-black tracking-wide text-sm flex items-center gap-2">
                                                 <FileText className="w-4 h-4 text-blue-200" />
-                                                <span className="text-blue-100 opacity-60 font-medium">{selectedComp.name} /</span> Spec: {activeSpec}
+                                                <span className="text-blue-100 opacity-60 font-medium">{selectedComp.name} /</span> Spec: {(() => {
+                                                    const specObj = allInspectionTypes.find(t => t.code === activeSpec || t.name === activeSpec);
+                                                    return specObj ? specObj.name : activeSpec;
+                                                })()}
                                             </span>
                                             <div className="flex items-center gap-3">
                                                 <span className="font-mono text-xs font-bold bg-black/20 px-2 py-1 rounded border border-white/10 flex items-center gap-1.5"><Video className="w-3 h-3 text-blue-200" /> {formatTime(vidTimer)}</span>
+                                                <button onClick={() => setCompSpecDialogOpen(true)} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications">
+                                                    <Info className="w-4 h-4" />
+                                                </button>
                                                 <button onClick={() => setActiveSpec(null)} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Cancel/Close"><X className="w-4 h-4" /></button>
                                             </div>
                                         </div>
@@ -3250,11 +3358,44 @@ function V10PreviewLayout() {
                                                     }
                                                     if (!Array.isArray(props) || props.length === 0) return null;
 
+                                                    // Auto-inject Northing and Easting for ROV types if missing
+                                                    const isRovType = (String(activeIt?.code || '').toUpperCase().startsWith('R') ||
+                                                        String(activeIt?.name || '').toUpperCase().includes('ROV') ||
+                                                        activeIt?.metadata?.rov == 1);
+
+                                                    if (isRovType) {
+                                                        const extraFields = [];
+                                                        const existingNames = props.map((p: any) => String(p.name || p.label || '').toLowerCase());
+                                                        if (!existingNames.includes('northing')) extraFields.push({ name: 'northing', label: 'Northing', type: 'text' });
+                                                        if (!existingNames.includes('easting')) extraFields.push({ name: 'easting', label: 'Easting', type: 'text' });
+                                                        if (extraFields.length > 0) props = [...extraFields, ...props];
+                                                    }
+
+                                                    const hasCpRdgField = props.some((sibling: any) => {
+                                                        const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
+                                                        return sLbl.includes('cp rdg') || sLbl === 'cp_rdg';
+                                                    });
+
+                                                    const hasUtThkField = props.some((sibling: any) => {
+                                                        if (sibling.type === 'repeater') return false;
+                                                        const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
+                                                        return sLbl.includes('ut') || sLbl.includes('wall thickness');
+                                                    }) || (activeIt?.code || '').toUpperCase().includes('UT');
+
+                                                    const visibleProps = props.filter((p: any) => {
+                                                        const l = String(p.label || p.name || '').toLowerCase();
+                                                        if (l === 'cp readings' && !hasCpRdgField) return false;
+                                                        if (l === 'ut thickness' && p.type === 'repeater' && !hasUtThkField) return false;
+                                                        return true;
+                                                    });
+
+                                                    if (visibleProps.length === 0) return null;
+
                                                     return (
                                                         <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">
                                                             <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Inspection Specification</div>
                                                             <div className="grid grid-cols-2 gap-4">
-                                                                {props.map((p: any, idx: number) => (
+                                                                {visibleProps.map((p: any, idx: number) => (
                                                                     <div key={idx} className={`space-y-1 ${p.type === 'repeater' ? 'col-span-2' : ''}`}>
                                                                         <label className="text-[10px] uppercase font-bold text-slate-500">
                                                                             {p.label || p.name} {p.required && <span className="text-red-500">*</span>}
@@ -4112,6 +4253,13 @@ function V10PreviewLayout() {
                     </div>
                 </DialogContent>
             </Dialog>
-        </div>
+
+            <ComponentSpecDialog
+                open={compSpecDialogOpen}
+                onOpenChange={setCompSpecDialogOpen}
+                component={selectedComp?.raw}
+                mode="view"
+            />
+        </div >
     );
 }

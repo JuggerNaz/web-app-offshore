@@ -191,3 +191,52 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
+/**
+ * PATCH /api/attachment
+ * Update an attachment by ID
+ * Body: { id, title, description, ... }
+ */
+export async function PATCH(request: NextRequest) {
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
+  const body = await request.json();
+  const { id, title, description, name } = body;
+
+  if (!id) {
+    return NextResponse.json({ error: "No ID provided" }, { status: 400 });
+  }
+
+  // Fetch current attachment to get existing meta
+  const { data: current, error: fetchError } = await supabase
+    .from("attachment")
+    .select("meta, name")
+    .eq("id", id)
+    .single();
+
+  if (fetchError) {
+    return handleSupabaseError(fetchError, "Attachment not found");
+  }
+
+  const updatedMeta = {
+    ...(current.meta as object || {}),
+    title: title !== undefined ? title : (current.meta as any)?.title,
+    description: description !== undefined ? description : (current.meta as any)?.description,
+  };
+
+  const { data, error } = await supabase
+    .from("attachment")
+    .update({
+      name: name || current.name,
+      meta: updatedMeta
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    return handleSupabaseError(error, "Failed to update attachment");
+  }
+
+  return NextResponse.json({ success: true, data });
+}
+
