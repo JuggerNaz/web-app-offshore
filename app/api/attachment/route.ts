@@ -39,6 +39,8 @@ export async function POST(request: Request, context: any) {
   const name = formData.get("name") as string; // more like label
   const source_type = formData.get("source_type") as string;
   const source_id = formData.get("source_id") as string;
+  const title = (formData.get("title") as string) || "";
+  const description = (formData.get("description") as string) || "";
 
   // Get file
   const file = formData.get("file") as File;
@@ -81,6 +83,8 @@ export async function POST(request: Request, context: any) {
         source_type: source_type,
         source_id: Number(source_id),
         meta: {
+          title: title || name,
+          description: description,
           file_label: name,
           original_file_name: file.name,
           file_url: publicUrl,

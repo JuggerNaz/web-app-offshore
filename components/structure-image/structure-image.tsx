@@ -140,6 +140,7 @@ export default function StructureImage() {
       if (dbError) throw dbError;
       setImages((prev) => [...prev, dbData]);
       mutate();
+      startEdit(dbData);
     } catch (err: any) {
       setError(err.message || "Upload failed");
     } finally {

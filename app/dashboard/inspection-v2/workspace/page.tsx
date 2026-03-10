@@ -52,12 +52,15 @@ import {
     Power,
     Waves,
     ClipboardCheck,
-    Loader2
+    Loader2,
+    Layout,
+    ClipboardList
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
+import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
 import { createMediaRecorder, startRecording, saveFile, generateFilename, getPhotoExtension, FORMAT_CONFIGS } from '@/lib/video-recorder/media-recorder';
@@ -177,6 +180,7 @@ function V10PreviewLayout() {
     const [syncLoading, setSyncLoading] = useState(false);
     const [componentsSow, setComponentsSow] = useState<any[]>([]);
     const [componentsNonSow, setComponentsNonSow] = useState<any[]>(COMPONENTS_NON_SOW);
+    const [allComps, setAllComps] = useState<any[]>([]);
 
     // Operations State
     const [currentMovement, setCurrentMovement] = useState<string>("Awaiting Deployment");
@@ -1624,11 +1628,12 @@ function V10PreviewLayout() {
             if (!sowId || !structureId) return;
 
             // First, get ALL components of the structure
-            const { data: allComps, error: compErr } = await supabase.from('structure_components')
+            const { data: allCompsData, error: compErr } = await supabase.from('structure_components')
                 .select('*')
                 .eq('structure_id', parseInt(structureId));
 
-            if (!allComps || allComps.length === 0) {
+            if (allCompsData) setAllComps(allCompsData);
+            if (!allCompsData || allCompsData.length === 0) {
                 setComponentsSow([]);
                 setComponentsNonSow([]);
                 return;
@@ -1662,7 +1667,7 @@ function V10PreviewLayout() {
                     if (!isCompatible) return; // Skip item if it doesn't match the current mode
 
                     // match by q_id or component_id or type
-                    const matchingComp = allComps.find(c =>
+                    const matchingComp = (allCompsData || []).find((c: any) =>
                         (item.component_qid && c.q_id === item.component_qid) ||
                         (item.component_id && c.id === item.component_id) ||
                         (item.component_type && c.name === item.component_type)
@@ -1683,7 +1688,7 @@ function V10PreviewLayout() {
             const assigned: any[] = [];
             const unassigned: any[] = [];
 
-            allComps.forEach(comp => {
+            (allCompsData || []).forEach((comp: any) => {
                 const isAssigned = assignedCompsMap.has(comp.id);
                 const md = comp.metadata || {};
                 const startNode = md.start_node || md.f_node || comp.startNode || comp.start_node || '-';
@@ -2165,6 +2170,58 @@ function V10PreviewLayout() {
         }
     };
 
+    const generateInspectionReportByType = async (typeId: number) => {
+        const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
+        if (recordsToPrint.length === 0) {
+            toast.error("No records found for this inspection type");
+            return;
+        }
+
+        const type = allInspectionTypes.find(t => t.id === typeId);
+        const settings = await getReportHeaderData();
+
+        await generateMultiInspectionReport(
+            recordsToPrint.map(r => r.insp_id),
+            { company_name: settings.companyName, logo_url: settings.companyLogo },
+            {
+                reportNoPrefix: type?.code || "REPORT",
+                reportYear: new Date().getFullYear().toString(),
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                reviewedBy: { name: "", date: "" },
+                approvedBy: { name: "", date: "" },
+                watermark: { enabled: false, text: "", transparency: 0.1 },
+                showContractorLogo: true,
+                showPageNumbers: true,
+                printFriendly: false
+            }
+        );
+    };
+
+    const generateFullInspectionReport = async () => {
+        if (currentRecords.length === 0) {
+            toast.error("No records captured to generate report");
+            return;
+        }
+
+        const settings = await getReportHeaderData();
+
+        await generateMultiInspectionReport(
+            currentRecords.map(r => r.insp_id),
+            { company_name: settings.companyName, logo_url: settings.companyLogo },
+            {
+                reportNoPrefix: "FULL_INSPECTION",
+                reportYear: new Date().getFullYear().toString(),
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                reviewedBy: { name: "", date: "" },
+                approvedBy: { name: "", date: "" },
+                watermark: { enabled: false, text: "", transparency: 0.1 },
+                showContractorLogo: true,
+                showPageNumbers: true,
+                printFriendly: false
+            }
+        );
+    };
+
     const handleAddNewInspectionSpec = async (e: React.ChangeEvent<HTMLSelectElement>) => {
         const typeIdStr = e.target.value;
         if (!typeIdStr) return;
@@ -2464,7 +2521,34 @@ function V10PreviewLayout() {
 
                 <div className="flex gap-2">
                     <Link href="/dashboard/inspection-v2"><Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><ArrowLeft className="w-4 h-4 mr-2" /> Back</Button></Link>
-                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><Printer className="w-4 h-4 mr-2" /> Reports</Button>
+
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><Printer className="w-4 h-4 mr-2" /> Reports</Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56 p-1">
+                            <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-50 mb-1">Inspection Reports</div>
+                            <ScrollArea className="h-48">
+                                {allInspectionTypes.filter(t => currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))).map(t => (
+                                    <DropdownMenuItem key={t.id} onClick={() => generateInspectionReportByType(t.id)} className="text-xs py-2 cursor-pointer flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-blue-500" />
+                                            <span className="truncate max-w-[140px]">{t.name}</span>
+                                        </div>
+                                        <Badge variant="outline" className="text-[8px] h-3.5 px-1 font-black bg-slate-50 text-slate-400 border-slate-200">{t.code}</Badge>
+                                    </DropdownMenuItem>
+                                ))}
+                                {allInspectionTypes.filter(t => currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))).length === 0 && (
+                                    <div className="text-[10px] text-slate-400 p-4 text-center italic">No records captured yet</div>
+                                )}
+                            </ScrollArea>
+                            <div className="border-t border-slate-50 my-1"></div>
+                            <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600">
+                                <Layout className="w-3.5 h-3.5 mr-2" /> All Captured Records
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
                     <Link href="/dashboard/settings"><Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><Settings className="w-4 h-4 mr-2" /> Workspace</Button></Link>
                 </div>
             </header>
@@ -3359,7 +3443,7 @@ function V10PreviewLayout() {
                                                     if (!Array.isArray(props) || props.length === 0) return null;
 
                                                     // Auto-inject Northing and Easting for ROV types if missing
-                                                    const isRovType = (String(activeIt?.code || '').toUpperCase().startsWith('R') ||
+                                                    const isRovType = inspMethod === 'ROV' || (String(activeIt?.code || '').toUpperCase().startsWith('R') ||
                                                         String(activeIt?.name || '').toUpperCase().includes('ROV') ||
                                                         activeIt?.metadata?.rov == 1);
 
@@ -3374,13 +3458,27 @@ function V10PreviewLayout() {
                                                     const hasCpRdgField = props.some((sibling: any) => {
                                                         const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
                                                         return sLbl.includes('cp rdg') || sLbl === 'cp_rdg';
-                                                    });
+                                                    }) || dataAcqFields.some(f => f.targetField === 'cp_reading');
 
                                                     const hasUtThkField = props.some((sibling: any) => {
                                                         if (sibling.type === 'repeater') return false;
                                                         const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
                                                         return sLbl.includes('ut') || sLbl.includes('wall thickness');
                                                     }) || (activeIt?.code || '').toUpperCase().includes('UT');
+
+                                                    // Auto-inject CP Readings repeater if CP field exists but repeater missing
+                                                    const hasCpRepeater = props.some(p => String(p.label || p.name || '').toLowerCase() === 'cp readings');
+                                                    if (hasCpRdgField && !hasCpRepeater) {
+                                                        props.push({
+                                                            name: 'cp_readings',
+                                                            label: 'CP Readings',
+                                                            type: 'repeater',
+                                                            subFields: [
+                                                                { name: 'location', label: 'Location', type: 'text' },
+                                                                { name: 'reading', label: 'Reading (mV)', type: 'number' }
+                                                            ]
+                                                        });
+                                                    }
 
                                                     const visibleProps = props.filter((p: any) => {
                                                         const l = String(p.label || p.name || '').toLowerCase();
@@ -3825,7 +3923,8 @@ function V10PreviewLayout() {
                                                     )}
                                                 </td>
                                                 <td className="px-3 py-2 align-top text-slate-700">
-                                                    {r.structure_components?.q_id || '-'}
+                                                    <div className="font-bold">{r.structure_components?.q_id || '-'}</div>
+                                                    <div className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">{r.component_type || r.structure_components?.code || '-'}</div>
                                                 </td>
                                                 <td className="px-3 py-2 text-center text-slate-500 align-top">
                                                     {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
@@ -3856,15 +3955,36 @@ function V10PreviewLayout() {
                                                                 </button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end" className="w-48">
-                                                                <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Reports</div>
-                                                                <DropdownMenuItem onClick={() => generateInspectionReport(r.insp_id)} className="text-xs py-2 cursor-pointer">
-                                                                    <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-blue-500" /> Inspection Report
-                                                                </DropdownMenuItem>
                                                                 {r.has_anomaly && (
-                                                                    <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
-                                                                        <AlertTriangle className="w-3.5 h-3.5 mr-2" /> Defect / Anomaly Report
-                                                                    </DropdownMenuItem>
+                                                                    <>
+                                                                        <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Reports</div>
+                                                                        {r.inspection_data?._meta_status === 'Finding' ? (
+                                                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700">
+                                                                                <ClipboardCheck className="w-3.5 h-3.5 mr-2" /> Print Finding Report
+                                                                            </DropdownMenuItem>
+                                                                        ) : (
+                                                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                                                                <AlertTriangle className="w-3.5 h-3.5 mr-2" /> Print {r.inspection_data?._meta_status || 'Defect'} Report
+                                                                            </DropdownMenuItem>
+                                                                        )}
+                                                                        <div className="border-t border-slate-50 my-1"></div>
+                                                                    </>
                                                                 )}
+                                                                <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Details</div>
+                                                                <DropdownMenuItem onClick={() => {
+                                                                    const comp = (allComps || []).find((c: any) => c.id === r.component_id);
+                                                                    if (comp) {
+                                                                        const obj = {
+                                                                            id: comp.id,
+                                                                            name: comp.q_id || comp.name || `Node ${comp.id}`,
+                                                                            raw: comp
+                                                                        };
+                                                                        setSelectedComp(obj);
+                                                                        setCompSpecDialogOpen(true);
+                                                                    }
+                                                                }} className="text-xs py-2 cursor-pointer">
+                                                                    <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" /> View Component Spec
+                                                                </DropdownMenuItem>
                                                                 <div className="border-t border-slate-50 my-1"></div>
                                                                 <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Modify</div>
                                                                 <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer">
@@ -3914,7 +4034,19 @@ function V10PreviewLayout() {
                                                     const isSelected = selectedComp?.id === c.id;
                                                     return (
                                                         <button key={c.id} onClick={() => { setSelectedComp(c); setActiveSpec(null); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
-                                                            <div className="flex justify-between font-bold"><span>{c.name}</span><span className="font-mono opacity-75 text-[10px]">{c.depth}</span></div>
+                                                            <div className="flex justify-between font-bold">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span>{c.name}</span>
+                                                                    <div
+                                                                        onClick={(e) => { e.stopPropagation(); setSelectedComp(c); setCompSpecDialogOpen(true); }}
+                                                                        className={`p-1 rounded hover:bg-black/10 transition-colors ${isSelected ? 'text-blue-100' : 'text-slate-300 hover:text-blue-500'}`}
+                                                                        title="View Component Specs"
+                                                                    >
+                                                                        <Info className="w-3.5 h-3.5" />
+                                                                    </div>
+                                                                </div>
+                                                                <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
+                                                            </div>
                                                             {(c.startNode !== '-' || c.endNode !== '-') && (
                                                                 <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
                                                             )}
@@ -3957,7 +4089,19 @@ function V10PreviewLayout() {
                                             <div className="space-y-1">
                                                 {componentsNonSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
                                                     <button key={c.id} onClick={() => { setSelectedComp(c); setActiveSpec(null); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
-                                                        <div className="flex justify-between font-bold"><span>{c.name}</span><span className="font-mono opacity-75 text-[10px]">{c.depth}</span></div>
+                                                        <div className="flex justify-between font-bold">
+                                                            <div className="flex items-center gap-2">
+                                                                <span>{c.name}</span>
+                                                                <div
+                                                                    onClick={(e) => { e.stopPropagation(); setSelectedComp(c); setCompSpecDialogOpen(true); }}
+                                                                    className={`p-1 rounded hover:bg-black/10 transition-colors ${selectedComp?.id === c.id ? 'text-slate-300' : 'text-slate-300 hover:text-blue-500'}`}
+                                                                    title="View Component Specs"
+                                                                >
+                                                                    <Info className="w-3.5 h-3.5" />
+                                                                </div>
+                                                            </div>
+                                                            <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
+                                                        </div>
                                                         {(c.startNode !== '-' || c.endNode !== '-') && (
                                                             <div className={`text-[9px] font-mono mt-0.5 ${selectedComp?.id === c.id ? 'text-slate-300' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
                                                         )}
