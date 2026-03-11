@@ -87,6 +87,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
@@ -1691,10 +1692,11 @@ function V10PreviewLayout() {
             (allCompsData || []).forEach((comp: any) => {
                 const isAssigned = assignedCompsMap.has(comp.id);
                 const md = comp.metadata || {};
-                const startNode = md.start_node || md.f_node || comp.startNode || comp.start_node || '-';
-                const endNode = md.end_node || md.s_node || comp.endNode || comp.end_node || '-';
+                const startNode = md.start_node || md.f_node || md.Node_1 || comp.startNode || comp.start_node || '-';
+                const endNode = md.end_node || md.s_node || md.Node_2 || comp.endNode || comp.end_node || '-';
                 const startElev = md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || '-';
                 const endElev = md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || '-';
+                const nominalThk = md.nominal_thickness || md.NominalThickness || md.nominal_thk || comp.nominal_thickness || '-';
 
                 const taskItems = assignedCompsMap.get(comp.id) || [];
 
@@ -1722,7 +1724,7 @@ function V10PreviewLayout() {
                     name: comp.q_id || comp.name || `Node ${comp.id}`,
                     depth: displayDepth,
                     lowestElev,
-                    startNode, endNode, startElev, endElev,
+                    startNode, endNode, startElev, endElev, nominalThk,
                     raw: comp,
                     tasks: Array.from(new Set(taskItems.map(t => t.code))),
                     taskStatuses: Array.from(new Map(taskItems.map(item => [item.code, item])).values())
@@ -3297,16 +3299,46 @@ function V10PreviewLayout() {
                                                     const isRectified = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id && r.insp_anomalies?.[0]?.status === 'CLOSED');
                                                     return (
                                                         <Button key={t} onClick={() => {
+                                                            const it = allInspectionTypes.find(type => type.code === t || type.name === t);
                                                             setActiveSpec(t);
-                                                            const newProps = { ...dynamicProps };
+                                                            const newProps: Record<string, any> = {};
+
+                                                            // Auto-fill Nominal Thickness if it exists in the spec
+                                                            if (selectedComp.nominalThk && selectedComp.nominalThk !== '-') {
+                                                                const specProps = it?.default_properties || [];
+                                                                let propsList: any[] = [];
+                                                                if (typeof specProps === 'string') {
+                                                                    try {
+                                                                        const parsed = JSON.parse(specProps);
+                                                                        propsList = Array.isArray(parsed) ? parsed : (parsed.properties || []);
+                                                                    } catch (e) { }
+                                                                } else if (Array.isArray(specProps)) {
+                                                                    propsList = specProps;
+                                                                }
+
+                                                                const ntField = propsList.find((p: any) => 
+                                                                    String(p.label || p.name || '').toLowerCase().includes('nominal thickness') ||
+                                                                    String(p.label || p.name || '').toLowerCase() === 'nt'
+                                                                );
+                                                                if (ntField) {
+                                                                    newProps[ntField.name || ntField.label] = selectedComp.nominalThk;
+                                                                }
+                                                            }
+
                                                             if (dataAcqConnected) {
                                                                 dataAcqFields.forEach(f => {
                                                                     if (f.value && f.value !== '--' && f.targetField) {
                                                                         newProps[f.targetField] = f.value;
                                                                     }
                                                                 });
-                                                                setDynamicProps(newProps);
                                                             }
+                                                            setDynamicProps(newProps);
+                                                            setFindingType("Pass");
+                                                            setRecordNotes("");
+                                                            setAnomalyData({
+                                                                defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
+                                                                rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor'
+                                                            });
                                                         }} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${isCompleted && !hasAnomaly ? 'border-green-200 hover:bg-green-50/50' :
                                                             hasAnomaly && !isRectified ? 'border-red-200 hover:bg-red-50/30' :
                                                                 hasAnomaly && isRectified ? 'border-teal-200 hover:bg-teal-50/30' :
@@ -3467,7 +3499,10 @@ function V10PreviewLayout() {
                                                     }) || (activeIt?.code || '').toUpperCase().includes('UT');
 
                                                     // Auto-inject CP Readings repeater if CP field exists but repeater missing
-                                                    const hasCpRepeater = props.some(p => String(p.label || p.name || '').toLowerCase() === 'cp readings');
+                                                    const hasCpRepeater = props.some(p => {
+                                                        const l = String(p.label || p.name || '').toLowerCase();
+                                                        return l.includes('cp') && l.includes('reading');
+                                                    });
                                                     if (hasCpRdgField && !hasCpRepeater) {
                                                         props.push({
                                                             name: 'cp_readings',
@@ -3498,71 +3533,161 @@ function V10PreviewLayout() {
                                                                         <label className="text-[10px] uppercase font-bold text-slate-500">
                                                                             {p.label || p.name} {p.required && <span className="text-red-500">*</span>}
                                                                         </label>
-                                                                        {p.type === 'select' ? (
-                                                                            <select
-                                                                                className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-semibold focus:ring-blue-500"
-                                                                                value={dynamicProps[p.name || p.label] || ""}
-                                                                                onChange={(e) => setDynamicProps({ ...dynamicProps, [p.name || p.label]: e.target.value })}
-                                                                            >
-                                                                                <option value="">Select...</option>
-                                                                                {p.options?.map((o: string) => <option key={o} value={o}>{o}</option>)}
-                                                                            </select>
-                                                                        ) : p.type === 'repeater' ? (
-                                                                            <div className="space-y-2 border border-slate-200 rounded-lg p-2 bg-white">
-                                                                                {(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : []).map((item: any, itemIdx: number) => (
-                                                                                    <div key={itemIdx} className="flex items-center gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded">
-                                                                                        {p.subFields?.map((sf: any, sfIdx: number) => (
-                                                                                            <Input
-                                                                                                key={sfIdx}
-                                                                                                type={sf.type === 'number' ? 'number' : 'text'}
-                                                                                                placeholder={sf.label || sf.name}
-                                                                                                className="h-8 text-xs bg-white flex-1"
-                                                                                                value={item[sf.name || sf.label] || ""}
-                                                                                                onChange={(e) => {
-                                                                                                    const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
-                                                                                                    nextList[itemIdx] = { ...nextList[itemIdx], [sf.name || sf.label]: e.target.value };
-                                                                                                    setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
-                                                                                                }}
-                                                                                            />
+                                                                        {(() => {
+                                                                            const fieldName = String(p.label || p.name || '').toLowerCase();
+                                                                            const isLocation = fieldName === 'location';
+                                                                            const isPosition = fieldName === 'position';
+                                                                            const isComboEligible = isLocation || isPosition;
+
+                                                                            if (isComboEligible) {
+                                                                                // Consolidate options
+                                                                                let options = [...(p.options || [])];
+                                                                                if (isLocation && selectedComp) {
+                                                                                    const locOptions = [
+                                                                                        selectedComp.startNode !== '-' ? `At Node : ${selectedComp.startNode}` : null,
+                                                                                        selectedComp.endNode !== '-' ? `At Node : ${selectedComp.endNode}` : null
+                                                                                    ].filter(Boolean) as string[];
+                                                                                    options = Array.from(new Set([...options, ...locOptions]));
+                                                                                }
+                                                                                if (isPosition && options.length === 0) {
+                                                                                    options = [
+                                                                                        "AT 12 O'CLK", "AT 01 O'CLK", "AT 02 O'CLK", "AT 03 O'CLK", "AT 04 O'CLK", "AT 05 O'CLK",
+                                                                                        "AT 06 O'CLK", "AT 07 O'CLK", "AT 08 O'CLK", "AT 09 O'CLK", "AT 10 O'CLK", "AT 11 O'CLK"
+                                                                                    ];
+                                                                                }
+
+                                                                                const currentValue = dynamicProps[p.name || p.label] || "";
+
+                                                                                return (
+                                                                                    <div className="relative group/combo">
+                                                                                        <Popover>
+                                                                                            <PopoverTrigger asChild>
+                                                                                                <div className="relative">
+                                                                                                    <Input
+                                                                                                        placeholder={`Select or enter ${p.label || p.name}`}
+                                                                                                        className="h-9 text-sm bg-white pr-16"
+                                                                                                        value={currentValue}
+                                                                                                        onChange={(e) => setDynamicProps({ ...dynamicProps, [p.name || p.label]: e.target.value })}
+                                                                                                    />
+                                                                                                    <div className="absolute right-1 top-1 flex items-center gap-0.5">
+                                                                                                        {currentValue && (
+                                                                                                            <Button
+                                                                                                                variant="ghost"
+                                                                                                                size="icon"
+                                                                                                                className="h-7 w-7 text-slate-400 hover:text-slate-600"
+                                                                                                                onClick={(e) => {
+                                                                                                                    e.preventDefault();
+                                                                                                                    setDynamicProps({ ...dynamicProps, [p.name || p.label]: "" });
+                                                                                                                }}
+                                                                                                            >
+                                                                                                                <X className="h-3 w-3" />
+                                                                                                            </Button>
+                                                                                                        )}
+                                                                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400">
+                                                                                                            <ChevronDown className="h-4 w-4" />
+                                                                                                        </Button>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </PopoverTrigger>
+                                                                                            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1 overflow-hidden" align="start">
+                                                                                                <div className="max-h-[200px] overflow-y-auto">
+                                                                                                    {options.length > 0 ? (
+                                                                                                        options.map((opt: string) => (
+                                                                                                            <button
+                                                                                                                key={opt}
+                                                                                                                className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-100 rounded transition-colors font-medium flex items-center justify-between"
+                                                                                                                onClick={() => {
+                                                                                                                    setDynamicProps({ ...dynamicProps, [p.name || p.label]: opt });
+                                                                                                                }}
+                                                                                                            >
+                                                                                                                {opt}
+                                                                                                                {currentValue === opt && <Check className="h-3 w-3 text-blue-600" />}
+                                                                                                            </button>
+                                                                                                        ))
+                                                                                                    ) : (
+                                                                                                        <div className="px-2 py-4 text-center text-[10px] text-slate-400 uppercase font-bold tracking-widest">No options available</div>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </PopoverContent>
+                                                                                        </Popover>
+                                                                                    </div>
+                                                                                );
+                                                                            }
+
+                                                                            if (p.type === 'select') {
+                                                                                return (
+                                                                                    <select
+                                                                                        className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-semibold focus:ring-blue-500"
+                                                                                        value={dynamicProps[p.name || p.label] || ""}
+                                                                                        onChange={(e) => setDynamicProps({ ...dynamicProps, [p.name || p.label]: e.target.value })}
+                                                                                    >
+                                                                                        <option value="">Select...</option>
+                                                                                        {p.options?.map((o: string) => <option key={o} value={o}>{o}</option>)}
+                                                                                    </select>
+                                                                                );
+                                                                            }
+
+                                                                            if (p.type === 'repeater') {
+                                                                                return (
+                                                                                    <div className="space-y-2 border border-slate-200 rounded-lg p-2 bg-white">
+                                                                                        {(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : []).map((item: any, itemIdx: number) => (
+                                                                                            <div key={itemIdx} className="flex items-center gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded">
+                                                                                                {p.subFields?.map((sf: any, sfIdx: number) => (
+                                                                                                    <Input
+                                                                                                        key={sfIdx}
+                                                                                                        type={sf.type === 'number' ? 'number' : 'text'}
+                                                                                                        placeholder={sf.label || sf.name}
+                                                                                                        className="h-8 text-xs bg-white flex-1"
+                                                                                                        value={item[sf.name || sf.label] || ""}
+                                                                                                        onChange={(e) => {
+                                                                                                            const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
+                                                                                                            nextList[itemIdx] = { ...nextList[itemIdx], [sf.name || sf.label]: e.target.value };
+                                                                                                            setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
+                                                                                                        }}
+                                                                                                    />
+                                                                                                ))}
+                                                                                                <Button
+                                                                                                    variant="ghost"
+                                                                                                    size="icon"
+                                                                                                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"
+                                                                                                    onClick={(e) => {
+                                                                                                        e.preventDefault();
+                                                                                                        const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
+                                                                                                        nextList.splice(itemIdx, 1);
+                                                                                                        setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
+                                                                                                    }}
+                                                                                                >
+                                                                                                    <Trash2 className="w-4 h-4" />
+                                                                                                </Button>
+                                                                                            </div>
                                                                                         ))}
                                                                                         <Button
-                                                                                            variant="ghost"
-                                                                                            size="icon"
-                                                                                            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"
+                                                                                            variant="outline"
+                                                                                            size="sm"
+                                                                                            className="w-full text-xs h-7 border-dashed border-slate-300 text-slate-500 hover:text-slate-700 bg-slate-50"
                                                                                             onClick={(e) => {
                                                                                                 e.preventDefault();
                                                                                                 const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
-                                                                                                nextList.splice(itemIdx, 1);
+                                                                                                nextList.push({});
                                                                                                 setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
                                                                                             }}
                                                                                         >
-                                                                                            <Trash2 className="w-4 h-4" />
+                                                                                            <Plus className="w-3 h-3 mr-1" /> Add {p.label || p.name}
                                                                                         </Button>
                                                                                     </div>
-                                                                                ))}
-                                                                                <Button
-                                                                                    variant="outline"
-                                                                                    size="sm"
-                                                                                    className="w-full text-xs h-7 border-dashed border-slate-300 text-slate-500 hover:text-slate-700 bg-slate-50"
-                                                                                    onClick={(e) => {
-                                                                                        e.preventDefault();
-                                                                                        const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
-                                                                                        nextList.push({});
-                                                                                        setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
-                                                                                    }}
-                                                                                >
-                                                                                    <Plus className="w-3 h-3 mr-1" /> Add {p.label || p.name}
-                                                                                </Button>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <Input
-                                                                                type={p.type === 'number' ? 'number' : 'text'}
-                                                                                placeholder={`Enter ${p.label || p.name}`}
-                                                                                className="h-9 text-sm bg-white"
-                                                                                value={dynamicProps[p.name || p.label] || ""}
-                                                                                onChange={(e) => setDynamicProps({ ...dynamicProps, [p.name || p.label]: e.target.value })}
-                                                                            />
-                                                                        )}
+                                                                                );
+                                                                            }
+
+                                                                            return (
+                                                                                <Input
+                                                                                    type={p.type === 'number' ? 'number' : 'text'}
+                                                                                    placeholder={`Enter ${p.label || p.name}`}
+                                                                                    className="h-9 text-sm bg-white"
+                                                                                    value={dynamicProps[p.name || p.label] || ""}
+                                                                                    onChange={(e) => setDynamicProps({ ...dynamicProps, [p.name || p.label]: e.target.value })}
+                                                                                />
+                                                                            );
+                                                                        })()}
                                                                     </div>
                                                                 ))}
                                                             </div>

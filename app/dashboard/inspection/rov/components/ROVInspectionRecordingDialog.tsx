@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Save, AlertTriangle, Sparkles } from "lucide-react";
+import { Loader2, Save, AlertTriangle, Sparkles, X, Trash2, Plus, ChevronDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
     videoTapeIdAtom,
@@ -24,10 +25,11 @@ import AttachmentManager, { type Attachment, type PendingFile } from "../../dive
 interface InspectionProperty {
     name: string;
     label: string;
-    type: "text" | "number" | "select" | "boolean" | "date";
+    type: "text" | "number" | "select" | "boolean" | "date" | "repeater";
     options?: string[];
     required?: boolean;
     default?: any;
+    subFields?: Array<{ name: string; label: string; type: string; step?: string }>;
 }
 
 interface ROVInspectionRecordingDialogProps {
@@ -96,6 +98,7 @@ export default function ROVInspectionRecordingDialog({
     });
 
     const [defectCodes, setDefectCodes] = useState<any[]>([]);
+    const [customMode, setCustomMode] = useState<Record<string, boolean>>({});
     const [priorities, setPriorities] = useState<any[]>([]);
     const [allDefectTypes, setAllDefectTypes] = useState<any[]>([]);
     const [availableDefectTypes, setAvailableDefectTypes] = useState<any[]>([]);
@@ -107,8 +110,9 @@ export default function ROVInspectionRecordingDialog({
     // Track original state to detect removal
     const [originalHasAnomaly, setOriginalHasAnomaly] = useState(false);
 
-    // Attachments
-    const [pendingAttachments, setPendingAttachments] = useState<PendingFile[]>([]);
+    // Track last initialization to prevent loops
+    const lastInitKeyRef = useRef<string | null>(null);
+    const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
 
     // Fetch lists
     useEffect(() => {
@@ -192,11 +196,18 @@ export default function ROVInspectionRecordingDialog({
                     .eq('id', inspTypeId)
                     .single();
 
-                if (isMounted && data?.default_properties && Array.isArray(data.default_properties)) {
-                    setInspectionProperties(data.default_properties);
+                let props = [];
+                if (Array.isArray(data?.default_properties)) {
+                    props = data.default_properties;
+                } else if (data?.default_properties && typeof data.default_properties === 'object') {
+                    props = data.default_properties.fields || data.default_properties.properties || [];
+                }
+
+                if (isMounted && props.length > 0) {
+                    setInspectionProperties(props);
 
                     // Extract defaults
-                    data.default_properties.forEach((prop: InspectionProperty) => {
+                    props.forEach((prop: InspectionProperty) => {
                         if (prop.default !== undefined) {
                             defaults[prop.name] = prop.default;
                         }
@@ -358,7 +369,10 @@ export default function ROVInspectionRecordingDialog({
             fetchActiveTapes();
         };
 
-        if (open) {
+        const initKey = `${open}-${sowItem?.sow_id || sowItem?.id}-${currentRecord?.insp_id || 'new'}`;
+        if (open && initKey !== lastInitKeyRef.current) {
+            console.log("Initializing form with key:", initKey);
+            lastInitKeyRef.current = initKey;
             initializeForm();
         }
 
@@ -444,6 +458,29 @@ export default function ROVInspectionRecordingDialog({
                 handleCommonChange('fpKp', `KP ${kpValue}`);
             }
         }
+
+        // Populating RUTWT specific fields if they exist in schema
+        const wtValue = meta.wall_thk || meta.wt || meta.nominal_wt || meta.additionalInfo?.wall_thk || meta.additionalInfo?.wt || meta.additionalInfo?.nominal_wt;
+        if (wtValue && !currentRecord?.metadata?.nominal_thickness) {
+            console.log("Found Wall Thickness for Nominal Thickness:", wtValue);
+            handleInputChange('nominal_thickness', wtValue);
+        }
+
+        const sNode = meta.s_node || meta.Node_1 || meta.node_1 || meta.start_node || meta.startNode || meta.StNode || meta.sNode;
+        const fNode = meta.f_node || meta.Node_2 || meta.node_2 || meta.end_node || meta.endNode || meta.fNode;
+        if (sNode || fNode) {
+            console.log("Found Nodes for Location Options:", sNode, fNode);
+            setInspectionProperties(prev => prev.map(p => {
+                const isLocation = p.name?.toLowerCase().includes('location') || p.label?.toLowerCase().includes('location');
+                if (isLocation) {
+                    const options = [...(p.options || [])];
+                    if (sNode && !options.includes(`At Node : ${sNode}`)) options.push(`At Node : ${sNode}`);
+                    if (fNode && !options.includes(`At Node : ${fNode}`)) options.push(`At Node : ${fNode}`);
+                    return { ...p, options: Array.from(new Set(options)) };
+                }
+                return p;
+            }));
+        }
     }
 
     async function fetchInspectionSchema(typeId: number) {
@@ -455,13 +492,20 @@ export default function ROVInspectionRecordingDialog({
             .eq('id', typeId)
             .single();
 
-        if (data?.default_properties && Array.isArray(data.default_properties)) {
-            setInspectionProperties(data.default_properties);
+        let props = [];
+        if (Array.isArray(data?.default_properties)) {
+            props = data.default_properties;
+        } else if (data?.default_properties && typeof data.default_properties === 'object') {
+            props = data.default_properties.fields || data.default_properties.properties || [];
+        }
+
+        if (props.length > 0) {
+            setInspectionProperties(props);
 
             // Initialize defaults safely (don't overwrite existing data)
             setFormData(prev => {
                 const updates: Record<string, any> = {};
-                data.default_properties.forEach((prop: InspectionProperty) => {
+                props.forEach((prop: InspectionProperty) => {
                     if (prop.default !== undefined && prev[prop.name] === undefined) {
                         updates[prop.name] = prop.default;
                     }
@@ -1326,54 +1370,235 @@ export default function ROVInspectionRecordingDialog({
                                 </Label>
                             </div>
                         </div>
-                        {inspectionProperties.length === 0 ? (
-                            <div className="p-4 bg-slate-50 text-center text-muted-foreground rounded-lg border border-dashed">
-                                No specific fields defined for this inspection type.
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {inspectionProperties.map((prop, idx) => (
-                                    <div key={idx} className="space-y-2">
-                                        <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                            {prop.label} {prop.required && <span className="text-red-500">*</span>}
-                                        </Label>
 
-                                        {prop.type === 'select' ? (
-                                            <Select
-                                                value={formData[prop.name] === null || formData[prop.name] === "" ? "__clear__" : (formData[prop.name] || "__clear__")}
-                                                onValueChange={(v) => handleInputChange(prop.name, v === "__clear__" ? "" : v)}
-                                            >
-                                                <SelectTrigger className="h-9">
-                                                    <SelectValue placeholder="Select..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="__clear__" className="text-muted-foreground italic">None / Clear Selection</SelectItem>
-                                                    {prop.options?.map(opt => (
-                                                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        ) : prop.type === 'boolean' ? (
-                                            <div className="flex items-center gap-2 h-9">
-                                                <Checkbox
-                                                    checked={formData[prop.name] === true}
-                                                    onCheckedChange={(c) => handleInputChange(prop.name, c === true)}
-                                                />
-                                                <span className="text-sm">{prop.label}</span>
+                        <div className="space-y-4">
+                            {inspectionProperties.length === 0 ? (
+                                <div className="p-4 bg-slate-50 text-center text-muted-foreground rounded-lg border border-dashed">
+                                    No specific fields defined for this inspection type.
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Normal Fields in Grid */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {inspectionProperties.filter(p => p.type !== 'repeater').map((prop, idx) => (
+                                            <div key={idx} className="space-y-2">
+                                                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                                    {prop.label} {prop.required && <span className="text-red-500">*</span>}
+                                                </Label>
+
+                                                {(() => {
+                                                    const isLocationOrPosition = (
+                                                        prop.name?.toLowerCase().includes('location') ||
+                                                        prop.label?.toLowerCase().includes('location') ||
+                                                        prop.name?.toLowerCase().includes('position') ||
+                                                        prop.label?.toLowerCase().includes('position')
+                                                    );
+
+                                                    if (isLocationOrPosition) {
+                                                        return (
+                                                            <div className="relative group">
+                                                                <Input
+                                                                    className={`h-9 pr-10 border-slate-200 focus-visible:ring-blue-500 bg-white dark:bg-slate-950 transition-all font-medium ${formData[prop.name] ? 'border-blue-200 ring-1 ring-blue-50' : 'hover:border-slate-300'}`}
+                                                                    placeholder={`Select or type ${prop.label}...`}
+                                                                    value={formData[prop.name] || ""}
+                                                                    onChange={(e) => handleInputChange(prop.name, e.target.value)}
+                                                                />
+                                                                <Popover>
+                                                                    <PopoverTrigger asChild>
+                                                                        <button
+                                                                            type="button"
+                                                                            className="absolute right-0 top-0 h-9 w-9 flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors"
+                                                                            title="Show options"
+                                                                        >
+                                                                            <ChevronDown className="h-4 w-4" />
+                                                                        </button>
+                                                                    </PopoverTrigger>
+                                                                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xl rounded-lg z-[100]" align="start">
+                                                                        <div className="max-h-[200px] overflow-y-auto">
+                                                                            {(() => {
+                                                                                let options = prop.options || [];
+                                                                                const isPos = prop.name?.toLowerCase().includes('position') || prop.label?.toLowerCase().includes('position');
+                                                                                if (isPos && options.length === 0) {
+                                                                                    options = ["AT 12 O'CLK", "AT 1 O'CLK", "AT 2 O'CLK", "AT 3 O'CLK", "AT 4 O'CLK", "AT 5 O'CLK", "AT 6 O'CLK", "AT 7 O'CLK", "AT 8 O'CLK", "AT 9 O'CLK", "AT 10 O'CLK", "AT 11 O'CLK"];
+                                                                                }
+
+                                                                                if (options.length > 0) {
+                                                                                    return options.map((opt: string) => (
+                                                                                        <div
+                                                                                            key={opt}
+                                                                                            className={`px-3 py-2 text-sm cursor-pointer rounded-md transition-colors ${formData[prop.name] === opt ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-bold' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
+                                                                                            onClick={() => {
+                                                                                                handleInputChange(prop.name, opt);
+                                                                                            }}
+                                                                                        >
+                                                                                            {opt}
+                                                                                        </div>
+                                                                                    ));
+                                                                                }
+                                                                                return <div className="px-3 py-2 text-xs text-slate-500 italic">No predefined options available</div>;
+                                                                            })()}
+                                                                        </div>
+                                                                    </PopoverContent>
+                                                                </Popover>
+                                                                {formData[prop.name] && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="absolute right-8 top-0 h-9 w-6 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                                                        onClick={() => handleInputChange(prop.name, "")}
+                                                                        title="Clear"
+                                                                    >
+                                                                        <X className="h-3 w-3" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (prop.type === 'select') {
+                                                        return (
+                                                            <div className="space-y-1">
+                                                                <Select
+                                                                    value={prop.options?.includes(formData[prop.name]) ? formData[prop.name] : (formData[prop.name] ? "__custom__" : (customMode[prop.name] ? "__custom__" : "__clear__"))}
+                                                                    onValueChange={(v) => {
+                                                                        if (v === "__clear__") {
+                                                                            handleInputChange(prop.name, "");
+                                                                            setCustomMode(prev => ({ ...prev, [prop.name]: false }));
+                                                                        } else if (v === "__custom__") {
+                                                                            setCustomMode(prev => ({ ...prev, [prop.name]: true }));
+                                                                            handleInputChange(prop.name, "");
+                                                                        } else {
+                                                                            handleInputChange(prop.name, v);
+                                                                            setCustomMode(prev => ({ ...prev, [prop.name]: false }));
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <SelectTrigger className="h-9">
+                                                                        <SelectValue placeholder="Select..." />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="__clear__" className="text-muted-foreground italic">None / Clear Selection</SelectItem>
+                                                                        {prop.options?.map((opt: string) => (
+                                                                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                                                        ))}
+                                                                        <SelectItem value="__custom__" className="text-blue-600 font-medium italic">Other / Custom...</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+
+                                                                {(customMode[prop.name] || (formData[prop.name] && !prop.options?.includes(formData[prop.name]))) && (
+                                                                    <div className="flex gap-2 items-center mt-1">
+                                                                        <Input
+                                                                            className="h-8 text-xs border-blue-200 bg-blue-50/20"
+                                                                            placeholder={`Type ${prop.label}...`}
+                                                                            value={formData[prop.name] || ""}
+                                                                            onChange={(e) => handleInputChange(prop.name, e.target.value)}
+                                                                            autoFocus
+                                                                        />
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-8 w-8 text-slate-400"
+                                                                            onClick={() => {
+                                                                                handleInputChange(prop.name, "");
+                                                                                setCustomMode(prev => ({ ...prev, [prop.name]: false }));
+                                                                            }}
+                                                                        >
+                                                                            <X className="h-3 w-3" />
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    } else if (prop.type === 'boolean') {
+                                                        return (
+                                                            <div className="flex items-center gap-2 h-9">
+                                                                <Checkbox
+                                                                    id={`check-${prop.name}`}
+                                                                    checked={formData[prop.name] === true}
+                                                                    onCheckedChange={(c) => handleInputChange(prop.name, c === true)}
+                                                                />
+                                                                <Label htmlFor={`check-${prop.name}`} className="text-sm cursor-pointer">{prop.label}</Label>
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <Input
+                                                                type={prop.type === 'number' ? 'number' : prop.type === 'date' ? 'date' : 'text'}
+                                                                className="h-9"
+                                                                value={formData[prop.name] || ""}
+                                                                onChange={(e) => handleInputChange(prop.name, e.target.value)}
+                                                            />
+                                                        );
+                                                    }
+                                                })()}
                                             </div>
-                                        ) : (
-                                            <Input
-                                                type={prop.type}
-                                                className="h-9"
-                                                value={formData[prop.name] || ""}
-                                                onChange={(e) => handleInputChange(prop.name, e.target.value)}
-                                                readOnly={false} // Ensure it's explicitly editable
-                                            />
-                                        )}
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
-                        )}
+
+                                    {/* Repeater Fields at the Bottom */}
+                                    <div className="space-y-4 pt-2">
+                                        {inspectionProperties.filter(p => p.type === 'repeater').map((prop, idx) => (
+                                            <div key={idx} className="space-y-2">
+                                                <Label className="text-xs font-bold text-slate-900 border-l-2 border-blue-500 pl-2 uppercase tracking-tight">
+                                                    {prop.label}
+                                                </Label>
+                                                <div className="space-y-2 border border-slate-200 rounded-lg p-2 bg-slate-50/30">
+                                                    {(Array.isArray(formData[prop.name]) ? formData[prop.name] : []).map((item: any, itemIdx: number) => (
+                                                        <div key={itemIdx} className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded shadow-sm">
+                                                            {prop.subFields?.map((sf: any, sfIdx: number) => (
+                                                                <div key={sfIdx} className="flex-1 space-y-1">
+                                                                    <Label className="text-[10px] text-slate-400 uppercase font-mono">{sf.label}</Label>
+                                                                    <Input
+                                                                        type={sf.type === 'number' ? 'number' : 'text'}
+                                                                        step={sf.step}
+                                                                        placeholder={sf.label}
+                                                                        className="h-8 text-xs bg-slate-50/50"
+                                                                        value={item[sf.name] || ""}
+                                                                        onChange={(e) => {
+                                                                            const nextList = [...(Array.isArray(formData[prop.name]) ? formData[prop.name] : [])];
+                                                                            nextList[itemIdx] = { ...nextList[itemIdx], [sf.name]: e.target.value };
+                                                                            handleInputChange(prop.name, nextList);
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 shrink-0 self-end"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    const nextList = [...(Array.isArray(formData[prop.name]) ? formData[prop.name] : [])];
+                                                                    nextList.splice(itemIdx, 1);
+                                                                    handleInputChange(prop.name, nextList);
+                                                                }}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    ))}
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="w-full text-xs h-8 border-dashed border-blue-200 text-blue-600 hover:text-blue-700 hover:bg-blue-50 bg-white"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            const nextList = [...(Array.isArray(formData[prop.name]) ? formData[prop.name] : [])];
+                                                            nextList.push({});
+                                                            handleInputChange(prop.name, nextList);
+                                                        }}
+                                                    >
+                                                        <Plus className="w-3 h-3 mr-1" /> Add {prop.label} Item
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
 
                     {/* Findings & Incomplete */}
@@ -1562,7 +1787,6 @@ export default function ROVInspectionRecordingDialog({
                         </div>
                     </div>
                 </div>
-
 
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>

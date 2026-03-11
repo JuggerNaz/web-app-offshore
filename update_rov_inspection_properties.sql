@@ -122,3 +122,53 @@ SET default_properties = jsonb_build_object(
 )
 WHERE (UPPER(code) LIKE 'R%' OR UPPER(name) LIKE '%ROV%' OR COALESCE(metadata->>'rov', '0') = '1');
 
+-- 11. RUTWT specific additions (Nominal Thickness, Location, Position)
+UPDATE inspection_type
+SET default_properties = jsonb_build_object(
+    'fields',
+    COALESCE((
+        SELECT jsonb_agg(elem)
+        FROM (
+            SELECT elem
+            FROM jsonb_array_elements(
+                CASE 
+                    WHEN jsonb_typeof(default_properties) = 'object' THEN default_properties->'fields'
+                    ELSE default_properties
+                END
+            ) as elem
+            WHERE (
+                LOWER(TRIM(COALESCE(elem->>'label', ''))) NOT IN ('nominal thickness', 'location', 'position', 'cp readings', 'ut thickness')
+                AND LOWER(TRIM(COALESCE(elem->>'name', ''))) NOT IN ('nominal_thickness', 'location', 'position', 'cp_readings', 'ut_readings')
+            )
+            UNION ALL
+            SELECT jsonb_build_object('name', 'nominal_thickness', 'label', 'Nominal Thickness', 'type', 'number')
+            UNION ALL
+            SELECT jsonb_build_object('name', 'location', 'label', 'Location', 'type', 'select', 'options', jsonb_build_array())
+            UNION ALL
+            SELECT jsonb_build_object('name', 'position', 'label', 'Position', 'type', 'select', 'options', jsonb_build_array('AT 3 O''CLK', 'AT 6 O''CLK', 'AT 9 O''CLK', 'AT 12 O''CLK'))
+            UNION ALL
+            SELECT '{
+                "name": "cp_readings",
+                "label": "CP Additional Readings",
+                "type": "repeater",
+                "subFields": [
+                    { "name": "reading", "label": "CP Rdg (mV)", "type": "number", "step": "0.01" },
+                    { "name": "location", "label": "Location", "type": "text" }
+                ]
+            }'::jsonb
+            UNION ALL
+            SELECT '{
+                "name": "ut_readings",
+                "label": "UT Additional Readings",
+                "type": "repeater",
+                "subFields": [
+                    { "name": "reading", "label": "Thickness (mm)", "type": "number", "step": "0.01" },
+                    { "name": "location", "label": "Location", "type": "text" }
+                ]
+            }'::jsonb
+        ) sub
+    ), '[]'::jsonb)
+)
+WHERE UPPER(code) LIKE '%RUTWT%' OR UPPER(name) LIKE '%RUTWT%';
+
+
