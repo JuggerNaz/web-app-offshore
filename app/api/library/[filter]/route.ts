@@ -38,7 +38,40 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return handleSupabaseError(error, "Failed to fetch library items");
   }
 
-  const visibleData = data?.filter((item: any) => item.hidden_item !== 'Y' && item.hidden_item !== 'y');
+  let visibleData = data?.filter((item: any) => item.hidden_item !== 'Y' && item.hidden_item !== 'y');
+
+  // Custom sort for POSITION to match 1-12 O'CLOCK order
+  if (decodedFilter === "POSITION" && visibleData) {
+    const positionOrder = [
+      "N/A",
+      "1 O'CLOCK",
+      "2 O'CLOCK",
+      "3 O'CLOCK",
+      "4 O'CLOCK",
+      "5 O'CLOCK",
+      "6 O'CLOCK",
+      "7 O'CLOCK",
+      "8 O'CLOCK",
+      "9 O'CLOCK",
+      "10 O'CLOCK",
+      "11 O'CLOCK",
+      "12 O'CLOCK"
+    ];
+    
+    visibleData = visibleData.sort((a: any, b: any) => {
+      const indexA = positionOrder.indexOf(a.lib_desc);
+      const indexB = positionOrder.indexOf(b.lib_desc);
+      
+      // If both are in our predefined list, sort by the list order
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      // If only A is in the list, A comes first
+      if (indexA !== -1) return -1;
+      // If only B is in the list, B comes first
+      if (indexB !== -1) return 1;
+      // Fallback to alphabetical if neither is in the list (shouldn't happen for our known items)
+      return (a.lib_desc as string).localeCompare(b.lib_desc as string);
+    });
+  }
 
   return apiSuccess(visibleData);
 }

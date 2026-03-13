@@ -91,7 +91,48 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
   const { data: positionLib } = useSWR(`/api/library/${"POSITION"}`, fetcher);
   // Structural group options (COMPGRP library)
   const { data: compGroupLib } = useSWR(`/api/library/${"COMPGRP"}`, fetcher);
+  // Boat Fender Types options (u_lib_list where lib_code = FEND_TYP)
+  const { data: fenderTypeData } = useSWR(`/api/library/FEND_TYP`, fetcher);
+  // Boat Bumper Types options (u_lib_list where lib_code = BBUM_TYP)
+  const { data: bumperTypeData } = useSWR(`/api/library/BBUM_TYP`, fetcher);
+  // Caisson specific options
+  const { data: csumTypeData } = useSWR(`/api/library/CSUM_TYP`, fetcher);
+  const { data: caisAtData } = useSWR(`/api/library/CAIS_AT`, fetcher);
+  const { data: pileTypeData } = useSWR(`/api/library/PILE_TYP`, fetcher);
+  const { data: pileMatData } = useSWR(`/api/library/PILE_MAT`, fetcher);
+  const { data: pgudTypData } = useSWR(`/api/library/PGUD_TYP`, fetcher);
+  const { data: pgudMatData } = useSWR(`/api/library/PGUD_MAT`, fetcher);
+  const { data: pgudFasData } = useSWR(`/api/library/PGUD_FAS`, fetcher);
 
+  const { data: corrCtgData } = useSWR(`/api/library/CORR_CTG`, fetcher);
+  // Clamp specific options
+  const { data: clamTypeData } = useSWR(`/api/library/CLAM_TYP`, fetcher);
+  const { data: clamMatData } = useSWR(`/api/library/CLAM_MAT`, fetcher);
+  const { data: linerReqData } = useSWR(`/api/library/LINER_REQ`, fetcher);
+  const { data: coatTypData } = useSWR(`/api/library/COAT_TYP`, fetcher);
+  const { data: cgudTypData } = useSWR(`/api/library/CGUD_TYP`, fetcher);
+  const { data: fitgTypData } = useSWR(`/api/library/FITG_TYP`, fetcher);
+  const { data: sgudTypData } = useSWR(`/api/library/SGUD_TYP`, fetcher);
+  const { data: nominalDiamData } = useSWR(`/api/library/NOM_DIAM`, fetcher);
+  const { data: ctryTypData } = useSWR(`/api/library/CTRY_TYP`, fetcher);
+  const { data: ctryPosData } = useSWR(`/api/library/CTRY_POS`, fetcher);
+  const { data: ctryMatData } = useSWR(`/api/library/CTRY_MAT`, fetcher);
+  const { data: ctryFasData } = useSWR(`/api/library/CTRY_FAS`, fetcher);
+  const { data: hoseTypData } = useSWR(`/api/library/HOSE_TYP`, fetcher);
+  const { data: hoseCntData } = useSWR(`/api/library/HOSE_CNT`, fetcher);
+  const { data: flanClsData } = useSWR(`/api/library/FLAN_CLS`, fetcher);
+  const { data: weldTypData } = useSWR(`/api/library/WELD_TYP`, fetcher);
+  const { data: weldDesData } = useSWR(`/api/library/WELD_DES`, fetcher);
+  const { data: weldMatData } = useSWR(`/api/library/WELD_MAT`, fetcher);
+  const { data: weldCfgData } = useSWR(`/api/library/WELD_CFG`, fetcher);
+  const { data: risrTypData } = useSWR(`/api/library/RISR_TYP`, fetcher);
+  const { data: risrMatData } = useSWR(`/api/library/RISR_MAT`, fetcher);
+  const { data: pipeRtgData } = useSWR(`/api/library/PIPE_RTG`, fetcher);
+  const { data: risgTypData } = useSWR(`/api/library/RISG_TYP`, fetcher);
+  const { data: risbTypData } = useSWR(`/api/library/RISB_TYP`, fetcher);
+  const { data: stubMatData } = useSWR(`/api/library/STUB_MAT`, fetcher);
+  const { data: wsupTypData } = useSWR(`/api/library/WSUP_TYP`, fetcher);
+  const { data: membMatData } = useSWR(`/api/library/MEMB_MAT`, fetcher);
   // Platform details for legs
   const { data: platformData } = useSWR(
     pageType === "platform" && structureId ? `/api/platform/${structureId}` : null,
@@ -161,13 +202,87 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
   const getTemplate = (code: string | null, type: string) => {
     if (!code) return {};
     const lowerCode = code.toLowerCase();
+    let template = {};
     if (lowerCode === "an") {
       const compType = type === "platform" ? "an_comp_plat" : "an_comp_pipe";
-      return specAdditionalDetails.data.find(d => d.componentType === compType)?.additionalDataTemplate || {};
+      template = specAdditionalDetails.data.find(d => d.componentType === compType)?.additionalDataTemplate || {};
+    } else {
+      template = specAdditionalDetails.data.find(d => d.code === lowerCode)?.additionalDataTemplate || {};
     }
-    return specAdditionalDetails.data.find(d => d.code === lowerCode)?.additionalDataTemplate || {};
-  };
 
+    const patchedTemplate: Record<string, any> = { ...template };
+    if (lowerCode === 'bb' && !('bumper_type' in patchedTemplate)) {
+      patchedTemplate.bumper_type = "";
+    }
+    if (lowerCode === 'fd' && !('fender_type' in patchedTemplate)) {
+      patchedTemplate.fender_type = "";
+    }
+    if (lowerCode === 'cs' && !('csum_typ' in patchedTemplate)) {
+      patchedTemplate.csum_typ = "";
+      patchedTemplate.cais_at = "";
+      patchedTemplate.corr_ctg = "";
+    }
+    if (lowerCode === 'cl' && !('clam_typ' in patchedTemplate)) {
+      patchedTemplate.clam_typ = "";
+      patchedTemplate.clam_mat = "";
+    }
+    if (lowerCode === 'cd' && !('coat_typ' in patchedTemplate)) {
+      patchedTemplate.coat_typ = "";
+    }
+    if (lowerCode === 'cf' && !('cgud_typ' in patchedTemplate)) {
+      patchedTemplate.cgud_typ = "";
+      patchedTemplate.fitg_typ = "";
+    }
+    if (lowerCode === 'ct' && !('ctry_typ' in patchedTemplate)) {
+      patchedTemplate.ctry_typ = "";
+      patchedTemplate.ctry_pos = "";
+      patchedTemplate.ctry_mat = "";
+      patchedTemplate.ctry_fas = "";
+    }
+    if (lowerCode === 'fa' && !('face_pos' in patchedTemplate)) {
+      patchedTemplate.face_pos = "";
+    }
+    if ((lowerCode === 'hd' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hm' || lowerCode === 'lg') && !('memb_mat' in patchedTemplate)) {
+      patchedTemplate.memb_mat = "";
+      if (lowerCode !== 'lg') patchedTemplate.corr_ctg = "";
+    }
+    if (lowerCode === 'hs' && !('hose_typ' in patchedTemplate)) {
+      patchedTemplate.hose_typ = "";
+      patchedTemplate.hose_man = "";
+      patchedTemplate.flan_cls = "";
+      patchedTemplate.hose_cnt = "";
+    }
+    if (lowerCode === 'wn' && !('weld_typ' in patchedTemplate)) {
+      patchedTemplate.weld_typ = "";
+      patchedTemplate.weld_des = "";
+      patchedTemplate.weld_mat = "";
+      patchedTemplate.weld_cfg = "";
+    }
+    if (lowerCode === 'wp' && !('weld_typ' in patchedTemplate)) {
+      patchedTemplate.weld_typ = "";
+      patchedTemplate.weld_des = "";
+      patchedTemplate.weld_mat = "";
+      patchedTemplate.weld_cfg = "";
+      patchedTemplate.wsup_typ = "";
+    }
+    if (lowerCode === 'rs' && !('risr_typ' in patchedTemplate)) {
+      patchedTemplate.risr_typ = "";
+      patchedTemplate.risr_mat = "";
+      patchedTemplate.corr_ctg = "";
+      patchedTemplate.pipe_rtg = "";
+    }
+    if ((lowerCode === 'rg' || lowerCode === 'sg') && !('risg_typ' in patchedTemplate)) {
+      patchedTemplate.risg_typ = "";
+    }
+    if (lowerCode === 'rb' && !('risb_typ' in patchedTemplate)) {
+      patchedTemplate.risb_typ = "";
+    }
+    if (lowerCode === 'sd' && !('stub_mat' in patchedTemplate)) {
+      patchedTemplate.stub_mat = "";
+    }
+
+    return patchedTemplate;
+  };
   useEffect(() => {
     if (isCreateMode && effectiveCode) {
       const template = getTemplate(effectiveCode, pageType);
@@ -211,13 +326,122 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
-        additionalInfo: {
-          ...getTemplate(component.code, pageType),
-          ...component.metadata?.additionalInfo,
-          wall_thk: component.metadata?.additionalInfo?.wall_thk ?? "",
-          depth: component.metadata?.additionalInfo?.depth ?? "",
-          diameter: component.metadata?.additionalInfo?.diameter ?? "",
-        },
+        additionalInfo: (() => {
+          const info = {
+            ...getTemplate(component.code, pageType),
+            ...component.metadata?.additionalInfo,
+          };
+
+          const code = component.code?.trim().toLowerCase();
+          const isSpecialComp = ['fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg'].includes(code || '');
+
+          if (isSpecialComp) {
+            if (['fd', 'an', 'cs'].includes(code || '')) {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.id_chk;
+              if (code === 'fd') delete info.thetype;
+              if (code === 'an') delete info.last_inspno;
+              if (code === 'cs') delete info.thetype;
+            } else if (code === 'cl') {
+              delete info.depth;
+              delete info.id_chk;
+              delete info.thetype;
+              delete info.material;
+            } else if (code === 'cd') {
+              delete info.depth;
+              delete info.diameter;
+              delete info.id_chk;
+              delete info.coating;
+              info.wall_thk = component.metadata?.additionalInfo?.wall_thk ?? "";
+            } else if (code === 'fa') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.position;
+              delete info.id_chk;
+            } else if (code === 'cf') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.id_chk;
+              delete info.thetype;
+              delete info.attach_method;
+              delete info.top_und;
+              delete info.comp_group;
+            } else if (code === 'it') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.x_cord;
+              delete info.y_cord;
+              delete info.fp;
+            } else if (code === 'pl') {
+              delete info.id_chk;
+            } else if (code === 'pg') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.id_chk;
+              delete info.thetype;
+              delete info.pile;
+              delete info.weight;
+              delete info.no_undattach;
+              delete info.no_topattach;
+            } else if (code === 'bb') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.id_chk;
+              delete info.thetype;
+            } else if (code === 'lg') {
+              delete info.thetype;
+              delete info.id_chk;
+              delete info.depth;
+            } else if (code === 'sg' || code === 'cu') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.no_risers;
+              delete info.riser_wt;
+              delete info.id_chk;
+              delete info.risg_typ;
+            } else if (['hd', 'hm', 'vd', 'vm'].includes(code || '')) {
+              delete info.depth;
+              delete info.diameter;
+              delete info.material;
+              delete info.designation;
+              delete info.beam_desig;
+              delete info.vertical_ch_desig;
+              delete info.angle_desig;
+              delete info.nominal_size;
+              delete info.channel_desg;
+              delete info.horiz_chan_desg;
+              delete info.flange_thk;
+              delete info.flange_avg_thk;
+              delete info.flange_width;
+              delete info.web_thk;
+              delete info.stem_thk;
+              delete info.web_depth;
+              delete info.id_chk;
+              delete info.coating;
+              info.wall_thk = component.metadata?.additionalInfo?.wall_thk ?? "";
+            } else if (code === 'hs') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.hose_type;
+              delete info.hose_contents;
+              delete info.manufacturer;
+              delete info.assoc_str;
+              delete info.id_chk;
+            }
+          } else {
+            info.wall_thk = component.metadata?.additionalInfo?.wall_thk ?? "";
+            info.depth = component.metadata?.additionalInfo?.depth ?? "";
+            info.diameter = component.metadata?.additionalInfo?.diameter ?? "";
+          }
+          return info;
+        })(),
       });
     } else if (isCreateMode) {
       // Ensure a clean slate when switching back to create mode
@@ -226,16 +450,73 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
         q_id: "",
         id_no: "",
         code: defaultCode || "",
-        additionalInfo: {
-          ...getTemplate(defaultCode || "", pageType),
-          wall_thk: "",
-          depth: "",
-          diameter: "",
-        },
+        additionalInfo: (() => {
+          const info = { ...getTemplate(defaultCode || "", pageType) };
+          const code = (defaultCode || "").trim().toLowerCase();
+          const isSpecialComp = ['fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg'].includes(code || '');
+
+          if (isSpecialComp) {
+            if (['fd', 'an', 'cs', 'cl', 'fa', 'hs'].includes(code || '')) {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.id_chk;
+            } else if (code === 'cf') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.id_chk;
+              delete info.thetype;
+              delete info.attach_method;
+              delete info.top_und;
+              delete info.comp_group;
+            } else if (code === 'it') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.x_cord;
+              delete info.y_cord;
+              delete info.fp;
+            } else if (code === 'cd' || ['hd', 'hm', 'vd', 'vm'].includes(code || '')) {
+              delete info.depth;
+              delete info.diameter;
+              delete info.id_chk;
+              info.wall_thk = "";
+            } else if (code === 'pl') {
+              delete info.id_chk;
+            } else if (code === 'pg') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.id_chk;
+              delete info.thetype;
+              delete info.pile;
+              delete info.weight;
+              delete info.no_undattach;
+              delete info.no_topattach;
+            } else if (code === 'bb') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.id_chk;
+              delete info.thetype;
+            } else if (code === 'sg' || code === 'cu') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.no_risers;
+              delete info.riser_wt;
+              delete info.id_chk;
+              delete info.risg_typ;
+            }
+          } else {
+            info.wall_thk = "";
+            info.depth = "";
+            info.diameter = "";
+          }
+          return info;
+        })(),
       }));
     }
   }, [isCreateMode, component, defaultCode, pageType]);
-
   const handleInputChange = (field: string, value: string) => {
     if (isCreateMode || isEditMode) {
       setFormData(prev => ({ ...prev, [field]: value }));
@@ -696,11 +977,178 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                         if (key === 'del') return null;
 
                         let label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                        if (key === 'wall_thk') label = "Wall Thickness";
+                        const lowerCode = (formData.code || defaultCode || component?.code || "").trim().toLowerCase();
+
+                        if (key === 'wall_thk') label = lowerCode === 'cl' ? "Attach Stub Length" : "Wall Thickness";
+                        if (key === 'fender_type') label = "Boat Fender Types";
+                        if (key === 'no_subsea') label = "No. Subsea Attachments";
+                        if (key === 'no_topside') label = "No. Topside Attachments";
+                        if (key === 'no_undattach') label = lowerCode === 'bb' ? "No. Subsea Attach." : "No Undattach";
+                        if (key === 'no_topattach') label = lowerCode === 'bb' ? "No. Topside Attach." : "No Topattach";
+                        if (key === 'type' && lowerCode === 'an') label = "Installed Type";
+                        if (key === 'thetype' && lowerCode === 'an') label = "Anode Type";
+                        if (key === 'termination_p' && lowerCode === 'cs') label = "Termination Depth";
+                        if (key === 'injection_line' && lowerCode === 'cs') label = "Injection Line Fitted";
+                        if (key === 'bumper_type') label = "Boat Bumper Types";
+                        if (key === 'csum_typ') label = 'Caisson Type';
+                        if (key === 'cais_at') label = 'Caisson Attachment Type';
+                        if (key === 'corr_ctg') label = 'Corrosion Coating Type';
+                        if (key === 'clam_typ') label = 'Clamp Types';
+                        if (key === 'clam_mat') label = 'Clamp Materials';
+                        if (key === 'liner_reqd') label = 'Liner Required';
+                        if (key === 'bolt_diam') label = 'Bolt Diameter';
+                        if (key === 'out_diam') label = 'Outside Diameter';
+                        if (key === 'in_diam') label = 'Inside Diameter';
+                        if (key === 'coat_typ') label = 'Coating Type';
+                        if (key === 'cgud_typ') label = 'Conductor Guide Frame Types';
+                        if (key === 'fitg_typ') label = 'Fitting Type';
+                        if (key === 'no_caissons') label = 'No. Protected Caissons';
+                        if (key === 'no_conductors') label = 'No. Protected Conductor';
+
+                        if (key === 'dimen1') label = 'Dimension 1';
+                        if (key === 'dimen2') label = 'Dimension 2';
+                        if (key === 'dimen3') label = 'Dimension 3';
+
+                        if (key === 'int_stiff') label = 'Internal Stiffening';
+                        if (key === 'ext_stiff') label = 'External Stiffening';
+
+                        if (key === 'nominal_diam') label = 'Nominal Diameter';
+                        if (key === 'purch_date') label = 'Purchase Date';
+                        if (key === 'electrically_cont') label = 'Electrically Continuous';
+                        if (key === 'pile_typ') label = 'Pile Types';
+                        if (key === 'pile_mat') label = 'Pile Materials';
+                        if (key === 'pgud_typ') label = 'Pile Guide Frame Types';
+                        if (key === 'pgud_mat') label = 'Pile Guide Materials';
+                        if (key === 'pgud_fas') label = 'Pile Guide Attachment Methods';
+                        if (key === 'pile_present') label = 'Pile Present in Guide Frame';
+                        if (key === 'thetype' && (lowerCode === 'hd' || lowerCode === 'hm' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'sg' || lowerCode === 'cu')) label = 'Type';
+
+                        if (key === 'ctry_typ') label = 'Cable Tray Type';
+                        if (key === 'ctry_pos') label = 'Cable Tray Position';
+                        if (key === 'ctry_mat') label = 'Cable Tray Material';
+                        if (key === 'ctry_fas') label = 'Cable Tray Attachment';
+                        if (key === 'face_pos') label = 'Face Orientation/Position';
+                        if (key === 'memb_mat') label = 'Member Material';
+                        if (key === 'corr_ctg') label = 'Corrosion Coating Type';
+                        if (key === 'hose_typ') label = 'Hose Types';
+                        if (key === 'hose_man') label = 'Hose (all Hose types) Manuf.';
+                        if (key === 'flan_cls') label = 'Flange Classes';
+                        if (key === 'hose_cnt') label = 'Hose Contents';
+                        if (key === 'weld_typ') label = 'Weld Types';
+                        if (key === 'weld_des') label = 'Weld Design Code';
+                        if (key === 'weld_mat') label = 'Weld Materials';
+                        if (key === 'weld_cfg') label = 'Weld Configurations';
+                        if (key === 'risr_typ') label = 'Riser Type';
+                        if (key === 'risr_mat') label = 'Pipeline End/Riser Material';
+                        if (key === 'pipe_rtg') label = 'Pipeline/Riser/Clamp Rating';
+                        if (key === 'risg_typ') label = 'Riser Guard Types';
+                        if (key === 'risb_typ') label = 'Support Beam Types';
+                        if (key === 'stub_mat') label = 'Conical Stub Material';
+                        if (key === 'wsup_typ') label = 'Weld-Supported Component Types';
 
                         let unit = null;
-                        if (key === 'wall_thk' || key === 'diameter') unit = "mm";
+                        if (key === 'wall_thk') unit = "mm";
+                        if (key === 'diameter') unit = lowerCode === 'bb' ? "m" : "mm";
                         if (key === 'depth') unit = "m";
+                        if (key === 'weight' && (lowerCode === 'fd' || lowerCode === 'bb' || lowerCode === 'sg' || lowerCode === 'cu')) unit = "tonnes";
+                        if (key === 'length' && (lowerCode === 'fd' || lowerCode === 'cl' || lowerCode === 'bb' || lowerCode === 'lg')) unit = "m";
+                        if (key === 'length' && (lowerCode === 'sg' || lowerCode === 'cu')) unit = "mm";
+                        if (key === 'width' && (lowerCode === 'sg' || lowerCode === 'cu')) unit = "m";
+                        if (key === 'life' && lowerCode === 'an') unit = "years";
+                        if (key === 'termination_p' && lowerCode === 'cs') unit = "mm";
+                        if (key === 'bolt_diam' && lowerCode === 'cl') unit = "mm";
+                        if (key === 'out_diam' && lowerCode === 'cd') unit = "mm";
+                        if (key === 'in_diam' && lowerCode === 'cd') unit = "mm";
+                        if (key === 'length' && (lowerCode === 'hd' || lowerCode === 'hm' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hs')) unit = "m";
+                        if (key === 'out_diam' && (lowerCode === 'hd' || lowerCode === 'hm' || lowerCode === 'vd' || lowerCode === 'vm')) unit = "mm";
+
+                        // Render dropdowns
+                        const renderSelect = (id: string, placeholder: string, data: any) => (
+                          <div key={key} className="space-y-2">
+                            <Label htmlFor={id} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
+                            <Select
+                              value={value || ""}
+                              onValueChange={(val) => handleAdditionalInfoChange(key, val)}
+                              disabled={!(isCreateMode || isEditMode) || !data}
+                            >
+                              <SelectTrigger id={id} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
+                                <SelectValue placeholder={placeholder} />
+                              </SelectTrigger>
+                              <SelectContent className="rounded-xl">
+                                {data?.data?.map((x: any) => (
+                                  <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                                    {x.lib_desc}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+
+                        if (key === 'fender_type' && lowerCode === 'fd') return renderSelect(key, "Select boat fender type", fenderTypeData);
+                        if (key === 'bumper_type' && lowerCode === 'bb') return renderSelect(key, "Select boat bumper type", bumperTypeData);
+                        if (key === 'csum_typ' && lowerCode === 'cs') return renderSelect(key, "Select caisson type", csumTypeData);
+                        if (key === 'cais_at' && lowerCode === 'cs') return renderSelect(key, "Select attachment type", caisAtData);
+                        if (key === 'pile_typ' && lowerCode === 'pl') return renderSelect(key, "Select pile type", pileTypeData);
+                        if (key === 'pile_mat' && lowerCode === 'pl') return renderSelect(key, "Select pile material", pileMatData);
+
+                        if (['pgud_typ', 'pgud_mat', 'pgud_fas'].includes(key) && lowerCode === 'pg') {
+                          const dataMap: Record<string, { data: any, placeholder: string }> = {
+                            pgud_typ: { data: pgudTypData, placeholder: "Select guide type" },
+                            pgud_mat: { data: pgudMatData, placeholder: "Select guide material" },
+                            pgud_fas: { data: pgudFasData, placeholder: "Select attachment method" }
+                          };
+                          const { data, placeholder } = dataMap[key];
+                          return (
+                            <div key={key} className="space-y-2">
+                              <Label htmlFor={key} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
+                              <Select
+                                value={value || ""}
+                                onValueChange={(val) => handleAdditionalInfoChange(key, val)}
+                                disabled={!(isCreateMode || isEditMode) || !data}
+                              >
+                                <SelectTrigger id={key} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
+                                  <SelectValue placeholder={placeholder} />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl">
+                                  {data?.data?.map((x: any) => (
+                                    <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                                      {x.lib_name || x.lib_desc}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          );
+                        }
+                        if (key === 'corr_ctg' && (lowerCode === 'cs' || lowerCode === 'hd' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hm' || lowerCode === 'rs')) return renderSelect(key, "Select coating type", corrCtgData);
+                        if (key === 'clam_typ' && lowerCode === 'cl') return renderSelect(key, "Select clamp type", clamTypeData);
+                        if (key === 'clam_mat' && lowerCode === 'cl') return renderSelect(key, "Select clamp material", clamMatData);
+                        if (key === 'liner_reqd' && lowerCode === 'cl') return renderSelect(key, "Select option", linerReqData);
+                        if (key === 'coat_typ' && lowerCode === 'cd') return renderSelect(key, "Select coating type", coatTypData);
+                        if (key === 'cgud_typ' && lowerCode === 'cf') return renderSelect(key, "Select guide type", cgudTypData);
+                        if (key === 'fitg_typ' && lowerCode === 'cf') return renderSelect(key, "Select fitting type", fitgTypData);
+                        if (key === 'sgud_typ' && lowerCode === 'sg') return renderSelect(key, "Select guard type", sgudTypData);
+                        if (key === 'memb_mat' && lowerCode === 'lg') return renderSelect(key, "Select member material", membMatData);
+                        if (key === 'nominal_diam' && lowerCode === 'an') return renderSelect(key, "Select diameter", nominalDiamData);
+                        if (key === 'ctry_typ' && lowerCode === 'ct') return renderSelect(key, "Select tray type", ctryTypData);
+                        if (key === 'ctry_pos' && lowerCode === 'ct') return renderSelect(key, "Select position", ctryPosData);
+                        if (key === 'ctry_mat' && lowerCode === 'ct') return renderSelect(key, "Select material", ctryMatData);
+                        if (key === 'ctry_fas' && lowerCode === 'ct') return renderSelect(key, "Select attachment", ctryFasData);
+                        if (key === 'hose_typ' && lowerCode === 'hs') return renderSelect(key, "Select hose type", hoseTypData);
+                        if (key === 'hose_cnt' && lowerCode === 'hs') return renderSelect(key, "Select contents", hoseCntData);
+                        if (key === 'flan_cls' && lowerCode === 'hs') return renderSelect(key, "Select flange class", flanClsData);
+                        if (key === 'weld_typ' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select weld type", weldTypData);
+                        if (key === 'weld_des' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select design code", weldDesData);
+                        if (key === 'weld_mat' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select material", weldMatData);
+                        if (key === 'weld_cfg' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select configuration", weldCfgData);
+                        if (key === 'risr_typ' && lowerCode === 'rs') return renderSelect(key, "Select riser type", risrTypData);
+                        if (key === 'risr_mat' && lowerCode === 'rs') return renderSelect(key, "Select material", risrMatData);
+                        if (key === 'pipe_rtg' && lowerCode === 'rs') return renderSelect(key, "Select rating", pipeRtgData);
+                        if (key === 'risg_typ' && lowerCode === 'rg') return renderSelect(key, "Select guard type", risgTypData);
+                        if (key === 'risb_typ' && lowerCode === 'rb') return renderSelect(key, "Select beam type", risbTypData);
+                        if (key === 'stub_mat' && lowerCode === 'sd') return renderSelect(key, "Select material", stubMatData);
+                        if (key === 'wsup_typ' && lowerCode === 'wp') return renderSelect(key, "Select component type", wsupTypData);
 
                         return (
                           <div key={key} className="space-y-2">
@@ -723,7 +1171,7 @@ export function ComponentSpecDialog({ component, open, onOpenChange, mode = 'vie
                                   onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
                                   readOnly={!(isCreateMode || isEditMode)}
                                   className={cn(
-                                    "h-11 rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-mono text-xs text-cyan-600 dark:text-cyan-400",
+                                    "h-11 rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-mono text-xs text-primary dark:text-primary",
                                     unit && "pr-10"
                                   )}
                                 />

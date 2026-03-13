@@ -52,7 +52,7 @@ export default function FieldPage() {
                                 <div className="h-1 w-1 rounded-full bg-blue-500" />
                                 <span className="text-slate-900 dark:text-white/80">Global Fields</span>
                             </div>
-                            <h1 className="text-3xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none">Asset Explorer</h1>
+                            <h1 className="text-3xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none">Field Overview</h1>
                         </div>
                     </div>
                 </div>

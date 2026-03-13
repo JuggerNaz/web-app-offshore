@@ -91,8 +91,8 @@ const initialState: InspectionState = {
 
 const InspectionContext = createContext<InspectionContextType | undefined>(undefined);
 
-export function InspectionProvider({ children }: { children: ReactNode }) {
-    const [state, setState] = useState<InspectionState>(initialState);
+export function InspectionProvider({ children, initialData }: { children: ReactNode, initialData?: Partial<InspectionState> }) {
+    const [state, setState] = useState<InspectionState>({ ...initialState, ...initialData });
 
     // Live Timer Mock
     useEffect(() => {

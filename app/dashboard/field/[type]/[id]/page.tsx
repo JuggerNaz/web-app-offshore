@@ -159,7 +159,15 @@ export default function DetailPage() {
           </div>
 
           <TabsList className="w-full max-w-7xl mx-auto flex h-14 items-center justify-start bg-slate-100/50 dark:bg-slate-900/50 p-1.5 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 overflow-x-auto overflow-y-hidden no-scrollbar">
-            <TabTrigger value="spec1" icon={<FileText className="h-4 w-4" />} label="Basic Specs" />
+            <TabTrigger
+              value="spec1"
+              icon={<FileText className="h-4 w-4" />}
+              label={
+                type === "platform" ? "Platform Specs" :
+                  type === "pipeline" ? "Pipeline Specs" :
+                    "Basic Specs"
+              }
+            />
             <TabTrigger value="spec2" icon={<Database className="h-4 w-4" />} label="Extended Data" disabled={isNew} />
             <TabTrigger value="structure-image" icon={<ImageIcon className="h-4 w-4" />} label="Visuals" disabled={isNew} />
             <TabTrigger value="comments" icon={<MessageSquare className="h-4 w-4" />} label="Discussions" disabled={isNew} />
