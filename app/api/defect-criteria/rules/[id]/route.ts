@@ -16,6 +16,7 @@ export async function PATCH(
 
         const {
             structureGroup,
+            fieldName,
             priorityId,
             defectCodeId,
             defectTypeId,
@@ -35,6 +36,7 @@ export async function PATCH(
         // Map camelCase to snake_case for DB
         const updateData: any = {
             structure_group: structureGroup,
+            field_name: fieldName,
             priority_id: priorityId,
             defect_code_id: defectCodeId,
             defect_type_id: defectTypeId,

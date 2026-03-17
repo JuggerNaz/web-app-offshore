@@ -112,7 +112,7 @@ export default function ROVInspectionRecordingDialog({
 
     // Track last initialization to prevent loops
     const lastInitKeyRef = useRef<string | null>(null);
-    const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+    const [pendingAttachments, setPendingAttachments] = useState<PendingFile[]>([]);
 
     // Fetch lists
     useEffect(() => {
@@ -196,7 +196,7 @@ export default function ROVInspectionRecordingDialog({
                     .eq('id', inspTypeId)
                     .single();
 
-                let props = [];
+                let props: any[] = [];
                 if (Array.isArray(data?.default_properties)) {
                     props = data.default_properties;
                 } else if (data?.default_properties && typeof data.default_properties === 'object') {
@@ -492,7 +492,7 @@ export default function ROVInspectionRecordingDialog({
             .eq('id', typeId)
             .single();
 
-        let props = [];
+        let props: any[] = [];
         if (Array.isArray(data?.default_properties)) {
             props = data.default_properties;
         } else if (data?.default_properties && typeof data.default_properties === 'object') {
@@ -1020,7 +1020,7 @@ export default function ROVInspectionRecordingDialog({
             if (insertedRecord?.insp_id && pendingAttachments.length > 0) {
                 toast.info(`Uploading ${pendingAttachments.length} attachments...`);
 
-                for (const pendingObj of pendingAttachments) {
+                for (const pendingObj of (pendingAttachments as any[])) {
                     const { file, title, description } = pendingObj;
                     const fileExt = file.name.split('.').pop();
                     // Clean filename to avoid issues
@@ -1209,7 +1209,7 @@ export default function ROVInspectionRecordingDialog({
 
         // 2. AI Analysis
         if (pendingAttachments.length > 0) {
-            const pendingObj = pendingAttachments[pendingAttachments.length - 1]; // Use latest
+            const pendingObj = (pendingAttachments as any[])[pendingAttachments.length - 1]; // Use latest
             if (pendingObj.file.type.startsWith('image/')) {
                 const toastId = toast.loading("Analyzing image with AI...");
                 try {

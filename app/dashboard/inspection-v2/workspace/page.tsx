@@ -2,59 +2,60 @@
 
 import React, { useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams,
+    useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 
 import {
+    Activity,
+    ActivitySquare,
     AlertCircle,
+    AlertTriangle,
+    ArrowLeft,
+    ArrowRight,
+    Box,
+    Building2,
     Camera,
+    Check,
     CheckCircle2,
+    CheckSquare,
     ChevronDown,
+    ClipboardCheck,
+    ClipboardList,
     Clock,
+    CloudUpload,
+    Edit,
+    FileClock,
+    FileSpreadsheet,
     FileText,
-    Play,
+    History,
+    Info,
+    Layers,
+    Layout,
+    LineChart,
+    List,
+    ListTodo,
+    Loader2,
+    MapPin,
+    Maximize2,
+    Paperclip,
     Pause,
+    Play,
     Plus,
+    Power,
+    Printer,
+    Save,
     Search,
     Settings,
-    Square,
-    Video,
-    X,
-    MapPin,
-    Building2,
-    Activity,
-    VideoOff,
-    CheckSquare,
-    Save,
-    ArrowRight,
-    ArrowLeft,
-    ListTodo,
-    History,
-    FileSpreadsheet,
-    LineChart,
-    Printer,
-    Trash2,
-    Edit,
-    Maximize2,
-    Box,
-    Wifi,
-    Check,
-    CloudUpload,
-    AlertTriangle,
-    FileClock,
-    Paperclip,
     ShieldAlert,
-    ActivitySquare,
-    List,
-    Layers,
-    Info,
-    Power,
+    Square,
+    Trash2,
+    Video,
+    VideoOff,
     Waves,
-    ClipboardCheck,
-    Loader2,
-    Layout,
-    ClipboardList
+    Wifi,
+    X
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -110,6 +111,24 @@ const BELL_DIVE_ACTIONS = [
     { label: "TUP Complete", value: "BELL_MATED_TO_CHAMBER" }
 ];
 
+const MARINE_GROWTH_LIST = [
+    "Hard: 0-20% Coverage", "Hard: 20-40% Coverage", "Hard: 40-60% Coverage", "Hard: 60-80% Coverage", "Hard: 80-100% Coverage", "Hard: All Over",
+    "Soft: 0-20% Coverage", "Soft: 20-40% Coverage", "Soft: 40-60% Coverage", "Soft: 60-80% Coverage", "Soft: 80-100% Coverage", "Soft: All Over",
+    "Hard and Soft: 0-20% Coverage", "Hard and Soft: 20-40% Coverage", "Hard and Soft: 40-60% Coverage", "Hard and Soft: 60-80% Coverage", "Hard and Soft: 80-100% Coverage", "Hard and Soft: All Over",
+    "MGI: 0-20% Coverage", "MGI: 20-40% Coverage", "MGI: 40-60% Coverage", "MGI: 60-80% Coverage", "MGI: 80-100% Coverage", "MGI: All Over"
+];
+
+const COATING_CONDITION_LIST = [
+    "Good", "Satisfactory", "Bare Metal Showing", "Coating Cracked", "Coating Cracked Longitudinally",
+    "Coating Cracked Circumferentially", "Superficial Damage", "Other Defect", "None", "N/A"
+];
+
+const COMPONENT_CONDITION_LIST = [
+    "Good", "Satisfactory", "None", "N/A",
+    "Dent: At 3 'O Clock", "Dent: At 6 'O Clock", "Dent: At 9 'O Clock", "Dent: At 12 'O Clock",
+    "Ruptured", "Fittings", "Flooded Member (FMD)", "Other Defect"
+];
+
 const ROV_MOVEMENT_BRANCHES: Record<string, string[]> = {
     'Awaiting Deployment': ['Rov On Hire', 'Rov Launched'],
     'Rov On Hire': ['Rov Launched'],
@@ -160,6 +179,220 @@ function V10PreviewLayout() {
     const sowIdFull = searchParams.get('sow');
     const sowId = sowIdFull?.split('-')[0];
     const initialMode = searchParams.get('mode') as "DIVING" | "ROV" | null;
+
+    // Helper to handle prop changes and track user interaction
+    const handleDynamicPropChange = (name: string, value: any) => {
+        setDynamicProps(prev => ({ ...prev, [name]: value }));
+        setIsUserInteraction(true);
+    };
+
+    const handleRequiredPropChange = (name: string, value: any) => {
+        setRequiredProps(prev => ({ ...prev, [name]: value }));
+        setIsUserInteraction(true);
+    };
+
+    const renderInspectionField = (p: any, type: 'primary' | 'secondary') => {
+        const fieldName = String(p.label || p.name || '').toLowerCase();
+        const currentProps = type === 'primary' ? dynamicProps : requiredProps;
+        const handler = type === 'primary' ? handleDynamicPropChange : handleRequiredPropChange;
+        const currentValue = currentProps[p.name || p.label] || "";
+
+        const isLocation = fieldName === 'location' || fieldName === 'loc';
+        const isPosition = fieldName === 'position' || fieldName === 'pos';
+        const isMarineGrowth = fieldName.includes('marine growth') || fieldName.includes('marinegrowth') || fieldName === 'mgi' || fieldName.includes('marine_growth');
+        const isCoating = fieldName.includes('coating condition') || fieldName.includes('coatingcondition') || fieldName.includes('coating_condition');
+        const isCompCondition = fieldName.includes('component condition') || fieldName.includes('componentcondition') || fieldName.includes('component_condition');
+
+        const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition;
+        const colorClass = type === 'secondary' ? 'amber' : 'slate';
+        const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
+        const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
+
+        if (isComboEligible) {
+            let options = [...(p.options || [])];
+            if (isLocation && selectedComp) {
+                const locOptions = [
+                    selectedComp.startNode !== '-' ? `At Node : ${selectedComp.startNode}` : null,
+                    selectedComp.endNode !== '-' ? `At Node : ${selectedComp.endNode}` : null
+                ].filter(Boolean) as string[];
+                options = Array.from(new Set([...options, ...locOptions]));
+            } else if (isPosition && options.length === 0) {
+                options = [
+                    "AT 12 O'CLK", "AT 01 O'CLK", "AT 02 O'CLK", "AT 03 O'CLK", "AT 04 O'CLK", "AT 05 O'CLK",
+                    "AT 06 O'CLK", "AT 07 O'CLK", "AT 08 O'CLK", "AT 09 O'CLK", "AT 10 O'CLK", "AT 11 O'CLK"
+                ];
+            } else if (isMarineGrowth) {
+                options = Array.from(new Set([...options, ...MARINE_GROWTH_LIST]));
+            } else if (isCoating) {
+                options = Array.from(new Set([...options, ...COATING_CONDITION_LIST]));
+            } else if (isCompCondition) {
+                options = Array.from(new Set([...options, ...COMPONENT_CONDITION_LIST]));
+            }
+
+            return (
+                <div className="relative group/combo">
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <div className="relative">
+                                <Input
+                                    placeholder={`Select or enter ${p.label || p.name}`}
+                                    className={`h-9 text-sm bg-white pr-16 ${type === 'secondary' ? 'border-amber-200' : 'border-slate-200'}`}
+                                    value={currentValue}
+                                    onChange={(e) => handler(p.name || p.label, e.target.value)}
+                                    onBlur={(e) => {
+                                        if (type === 'primary') {
+                                            setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: e.target.value }));
+                                        }
+                                    }}
+                                />
+                                <div className="absolute right-1 top-1 flex items-center gap-0.5">
+                                    {currentValue && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 text-slate-400 hover:text-slate-600"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                handler(p.name || p.label, "");
+                                                if (type === 'primary') {
+                                                    setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: "" }));
+                                                }
+                                            }}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    )}
+                                    <div className="h-7 w-7 flex items-center justify-center text-slate-500">
+                                        <ChevronDown className="h-4 w-4" />
+                                    </div>
+                                </div>
+                            </div>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1 bg-white border border-slate-200 shadow-xl z-[200]" align="start">
+                            <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
+                                {options.length > 0 ? (
+                                    <div className="space-y-0.5">
+                                        {options.map((opt) => (
+                                            <button
+                                                key={opt}
+                                                className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded transition-colors font-medium flex items-center justify-between group"
+                                                onClick={() => {
+                                                    handler(p.name || p.label, opt);
+                                                    if (type === 'primary') {
+                                                        setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: opt }));
+                                                    }
+                                                }}
+                                            >
+                                                {opt}
+                                                {currentValue === opt && <div className={`w-1.5 h-1.5 ${type === 'secondary' ? 'bg-amber-500' : 'bg-slate-800'} rounded-full`} />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="p-2 text-xs text-slate-400 italic">No options defined</div>
+                                )}
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+        </div>
+            );
+        }
+
+        if (p.type === 'select') {
+            return (
+                <select
+                    value={currentValue}
+                    onChange={(e) => {
+                        handler(p.name || p.label, e.target.value);
+                        if (type === 'primary') {
+                            setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: e.target.value }));
+                        }
+                    }}
+                    className={`flex h-9 w-full rounded-md border ${borderClass} bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                >
+                    <option value="">Select {p.label}</option>
+                    {(p.options || []).map((opt: string) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        if (p.type === 'repeater') {
+            const rows = currentProps[p.name || p.label] || [];
+            return (
+                <div className="space-y-2">
+                    {rows.map((row: any, idx: number) => (
+                        <div key={idx} className="p-2 border rounded-md bg-slate-50/50 space-y-2 relative group-row">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute -right-1 -top-1 h-6 w-6 text-red-400 hover:text-red-600 opacity-0 group-row-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                    const newRows = [...rows];
+                                    newRows.splice(idx, 1);
+                                    handler(p.name || p.label, newRows);
+                                }}
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(p.subFields || []).map((sf: any) => (
+                                    <div key={sf.name} className="space-y-1">
+                                        <label className="text-[10px] uppercase text-slate-400 font-bold">{sf.label}</label>
+                                        <Input
+                                            type={sf.type === 'number' ? 'number' : 'text'}
+                                            step={sf.step}
+                                            value={row[sf.name] || ''}
+                                            onChange={(e) => {
+                                                const newRows = [...rows];
+                                                newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
+                                                handler(p.name || p.label, newRows);
+                                            }}
+                                            onBlur={(e) => {
+                                                if (type === 'primary') {
+                                                    const newRows = [...rows];
+                                                    newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
+                                                    setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: newRows }));
+                                                }
+                                            }}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full h-8 border-dashed border-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                        onClick={() => {
+                            handler(p.name || p.label, [...rows, {}]);
+                        }}
+                    >
+                        <Plus className="w-3.5 h-3.5 mr-1" /> Add Reading
+                    </Button>
+                </div>
+            );
+        }
+
+        return (
+            <Input
+                type={p.type === 'number' ? 'number' : 'text'}
+                step={p.step}
+                value={currentProps[p.name || p.label] || ""}
+                onChange={(e) => handler(p.name || p.label, e.target.value)}
+                onBlur={(e) => {
+                    if (type === 'primary') {
+                        setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: e.target.value }));
+                    }
+                }}
+                placeholder={`Enter ${p.label}`}
+                className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass}`}
+            />
+        );
+    };
 
     // Jotai State Sync for Dialog
     const [, setGlobalUrlId] = useAtom(urlId);
@@ -268,10 +501,12 @@ function V10PreviewLayout() {
 
     // Dynamic Form States
     const [dynamicProps, setDynamicProps] = useState<Record<string, any>>({});
+    const [debouncedProps, setDebouncedProps] = useState<Record<string, any>>({});
     const [requiredSpec, setRequiredSpec] = useState<any>(null);
     const [requiredProps, setRequiredProps] = useState<Record<string, any>>({});
     const [requiredRecordId, setRequiredRecordId] = useState<number | null>(null);
     const [findingType, setFindingType] = useState<"Pass" | "Anomaly" | "Finding" | "Incomplete">("Pass");
+    const [isUserInteraction, setIsUserInteraction] = useState(false);
     const [anomalyData, setAnomalyData] = useState<{
         defectCode: string,
         priority: string,
@@ -281,7 +516,8 @@ function V10PreviewLayout() {
         rectify: boolean,
         rectifiedDate: string,
         rectifiedRemarks: string,
-        severity: string
+        severity: string,
+        referenceNo: string
     }>({
         defectCode: '',
         priority: '',
@@ -291,14 +527,92 @@ function V10PreviewLayout() {
         rectify: false,
         rectifiedDate: '',
         rectifiedRemarks: '',
-        severity: 'Minor'
+        severity: 'Minor',
+        referenceNo: ''
     });
     const [incompleteReason, setIncompleteReason] = useState("");
+
+    const [criteriaRules, setCriteriaRules] = useState<any[]>([]);
+    const [pendingRule, setPendingRule] = useState<any>(null);
+    const [showCriteriaConfirm, setShowCriteriaConfirm] = useState(false);
+    const [showRemovalConfirm, setShowRemovalConfirm] = useState(false);
+    const [lastAutoMatchedRuleId, setLastAutoMatchedRuleId] = useState<string | null>(null);
+    const [isManualOverride, setIsManualOverride] = useState(false);
+
+    // Fetch criteria rules
+    useEffect(() => {
+        if (!selectedComp) return;
+        async function fetchRules() {
+            let group = selectedComp.structureGroup || selectedComp.raw?.metadata?.structure_group || 'Primary';
+            if (group === 'Primary Member') group = 'Primary';
+            
+            const { data } = await supabase.from('defect_criteria_rules')
+                .select('*')
+                .or(`structure_group.eq.${group},structure_group.eq.All Structure Groups`)
+                .order('rule_order');
+            if (data) {
+                // Map snake_case to camelCase
+                setCriteriaRules(data.map(r => ({
+                    id: String(r.id),
+                    fieldName: r.field_name,
+                    priorityId: r.priority_id,
+                    defectCodeId: r.defect_code_id,
+                    defectTypeId: r.defect_type_id,
+                    thresholdValue: r.threshold_value,
+                    thresholdOperator: r.threshold_operator,
+                    thresholdText: r.threshold_text,
+                    alertMessage: r.alert_message,
+                    order: r.rule_order,
+                    evaluationPriority: r.evaluation_priority,
+                    referenceNo: r.reference_no,
+                    autoFlag: r.auto_flag
+                })));
+            }
+        }
+        fetchRules();
+    }, [selectedComp, supabase]);
 
     // Anomaly Library States
     const [defectCodes, setDefectCodes] = useState<any[]>([]);
     const [priorities, setPriorities] = useState<any[]>([]);
     const [allDefectTypes, setAllDefectTypes] = useState<any[]>([]);
+    const [availableDefectTypes, setAvailableDefectTypes] = useState<any[]>([]);
+
+    // Filter Defect Types by selected Defect Code via u_lib_combo
+    useEffect(() => {
+        async function filterDefectTypes() {
+            if (!anomalyData.defectCode) {
+                setAvailableDefectTypes(allDefectTypes);
+                return;
+            }
+            // Resolve the lib_id for the selected defect code description
+            const selectedCodeItem = defectCodes.find(c => c.lib_desc === anomalyData.defectCode);
+            if (!selectedCodeItem) {
+                setAvailableDefectTypes(allDefectTypes);
+                return;
+            }
+            // Fetch valid type IDs from u_lib_combo (code_1 = defect code, lib_code links the combo)
+            const { data: combos } = await supabase
+                .from('u_lib_combo')
+                .select('code_2')
+                .eq('code_1', selectedCodeItem.lib_id);
+            if (combos && combos.length > 0) {
+                const validTypeIds = combos.map((c: any) => c.code_2);
+                const filtered = allDefectTypes.filter(t => validTypeIds.includes(t.lib_id));
+                setAvailableDefectTypes(filtered.length > 0 ? filtered : allDefectTypes);
+                // Clear defect type if current selection is no longer valid
+                if (anomalyData.defectType && filtered.length > 0) {
+                    const stillValid = filtered.some(t => t.lib_desc === anomalyData.defectType);
+                    if (!stillValid) {
+                        setAnomalyData(prev => ({ ...prev, defectType: '' }));
+                    }
+                }
+            } else {
+                setAvailableDefectTypes(allDefectTypes);
+            }
+        }
+        filterDefectTypes();
+    }, [anomalyData.defectCode, defectCodes, allDefectTypes, supabase]);
 
     const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
     const [previewOpen, setPreviewOpen] = useState(false);
@@ -1867,6 +2181,149 @@ function V10PreviewLayout() {
         };
     };
 
+    const handleRegisterAnomaly = () => {
+        if (!pendingRule) return;
+
+        // Map IDs to Descriptions from the fetched library lists
+        const codeDesc = defectCodes.find(c => c.lib_id === pendingRule.defectCodeId)?.lib_desc || pendingRule.defectCodeId;
+        const typeDesc = allDefectTypes.find(t => t.lib_id === pendingRule.defectTypeId)?.lib_desc || pendingRule.defectTypeId;
+        const prioDesc = priorities.find(p => p.lib_id === pendingRule.priorityId)?.lib_desc || pendingRule.priorityId;
+
+        setFindingType('Anomaly');
+        setAnomalyData(prev => ({
+            ...prev,
+            defectCode: codeDesc,
+            defectType: typeDesc,
+            priority: prioDesc,
+            referenceNo: pendingRule.referenceNo || '',
+            description: pendingRule.alertMessage || 'Automatically detected anomaly based on defect criteria.'
+        }));
+        setLastAutoMatchedRuleId(pendingRule.id);
+        setShowCriteriaConfirm(false);
+        setIsManualOverride(false);
+        toast.info("Anomaly details auto-populated.");
+    };
+
+    const handleConfirmRemoval = () => {
+        if (!editingRecordId) {
+            // Draft mode - just reset
+            setFindingType("Pass");
+            setAnomalyData({
+                defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
+                rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: ''
+            });
+            setLastAutoMatchedRuleId(null);
+            setShowRemovalConfirm(false);
+            return;
+        }
+
+        // Check if there are newer anomalies
+        const recordRow = currentRecords.find(r => r.insp_id === editingRecordId);
+        
+        let hasNewerAnomalies = false;
+        if (recordRow) {
+            const currentRecTime = new Date(`${recordRow.inspection_date}T${recordRow.inspection_time}`).getTime();
+            hasNewerAnomalies = currentRecords.some(r => {
+                if (!r.has_anomaly || r.insp_id === editingRecordId) return false;
+                const comparingRecTime = new Date(`${r.inspection_date}T${r.inspection_time}`).getTime();
+                return comparingRecTime > currentRecTime;
+            });
+        }
+
+        if (!hasNewerAnomalies) {
+            // Rule 1: Delete/Remove (will happen on save if findingType is Pass)
+            setFindingType("Pass");
+            setAnomalyData({
+                defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
+                rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: ''
+            });
+            toast.success("Anomaly will be removed upon saving (no subsequent anomalies found).");
+        } else {
+            // Rule 2: Rectify
+            setFindingType("Anomaly");
+            setAnomalyData(prev => ({
+                ...prev,
+                priority: 'NONE',
+                rectify: true,
+                rectifiedRemarks: "Automatically rectified: entered value no longer meets defect criteria. Priority set to NONE to preserve event numbering.",
+                rectifiedDate: format(new Date(), 'yyyy-MM-dd')
+            }));
+            toast.info("Anomaly marked as Rectified (Priority NONE) to preserve sequence.");
+        }
+        setShowRemovalConfirm(false);
+    };
+
+    useEffect(() => {
+        const runCheck = async () => {
+            if (isManualOverride || !criteriaRules.length || !isUserInteraction) return;
+
+            const hasAnomaly = findingType === 'Anomaly';
+            let bestMatchedRule: any = null;
+
+            // 1. Evaluate all potential matches
+            for (const rule of criteriaRules) {
+                const fName = rule.fieldName || '*';
+                const fNameClean = fName.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                const relevantFields = fName === '*'
+                    ? Object.keys(debouncedProps).filter(k => !isNaN(parseFloat(debouncedProps[k])))
+                    : Object.keys(debouncedProps).filter(k => {
+                        const kClean = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        return kClean === fNameClean || fNameClean.includes(kClean) || kClean.includes(fNameClean);
+                    });
+
+                for (const field of relevantFields) {
+                    const rawVal = debouncedProps[field];
+                    if (rawVal === undefined || rawVal === null || rawVal === '') continue;
+
+                    let isMatch = false;
+                    const val = parseFloat(rawVal);
+
+                    if (rule.thresholdOperator && !isNaN(val)) {
+                        const target = rule.thresholdValue || 0;
+                        if (rule.thresholdOperator === '>') isMatch = val > target;
+                        else if (rule.thresholdOperator === '<') isMatch = val < target;
+                        else if (rule.thresholdOperator === '>=') isMatch = val >= target;
+                        else if (rule.thresholdOperator === '<=') isMatch = val <= target;
+                        else if (rule.thresholdOperator === '==') isMatch = val === target;
+                        else if (rule.thresholdOperator === '!=') isMatch = val !== target;
+                    } else if (rule.thresholdText) {
+                        isMatch = String(rawVal).toLowerCase().includes(rule.thresholdText.toLowerCase());
+                    }
+
+                    if (isMatch) {
+                        if (!bestMatchedRule || rule.evaluationPriority > bestMatchedRule.evaluationPriority) {
+                            bestMatchedRule = rule;
+                        }
+                    }
+                }
+            }
+
+            // 2. Decide what to do based on findings
+            if (bestMatchedRule) {
+                if (hasAnomaly) {
+                    // Already an anomaly, check if it's the same rule
+                    if (bestMatchedRule.id !== lastAutoMatchedRuleId) {
+                        // Different rule, suggest update
+                        setPendingRule(bestMatchedRule);
+                        setShowCriteriaConfirm(true);
+                    }
+                } else {
+                    // Suggest new anomaly
+                    setPendingRule(bestMatchedRule);
+                    setShowCriteriaConfirm(true);
+                }
+            } else {
+                // No rules match. If we have an auto-detected anomaly, suggest removal
+                if (hasAnomaly && lastAutoMatchedRuleId) {
+                    setShowRemovalConfirm(true);
+                }
+            }
+        };
+
+        runCheck();
+    }, [debouncedProps, selectedComp, activeSpec, criteriaRules, findingType, anomalyData.defectCode, lastAutoMatchedRuleId, isManualOverride, isUserInteraction]);
+
     const handleCommitRecord = async () => {
         if (!selectedComp || !activeSpec || !activeDep?.id) return;
 
@@ -2050,7 +2507,8 @@ function V10PreviewLayout() {
             } else {
                 const { data: sequenceData } = await supabase.rpc(rpcName, { p_structure_id: parseInt(structureId || "0") });
                 const seq = sequenceData || Math.floor(Math.random() * 1000);
-                const refNo = `${new Date().getFullYear()} / ${headerData.platformName?.slice(0, 3).toUpperCase()} / ${prefix}-${seq.toString().padStart(3, '0')}`;
+                const autoRefNo = `${new Date().getFullYear()} / ${headerData.platformName?.slice(0, 3).toUpperCase()} / ${prefix}-${seq.toString().padStart(3, '0')}`;
+                const refNo = anomalyData.referenceNo ? `${autoRefNo} / ${anomalyData.referenceNo}` : autoRefNo;
                 anomalyPayload.anomaly_ref_no = refNo;
                 anomalyPayload.sequence_no = seq;
                 await supabase.from('insp_anomalies').insert(anomalyPayload);
@@ -2080,16 +2538,15 @@ function V10PreviewLayout() {
         setActiveSpec(null);
         setRecordNotes("");
         setDynamicProps({});
+        setDebouncedProps({});
         setFindingType("Pass");
         setIncompleteReason("");
         setEditingRecordId(null);
         setRequiredRecordId(null);
         setRequiredProps({});
         setRequiredSpec(null);
-        setAnomalyData({
-            defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
-            rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor'
-        });
+        setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
+            rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
         toast.success(editingRecordId ? "Record updated" : "Record committed");
         setIsCommitting(false);
     };
@@ -2111,13 +2568,13 @@ function V10PreviewLayout() {
         setEditingRecordId(fullRecord.insp_id);
         setRecordNotes(fullRecord.observation || "");
         setDynamicProps(fullRecord.inspection_data || {});
+        setDebouncedProps(fullRecord.inspection_data || {});
         setFindingType(fullRecord.has_anomaly ? (fullRecord.record_category === 'FINDING' ? "Finding" : "Anomaly") : (fullRecord.status === 'INCOMPLETE' ? "Incomplete" : "Pass"));
         setIncompleteReason(fullRecord.inspection_data?.incomplete_reason || "");
 
         const anomalyObj = fullRecord.insp_anomalies?.[0] || fullRecord.anomaly_details;
         if (fullRecord.has_anomaly && anomalyObj) {
-            setAnomalyData({
-                defectCode: anomalyObj.defect_type_code || anomalyObj.defect_code || "",
+            setAnomalyData({defectCode: anomalyObj.defect_type_code || anomalyObj.defect_code || "",
                 priority: anomalyObj.priority_code || anomalyObj.priority || "",
                 defectType: anomalyObj.defect_category_code || anomalyObj.defect_type || "",
                 description: anomalyObj.defect_description || anomalyObj.description || "",
@@ -2125,8 +2582,7 @@ function V10PreviewLayout() {
                 rectify: anomalyObj.status === 'CLOSED' || anomalyObj.rectified || false,
                 rectifiedDate: anomalyObj.rectified_date || "",
                 rectifiedRemarks: anomalyObj.rectified_remarks || "",
-                severity: anomalyObj.severity || "Minor"
-            });
+                severity: anomalyObj.severity || "Minor", referenceNo: anomalyObj.anomaly_ref_no || "" });
         }
 
         setTimeout(() => {
@@ -3335,10 +3791,10 @@ function V10PreviewLayout() {
                                                             setDynamicProps(newProps);
                                                             setFindingType("Pass");
                                                             setRecordNotes("");
-                                                            setAnomalyData({
-                                                                defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
-                                                                rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor'
-                                                            });
+                                                            setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
+                                                                rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
+                                                            setIsManualOverride(false);
+                                                            setIsUserInteraction(false);
                                                         }} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${isCompleted && !hasAnomaly ? 'border-green-200 hover:bg-green-50/50' :
                                                             hasAnomaly && !isRectified ? 'border-red-200 hover:bg-red-50/30' :
                                                                 hasAnomaly && isRectified ? 'border-teal-200 hover:bg-teal-50/30' :
@@ -3457,468 +3913,277 @@ function V10PreviewLayout() {
                                                     )}
                                                 </div>
 
+
+
                                                 {/* Dynamic Spec Forms based on Inspection Type */}
                                                 {(() => {
-                                                    const activeSpecClean = (activeSpec || '').trim();
-                                                    const activeIt = allInspectionTypes.find(t => (t.code || '').trim() === activeSpecClean || (t.name || '').trim() === activeSpecClean);
-                                                    let props = [];
-                                                    if (typeof activeIt?.default_properties === 'string') {
-                                                        try {
-                                                            const parsed = JSON.parse(activeIt.default_properties);
-                                                            props = Array.isArray(parsed) ? parsed : (parsed?.properties || parsed?.fields || []);
-                                                        } catch (e) { }
-                                                    } else if (Array.isArray(activeIt?.default_properties)) {
-                                                        props = activeIt.default_properties;
-                                                    } else if (activeIt?.default_properties && typeof activeIt.default_properties === 'object') {
-                                                        props = activeIt.default_properties.properties || activeIt.default_properties.fields || [];
-                                                    }
-                                                    if (!Array.isArray(props) || props.length === 0) return null;
+    const activeSpecClean = (activeSpec || '').trim();
+    const activeIt = allInspectionTypes.find(t => (t.code || '').trim() === activeSpecClean || (t.name || '').trim() === activeSpecClean);
+    let props = [];
+    if (typeof activeIt?.default_properties === 'string') {
+        try {
+            const parsed = JSON.parse(activeIt.default_properties);
+            props = Array.isArray(parsed) ? parsed : (parsed?.properties || parsed?.fields || []);
+        } catch (e) { }
+    } else if (Array.isArray(activeIt?.default_properties)) {
+        props = activeIt.default_properties;
+    } else if (activeIt?.default_properties && typeof activeIt.default_properties === 'object') {
+        props = activeIt.default_properties.properties || activeIt.default_properties.fields || [];
+    }
+    if (!Array.isArray(props) || props.length === 0) return null;
 
-                                                    // Auto-inject Northing and Easting for ROV types if missing
-                                                    const isRovType = inspMethod === 'ROV' || (String(activeIt?.code || '').toUpperCase().startsWith('R') ||
-                                                        String(activeIt?.name || '').toUpperCase().includes('ROV') ||
-                                                        activeIt?.metadata?.rov == 1);
+    const isAnomaly = findingType === 'Anomaly';
+    const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
+    const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
 
-                                                    if (isRovType) {
-                                                        const extraFields = [];
-                                                        const existingNames = props.map((p: any) => String(p.name || p.label || '').toLowerCase());
-                                                        if (!existingNames.includes('northing')) extraFields.push({ name: 'northing', label: 'Northing', type: 'text' });
-                                                        if (!existingNames.includes('easting')) extraFields.push({ name: 'easting', label: 'Easting', type: 'text' });
-                                                        if (extraFields.length > 0) props = [...extraFields, ...props];
-                                                    }
+    const isRovType = inspMethod === 'ROV' || (String(activeIt?.code || '').toUpperCase().startsWith('R') ||
+        String(activeIt?.name || '').toUpperCase().includes('ROV') ||
+        activeIt?.metadata?.rov == 1);
 
-                                                    const hasCpRdgField = props.some((sibling: any) => {
-                                                        const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
-                                                        return sLbl.includes('cp rdg') || sLbl === 'cp_rdg';
-                                                    }) || dataAcqFields.some(f => f.targetField === 'cp_reading');
+    if (isRovType) {
+        const extraFields = [];
+        const existingNames = props.map((p: any) => String(p.name || p.label || '').toLowerCase());
+        if (!existingNames.includes('northing')) extraFields.push({ name: 'northing', label: 'Northing', type: 'text' });
+        if (!existingNames.includes('easting')) extraFields.push({ name: 'easting', label: 'Easting', type: 'text' });
+        if (extraFields.length > 0) props = [...extraFields, ...props];
+    }
 
-                                                    const hasUtThkField = props.some((sibling: any) => {
-                                                        if (sibling.type === 'repeater') return false;
-                                                        const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
-                                                        return sLbl.includes('ut') || sLbl.includes('wall thickness');
-                                                    }) || (activeIt?.code || '').toUpperCase().includes('UT');
+    const hasCpRdgField = props.some((sibling: any) => {
+        const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
+        return sLbl.includes('cp rdg') || sLbl === 'cp_rdg';
+    }) || dataAcqFields.some(f => f.targetField === 'cp_reading');
 
-                                                    // Auto-inject CP Readings repeater if CP field exists but repeater missing
-                                                    const hasCpRepeater = props.some(p => {
-                                                        const l = String(p.label || p.name || '').toLowerCase();
-                                                        return l.includes('cp') && l.includes('reading');
-                                                    });
-                                                    if (hasCpRdgField && !hasCpRepeater) {
-                                                        props.push({
-                                                            name: 'cp_readings',
-                                                            label: 'CP Readings',
-                                                            type: 'repeater',
-                                                            subFields: [
-                                                                { name: 'location', label: 'Location', type: 'text' },
-                                                                { name: 'reading', label: 'Reading (mV)', type: 'number' }
-                                                            ]
-                                                        });
-                                                    }
+    const hasUtThkField = props.some((sibling: any) => {
+        if (sibling.type === 'repeater') return false;
+        const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
+        return sLbl.includes('ut') || sLbl.includes('wall thickness');
+    }) || (activeIt?.code || '').toUpperCase().includes('UT');
 
-                                                    const visibleProps = props.filter((p: any) => {
-                                                        const l = String(p.label || p.name || '').toLowerCase();
-                                                        if (l === 'cp readings' && !hasCpRdgField) return false;
-                                                        if (l === 'ut thickness' && p.type === 'repeater' && !hasUtThkField) return false;
-                                                        return true;
-                                                    });
+    const hasCpRepeater = props.some(p => {
+        const l = String(p.label || p.name || '').toLowerCase();
+        return l.includes('cp') && l.includes('reading');
+    });
+    if (hasCpRdgField && !hasCpRepeater) {
+        props.push({
+            name: 'cp_readings',
+            label: 'CP Readings',
+            type: 'repeater',
+            subFields: [
+                { name: 'location', label: 'Location', type: 'text' },
+                { name: 'reading', label: 'Reading (mV)', type: 'number' }
+            ]
+        });
+    }
 
-                                                    if (visibleProps.length === 0) return null;
+    const visibleProps = props.filter((p: any) => {
+        const l = String(p.label || p.name || '').toLowerCase();
+        if (l === 'cp readings' && !hasCpRdgField) return false;
+        if (l === 'ut thickness' && p.type === 'repeater' && !hasUtThkField) return false;
+        return true;
+    });
 
-                                                    return (
-                                                        <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">
-                                                            <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Inspection Specification</div>
-                                                            <div className="grid grid-cols-2 gap-4">
-                                                                {visibleProps.map((p: any, idx: number) => (
-                                                                    <div key={idx} className={`space-y-1 ${p.type === 'repeater' ? 'col-span-2' : ''}`}>
-                                                                        <label className="text-[10px] uppercase font-bold text-slate-500">
-                                                                            {p.label || p.name} {p.required && <span className="text-red-500">*</span>}
-                                                                        </label>
-                                                                        {(() => {
-                                                                            const fieldName = String(p.label || p.name || '').toLowerCase();
-                                                                            const isLocation = fieldName === 'location';
-                                                                            const isPosition = fieldName === 'position';
-                                                                            const isComboEligible = isLocation || isPosition;
+    if (visibleProps.length === 0) return null;
 
-                                                                            if (isComboEligible) {
-                                                                                // Consolidate options
-                                                                                let options = [...(p.options || [])];
-                                                                                if (isLocation && selectedComp) {
-                                                                                    const locOptions = [
-                                                                                        selectedComp.startNode !== '-' ? `At Node : ${selectedComp.startNode}` : null,
-                                                                                        selectedComp.endNode !== '-' ? `At Node : ${selectedComp.endNode}` : null
-                                                                                    ].filter(Boolean) as string[];
-                                                                                    options = Array.from(new Set([...options, ...locOptions]));
-                                                                                }
-                                                                                if (isPosition && options.length === 0) {
-                                                                                    options = [
-                                                                                        "AT 12 O'CLK", "AT 01 O'CLK", "AT 02 O'CLK", "AT 03 O'CLK", "AT 04 O'CLK", "AT 05 O'CLK",
-                                                                                        "AT 06 O'CLK", "AT 07 O'CLK", "AT 08 O'CLK", "AT 09 O'CLK", "AT 10 O'CLK", "AT 11 O'CLK"
-                                                                                    ];
-                                                                                }
+    return (
+        <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">
+            <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Inspection Specification</div>
+            <div className="grid grid-cols-2 gap-4">
+                {visibleProps.map((p: any) => (
+                    <div key={p.name || p.label} className={p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">{p.label || p.name}</label>
+                        {renderInspectionField(p, 'primary')}
+                    </div>
+                ))}
+            </div>
+                
+        </div>
+    );
+})()}
 
-                                                                                const currentValue = dynamicProps[p.name || p.label] || "";
-
-                                                                                return (
-                                                                                    <div className="relative group/combo">
-                                                                                        <Popover>
-                                                                                            <PopoverTrigger asChild>
-                                                                                                <div className="relative">
-                                                                                                    <Input
-                                                                                                        placeholder={`Select or enter ${p.label || p.name}`}
-                                                                                                        className="h-9 text-sm bg-white pr-16"
-                                                                                                        value={currentValue}
-                                                                                                        onChange={(e) => setDynamicProps({ ...dynamicProps, [p.name || p.label]: e.target.value })}
-                                                                                                    />
-                                                                                                    <div className="absolute right-1 top-1 flex items-center gap-0.5">
-                                                                                                        {currentValue && (
-                                                                                                            <Button
-                                                                                                                variant="ghost"
-                                                                                                                size="icon"
-                                                                                                                className="h-7 w-7 text-slate-400 hover:text-slate-600"
-                                                                                                                onClick={(e) => {
-                                                                                                                    e.preventDefault();
-                                                                                                                    setDynamicProps({ ...dynamicProps, [p.name || p.label]: "" });
-                                                                                                                }}
-                                                                                                            >
-                                                                                                                <X className="h-3 w-3" />
-                                                                                                            </Button>
-                                                                                                        )}
-                                                                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400">
-                                                                                                            <ChevronDown className="h-4 w-4" />
-                                                                                                        </Button>
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            </PopoverTrigger>
-                                                                                            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1 overflow-hidden" align="start">
-                                                                                                <div className="max-h-[200px] overflow-y-auto">
-                                                                                                    {options.length > 0 ? (
-                                                                                                        options.map((opt: string) => (
-                                                                                                            <button
-                                                                                                                key={opt}
-                                                                                                                className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-100 rounded transition-colors font-medium flex items-center justify-between"
-                                                                                                                onClick={() => {
-                                                                                                                    setDynamicProps({ ...dynamicProps, [p.name || p.label]: opt });
-                                                                                                                }}
-                                                                                                            >
-                                                                                                                {opt}
-                                                                                                                {currentValue === opt && <Check className="h-3 w-3 text-blue-600" />}
-                                                                                                            </button>
-                                                                                                        ))
-                                                                                                    ) : (
-                                                                                                        <div className="px-2 py-4 text-center text-[10px] text-slate-400 uppercase font-bold tracking-widest">No options available</div>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            </PopoverContent>
-                                                                                        </Popover>
-                                                                                    </div>
-                                                                                );
-                                                                            }
-
-                                                                            if (p.type === 'select') {
-                                                                                return (
-                                                                                    <select
-                                                                                        className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-semibold focus:ring-blue-500"
-                                                                                        value={dynamicProps[p.name || p.label] || ""}
-                                                                                        onChange={(e) => setDynamicProps({ ...dynamicProps, [p.name || p.label]: e.target.value })}
-                                                                                    >
-                                                                                        <option value="">Select...</option>
-                                                                                        {p.options?.map((o: string) => <option key={o} value={o}>{o}</option>)}
-                                                                                    </select>
-                                                                                );
-                                                                            }
-
-                                                                            if (p.type === 'repeater') {
-                                                                                return (
-                                                                                    <div className="space-y-2 border border-slate-200 rounded-lg p-2 bg-white">
-                                                                                        {(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : []).map((item: any, itemIdx: number) => (
-                                                                                            <div key={itemIdx} className="flex items-center gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded">
-                                                                                                {p.subFields?.map((sf: any, sfIdx: number) => (
-                                                                                                    <Input
-                                                                                                        key={sfIdx}
-                                                                                                        type={sf.type === 'number' ? 'number' : 'text'}
-                                                                                                        placeholder={sf.label || sf.name}
-                                                                                                        className="h-8 text-xs bg-white flex-1"
-                                                                                                        value={item[sf.name || sf.label] || ""}
-                                                                                                        onChange={(e) => {
-                                                                                                            const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
-                                                                                                            nextList[itemIdx] = { ...nextList[itemIdx], [sf.name || sf.label]: e.target.value };
-                                                                                                            setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
-                                                                                                        }}
-                                                                                                    />
-                                                                                                ))}
-                                                                                                <Button
-                                                                                                    variant="ghost"
-                                                                                                    size="icon"
-                                                                                                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"
-                                                                                                    onClick={(e) => {
-                                                                                                        e.preventDefault();
-                                                                                                        const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
-                                                                                                        nextList.splice(itemIdx, 1);
-                                                                                                        setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
-                                                                                                    }}
-                                                                                                >
-                                                                                                    <Trash2 className="w-4 h-4" />
-                                                                                                </Button>
-                                                                                            </div>
-                                                                                        ))}
-                                                                                        <Button
-                                                                                            variant="outline"
-                                                                                            size="sm"
-                                                                                            className="w-full text-xs h-7 border-dashed border-slate-300 text-slate-500 hover:text-slate-700 bg-slate-50"
-                                                                                            onClick={(e) => {
-                                                                                                e.preventDefault();
-                                                                                                const nextList = [...(Array.isArray(dynamicProps[p.name || p.label]) ? dynamicProps[p.name || p.label] : [])];
-                                                                                                nextList.push({});
-                                                                                                setDynamicProps({ ...dynamicProps, [p.name || p.label]: nextList });
-                                                                                            }}
-                                                                                        >
-                                                                                            <Plus className="w-3 h-3 mr-1" /> Add {p.label || p.name}
-                                                                                        </Button>
-                                                                                    </div>
-                                                                                );
-                                                                            }
-
-                                                                            return (
-                                                                                <Input
-                                                                                    type={p.type === 'number' ? 'number' : 'text'}
-                                                                                    placeholder={`Enter ${p.label || p.name}`}
-                                                                                    className="h-9 text-sm bg-white"
-                                                                                    value={dynamicProps[p.name || p.label] || ""}
-                                                                                    onChange={(e) => setDynamicProps({ ...dynamicProps, [p.name || p.label]: e.target.value })}
-                                                                                />
-                                                                            );
-                                                                        })()}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })()}
-
-                                                {/* Required Calibration / Secondary Spec Form */}
-                                                {requiredSpec && (() => {
-                                                    let props = [];
-                                                    if (typeof requiredSpec.default_properties === 'string') {
-                                                        try {
-                                                            const parsed = JSON.parse(requiredSpec.default_properties);
-                                                            props = Array.isArray(parsed) ? parsed : (parsed?.properties || parsed?.fields || []);
-                                                        } catch (e) { }
-                                                    } else if (Array.isArray(requiredSpec.default_properties)) {
-                                                        props = requiredSpec.default_properties;
-                                                    } else if (requiredSpec.default_properties && typeof requiredSpec.default_properties === 'object') {
-                                                        props = requiredSpec.default_properties.properties || requiredSpec.default_properties.fields || [];
-                                                    }
-                                                    if (!Array.isArray(props) || props.length === 0) return null;
-
-                                                    return (
-                                                        <div className="p-4 border-2 border-amber-200 bg-amber-50/50 rounded-lg space-y-3">
-                                                            <div className="flex justify-between items-center border-b border-amber-200 pb-2">
-                                                                <div className="text-[10px] font-black uppercase text-amber-800 tracking-widest flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> Requires: {requiredSpec.name || requiredSpec.code}</div>
-                                                                {requiredRecordId && <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200 text-[8px] font-bold uppercase">Linked to existing Record #{requiredRecordId}</Badge>}
-                                                            </div>
-                                                            <div className="grid grid-cols-2 gap-4">
-                                                                {props.map((p: any, idx: number) => (
-                                                                    <div key={`req-${idx}`} className={`space-y-1 ${p.type === 'repeater' ? 'col-span-2' : ''}`}>
-                                                                        <label className="text-[10px] uppercase font-bold text-amber-700">
-                                                                            {p.label || p.name} {p.required && <span className="text-red-500">*</span>}
-                                                                        </label>
-                                                                        {p.type === 'select' ? (
-                                                                            <select
-                                                                                className="flex h-9 w-full rounded-md border border-amber-300 bg-white px-3 py-1 text-sm font-semibold focus:ring-amber-500"
-                                                                                value={requiredProps[p.name || p.label] || ""}
-                                                                                onChange={(e) => setRequiredProps({ ...requiredProps, [p.name || p.label]: e.target.value })}
-                                                                            >
-                                                                                <option value="">Select...</option>
-                                                                                {p.options?.map((o: string) => <option key={o} value={o}>{o}</option>)}
-                                                                            </select>
-                                                                        ) : p.type === 'repeater' ? (
-                                                                            <div className="space-y-2 border border-amber-200 rounded-lg p-2 bg-white">
-                                                                                {(Array.isArray(requiredProps[p.name || p.label]) ? requiredProps[p.name || p.label] : []).map((item: any, itemIdx: number) => (
-                                                                                    <div key={itemIdx} className="flex items-center gap-2 p-1.5 bg-amber-50/50 border border-amber-100 rounded">
-                                                                                        {p.subFields?.map((sf: any, sfIdx: number) => (
-                                                                                            <Input
-                                                                                                key={sfIdx}
-                                                                                                type={sf.type === 'number' ? 'number' : 'text'}
-                                                                                                placeholder={sf.label || sf.name}
-                                                                                                className="h-8 text-xs bg-white flex-1 border-amber-200 focus-visible:ring-amber-500"
-                                                                                                value={item[sf.name || sf.label] || ""}
-                                                                                                onChange={(e) => {
-                                                                                                    const nextList = [...(Array.isArray(requiredProps[p.name || p.label]) ? requiredProps[p.name || p.label] : [])];
-                                                                                                    nextList[itemIdx] = { ...nextList[itemIdx], [sf.name || sf.label]: e.target.value };
-                                                                                                    setRequiredProps({ ...requiredProps, [p.name || p.label]: nextList });
-                                                                                                }}
-                                                                                            />
-                                                                                        ))}
-                                                                                        <Button
-                                                                                            variant="ghost"
-                                                                                            size="icon"
-                                                                                            className="h-8 w-8 text-amber-700 hover:text-red-700 hover:bg-amber-100 shrink-0"
-                                                                                            onClick={(e) => {
-                                                                                                e.preventDefault();
-                                                                                                const nextList = [...(Array.isArray(requiredProps[p.name || p.label]) ? requiredProps[p.name || p.label] : [])];
-                                                                                                nextList.splice(itemIdx, 1);
-                                                                                                setRequiredProps({ ...requiredProps, [p.name || p.label]: nextList });
-                                                                                            }}
-                                                                                        >
-                                                                                            <Trash2 className="w-4 h-4" />
-                                                                                        </Button>
-                                                                                    </div>
-                                                                                ))}
-                                                                                <Button
-                                                                                    variant="outline"
-                                                                                    size="sm"
-                                                                                    className="w-full text-xs h-7 border-dashed border-amber-300 text-amber-700 hover:text-amber-800 bg-amber-50"
-                                                                                    onClick={(e) => {
-                                                                                        e.preventDefault();
-                                                                                        const nextList = [...(Array.isArray(requiredProps[p.name || p.label]) ? requiredProps[p.name || p.label] : [])];
-                                                                                        nextList.push({});
-                                                                                        setRequiredProps({ ...requiredProps, [p.name || p.label]: nextList });
-                                                                                    }}
-                                                                                >
-                                                                                    <Plus className="w-3 h-3 mr-1" /> Add {p.label || p.name}
-                                                                                </Button>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <Input
-                                                                                type={p.type === 'number' ? 'number' : 'text'}
-                                                                                placeholder={`Enter ${p.label || p.name}`}
-                                                                                className="h-9 text-sm bg-white border-amber-200 focus-visible:ring-amber-500"
-                                                                                value={requiredProps[p.name || p.label] || ""}
-                                                                                onChange={(e) => setRequiredProps({ ...requiredProps, [p.name || p.label]: e.target.value })}
-                                                                            />
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })()}
-
-                                                <div className="space-y-3 p-4 border-2 border-slate-200 rounded-lg bg-white shadow-sm">
+                                                {/* Inspection Result Toggle moved below spec fields */}
+                                                <div className="space-y-3 p-4 border-2 border-slate-200 rounded-lg bg-white shadow-sm animate-in fade-in slide-in-from-top-2">
                                                     <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">Inspection Result</label>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <Button variant={findingType === 'Pass' ? 'default' : 'outline'} onClick={() => setFindingType('Pass')} className={`h-12 font-bold text-[11px] transition-all ${findingType === 'Pass' ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><CheckCircle2 className="w-4 h-4 mr-1.5" /> Acceptable / Pass</Button>
-                                                        <Button variant={findingType === 'Anomaly' ? 'default' : 'outline'} onClick={() => setFindingType('Anomaly')} className={`h-12 font-bold text-[11px] transition-all ${findingType === 'Anomaly' ? 'bg-red-600 hover:bg-red-700 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><AlertCircle className="w-4 h-4 mr-1.5" /> Register Anomaly</Button>
-                                                        <Button variant={findingType === 'Finding' ? 'default' : 'outline'} onClick={() => setFindingType('Finding')} className={`h-12 font-bold text-[11px] transition-all ${findingType === 'Finding' ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><Search className="w-4 h-4 mr-1.5" /> Register Finding</Button>
-                                                        <Button variant={findingType === 'Incomplete' ? 'default' : 'outline'} onClick={() => setFindingType('Incomplete')} className={`h-12 font-bold text-[11px] transition-all ${findingType === 'Incomplete' ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md' : 'text-slate-600 border-slate-300'}`}><FileClock className="w-4 h-4 mr-1.5" /> Task Incomplete</Button>
+                                                    <div className="grid grid-cols-4 gap-2">
+                                                        <Button
+                                                            variant={findingType === 'Pass' ? 'default' : 'outline'}
+                                                            onClick={() => {
+                                                                if (findingType === 'Anomaly' || findingType === 'Finding') {
+                                                                    // If switching away from anomaly/finding, check if we should warn
+                                                                    if (anomalyData.defectCode || anomalyData.description) {
+                                                                        if (!confirm('Switching to Pass will clear the defect/finding details. Continue?')) return;
+                                                                    }
+                                                                    setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
+                                                                        rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
+                                                                    setLastAutoMatchedRuleId(null);
+                                                                    setIsManualOverride(false);
+                                                                }
+                                                                setFindingType('Pass');
+                                                            }}
+                                                            className={`h-11 text-xs font-bold transition-all ${findingType === 'Pass' ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-green-50'}`}
+                                                        >
+                                                            <CheckCircle2 className="w-4 h-4 mr-1" /> Pass
+                                                        </Button>
+                                                        <Button
+                                                            variant={findingType === 'Finding' ? 'default' : 'outline'}
+                                                            onClick={() => {
+                                                                setFindingType('Finding');
+                                                                setIsManualOverride(true);
+                                                            }}
+                                                            className={`h-11 text-xs font-bold transition-all ${findingType === 'Finding' ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-blue-50'}`}
+                                                        >
+                                                            <FileText className="w-4 h-4 mr-1" /> Finding
+                                                        </Button>
+                                                        <Button
+                                                            variant={findingType === 'Anomaly' ? 'default' : 'outline'}
+                                                            onClick={() => {
+                                                                setFindingType('Anomaly');
+                                                                setIsManualOverride(true);
+                                                            }}
+                                                            className={`h-11 text-xs font-bold transition-all ${findingType === 'Anomaly' ? 'bg-red-600 hover:bg-red-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-red-50'}`}
+                                                        >
+                                                            <AlertCircle className="w-4 h-4 mr-1" /> Anomaly
+                                                        </Button>
+                                                        <Button
+                                                            variant={findingType === 'Incomplete' ? 'default' : 'outline'}
+                                                            onClick={() => {
+                                                                if (findingType === 'Anomaly' || findingType === 'Finding') {
+                                                                    if (anomalyData.defectCode || anomalyData.description) {
+                                                                        if (!confirm('Switching to Incomplete will clear the defect/finding details. Continue?')) return;
+                                                                    }
+                                                                    setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
+                                                                        rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
+                                                                }
+                                                                setFindingType('Incomplete');
+                                                                setIsManualOverride(true);
+                                                            }}
+                                                            className={`h-11 text-xs font-bold transition-all ${findingType === 'Incomplete' ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-amber-50'}`}
+                                                        >
+                                                            <Clock className="w-4 h-4 mr-1" /> Incomplete
+                                                        </Button>
                                                     </div>
+                                                </div>
 
-                                                    {(findingType === 'Anomaly' || findingType === 'Finding') && (() => {
-                                                        const isAnomaly = findingType === 'Anomaly';
-                                                        const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
-                                                        const refPrefix = isAnomaly ? 'A' : 'F';
-                                                        const accentColor = isAnomaly ? 'red' : 'orange';
-                                                        const borderClass = isAnomaly ? 'border-red-50' : 'border-orange-50';
-                                                        const titleColorClass = isAnomaly ? 'text-red-600' : 'text-orange-600';
-                                                        const refBgClass = isAnomaly ? 'bg-red-50' : 'bg-orange-50';
-                                                        const ringClass = isAnomaly ? 'focus:ring-red-500' : 'focus:ring-orange-500';
-                                                        return (
-                                                            <div className={`pt-4 mt-2 border-t ${borderClass} space-y-4 animate-in fade-in slide-in-from-top-2`}>
-                                                                <div className={`flex justify-between items-center text-[10px] font-black uppercase ${titleColorClass} tracking-tighter`}>
-                                                                    <span className="flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> {categoryLabel} Information</span>
-                                                                    <span className={`${refBgClass} px-2 py-0.5 rounded font-mono`}>Ref: {new Date().getFullYear()} / {headerData.platformName?.slice(0, 3).toUpperCase()} / {refPrefix}-AUTO (Draft)</span>
-                                                                </div>
-
-                                                                <div className="grid grid-cols-2 gap-4">
-                                                                    <div className="space-y-1.5">
-                                                                        <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Code' : 'Finding Code'} *</label>
-                                                                        <select
-                                                                            value={anomalyData.defectCode}
-                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, defectCode: e.target.value })}
-                                                                            className={`flex h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                        >
-                                                                            <option value="">Select Code</option>
-                                                                            {defectCodes.map(c => (
-                                                                                <option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>
-                                                                            ))}
-                                                                        </select>
-                                                                    </div>
-                                                                    <div className="space-y-1.5">
-                                                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Priority *</label>
-                                                                        <select
-                                                                            value={anomalyData.priority}
-                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, priority: e.target.value })}
-                                                                            className={`flex h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                        >
-                                                                            <option value="">Select Priority</option>
-                                                                            {priorities.map(p => (
-                                                                                <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
-                                                                            ))}
-                                                                        </select>
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Type' : 'Finding Type'}</label>
-                                                                    <select
-                                                                        value={anomalyData.defectType}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, defectType: e.target.value })}
-                                                                        className={`flex h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                    >
-                                                                        <option value="">Select Type</option>
-                                                                        {allDefectTypes.map(t => (
-                                                                            <option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-
-                                                                <div className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">{categoryLabel} Description</label>
-                                                                    <textarea
-                                                                        value={anomalyData.description}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, description: e.target.value })}
-                                                                        placeholder={`Detailed description of the ${categoryLabel.toLowerCase()}...`}
-                                                                        className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-slate-50 ${ringClass}`}
-                                                                    ></textarea>
-                                                                </div>
-
-                                                                <div className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Recommended Action</label>
-                                                                    <textarea
-                                                                        value={anomalyData.recommendedAction}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, recommendedAction: e.target.value })}
-                                                                        placeholder="Recommended remedial action..."
-                                                                        className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-slate-50 ${ringClass}`}
-                                                                    ></textarea>
-                                                                </div>
-
-                                                                <div className="p-3 border border-green-100 bg-green-50/50 rounded-lg space-y-3">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            id="rectifyCheck"
-                                                                            checked={anomalyData.rectify}
-                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, rectify: e.target.checked })}
-                                                                            className="w-4 h-4 rounded text-green-600 focus:ring-green-500"
-                                                                        />
-                                                                        <label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800">Rectify {categoryLabel}</label>
-                                                                    </div>
-                                                                    {anomalyData.rectify && (
-                                                                        <div className="space-y-3 animate-in fade-in zoom-in-95">
-                                                                            <div className="space-y-1">
-                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">Rectified Date</label>
-                                                                                <Input
-                                                                                    type="date"
-                                                                                    value={anomalyData.rectifiedDate}
-                                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedDate: e.target.value })}
-                                                                                    className="h-8 text-xs bg-white"
-                                                                                />
-                                                                            </div>
-                                                                            <div className="space-y-1">
-                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">Rectification Remarks</label>
-                                                                                <textarea
-                                                                                    value={anomalyData.rectifiedRemarks}
-                                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedRemarks: e.target.value })}
-                                                                                    placeholder="How was it rectified?"
-                                                                                    className="w-full min-h-[50px] rounded border border-slate-300 p-2 text-xs bg-white"
-                                                                                ></textarea>
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
+                                                {/* Conditional Anomaly/Finding Extra Fields */}
+                                                {(findingType === 'Anomaly' || findingType === 'Finding') && (() => {
+                                                    const isAnomaly = findingType === 'Anomaly';
+                                                    const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
+                                                    const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
+                                                    return (
+                                                    <div className={`mt-3 p-3 rounded-lg border-2 space-y-3 animate-in fade-in slide-in-from-top-2 ${isAnomaly ? 'border-red-200 bg-red-50/30' : 'border-blue-200 bg-blue-50/30'}`}>
+                                                        <div className={`text-[10px] font-black uppercase tracking-widest border-b pb-2 ${isAnomaly ? 'text-red-700 border-red-200' : 'text-blue-700 border-blue-200'}`}>
+                                                            {isAnomaly ? '⚠ Anomaly / Defect Details' : '📋 Finding Details'}
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Code' : 'Finding Code'} *</label>
+                                                                <select
+                                                                    value={anomalyData.defectCode}
+                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, defectCode: e.target.value })}
+                                                                    className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                >
+                                                                    <option value="">Select Code</option>
+                                                                    {defectCodes.map(c => (
+                                                                        <option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>
+                                                                    ))}
+                                                                </select>
                                                             </div>
-                                                        );
-                                                    })()}
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Type' : 'Finding Type'}</label>
+                                                                <select
+                                                                    value={anomalyData.defectType}
+                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, defectType: e.target.value })}
+                                                                    className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                >
+                                                                    <option value="">Select Type</option>
+                                                                    {availableDefectTypes.map(t => (
+                                                                        <option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>
+                                                                    ))}
+                                                                </select>
+                                                                {anomalyData.defectCode && availableDefectTypes.length < allDefectTypes.length && (
+                                                                    <span className="text-[9px] text-blue-500 font-medium tracking-wide">Filtered by selected code ({availableDefectTypes.length} types)</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Priority *</label>
+                                                                <select
+                                                                    value={anomalyData.priority}
+                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, priority: e.target.value })}
+                                                                    className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                >
+                                                                    <option value="">Select Priority</option>
+                                                                    {priorities.map(p => (
+                                                                        <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Reference No</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={anomalyData.referenceNo}
+                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, referenceNo: e.target.value })}
+                                                                    placeholder="Criteria Ref..."
+                                                                    className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="space-y-1.5">
+                                                            <label className="text-[10px] font-bold text-slate-400 uppercase">{categoryLabel} Description</label>
+                                                            <textarea
+                                                                value={anomalyData.description}
+                                                                onChange={(e) => setAnomalyData({ ...anomalyData, description: e.target.value })}
+                                                                placeholder={`Detailed description of the ${categoryLabel.toLowerCase()}...`}
+                                                                className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
+                                                            ></textarea>
+                                                        </div>
+
+                                                        <div className="space-y-1.5">
+                                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Recommended Action</label>
+                                                            <textarea
+                                                                value={anomalyData.recommendedAction}
+                                                                onChange={(e) => setAnomalyData({ ...anomalyData, recommendedAction: e.target.value })}
+                                                                placeholder="Recommended remedial action..."
+                                                                className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
+                                                            ></textarea>
+                                                        </div>
+
+                                                        <div className="p-3 border border-green-100 bg-green-50/80 rounded-lg space-y-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    id="rectifyCheck"
+                                                                    checked={anomalyData.rectify}
+                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, rectify: e.target.checked })}
+                                                                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-green-300 cursor-pointer"
+                                                                />
+                                                                <label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800 cursor-pointer">Rectify {categoryLabel}</label>
+                                                            </div>
+                                                            {anomalyData.rectify && (
+                                                                <div className="space-y-3 animate-in fade-in zoom-in-95">
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-[9px] font-bold text-green-700 uppercase">Rectified Date</label>
+                                                                        <Input
+                                                                            type="date"
+                                                                            value={anomalyData.rectifiedDate}
+                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedDate: e.target.value })}
+                                                                            className="h-8 text-xs bg-white border-green-200"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-[9px] font-bold text-green-700 uppercase">Rectification Remarks</label>
+                                                                        <textarea
+                                                                            value={anomalyData.rectifiedRemarks}
+                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedRemarks: e.target.value })}
+                                                                            placeholder="How was it rectified?"
+                                                                            className="w-full min-h-[50px] rounded border border-green-200 p-2 text-xs bg-white focus:ring-green-500"
+                                                                        ></textarea>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )})()}
 
                                                     {findingType === 'Incomplete' && (
                                                         <div className="pt-3 animate-in fade-in slide-in-from-top-2">
@@ -3931,7 +4196,6 @@ function V10PreviewLayout() {
                                                             ></textarea>
                                                         </div>
                                                     )}
-                                                </div>
 
                                                 <div className="space-y-1.5">
                                                     <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><FileText className="w-3 h-3" /> Detailed Field Notes</label>
@@ -3972,8 +4236,7 @@ function V10PreviewLayout() {
                                                                         </div>
                                                                     </div>
                                                                 )}
-                                                                <Button disabled={isCommitting || !canCommit} onClick={handleCommitRecord} className={`w-full h-14 font-black shadow-lg text-white text-base tracking-wide rounded-xl transition-all ${canCommit ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300 cursor-not-allowed'
-                                                                    }`}>
+                                                                <Button disabled={isCommitting || !canCommit} onClick={handleCommitRecord} className={`w-full h-14 font-black shadow-lg text-white text-base tracking-wide rounded-xl transition-all ${canCommit ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300 cursor-not-allowed'}`}>
                                                                     <Save className="w-5 h-5 mr-2" /> {isCommitting ? "Committing..." : "Commit Record & Reset"}
                                                                 </Button>
                                                             </>
@@ -4339,7 +4602,7 @@ function V10PreviewLayout() {
                                             updatedTime = formatTime((lastStartEventForEdit.tape_counter_start || 0) + diffSecs);
                                         }
 
-                                        setEditingEvent({ ...editingEvent, eventTime: newIso, time: updatedTime });
+                                        setEditingEvent({ ...editingEvent, eventTime: newIso, time: updatedTime, referenceNo: '' });
                                     }}
                                     className="font-mono font-bold bg-blue-50/30 border-blue-100 focus:ring-blue-500"
                                 />
@@ -4519,7 +4782,7 @@ function V10PreviewLayout() {
                                 )}
                             </Button>
                         </div>
-                    </div>
+</div>
                 </DialogContent>
             </Dialog>
 
@@ -4529,6 +4792,125 @@ function V10PreviewLayout() {
                 component={selectedComp?.raw}
                 mode="view"
             />
-        </div >
+        
+            {/* Defect Criteria Automated Confirmation Dialog */}
+            <Dialog open={showCriteriaConfirm} onOpenChange={setShowCriteriaConfirm}>
+                <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl">
+                    <div className="bg-red-600 p-4 flex items-center gap-3">
+                        <div className="bg-white/20 p-2 rounded-lg">
+                            <AlertTriangle className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                            <h3 className="text-white font-bold text-sm">Automated Defect Alert</h3>
+                            <p className="text-white/80 text-[10px] uppercase tracking-wider font-medium">Verification Required</p>
+                        </div>
+                    </div>
+                    <div className="p-5 space-y-4 bg-white">
+                        <div className="bg-red-50 p-3 rounded-md border border-red-100 mb-4 space-y-2">
+                            <div className="text-xs font-bold text-red-800 uppercase tracking-widest flex items-center justify-between">
+                                <span>Defect Alert</span>
+                                {pendingRule?.referenceNo && <span className="bg-red-100 px-1.5 py-0.5 rounded">Ref: {pendingRule.referenceNo}</span>}
+                            </div>
+                            <div className="text-xs font-medium text-red-700 leading-relaxed">
+                                {pendingRule?.alertMessage || "Defect criteria exceeded."}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <Button
+                                variant="outline"
+                                className="flex-1 h-10 text-xs font-bold border-slate-200 hover:bg-slate-50 transition-all text-slate-600 uppercase tracking-wide"
+                                onClick={() => {
+                                    setShowCriteriaConfirm(false);
+                                    setIsManualOverride(true);
+                                }}
+                            >
+                                Dismiss Alert
+                            </Button>
+                            <Button
+                                className="flex-1 h-10 text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-100 transition-all uppercase tracking-wide"
+                                onClick={handleRegisterAnomaly}
+                            >
+                                Register Anomaly
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Anomaly Removal Confirmation Dialog */}
+            <Dialog open={showRemovalConfirm} onOpenChange={setShowRemovalConfirm}>
+                <DialogContent className="sm:max-w-[440px] p-0 overflow-hidden border-none shadow-2xl">
+                    <div className="bg-amber-500 p-4 flex items-center gap-3">
+                        <div className="bg-white/20 p-2 rounded-lg">
+                            <AlertTriangle className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                            <h3 className="text-white font-bold text-sm">Value No Longer Meets Criteria</h3>
+                            <p className="text-white/80 text-[10px] uppercase tracking-wider font-medium">Anomaly / Finding Review Required</p>
+                        </div>
+                    </div>
+                    <div className="p-5 space-y-4 bg-white">
+                        <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                            The entered value has been corrected and no longer triggers the defect criteria. What would you like to do with the registered {findingType === 'Finding' ? 'finding' : 'anomaly'}?
+                        </p>
+                        {(() => {
+                            // Check if this is the last/latest anomaly
+                            const recordRow = editingRecordId ? currentRecords.find(r => r.insp_id === editingRecordId) : null;
+                            const hasNewerAnomalies = recordRow ? currentRecords.some(r =>
+                                r.has_anomaly &&
+                                r.insp_id !== editingRecordId &&
+                                (new Date(r.inspection_date) > new Date(recordRow.inspection_date) ||
+                                    (r.inspection_date === recordRow.inspection_date && r.inspection_time > recordRow.inspection_time))
+                            ) : false;
+                            const isNewRecord = !editingRecordId;
+
+                            return (
+                                <>
+                                    {!isNewRecord && hasNewerAnomalies && (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-[10px] text-amber-800 font-medium">
+                                            <strong className="uppercase tracking-wider">⚠ Cannot Delete:</strong> Subsequent anomalies exist after this record. The anomaly will be <strong>rectified</strong> with priority set to <strong>NONE</strong> to preserve event sequence numbering.
+                                        </div>
+                                    )}
+                                    {(isNewRecord || !hasNewerAnomalies) && (
+                                        <div className="bg-green-50 border border-green-200 rounded-md p-3 text-[10px] text-green-800 font-medium">
+                                            <strong className="uppercase tracking-wider">✓ Safe to Remove:</strong> {isNewRecord ? 'This is a new record — the anomaly data will be cleared.' : 'This is the latest anomaly — it can be safely deleted.'}
+                                        </div>
+                                    )}
+                                </>
+                            );
+                        })()}
+                        <div className="flex gap-3 pt-2">
+                            <Button
+                                variant="outline"
+                                className="flex-1 h-10 text-xs font-bold border-slate-200 hover:bg-slate-50 transition-all text-slate-600 uppercase tracking-wide"
+                                onClick={() => {
+                                    setShowRemovalConfirm(false);
+                                    setIsManualOverride(true);
+                                }}
+                            >
+                                Keep As-Is
+                            </Button>
+                            <Button
+                                className="flex-1 h-10 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-100 transition-all uppercase tracking-wide"
+                                onClick={handleConfirmRemoval}
+                            >
+                                {(() => {
+                                    const recordRow = editingRecordId ? currentRecords.find(r => r.insp_id === editingRecordId) : null;
+                                    const hasNewerAnomalies = recordRow ? currentRecords.some(r =>
+                                        r.has_anomaly &&
+                                        r.insp_id !== editingRecordId &&
+                                        (new Date(r.inspection_date) > new Date(recordRow.inspection_date) ||
+                                            (r.inspection_date === recordRow.inspection_date && r.inspection_time > recordRow.inspection_time))
+                                    ) : false;
+                                    return (!editingRecordId || !hasNewerAnomalies) ? 'Remove & Reset' : 'Rectify (Priority: NONE)';
+                                })()}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+        </div>
     );
 }

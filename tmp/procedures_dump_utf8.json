@@ -1,0 +1,24 @@
+﻿[
+  {
+    "id": 4,
+    "procedure_number": "DC-002",
+    "procedure_name": "2024",
+    "version": 1,
+    "effective_date": "2024-02-25T00:00:00+00:00",
+    "created_by": "4b0cc72f-f54e-4f47-94b1-af02453f7156",
+    "created_at": "2026-01-25T05:28:33.743256+00:00",
+    "status": "draft",
+    "notes": "2024 Anomlay Criteria"
+  },
+  {
+    "id": 1,
+    "procedure_number": "DC-001",
+    "procedure_name": "PTS-2023",
+    "version": 1,
+    "effective_date": "2026-01-25T00:00:00+00:00",
+    "created_by": "4b0cc72f-f54e-4f47-94b1-af02453f7156",
+    "created_at": "2026-01-25T04:10:10.911207+00:00",
+    "status": "active",
+    "notes": "2023 Anomlay Criteria"
+  }
+]
