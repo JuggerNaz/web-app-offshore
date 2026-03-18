@@ -542,7 +542,7 @@ export default function DiveJobSetupDialog({
                         </div>
                         <div>
                             <DialogTitle className="text-xl">
-                                {existingJob ? "Dive Deployment Info" : "Dive Deployment Setup"}
+                                {existingJob ? "Inspection Mode Info" : "Inspection Mode Setup"}
                             </DialogTitle>
                             <DialogDescription>
                                 {existingJob
@@ -586,7 +586,7 @@ export default function DiveJobSetupDialog({
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="dive_type">Dive Type *</Label>
+                            <Label htmlFor="dive_type">Inspection Mode *</Label>
                             <Select
                                 value={formData.dive_type}
                                 onValueChange={(value) =>
@@ -790,7 +790,7 @@ export default function DiveJobSetupDialog({
                                 disabled={loading}
                                 className="w-full h-12 text-base font-semibold bg-gradient-to-r from-blue-600 to-blue-700"
                             >
-                                {loading ? "Creating..." : "Create Dive Deployment"}
+                                {loading ? "Creating..." : "Create Inspection Mode"}
                             </Button>
                         </div>
                     ) : (

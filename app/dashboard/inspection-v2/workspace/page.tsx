@@ -450,6 +450,7 @@ function V10PreviewLayout() {
     // Live session records
     const [currentRecords, setCurrentRecords] = useState<any[]>([]);
     const [historicalRecords, setHistoricalRecords] = useState<any[]>([]);
+    const [currentCompRecords, setCurrentCompRecords] = useState<any[]>([]);
     const [streamTimer, setStreamTimer] = useState(0);
     const [isStreamRecording, setIsStreamRecording] = useState(false);
     const [isStreamPaused, setIsStreamPaused] = useState(false);
@@ -483,6 +484,8 @@ function V10PreviewLayout() {
     const [selectedComp, setSelectedComp] = useState<any>(null);
     const [activeSpec, setActiveSpec] = useState<string | null>(null);
     const [allInspectionTypes, setAllInspectionTypes] = useState<any[]>([]);
+    const [inspectionTypeSearch, setInspectionTypeSearch] = useState("");
+    const [isAddInspOpen, setIsAddInspOpen] = useState(false);
     const [photoLinked, setPhotoLinked] = useState(false);
     const [recordNotes, setRecordNotes] = useState("");
 
@@ -679,6 +682,29 @@ function V10PreviewLayout() {
         fetchHeaderInfo();
     }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam]);
 
+    // Live Anomaly Reference Preview
+    useEffect(() => {
+        if ((findingType === 'Anomaly' || findingType === 'Finding') && !editingRecordId) {
+            const fetchPreviewRef = async () => {
+                const category = findingType === 'Anomaly' ? 'ANOMALY' : 'FINDING';
+                const prefix = findingType === 'Anomaly' ? 'A' : 'F';
+                
+                const { data: sequenceData } = await supabase.rpc('get_next_record_sequence', {
+                    p_structure_id: parseInt(structureId || "0"),
+                    p_jobpack_id: parseInt(jobPackId || "0"),
+                    p_report_no: headerData.sowReportNo,
+                    p_category: category
+                });
+                
+                const seq = sequenceData || 1;
+                let baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, '0')}`;
+                if (anomalyData.rectify) baseRef += 'R';
+                setAnomalyData(prev => ({ ...prev, referenceNo: baseRef }));
+            };
+            fetchPreviewRef();
+        }
+    }, [findingType, anomalyData.rectify, editingRecordId, structureId, jobPackId, headerData.platformName, headerData.sowReportNo, supabase]);
+
     const parseDbDate = useCallback((dateString?: string | null): Date => {
         if (!dateString) return new Date();
         try {
@@ -691,6 +717,33 @@ function V10PreviewLayout() {
     }, []);
 
     const handleDeleteRecord = async (id: number) => {
+        // Fetch record to check for latest anomaly/finding rule
+        const { data: record } = await supabase.from('insp_records')
+            .select('*, insp_anomalies(*)')
+            .eq('insp_id', id)
+            .single();
+
+        if (record?.has_anomaly && record.insp_anomalies?.[0]) {
+            const anomaly = record.insp_anomalies[0];
+            const category = anomaly.record_category;
+
+            // Check if there's any later anomaly/finding in the same sequence
+            const { data: laterAnomalies } = await supabase
+                .from('insp_anomalies')
+                .select('anomaly_id, insp_records!inner(structure_id, jobpack_id, sow_report_no)')
+                .eq('record_category', category)
+                .eq('insp_records.structure_id', record.structure_id)
+                .eq('insp_records.jobpack_id', record.jobpack_id)
+                .eq('insp_records.sow_report_no', record.sow_report_no)
+                .gt('sequence_no', anomaly.sequence_no)
+                .limit(1);
+
+            if (laterAnomalies && laterAnomalies.length > 0) {
+                toast.error(`Cannot delete this ${category.toLowerCase()}. Only the latest ${category.toLowerCase()} in the sequence can be deleted. Please rectify it instead.`);
+                return;
+            }
+        }
+
         if (!confirm("Are you sure you want to delete this inspection record? This cannot be undone.")) return;
         try {
             await supabase.from('insp_video_logs').delete().eq('inspection_id', id);
@@ -1435,9 +1488,18 @@ function V10PreviewLayout() {
                     .limit(1)
                     .maybeSingle();
 
+                const { data: stateLog } = await supabase.from('insp_video_logs')
+                    .select('event_type')
+                    .eq('tape_id', latestTape.tape_id)
+                    .in('event_type', ['NEW_LOG_START', 'RESUME', 'PAUSE', 'END'])
+                    .order('event_time', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
                 if (lastLog) {
-                    const isRecording = lastLog.event_type === "NEW_LOG_START" || lastLog.event_type === "RESUME" || lastLog.event_type === "START_TASK" || lastLog.event_type === "RESUME_TASK";
-                    const isStopped = lastLog.event_type === "END";
+                    const currentState = stateLog ? stateLog.event_type : lastLog.event_type;
+                    const isRecording = currentState === "NEW_LOG_START" || currentState === "RESUME";
+                    const isStopped = currentState === "END";
                     setVidState(isRecording ? "RECORDING" : (isStopped ? "IDLE" : "PAUSED"));
 
                     let currentCounter = lastLog.tape_counter_start || 0;
@@ -1472,7 +1534,7 @@ function V10PreviewLayout() {
                         id: `log_${l.video_log_id}`,
                         realId: l.video_log_id,
                         time: l.timecode_start || '00:00:00',
-                        action: l.event_type === "NEW_LOG_START" ? "Start Tape" : l.event_type === "END" ? "Stop Tape" : l.event_type,
+                        action: l.event_type === "NEW_LOG_START" ? "Start Tape" : l.event_type === "END" ? "Stop Tape" : l.event_type === "PAUSE" ? "Pause" : l.event_type === "RESUME" ? "Resume" : l.event_type,
                         logType: 'video_log',
                         eventTime: parseDbDate(l.event_time).toISOString(),
                         inspectionId: l.inspection_id
@@ -1540,22 +1602,161 @@ function V10PreviewLayout() {
         syncDeploymentState();
     }, [syncDeploymentState]);
 
-    useEffect(() => {
-        async function fetchHistory() {
-            if (!selectedComp || !structureId) return;
-            const { data: h } = await supabase.from('insp_records').select('*').eq('component_id', selectedComp.id).order('cr_date', { ascending: false });
-            if (h) {
-                setHistoricalRecords(h.map((r: any) => ({
-                    year: new Date(r.cr_date).getFullYear(),
-                    type: r.inspection_type,
-                    status: r.status === 'Acceptable' || r.status === 'Pass' ? 'Pass' : 'Anomaly',
-                    finding: r.observation || r.remarks || 'No notes',
-                    inspector: 'System'
-                })));
+    const fetchHistory = useCallback(async () => {
+        if (!selectedComp || !structureId) return;
+        
+        // Fetch all records for this component (no FK joins - they are unreliable)
+        const { data, error } = await supabase.from('insp_records')
+            .select('*')
+            .eq('component_id', selectedComp.id)
+            .order('cr_date', { ascending: false });
+
+        if (error || !data) {
+            console.error("Error fetching component history:", error);
+            return;
+        }
+
+        console.log(`[fetchHistory] Raw records for component ${selectedComp.id}: ${data.length}. JobPackId: ${jobPackId}, SOW: ${headerData.sowReportNo}`);
+
+        // 1. Filter by current mode (Diving vs ROV)
+        const modeFiltered = data.filter((r: any) => {
+            if (inspMethod === 'DIVING') return !!r.dive_job_id;
+            if (inspMethod === 'ROV') return !!r.rov_job_id;
+            return true;
+        });
+
+        console.log(`[fetchHistory] After mode filter (${inspMethod}): ${modeFiltered.length} records`);
+
+        if (modeFiltered.length === 0) {
+            setCurrentCompRecords([]);
+            setHistoricalRecords([]);
+            return;
+        }
+
+        // 2. Batch lookup dive_no / deployment_no from the dive/rov tables
+        const diveJobIds = Array.from(new Set(modeFiltered.filter(r => r.dive_job_id).map(r => r.dive_job_id)));
+        const rovJobIds = Array.from(new Set(modeFiltered.filter(r => r.rov_job_id).map(r => r.rov_job_id)));
+        const tapeIds = Array.from(new Set(modeFiltered.filter(r => r.tape_id).map(r => r.tape_id)));
+        const inspTypeIds = Array.from(new Set(modeFiltered.filter(r => r.inspection_type_id).map(r => r.inspection_type_id)));
+
+        // Lookup maps
+        const diveNoMap: Record<string, string> = {};
+        const rovNoMap: Record<string, string> = {};
+        const tapeNoMap: Record<string, string> = {};
+        const inspTypeMap: Record<string, { name: string, code: string }> = {};
+
+        // Fetch dive_no for all dive_job_ids
+        if (diveJobIds.length > 0) {
+            const { data: diveData } = await supabase.from('insp_dive_jobs')
+                .select('dive_job_id, dive_no')
+                .in('dive_job_id', diveJobIds);
+            if (diveData) {
+                diveData.forEach((d: any) => { diveNoMap[String(d.dive_job_id)] = d.dive_no; });
             }
         }
+
+        // Fetch deployment_no for all rov_job_ids
+        if (rovJobIds.length > 0) {
+            const { data: rovData } = await supabase.from('insp_rov_jobs')
+                .select('rov_job_id, deployment_no')
+                .in('rov_job_id', rovJobIds);
+            if (rovData) {
+                rovData.forEach((d: any) => { rovNoMap[String(d.rov_job_id)] = d.deployment_no; });
+            }
+        }
+
+        // Fetch tape_no for all tape_ids
+        if (tapeIds.length > 0) {
+            const { data: tapeData } = await supabase.from('insp_video_tapes')
+                .select('tape_id, tape_no')
+                .in('tape_id', tapeIds);
+            if (tapeData) {
+                tapeData.forEach((t: any) => { tapeNoMap[String(t.tape_id)] = t.tape_no; });
+            }
+        }
+
+        // Fetch inspection type names
+        if (inspTypeIds.length > 0) {
+            const { data: itData } = await supabase.from('inspection_type')
+                .select('id, name, code')
+                .in('id', inspTypeIds);
+            if (itData) {
+                itData.forEach((it: any) => { inspTypeMap[String(it.id)] = { name: it.name, code: it.code }; });
+            }
+        }
+
+        // 3. Build the current deployment IDs set (for matching records without jobpack_id)
+        const currentDepIds = new Set<string>();
+        if (activeDep?.id) currentDepIds.add(String(activeDep.id));
+        // Also check all deployments for this jobpack
+        deployments.forEach(d => currentDepIds.add(String(d.id)));
+
+        // 4. Partition into Current Workpack and Historical Data
+        const current: any[] = [];
+        const historical: any[] = [];
+
+        modeFiltered.forEach((r: any) => {
+            // Resolve dive/deployment number
+            let diveNo = 'N/A';
+            if (inspMethod === 'DIVING' && r.dive_job_id) {
+                diveNo = diveNoMap[String(r.dive_job_id)] || 'N/A';
+            } else if (inspMethod === 'ROV' && r.rov_job_id) {
+                diveNo = rovNoMap[String(r.rov_job_id)] || 'N/A';
+            }
+
+            // Resolve tape number
+            const tapeNo = r.tape_id ? (tapeNoMap[String(r.tape_id)] || 'N/A') : 'N/A';
+
+            // Resolve inspection type name
+            const itInfo = r.inspection_type_id ? inspTypeMap[String(r.inspection_type_id)] : null;
+            const typeName = itInfo?.name || itInfo?.code || r.inspection_type_code || 'Unknown';
+
+            // Determine if record belongs to current workpack
+            // Method 1: jobpack_id matches
+            const hasMatchingJobpack = jobPackId && String(r.jobpack_id) === String(jobPackId);
+            // Method 2: If no jobpack_id on record, check if the dive/rov job belongs to current set
+            const depId = inspMethod === 'DIVING' ? r.dive_job_id : r.rov_job_id;
+            const depBelongsToCurrent = depId && currentDepIds.has(String(depId));
+            
+            const isCurrentWorkpack = hasMatchingJobpack || (!r.jobpack_id && depBelongsToCurrent);
+            
+            // SOW check: only enforce if both sides have values
+            const recordSow = r.sow_report_no ? String(r.sow_report_no).trim() : '';
+            const headerSow = headerData.sowReportNo ? String(headerData.sowReportNo).trim() : '';
+            const sowMatches = !recordSow || !headerSow || recordSow === headerSow;
+            
+            const recordObj = {
+                id: r.insp_id,
+                date: r.inspection_date,
+                time: r.inspection_time,
+                type: typeName,
+                diveNo,
+                tapeNo,
+                status: r.has_anomaly ? 'Anomaly' : (r.status === 'INCOMPLETE' ? 'Incomplete' : 'Pass'),
+                finding: r.description || r.inspection_data?._meta_status || 'No notes',
+                year: r.inspection_date ? new Date(r.inspection_date).getFullYear() : new Date(r.cr_date).getFullYear()
+            };
+
+            if (isCurrentWorkpack && sowMatches) {
+                current.push(recordObj);
+            } else {
+                historical.push(recordObj);
+            }
+        });
+
+        console.log(`[fetchHistory] Partitioned - Current Workpack: ${current.length}, Historical: ${historical.length}`);
+        if (current.length === 0 && modeFiltered.length > 0) {
+            const r0 = modeFiltered[0];
+            console.log(`[fetchHistory] DEBUG: record[0] jobpack_id=${r0.jobpack_id} vs jobPackId=${jobPackId}, sow=${r0.sow_report_no} vs header=${headerData.sowReportNo}, dive_job_id=${r0.dive_job_id}, rov_job_id=${r0.rov_job_id}, currentDepIds=${Array.from(currentDepIds).join(',')}`);
+        }
+
+        setCurrentCompRecords(current);
+        setHistoricalRecords(historical);
+    }, [selectedComp, supabase, structureId, jobPackId, headerData.sowReportNo, inspMethod, activeDep, deployments]);
+
+    useEffect(() => {
         fetchHistory();
-    }, [selectedComp, supabase, structureId]);
+    }, [fetchHistory]);
 
     const handleLogEvent = async (action: string) => {
         let currentTimer = vidTimer;
@@ -2483,9 +2684,41 @@ function V10PreviewLayout() {
 
         if (findingType === 'Anomaly' || findingType === 'Finding') {
             const isAnomaly = findingType === 'Anomaly';
+            const category = isAnomaly ? 'ANOMALY' : 'FINDING';
             const prefix = isAnomaly ? 'A' : 'F';
-            const rpcName = isAnomaly ? 'get_next_anomaly_sequence' : 'get_next_anomaly_sequence';
-            const { data: existingAnomaly } = await supabase.from('insp_anomalies').select('anomaly_id').eq('inspection_id', opData.insp_id).maybeSingle();
+
+            const { data: existingAnomaly } = await supabase.from('insp_anomalies')
+                .select('anomaly_id, anomaly_ref_no, sequence_no')
+                .eq('inspection_id', opData.insp_id)
+                .maybeSingle();
+
+            let autoRefNo = "";
+            let finalSeq = existingAnomaly?.sequence_no || 0;
+
+            if (!existingAnomaly) {
+                const { data: sequenceData } = await supabase.rpc('get_next_record_sequence', {
+                    p_structure_id: parseInt(structureId || "0"),
+                    p_jobpack_id: parseInt(jobPackId || "0"),
+                    p_report_no: headerData.sowReportNo,
+                    p_category: category
+                });
+                const seq = sequenceData || 1;
+                finalSeq = seq;
+                const baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, '0')}`;
+                if (anomalyData.rectify) {
+                    autoRefNo = baseRef + "R";
+                } else {
+                    autoRefNo = baseRef;
+                }
+            } else {
+                // Postfix logic for amendment/rectification
+                let baseRef = existingAnomaly.anomaly_ref_no.replace(/[AR]$/, "");
+                if (anomalyData.rectify) {
+                    autoRefNo = baseRef + "R";
+                } else {
+                    autoRefNo = baseRef + "A";
+                }
+            }
 
             const anomalyPayload: any = {
                 inspection_id: opData.insp_id,
@@ -2495,26 +2728,22 @@ function V10PreviewLayout() {
                 status: anomalyData.rectify ? 'CLOSED' : 'OPEN',
                 defect_description: anomalyData.description,
                 recommended_action: anomalyData.recommendedAction,
-                rectified_date: anomalyData.rectifiedDate || null,
+                rectified_date: anomalyData.rectify ? (anomalyData.rectifiedDate || new Date().toISOString()) : null,
                 rectified_remarks: anomalyData.rectifiedRemarks,
                 severity: anomalyData.severity,
-                record_category: isAnomaly ? 'ANOMALY' : 'FINDING',
-                cr_user: user?.id || 'system'
+                record_category: category,
+                anomaly_ref_no: autoRefNo,
+                sequence_no: finalSeq
             };
 
             if (existingAnomaly) {
                 await supabase.from('insp_anomalies').update(anomalyPayload).eq('anomaly_id', existingAnomaly.anomaly_id);
             } else {
-                const { data: sequenceData } = await supabase.rpc(rpcName, { p_structure_id: parseInt(structureId || "0") });
-                const seq = sequenceData || Math.floor(Math.random() * 1000);
-                const autoRefNo = `${new Date().getFullYear()} / ${headerData.platformName?.slice(0, 3).toUpperCase()} / ${prefix}-${seq.toString().padStart(3, '0')}`;
-                const refNo = anomalyData.referenceNo ? `${autoRefNo} / ${anomalyData.referenceNo}` : autoRefNo;
-                anomalyPayload.anomaly_ref_no = refNo;
-                anomalyPayload.sequence_no = seq;
                 await supabase.from('insp_anomalies').insert(anomalyPayload);
             }
-        } else if (editingRecordId) {
-            await supabase.from('insp_anomalies').delete().eq('inspection_id', editingRecordId);
+        } else {
+            // If it was an anomaly/finding but now changed to Pass/Incomplete, remove the record
+            await supabase.from('insp_anomalies').delete().eq('inspection_id', opData.insp_id);
         }
 
         if (editingRecordId) {
@@ -2535,6 +2764,7 @@ function V10PreviewLayout() {
         }
 
         syncDeploymentState();
+        fetchHistory();
         setActiveSpec(null);
         setRecordNotes("");
         setDynamicProps({});
@@ -2680,18 +2910,15 @@ function V10PreviewLayout() {
         );
     };
 
-    const handleAddNewInspectionSpec = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const typeIdStr = e.target.value;
+    const handleAddNewInspectionSpec = async (typeIdStr: string) => {
         if (!typeIdStr) return;
 
         if (!selectedComp || !activeDep?.id) {
-            e.target.value = "";
             return;
         }
 
         const it = allInspectionTypes.find(t => t.id.toString() === typeIdStr);
         if (!it) {
-            e.target.value = "";
             return;
         }
 
@@ -2733,7 +2960,6 @@ function V10PreviewLayout() {
                 } else {
                     console.error("Failed to auto-create u_sow entry:", newSowError);
                     toast.error("Could not link or create SOW index record.");
-                    e.target.value = "";
                     return;
                 }
             }
@@ -2741,7 +2967,6 @@ function V10PreviewLayout() {
 
         if (!targetSowId) {
             toast.error("Error: Could not determine active SOW.");
-            e.target.value = "";
             return;
         }
 
@@ -2788,7 +3013,6 @@ function V10PreviewLayout() {
             console.error("Failed to insert u_sow_item:", error);
             toast.error("Failed to add inspection type: " + (error.message || "Unknown anomaly"));
         }
-        e.target.value = "";
     };
 
     const renderStreamUI = () => (
@@ -3647,7 +3871,7 @@ function V10PreviewLayout() {
                                     <span className="font-mono text-sm font-black text-cyan-400 tracking-wider bg-black/30 px-2 py-0.5 rounded">{formatTime(vidTimer)}</span>
                                 </div>
                                 {(() => {
-                                    const lastVideoEvent = videoEvents.find(ev => ev.logType === 'video_log');
+                                    const lastVideoEvent = videoEvents.find(ev => ev.logType === 'video_log' && ["Start Tape", "Stop Tape", "Pause", "Resume"].includes(ev.action));
                                     const lastAction = lastVideoEvent?.action;
 
                                     const canStart = !lastAction || lastAction === "Stop Tape";
@@ -3743,9 +3967,9 @@ function V10PreviewLayout() {
                             <div id={FORM_AREA_ID} className="flex flex-col flex-1 min-h-0 overflow-hidden relative">
                                 {!activeSpec ? (
                                     <div className="p-5 flex flex-col items-center justify-center text-center h-full">
-                                        <div className="w-full max-w-[350px]">
+                                        <div className="w-full max-w-2xl flex flex-col items-center">
                                             <div className="text-[11px] font-bold uppercase text-slate-400 tracking-widest mb-4">Select Scope to Inspect ({selectedComp.name})</div>
-                                            <div className="space-y-3">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
                                                 {selectedComp.tasks && selectedComp.tasks.map((t: string) => {
                                                     const taskStatus = selectedComp.taskStatuses?.find((ts: any) => ts.code === t);
                                                     const status = taskStatus?.status || 'pending';
@@ -3753,9 +3977,9 @@ function V10PreviewLayout() {
                                                     const isIncomplete = status === 'incomplete';
                                                     const hasAnomaly = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id);
                                                     const isRectified = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id && r.insp_anomalies?.[0]?.status === 'CLOSED');
+                                                    const it = allInspectionTypes.find(type => type.code === t || type.name === t);
                                                     return (
                                                         <Button key={t} onClick={() => {
-                                                            const it = allInspectionTypes.find(type => type.code === t || type.name === t);
                                                             setActiveSpec(t);
                                                             const newProps: Record<string, any> = {};
 
@@ -3812,14 +4036,26 @@ function V10PreviewLayout() {
                                                                     {isCompleted && !hasAnomaly && <Check className="w-2 h-2 text-white" />}
                                                                     {hasAnomaly && !isRectified && <AlertTriangle className="w-2 h-2 text-white" />}
                                                                 </div>
-                                                                <div className="flex flex-col items-start">
-                                                                    <span className={`text-sm ${isCompleted && !hasAnomaly ? 'text-green-700' :
-                                                                        hasAnomaly && !isRectified ? 'text-red-700' :
-                                                                            hasAnomaly && isRectified ? 'text-teal-700' :
-                                                                                isIncomplete ? 'text-amber-700' :
-                                                                                    'text-blue-700'
-                                                                        }`}>Start {t}</span>
-                                                                    <span className={`text-[9px] font-medium uppercase tracking-wider ${isCompleted && !hasAnomaly ? 'text-green-500' :
+                                                                <div className="flex flex-col items-start overflow-hidden flex-1 max-w-[170px]">
+                                                                    <div className="flex items-baseline gap-1.5 w-full text-left truncate">
+                                                                        <span className={`text-sm font-bold truncate ${isCompleted && !hasAnomaly ? 'text-green-700' :
+                                                                            hasAnomaly && !isRectified ? 'text-red-700' :
+                                                                                hasAnomaly && isRectified ? 'text-teal-700' :
+                                                                                    isIncomplete ? 'text-amber-700' :
+                                                                                        'text-blue-700'
+                                                                            }`} title={it?.name || t}>
+                                                                            {it?.name || t}
+                                                                        </span>
+                                                                        <span className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${isCompleted && !hasAnomaly ? 'bg-green-50 border-green-200 text-green-700' :
+                                                                            hasAnomaly && !isRectified ? 'bg-red-50 border-red-200 text-red-700' :
+                                                                                hasAnomaly && isRectified ? 'bg-teal-50 border-teal-200 text-teal-700' :
+                                                                                    isIncomplete ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                                                                        'bg-blue-50 border-blue-200 text-blue-700'
+                                                                            }`}>
+                                                                            {it?.code || t}
+                                                                        </span>
+                                                                    </div>
+                                                                    <span className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${isCompleted && !hasAnomaly ? 'text-green-500' :
                                                                         hasAnomaly && !isRectified ? 'text-red-500' :
                                                                             hasAnomaly && isRectified ? 'text-teal-500' :
                                                                                 isIncomplete ? 'text-amber-500' :
@@ -3841,36 +4077,87 @@ function V10PreviewLayout() {
                                                         </Button>
                                                     );
                                                 })}
+                                            </div>
+                                            <div className="w-full max-w-[350px] space-y-3 mt-4">
                                                 <div className="py-2"><Separator /></div>
 
-                                                <select
-                                                    value=""
-                                                    onChange={async (e) => {
-                                                        const val = e.target.value;
-                                                        if (!val) return;
-                                                        await handleAddNewInspectionSpec(e);
-                                                        // Refresh tasks for UI
-                                                        const it = allInspectionTypes.find(t => t.id.toString() === val);
-                                                        if (it && selectedComp) {
-                                                            const newTasks = [...(selectedComp.tasks || []), it.code || it.name];
-                                                            setSelectedComp({ ...selectedComp, tasks: newTasks });
-                                                        }
-                                                    }}
-                                                    className="w-full h-12 px-3 bg-white border-dashed border-2 text-center border-slate-300 text-slate-500 font-bold hover:border-blue-400 focus:outline-none appearance-none cursor-pointer rounded-md"
-                                                >
-                                                    <option value="">+ Add Additional Inspection Type</option>
-                                                    {allInspectionTypes.filter(it => {
-                                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || it.metadata?.job_type?.includes('ROV');
-                                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || it.metadata?.job_type?.includes('DIVING');
-                                                        if (inspMethod === 'DIVING') return isDiving;
-                                                        if (inspMethod === 'ROV') return isRov;
-                                                        return true; // Fallback
-                                                    }).map(it => (
-                                                        <option key={it.id} value={it.id.toString()}>
-                                                            {it.code} - {it.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <Popover open={isAddInspOpen} onOpenChange={setIsAddInspOpen}>
+                                                    <PopoverTrigger asChild>
+                                                        <Button
+                                                            variant="outline"
+                                                            className="w-full h-12 border-dashed border-2 text-slate-500 font-bold hover:border-blue-400 hover:bg-blue-50/30 flex items-center justify-center gap-2"
+                                                        >
+                                                            <Plus className="w-4 h-4" /> Add Additional Inspection Type
+                                                        </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-[350px] p-0 shadow-2xl border-slate-200" align="center" side="top">
+                                                        <div className="flex flex-col">
+                                                            <div className="p-3 border-b border-slate-100 bg-slate-50/50">
+                                                                <div className="relative">
+                                                                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                                                                    <Input
+                                                                        placeholder="Search type name or code..."
+                                                                        className="pl-9 h-9 text-xs bg-white border-slate-200 focus-visible:ring-blue-500"
+                                                                        value={inspectionTypeSearch}
+                                                                        onChange={(e) => setInspectionTypeSearch(e.target.value)}
+                                                                        autoFocus
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <ScrollArea className="h-[300px]">
+                                                                <div className="p-1.5 space-y-1">
+                                                                    {allInspectionTypes
+                                                                        .filter(it => {
+                                                                            // Filter by mode
+                                                                            const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || it.metadata?.job_type?.includes('ROV');
+                                                                            const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || it.metadata?.job_type?.includes('DIVING');
+                                                                            if (inspMethod === 'DIVING' && !isDiving) return false;
+                                                                            if (inspMethod === 'ROV' && !isRov) return false;
+
+                                                                            // Filter by search query
+                                                                            if (inspectionTypeSearch) {
+                                                                                const q = inspectionTypeSearch.toLowerCase();
+                                                                                return (it.name || '').toLowerCase().includes(q) || (it.code || '').toLowerCase().includes(q);
+                                                                            }
+                                                                            return true;
+                                                                        })
+                                                                        .map(it => (
+                                                                            <button
+                                                                                key={it.id}
+                                                                                onClick={async () => {
+                                                                                    await handleAddNewInspectionSpec(it.id.toString());
+                                                                                    setIsAddInspOpen(false);
+                                                                                    setInspectionTypeSearch("");
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2.5 rounded-md hover:bg-blue-50 transition-colors group"
+                                                                            >
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="text-xs font-bold text-slate-700 group-hover:text-blue-700">{it.name}</span>
+                                                                                    <span className="text-[10px] font-mono font-medium text-slate-400 group-hover:text-blue-500">{it.code}</span>
+                                                                                </div>
+                                                                            </button>
+                                                                        ))
+                                                                    }
+                                                                    {allInspectionTypes.filter(it => {
+                                                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || it.metadata?.job_type?.includes('ROV');
+                                                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || it.metadata?.job_type?.includes('DIVING');
+                                                                        if (inspMethod === 'DIVING' && !isDiving) return false;
+                                                                        if (inspMethod === 'ROV' && !isRov) return false;
+                                                                        if (inspectionTypeSearch) {
+                                                                            const q = inspectionTypeSearch.toLowerCase();
+                                                                            return (it.name || '').toLowerCase().includes(q) || (it.code || '').toLowerCase().includes(q);
+                                                                        }
+                                                                        return true;
+                                                                    }).length === 0 && (
+                                                                        <div className="py-10 text-center">
+                                                                            <p className="text-xs text-slate-400 italic">No matching inspection types found</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </ScrollArea>
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
 
 
                                             </div>
@@ -4069,121 +4356,128 @@ function V10PreviewLayout() {
                                                     const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
                                                     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
                                                     return (
-                                                    <div className={`mt-3 p-3 rounded-lg border-2 space-y-3 animate-in fade-in slide-in-from-top-2 ${isAnomaly ? 'border-red-200 bg-red-50/30' : 'border-blue-200 bg-blue-50/30'}`}>
-                                                        <div className={`text-[10px] font-black uppercase tracking-widest border-b pb-2 ${isAnomaly ? 'text-red-700 border-red-200' : 'text-blue-700 border-blue-200'}`}>
-                                                            {isAnomaly ? '⚠ Anomaly / Defect Details' : '📋 Finding Details'}
-                                                        </div>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Code' : 'Finding Code'} *</label>
-                                                                <select
-                                                                    value={anomalyData.defectCode}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, defectCode: e.target.value })}
-                                                                    className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                >
-                                                                    <option value="">Select Code</option>
-                                                                    {defectCodes.map(c => (
-                                                                        <option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>
-                                                                    ))}
-                                                                </select>
+                                                        <div className={`mt-3 p-3 rounded-lg border-2 space-y-3 animate-in fade-in slide-in-from-top-2 ${isAnomaly ? 'border-red-200 bg-red-50/30' : 'border-blue-200 bg-blue-50/30'}`}>
+                                                            <div className={`text-[10px] font-black uppercase tracking-widest border-b pb-2 ${isAnomaly ? 'text-red-700 border-red-200' : 'text-blue-700 border-blue-200'}`}>
+                                                                {isAnomaly ? '⚠ Anomaly / Defect Details' : '📋 Finding Details'}
                                                             </div>
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Type' : 'Finding Type'}</label>
-                                                                <select
-                                                                    value={anomalyData.defectType}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, defectType: e.target.value })}
-                                                                    className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                >
-                                                                    <option value="">Select Type</option>
-                                                                    {availableDefectTypes.map(t => (
-                                                                        <option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>
-                                                                    ))}
-                                                                </select>
-                                                                {anomalyData.defectCode && availableDefectTypes.length < allDefectTypes.length && (
-                                                                    <span className="text-[9px] text-blue-500 font-medium tracking-wide">Filtered by selected code ({availableDefectTypes.length} types)</span>
-                                                                )}
-                                                            </div>
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Priority *</label>
-                                                                <select
-                                                                    value={anomalyData.priority}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, priority: e.target.value })}
-                                                                    className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                >
-                                                                    <option value="">Select Priority</option>
-                                                                    {priorities.map(p => (
-                                                                        <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Reference No</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={anomalyData.referenceNo}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, referenceNo: e.target.value })}
-                                                                    placeholder="Criteria Ref..."
-                                                                    className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="space-y-1.5">
-                                                            <label className="text-[10px] font-bold text-slate-400 uppercase">{categoryLabel} Description</label>
-                                                            <textarea
-                                                                value={anomalyData.description}
-                                                                onChange={(e) => setAnomalyData({ ...anomalyData, description: e.target.value })}
-                                                                placeholder={`Detailed description of the ${categoryLabel.toLowerCase()}...`}
-                                                                className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
-                                                            ></textarea>
-                                                        </div>
-
-                                                        <div className="space-y-1.5">
-                                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Recommended Action</label>
-                                                            <textarea
-                                                                value={anomalyData.recommendedAction}
-                                                                onChange={(e) => setAnomalyData({ ...anomalyData, recommendedAction: e.target.value })}
-                                                                placeholder="Recommended remedial action..."
-                                                                className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
-                                                            ></textarea>
-                                                        </div>
-
-                                                        <div className="p-3 border border-green-100 bg-green-50/80 rounded-lg space-y-3">
-                                                            <div className="flex items-center gap-2">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    id="rectifyCheck"
-                                                                    checked={anomalyData.rectify}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, rectify: e.target.checked })}
-                                                                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-green-300 cursor-pointer"
-                                                                />
-                                                                <label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800 cursor-pointer">Rectify {categoryLabel}</label>
-                                                            </div>
-                                                            {anomalyData.rectify && (
-                                                                <div className="space-y-3 animate-in fade-in zoom-in-95">
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[9px] font-bold text-green-700 uppercase">Rectified Date</label>
-                                                                        <Input
-                                                                            type="date"
-                                                                            value={anomalyData.rectifiedDate}
-                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedDate: e.target.value })}
-                                                                            className="h-8 text-xs bg-white border-green-200"
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div className="space-y-1.5">
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Code' : 'Finding Code'} *</label>
+                                                                    <select
+                                                                        value={anomalyData.defectCode}
+                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, defectCode: e.target.value })}
+                                                                        className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                    >
+                                                                        <option value="">Select Code</option>
+                                                                        {defectCodes.map(c => (
+                                                                            <option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Type' : 'Finding Type'}</label>
+                                                                    <select
+                                                                        value={anomalyData.defectType}
+                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, defectType: e.target.value })}
+                                                                        className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                    >
+                                                                        <option value="">Select Type</option>
+                                                                        {availableDefectTypes.map(t => (
+                                                                            <option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    {anomalyData.defectCode && availableDefectTypes.length < allDefectTypes.length && (
+                                                                        <span className="text-[9px] text-blue-500 font-medium tracking-wide">Filtered by selected code ({availableDefectTypes.length} types)</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Priority *</label>
+                                                                    <select
+                                                                        value={anomalyData.priority}
+                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, priority: e.target.value })}
+                                                                        className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                                                    >
+                                                                        <option value="">Select Priority</option>
+                                                                        {priorities.map(p => (
+                                                                            <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Reference No</label>
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            type="text"
+                                                                            readOnly
+                                                                            value={anomalyData.referenceNo}
+                                                                            placeholder="Auto-generated on Save..."
+                                                                            className={`flex h-9 w-full rounded-md border border-slate-200 bg-slate-50/50 px-2.5 text-xs font-mono font-bold text-slate-500 cursor-not-allowed`}
                                                                         />
-                                                                    </div>
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[9px] font-bold text-green-700 uppercase">Rectification Remarks</label>
-                                                                        <textarea
-                                                                            value={anomalyData.rectifiedRemarks}
-                                                                            onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedRemarks: e.target.value })}
-                                                                            placeholder="How was it rectified?"
-                                                                            className="w-full min-h-[50px] rounded border border-green-200 p-2 text-xs bg-white focus:ring-green-500"
-                                                                        ></textarea>
+                                                                        {!anomalyData.referenceNo && (
+                                                                            <div className="absolute left-0 -bottom-4">
+                                                                                <span className="text-[9px] text-slate-400 font-medium italic">Format: {new Date().getFullYear()} / {headerData.platformName.slice(0, 10)}... / {findingType === 'Anomaly' ? 'A' : 'F'}-XXX</span>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 </div>
-                                                            )}
+                                                            </div>
+
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">{categoryLabel} Description</label>
+                                                                <textarea
+                                                                    value={anomalyData.description}
+                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, description: e.target.value })}
+                                                                    placeholder={`Detailed description of the ${categoryLabel.toLowerCase()}...`}
+                                                                    className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
+                                                                ></textarea>
+                                                            </div>
+
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Recommended Action</label>
+                                                                <textarea
+                                                                    value={anomalyData.recommendedAction}
+                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, recommendedAction: e.target.value })}
+                                                                    placeholder="Recommended remedial action..."
+                                                                    className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
+                                                                ></textarea>
+                                                            </div>
+
+                                                            <div className="p-3 border border-green-100 bg-green-50/80 rounded-lg space-y-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        id="rectifyCheck"
+                                                                        checked={anomalyData.rectify}
+                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, rectify: e.target.checked })}
+                                                                        className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-green-300 cursor-pointer"
+                                                                    />
+                                                                    <label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800 cursor-pointer">Rectify {categoryLabel}</label>
+                                                                </div>
+                                                                {anomalyData.rectify && (
+                                                                    <div className="space-y-3 animate-in fade-in zoom-in-95">
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[9px] font-bold text-green-700 uppercase">Rectified Date</label>
+                                                                            <Input
+                                                                                type="date"
+                                                                                value={anomalyData.rectifiedDate}
+                                                                                onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedDate: e.target.value })}
+                                                                                className="h-8 text-xs bg-white border-green-200"
+                                                                            />
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[9px] font-bold text-green-700 uppercase">Rectification Remarks</label>
+                                                                            <textarea
+                                                                                value={anomalyData.rectifiedRemarks}
+                                                                                onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedRemarks: e.target.value })}
+                                                                                placeholder="How was it rectified?"
+                                                                                className="w-full min-h-[50px] rounded border border-green-200 p-2 text-xs bg-white focus:ring-green-500"
+                                                                            ></textarea>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                )})()}
+                                                    )})()}
 
                                                     {findingType === 'Incomplete' && (
                                                         <div className="pt-3 animate-in fade-in slide-in-from-top-2">
@@ -4258,15 +4552,15 @@ function V10PreviewLayout() {
                             <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
                         </div>
                         <ScrollArea className="flex-1 w-full relative">
-                            <table className="w-full text-left text-[11px] whitespace-nowrap">
+                            <table className="w-full text-left text-xs whitespace-nowrap">
                                 <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
                                     <tr>
-                                        <th className="px-3 py-2 w-20">Date <History className="w-2.5 h-2.5 inline" /></th>
-                                        <th className="px-3 py-2">Type</th>
-                                        <th className="px-3 py-2">Component</th>
-                                        <th className="px-3 py-2 text-center">Elev/KP</th>
-                                        <th className="px-3 py-2 text-center">Status</th>
-                                        <th className="px-3 py-2 text-right">Actions</th>
+                                        <th className="px-3 py-3 w-20">Date <History className="w-3.5 h-3.5 ml-1 inline opacity-60" /></th>
+                                        <th className="px-3 py-3">Type</th>
+                                        <th className="px-3 py-3">Component</th>
+                                        <th className="px-3 py-3 text-center">Elev/KP</th>
+                                        <th className="px-3 py-3 text-center">Status</th>
+                                        <th className="px-3 py-3 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -4285,61 +4579,61 @@ function V10PreviewLayout() {
                                         };
                                         return (
                                             <tr key={r.insp_id} className="hover:bg-slate-50 group">
-                                                <td className="px-3 py-2 text-slate-600 align-top">
-                                                    <div>{r.inspection_date ? format(new Date(r.inspection_date), 'dd MMM') : '-'}</div>
-                                                    <div className="text-[9px] opacity-70">{r.inspection_time?.slice(0, 5)}</div>
+                                                <td className="px-3 py-3 text-slate-600 align-top">
+                                                    <div className="text-sm font-medium">{r.inspection_date ? format(new Date(r.inspection_date), 'dd MMM') : '-'}</div>
+                                                    <div className="text-[10px] opacity-70 mt-0.5">{r.inspection_time?.slice(0, 5)}</div>
                                                 </td>
-                                                <td className="px-3 py-2 font-bold text-slate-800 align-top">
-                                                    <div className="truncate max-w-[120px]" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
-                                                    <Badge variant="outline" className="text-[8px] h-3.5 px-1 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-0.5">
+                                                <td className="px-3 py-3 font-bold text-slate-800 align-top">
+                                                    <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
+                                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
                                                         {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
                                                     </Badge>
                                                     {(r.tape_id || r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                                        <div className="mt-1 flex flex-col gap-0.5">
+                                                        <div className="mt-1.5 flex flex-col gap-1">
                                                             {r.tape_id && (
-                                                                <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">
+                                                                <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
                                                                     {jobTapes.find(t => t.tape_id === r.tape_id)?.tape_no || `TAPE ID: ${r.tape_id}`}
                                                                 </span>
                                                             )}
                                                             {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                                                <div className="text-[9px] font-mono text-muted-foreground flex items-center gap-1">
-                                                                    <div className="w-1 h-1 rounded-full bg-blue-500" />
+                                                                <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5">
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                                                                     {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
                                                                 </div>
                                                             )}
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="px-3 py-2 align-top text-slate-700">
-                                                    <div className="font-bold">{r.structure_components?.q_id || '-'}</div>
-                                                    <div className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">{r.component_type || r.structure_components?.code || '-'}</div>
+                                                <td className="px-3 py-3 align-top text-slate-700">
+                                                    <div className="font-bold text-sm">{r.structure_components?.q_id || '-'}</div>
+                                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
                                                 </td>
-                                                <td className="px-3 py-2 text-center text-slate-500 align-top">
+                                                <td className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
                                                     {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
                                                 </td>
-                                                <td className="px-3 py-2 align-top text-center">
-                                                    <div className="flex justify-center">
+                                                <td className="px-3 py-3 align-top text-center">
+                                                    <div className="flex justify-center mt-0.5">
                                                         {r.has_anomaly ? (
-                                                            <div title="Anomaly Found" className="flex items-center justify-center h-4 w-4 rounded-full bg-red-100">
-                                                                <AlertTriangle className="h-2.5 w-2.5 text-red-600" />
+                                                            <div title="Anomaly Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
+                                                                <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
                                                             </div>
                                                         ) : r.status === 'COMPLETED' ? (
-                                                            <div title="Inspected / Completed" className="flex items-center justify-center h-4 w-4 rounded-full bg-green-100">
-                                                                <CheckCircle2 className="h-2.5 w-2.5 text-green-600" />
+                                                            <div title="Inspected / Completed" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
+                                                                <CheckCircle2 className="h-4 w-4 text-green-600" />
                                                             </div>
                                                         ) : (
-                                                            <div title="Incomplete / Draft" className="flex items-center justify-center h-4 w-4 rounded-full bg-amber-100">
-                                                                <FileClock className="h-2.5 w-2.5 text-amber-600" />
+                                                            <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100">
+                                                                <FileClock className="h-3.5 w-3.5 text-amber-600" />
                                                             </div>
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-2 text-right align-top">
-                                                    <div className="flex items-center justify-end gap-1 group-hover:opacity-100 opacity-60 transition-opacity">
+                                                <td className="px-3 py-3 text-right align-top">
+                                                    <div className="flex items-center justify-end gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
-                                                                <button className="p-1 px-1.5 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1 transition-colors text-[9px] font-bold uppercase tracking-wider text-slate-600" title="Report Options">
-                                                                    <FileText className="w-3 h-3" /> Actions
+                                                                <button className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-white" title="Report Options">
+                                                                    <FileText className="w-3.5 h-3.5" /> Actions
                                                                 </button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end" className="w-48">
@@ -4520,19 +4814,63 @@ function V10PreviewLayout() {
                             {!selectedComp ? (
                                 <div className="text-center text-slate-400 text-xs py-10">Select component to view history</div>
                             ) : (
-                                <div className="space-y-2">
-                                    <div className="font-bold text-slate-900 text-sm mb-2">{selectedComp.name} Past Results</div>
-                                    {historicalRecords.length === 0 ? (
-                                        <div className="text-xs text-slate-400 p-2 text-center bg-slate-50 rounded border border-dashed">No history detected</div>
-                                    ) : historicalRecords.map((h, i) => (
-                                        <div key={i} className="flex flex-col gap-1 p-2 bg-slate-50 rounded border border-slate-100 text-[11px] transition hover:bg-white hover:shadow-sm">
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-mono font-bold text-slate-500">{h.year} - {h.type}</span>
-                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${h.status === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{h.status}</span>
-                                            </div>
-                                            <span className="text-slate-600 italic">"{h.finding}"</span>
+                                <div className="space-y-4">
+                                    {/* Current Workpack Section */}
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="h-px flex-1 bg-slate-100"></div>
+                                            <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded border border-blue-100">Current Workpack</span>
+                                            <div className="h-px flex-1 bg-slate-100"></div>
                                         </div>
-                                    ))}
+                                        <div className="space-y-2">
+                                            {currentCompRecords.length === 0 ? (
+                                                <div className="text-[10px] text-slate-400 p-3 text-center bg-slate-50/50 rounded border border-dashed border-slate-200 italic font-medium">No records in current scope</div>
+                                            ) : currentCompRecords.map((r, i) => (
+                                                <div key={r.id} className="flex flex-col gap-1 p-2 bg-white rounded border border-slate-100 text-[11px] shadow-sm hover:border-blue-200 transition-colors">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="font-bold text-slate-700">{r.type}</span>
+                                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${r.status === 'Pass' ? 'bg-green-100 text-green-700' : (r.status === 'Incomplete' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}`}>{r.status}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-[9px] font-bold text-slate-500 uppercase tracking-tight">
+                                                        <span>{inspMethod === 'DIVING' ? 'Dive' : 'Dep'}: {r.diveNo || 'N/A'}</span>
+                                                        <span>Tape: {r.tapeNo}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-[9px] text-slate-400 font-medium">
+                                                        <span>{r.date} {r.time?.slice(0, 5)}</span>
+                                                        <span className="italic truncate max-w-[120px]">"{r.finding}"</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Historical Data Section */}
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="h-px flex-1 bg-slate-100"></div>
+                                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Historical Data</span>
+                                            <div className="h-px flex-1 bg-slate-100"></div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {historicalRecords.length === 0 ? (
+                                                <div className="text-[10px] text-slate-400 p-3 text-center bg-slate-50/50 rounded border border-dashed border-slate-200 italic font-medium">No historical records found</div>
+                                            ) : historicalRecords.map((r, i) => (
+                                                <div key={i} className="flex flex-col gap-1 p-2 bg-slate-50/50 rounded border border-slate-100 text-[11px] opacity-80 hover:opacity-100 transition-opacity">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="font-bold text-slate-600">{r.type} ({r.year})</span>
+                                                        <span className={`px-1 py-0.5 rounded text-[7.5px] font-black uppercase ${r.status === 'Pass' ? 'bg-slate-200 text-slate-600' : 'bg-red-50 text-red-600'}`}>{r.status}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-[8px] font-bold text-slate-400 uppercase">
+                                                        <span>{inspMethod === 'DIVING' ? 'Dive' : 'Dep'}: {r.diveNo || 'N/A'}</span>
+                                                        <span>Tape: {r.tapeNo}</span>
+                                                    </div>
+                                                    <div className="text-[8px] text-slate-400 mt-0.5 italic">
+                                                        "{r.finding}"
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </ScrollArea>
