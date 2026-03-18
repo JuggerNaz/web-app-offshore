@@ -705,7 +705,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                     </div>
 
                     <div className="space-y-4">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Dive Type</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inspection Mode</Label>
                       <FormField
                         control={form.control}
                         name="divetyp"
@@ -836,7 +836,6 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <FormFieldWrap label="Estimated Time" name="site_hrs" form={form} ftype="vertical" type="number" />
                       <FormFieldWrap
                         label="Status"
                         name="status"
