@@ -80,7 +80,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import {
     DropdownMenu,
@@ -133,10 +133,16 @@ const ROV_MOVEMENT_BRANCHES: Record<string, string[]> = {
     'Awaiting Deployment': ['Rov On Hire', 'Rov Launched'],
     'Rov On Hire': ['Rov Launched'],
     'Rov Launched': ['Rov at the Worksite'],
+    'ROV_DEPLOYED': ['Rov at the Worksite'], // Alias for compatibility with old logs
+    'ROV_TRANSITING': ['Rov at the Worksite'],
     'Rov at the Worksite': ['Rov Leaving the Worksite'],
+    'ROV_AT_WORKSITE': ['Rov Leaving the Worksite'], // Alias
+    'ROV_WORKING': ['Rov Leaving the Worksite'], // Alias
     'Rov Leaving the Worksite': ['Rov Recovered', 'Rov Back to TMS'],
+    'ROV_LEAVING_WORKSITE': ['Rov Recovered', 'Rov Back to TMS'], // Alias
     'Rov Back to TMS': ['Rov Launched', 'Rov Recovered'],
     'Rov Recovered': ['Rov Launched', 'Rov Off Hire'],
+    'ROV_RECOVERED': ['Rov Launched', 'Rov Off Hire'], // Alias
     'Rov Off Hire': []
 };
 const INITIAL_VIDEO_EVENTS = [
@@ -231,7 +237,7 @@ function V10PreviewLayout() {
 
             return (
                 <div className="relative group/combo">
-                    <Popover>
+                    <Popover open={openPopovers[p.name || p.label] || false} onOpenChange={(val) => setOpenPopovers(prev => ({ ...prev, [p.name || p.label]: val }))}>
                         <PopoverTrigger asChild>
                             <div className="relative">
                                 <Input
@@ -281,6 +287,8 @@ function V10PreviewLayout() {
                                                     if (type === 'primary') {
                                                         setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: opt }));
                                                     }
+                                                    // Close popover on selection (Pic-1 fix)
+                                                    setOpenPopovers(prev => ({ ...prev, [p.name || p.label]: false }));
                                                 }}
                                             >
                                                 {opt}
@@ -294,7 +302,7 @@ function V10PreviewLayout() {
                             </div>
                         </PopoverContent>
                     </Popover>
-        </div>
+                </div>
             );
         }
 
@@ -469,6 +477,24 @@ function V10PreviewLayout() {
     const [isCommitting, setIsCommitting] = useState(false);
     const [pipWindow, setPipWindow] = useState<any>(null);
 
+    // Multiple Attachment State
+    const [pendingAttachments, setPendingAttachments] = useState<Array<{
+        id: string,
+        file?: File | Blob,
+        name: string,
+        type: 'PHOTO' | 'VIDEO' | 'DOCUMENT',
+        title: string,
+        description: string,
+        source: string,
+        previewUrl?: string,
+        isFromRecording?: boolean,
+        isExisting?: boolean,
+        path?: string,
+        meta?: any
+    }>>([]);
+    const [isAttachmentManagerOpen, setIsAttachmentManagerOpen] = useState(false);
+    const [viewingRecordAttachments, setViewingRecordAttachments] = useState<any[] | null>(null);
+
     // Drawing Tools state
     const [currentTool, setCurrentTool] = useState<DrawingTool>('pen');
     const [currentColor, setCurrentColor] = useState('#ef4444');
@@ -477,8 +503,40 @@ function V10PreviewLayout() {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const recorderIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const animationFrameRef = useRef<number | null>(null);
+
+    const handleExternalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files) return;
+
+        const newAttachments = Array.from(files).map((file: File) => {
+            const isImage = file.type.startsWith('image/');
+            const isVideo = file.type.startsWith('video/');
+            const type = isImage ? 'PHOTO' : (isVideo ? 'VIDEO' : 'DOCUMENT');
+            
+            const isAnomaly = findingType === 'Anomaly';
+            const isFinding = findingType === 'Finding';
+            const prefix = isAnomaly ? 'Anomaly - ' : (isFinding ? 'Findings - ' : '');
+            const refNo = anomalyData.referenceNo || 'Draft';
+
+            return {
+                id: Math.random().toString(36).substr(2, 9),
+                file: file,
+                name: file.name,
+                type: type as 'PHOTO' | 'VIDEO' | 'DOCUMENT',
+                title: prefix ? `${prefix}${refNo}` : file.name,
+                description: '',
+                source: 'EXTERNAL_UPLOAD',
+                previewUrl: URL.createObjectURL(file),
+                isFromRecording: false
+            };
+        });
+
+        setPendingAttachments(prev => [...prev, ...newAttachments]);
+        e.target.value = ''; // Reset input
+    };
 
     // Context
     const [selectedComp, setSelectedComp] = useState<any>(null);
@@ -534,6 +592,7 @@ function V10PreviewLayout() {
         referenceNo: ''
     });
     const [incompleteReason, setIncompleteReason] = useState("");
+    const [openPopovers, setOpenPopovers] = useState<Record<string, boolean>>({});
 
     const [criteriaRules, setCriteriaRules] = useState<any[]>([]);
     const [pendingRule, setPendingRule] = useState<any>(null);
@@ -541,6 +600,24 @@ function V10PreviewLayout() {
     const [showRemovalConfirm, setShowRemovalConfirm] = useState(false);
     const [lastAutoMatchedRuleId, setLastAutoMatchedRuleId] = useState<string | null>(null);
     const [isManualOverride, setIsManualOverride] = useState(false);
+
+    // Auto-update pending attachment titles for Anomaly/Finding
+    useEffect(() => {
+        if (findingType === 'Anomaly' || findingType === 'Finding') {
+            const label = findingType === 'Anomaly' ? 'Anomaly' : 'Finding';
+            // Extract the sequence part (e.g., A-001 from 2026/PLAT/A-001)
+            const parts = (anomalyData.referenceNo || '').split(' / ');
+            const seq = parts.length > 0 ? parts[parts.length - 1] : 'Draft';
+            
+            setPendingAttachments(prev => prev.map(att => {
+                // If it's a default name or from live snapshot, update it
+                if (att.source === 'LIVE_SNAPSHOT' || att.title === att.name || !att.title) {
+                    return { ...att, title: `${label} - ${seq}` };
+                }
+                return att;
+            }));
+        }
+    }, [findingType, anomalyData.referenceNo]);
 
     // Fetch criteria rules
     useEffect(() => {
@@ -682,9 +759,8 @@ function V10PreviewLayout() {
         fetchHeaderInfo();
     }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam]);
 
-    // Live Anomaly Reference Preview
     useEffect(() => {
-        if ((findingType === 'Anomaly' || findingType === 'Finding') && !editingRecordId) {
+        if ((findingType === 'Anomaly' || findingType === 'Finding') && !anomalyData.referenceNo) {
             const fetchPreviewRef = async () => {
                 const category = findingType === 'Anomaly' ? 'ANOMALY' : 'FINDING';
                 const prefix = findingType === 'Anomaly' ? 'A' : 'F';
@@ -744,16 +820,123 @@ function V10PreviewLayout() {
             }
         }
 
-        if (!confirm("Are you sure you want to delete this inspection record? This cannot be undone.")) return;
+        if (!confirm("Are you sure you want to permanently delete this inspection record and all its associated attachments?")) return;
+        
         try {
+            // 1. Fetch attachments to delete from Storage and DB
+            const { data: attachments } = await supabase.from('attachment').select('path, id').eq('source_id', id).eq('source_type', 'INSPECTION');
+            
+            if (attachments && attachments.length > 0) {
+                const paths = attachments.map(a => a.path).filter(Boolean);
+                if (paths.length > 0) {
+                    const { error: storageErr } = await supabase.storage.from('attachments').remove(paths);
+                    if (storageErr) console.warn("Storage deletion error:", storageErr);
+                }
+                
+                // Explicitly delete attachments from DB
+                await supabase.from('attachment').delete().eq('source_id', id).eq('source_type', 'INSPECTION');
+            }
+
+            // 2. Delete anomalies
+            await supabase.from('insp_anomalies').delete().eq('inspection_id', id);
+
+            // 3. Delete from Database
             await supabase.from('insp_video_logs').delete().eq('inspection_id', id);
-            await supabase.from('insp_records').delete().eq('insp_id', id);
-            toast.success("Record deleted");
+            const { error: delErr } = await supabase.from('insp_records').delete().eq('insp_id', id);
+            if (delErr) {
+                toast.error("Failed to delete record: " + delErr.message);
+                return;
+            }
+
+            if (record) {
+                // Fetch ALL remaining records... (rest of the logic from 825-871)
+                const { data: allRemaining } = await supabase
+                    .from('insp_records')
+                    .select('insp_id, status, has_anomaly, inspection_date')
+                    .eq('jobpack_id', record.jobpack_id)
+                    .eq('component_id', record.component_id)
+                    .eq('inspection_type_id', record.inspection_type_id)
+                    .eq('sow_report_no', record.sow_report_no);
+
+                let bestStatus = 'pending';
+                if (allRemaining && allRemaining.length > 0) {
+                    const hasAnom = allRemaining.some(r => r.has_anomaly);
+                    const isIncomplete = allRemaining.some(r => r.status === 'INCOMPLETE');
+                    const isCompleted = allRemaining.some(r => r.status === 'COMPLETED');
+                    
+                    if (hasAnom) bestStatus = 'anomaly';
+                    else if (isIncomplete) bestStatus = 'incomplete';
+                    else if (isCompleted) bestStatus = 'completed';
+                }
+
+                await supabase.from('u_sow_items')
+                    .update({ 
+                        status: bestStatus === 'anomaly' ? 'completed' : bestStatus, 
+                        last_inspection_date: allRemaining?.length ? allRemaining[0].inspection_date : null 
+                    })
+                    .eq('sow_id', sowId)
+                    .eq('component_id', record.component_id)
+                    .filter('inspection_type_id', record.inspection_type_id ? 'eq' : 'is', record.inspection_type_id || null);
+
+                // Optimistically update the UI Component List status
+                setComponentsSow(prev => prev.map(comp => {
+                    if (comp.id === record.component_id) {
+                        return {
+                            ...comp,
+                            taskStatuses: comp.taskStatuses.map((ts: any) => {
+                                if (ts.code === record.inspection_type_code) {
+                                    return { ...ts, status: bestStatus === 'anomaly' ? 'completed' : bestStatus };
+                                }
+                                return ts;
+                            })
+                        };
+                    }
+                    return comp;
+                }));
+            }
+
+            toast.success("Record and associated media deleted successfully");
             setCurrentRecords(prev => prev.filter(r => r.insp_id !== id));
+            
+            if (editingRecordId !== null && Number(id) === Number(editingRecordId)) {
+                resetForm();
+            }
+            
+            fetchHistory();
+            syncDeploymentState();
         } catch (error) {
             console.error("Error deleting record:", error);
             toast.error("Failed to delete record");
         }
+    };
+
+    const resetForm = () => {
+        setActiveSpec(null);
+        setRecordNotes("");
+        setDynamicProps({});
+        setDebouncedProps({});
+        setFindingType("Pass");
+        setIncompleteReason("");
+        setEditingRecordId(null);
+        setRequiredRecordId(null);
+        setRequiredProps({});
+        setRequiredSpec(null);
+        setAnomalyData({
+            defectCode: '', 
+            priority: '', 
+            defectType: '', 
+            description: '', 
+            recommendedAction: '',
+            rectify: false, 
+            rectifiedDate: '', 
+            rectifiedRemarks: '', 
+            severity: 'MINOR', 
+            referenceNo: '' 
+        });
+        setLastAutoMatchedRuleId(null);
+        setPendingRule(null);
+        setPhotoLinked(false);
+        setPendingAttachments([]);
     };
 
     const [dataAcqFields, setDataAcqFields] = useState<Array<{ label: string, targetField: string, value: string }>>([]);
@@ -1297,64 +1480,24 @@ function V10PreviewLayout() {
     };
 
     const handleLinkToRecord = (file: typeof recordedFiles[0]) => {
-        setAttachmentToLink(file);
-        setAttachmentMetadata({ title: file.name, description: '' });
-        setIsAttachDialogOpen(true);
+        const prefix = findingType === 'Anomaly' ? 'Anomaly - ' : (findingType === 'Finding' ? 'Finding - ' : '');
+        const refNo = anomalyData.referenceNo || 'Draft';
+        
+        setPendingAttachments(prev => [...prev, {
+            id: Math.random().toString(36).substr(2, 9),
+            file: file.blob,
+            name: file.name,
+            type: file.type === 'video' ? 'VIDEO' : 'PHOTO',
+            title: prefix ? `${prefix}${refNo}` : file.name,
+            description: '',
+            source: 'LIVE_SNAPSHOT',
+            previewUrl: file.url,
+            isFromRecording: true
+        }]);
+        toast.success(`Screen grab added to current record: ${file.name}`);
     };
 
-    const confirmAttachToRecord = async () => {
-        if (!attachmentToLink || !selectedRecordToLink) {
-            toast.error("Please select a record to link to");
-            return;
-        }
-
-        setIsCommitting(true);
-        try {
-            const user = (await supabase.auth.getUser()).data.user;
-            const currentUserId = user?.id || 'system';
-
-            // 1. Upload to Storage
-            const fileExt = attachmentToLink.type === 'video' ? 'webm' : 'png';
-            const safeName = attachmentToLink.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(7)}_${safeName}`;
-            const filePath = `inspection/${selectedRecordToLink}/${uniqueName}`;
-
-            const { data: uploadData, error: uploadError } = await supabase.storage
-                .from('attachments')
-                .upload(filePath, attachmentToLink.blob);
-
-            if (uploadError) throw uploadError;
-
-            // 2. Link in attachment table
-            const { error: attError } = await supabase
-                .from('attachment')
-                .insert({
-                    name: attachmentToLink.name,
-                    source_id: selectedRecordToLink,
-                    source_type: 'inspection',
-                    path: filePath,
-                    user_id: currentUserId,
-                    meta: {
-                        title: attachmentMetadata.title,
-                        description: attachmentMetadata.description,
-                        size: attachmentToLink.blob.size,
-                        type: attachmentToLink.blob.type
-                    }
-                });
-
-            if (attError) throw attError;
-
-            toast.success(`Succesfully linked ${attachmentToLink.name} to inspection record`);
-            setIsAttachDialogOpen(false);
-            setAttachmentToLink(null);
-            setSelectedRecordToLink(null);
-        } catch (err: any) {
-            console.error("Linking failed:", err);
-            toast.error(`Failed to attach file: ${err.message || "Unknown error"}`);
-        } finally {
-            setIsCommitting(false);
-        }
-    };
+    // End of Linking Logic
 
     // Dynamic Time in Water Clock
     useEffect(() => {
@@ -1428,7 +1571,7 @@ function V10PreviewLayout() {
 
             if (movs && movs.length > 0) {
                 const last = movs[movs.length - 1];
-                let mvtLabel = last.movement_type || "Deployed";
+                let mvtLabel = last.movement_type || "Awaiting Deployment";
                 if (inspMethod === 'DIVING') {
                     const mappedItem = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.value === mvtLabel || a.label === mvtLabel);
                     if (mappedItem) mvtLabel = mappedItem.label;
@@ -1445,7 +1588,7 @@ function V10PreviewLayout() {
                 );
                 setDiveEndTime(recoveryEvent?.movement_time || recoveryEvent?.event_time || null);
             } else {
-                setCurrentMovement("Deployed");
+                setCurrentMovement("Awaiting Deployment");
                 setDiveStartTime(null);
                 setDiveEndTime(null);
             }
@@ -1552,23 +1695,29 @@ function V10PreviewLayout() {
 
             if (inspErr) {
                 console.error("[Sync] Inspection fetch error:", inspErr);
-                // Fallback basic fetch to avoid 400 or other complex join issues
+                // Fallback basic fetch
                 const { data: fallbackInsps } = await supabase.from('insp_records').select('*').eq(inspCol, depId);
-                if (fallbackInsps) {
-                    setCurrentRecords(fallbackInsps);
-                    allEv.push(...fallbackInsps.map(r => ({
-                        id: `insp_${r.insp_id}`,
-                        realId: r.insp_id,
-                        time: r.inspection_data?._meta_timecode || '00:00:00',
-                        action: r.has_anomaly ? 'ANOMALY' : 'INSPECTION',
-                        logType: 'insp',
-                        eventTime: parseDbDate(r.inspection_date && r.inspection_time ? `${r.inspection_date} ${r.inspection_time}` : null).toISOString()
-                    })));
-                }
+                if (fallbackInsps) setCurrentRecords(fallbackInsps);
             } else if (insps) {
-                console.log(`[Sync] Found ${insps.length} inspection records`);
-                setCurrentRecords(insps);
-                insps.forEach(r => {
+                // Fetch attachment counts manually for 'attachment' table
+                const { data: allAtts } = await supabase.from('attachment')
+                    .select('source_id')
+                    .eq('source_type', 'INSPECTION')
+                    .in('source_id', insps.map(r => r.insp_id));
+                
+                const countMap = (allAtts || []).reduce((acc: Record<number, number>, curr) => {
+                    acc[curr.source_id] = (acc[curr.source_id] || 0) + 1;
+                    return acc;
+                }, {});
+
+                const inspsWithCounts = insps.map(r => ({
+                    ...r,
+                    attachment_count: countMap[r.insp_id] || 0
+                }));
+
+                setCurrentRecords(inspsWithCounts);
+                
+                inspsWithCounts.forEach(r => {
                     // Only add to allEv if not already represented by a video log with same inspectionId
                     const alreadyInLogs = allEv.some(ev => ev.inspectionId === r.insp_id);
                     if (!alreadyInLogs) {
@@ -1579,7 +1728,7 @@ function V10PreviewLayout() {
                             time: r.inspection_data?._meta_timecode || '00:00:00',
                             action: status,
                             logType: 'insp',
-                            eventTime: parseDbDate(r.inspection_date && r.inspection_time ? `${r.inspection_date} ${r.inspection_time}` : null).toISOString()
+                            eventTime: r.inspection_date && r.inspection_time ? parseDbDate(`${r.inspection_date} ${r.inspection_time}`).toISOString() : new Date().toISOString()
                         });
                     }
                 });
@@ -1919,57 +2068,62 @@ function V10PreviewLayout() {
             }
         } else if (logType === 'insp') {
             await handleDeleteRecord(realId);
-            syncDeploymentState();
         }
     };
 
     const handleEditEventSave = async (newTime: string, newAction: string, newEventTime?: string) => {
         if (!editingEvent?.id) return;
 
-        let finalTimecode = newTime;
-        let finalEventTime = newEventTime || editingEvent.eventTime;
+        try {
+            let finalTimecode = newTime;
+            let finalEventTime = newEventTime || editingEvent.eventTime;
 
-        // Auto-correct counter based on Date/Time if eventTime was changed
-        if (newEventTime && newEventTime !== editingEvent.eventTime && editingEvent.logType === 'video_log') {
-            const { data: prevLogs } = await supabase.from('insp_video_logs')
-                .select('event_time, tape_counter_start, event_type')
-                .eq('tape_id', tapeId)
-                .lt('event_time', newEventTime)
-                .in('event_type', ['NEW_LOG_START', 'RESUME', 'START_TASK', 'RESUME_TASK'])
-                .order('event_time', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+            // Auto-correct counter based on Date/Time if eventTime was changed
+            if (newEventTime && newEventTime !== editingEvent.eventTime && editingEvent.logType === 'video_log') {
+                const { data: prevLogs } = await supabase.from('insp_video_logs')
+                    .select('event_time, tape_counter_start, event_type')
+                    .eq('tape_id', tapeId)
+                    .lt('event_time', newEventTime)
+                    .in('event_type', ['NEW_LOG_START', 'RESUME', 'START_TASK', 'RESUME_TASK'])
+                    .order('event_time', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
 
-            if (prevLogs) {
-                const startAt = parseDbDate(prevLogs.event_time).getTime();
-                const nowAt = parseDbDate(newEventTime).getTime();
-                const diffSecs = Math.max(0, Math.floor((nowAt - startAt) / 1000));
-                const newCounterVal = (prevLogs.tape_counter_start || 0) + diffSecs;
-                finalTimecode = formatTime(newCounterVal);
-                console.log("Auto-correcting counter:", { old: editingEvent.time, new: finalTimecode, diffSecs });
-            } else {
-                console.log("No previous start log found for auto-correction");
+                if (prevLogs) {
+                    const startAt = parseDbDate(prevLogs.event_time).getTime();
+                    const nowAt = parseDbDate(newEventTime).getTime();
+                    const diffSecs = Math.max(0, Math.floor((nowAt - startAt) / 1000));
+                    const newCounterVal = (prevLogs.tape_counter_start || 0) + diffSecs;
+                    finalTimecode = formatTime(newCounterVal);
+                    console.log("Auto-correcting counter:", { old: editingEvent.time, new: finalTimecode, diffSecs });
+                } else {
+                    console.log("No previous start log found for auto-correction");
+                }
             }
+
+            // Map UI labels to valid DB constraint values if needed
+            let dbAction = newAction;
+            if (newAction === "Start Tape") dbAction = "NEW_LOG_START";
+            if (newAction === "Stop Tape") dbAction = "END";
+            if (newAction === "Pause") dbAction = "PAUSE";
+            if (newAction === "Resume") dbAction = "RESUME";
+
+            if (editingEvent.logType === 'video_log') {
+                await supabase.from('insp_video_logs').update({
+                    timecode_start: finalTimecode,
+                    tape_counter_start: (finalTimecode.split(':').reduce((acc, time) => (60 * acc) + +time, 0)),
+                    event_type: dbAction,
+                    event_time: finalEventTime
+                }).eq('video_log_id', editingEvent.realId);
+            }
+
+            setEditingEvent(null);
+            syncDeploymentState();
+            fetchHistory();
+        } catch (error) {
+            console.error("Error saving event:", error);
+            toast.error("Failed to save changes");
         }
-
-        // Map UI labels to valid DB constraint values if needed
-        let dbAction = newAction;
-        if (newAction === "Start Tape") dbAction = "NEW_LOG_START";
-        if (newAction === "Stop Tape") dbAction = "END";
-        if (newAction === "Pause") dbAction = "PAUSE";
-        if (newAction === "Resume") dbAction = "RESUME";
-
-        if (editingEvent.logType === 'video_log') {
-            await supabase.from('insp_video_logs').update({
-                timecode_start: finalTimecode,
-                tape_counter_start: (finalTimecode.split(':').reduce((acc, time) => (60 * acc) + +time, 0)),
-                event_type: dbAction,
-                event_time: finalEventTime
-            }).eq('video_log_id', editingEvent.realId);
-        }
-
-        setEditingEvent(null);
-        syncDeploymentState();
     };
 
     // Calibration Required Spec Fetching
@@ -2336,8 +2490,8 @@ function V10PreviewLayout() {
         const { error } = await supabase.from(mvtTable).insert(payload);
         if (!error) {
             setCurrentMovement(actionLabel);
-            if (actionLabel.toLowerCase().includes('left surface') || actionLabel.toLowerCase().includes('deployed')) setDiveStartTime(payload.movement_time);
-            if (actionLabel.toLowerCase().includes('arrived surface') || actionLabel.toLowerCase().includes('recovered')) setDiveEndTime(payload.movement_time);
+            if (actionLabel.toLowerCase().includes('left surface') || actionLabel.toLowerCase().includes('deployed') || actionLabel.toLowerCase().includes('launched')) setDiveStartTime(payload.movement_time);
+            if (actionLabel.toLowerCase().includes('arrived surface') || actionLabel.toLowerCase().includes('recovered') || actionLabel.toLowerCase().includes('off hire')) setDiveEndTime(payload.movement_time);
 
             // Auto-complete deployment if final action
             if (["Arrived Surface", "TUP Complete", "Bell on Surface", "Recovered", "System on Deck", "Rov Off Hire"].includes(actionLabel)) {
@@ -2523,288 +2677,434 @@ function V10PreviewLayout() {
         };
 
         runCheck();
-    }, [debouncedProps, selectedComp, activeSpec, criteriaRules, findingType, anomalyData.defectCode, lastAutoMatchedRuleId, isManualOverride, isUserInteraction]);
+    }, [debouncedProps, selectedComp, activeSpec, criteriaRules, findingType, anomalyData.defectCode, lastAutoMatchedRuleId, isManualOverride]);
 
     const handleCommitRecord = async () => {
         if (!selectedComp || !activeSpec || !activeDep?.id) return;
 
-        let tId = tapeId;
-        if (!tId && activeDep?.id) {
-            // Try to fetch existing active tape for this deployment
-            const { data: existingTape } = await supabase.from('insp_video_tapes')
-                .select('tape_id')
-                .eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', Number(activeDep.id))
-                .order('tape_id', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+        try {
+            setIsCommitting(true);
+            let tId = tapeId;
+            let autoRefNo = "";
+            if (!tId && activeDep?.id) {
+                // Try to fetch existing active tape for this deployment
+                const { data: existingTape } = await supabase.from('insp_video_tapes')
+                    .select('tape_id')
+                    .eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', Number(activeDep.id))
+                    .order('tape_id', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
 
-            if (existingTape) {
-                tId = existingTape.tape_id;
-                setTapeId(tId);
-            } else {
-                // Create one if none exists
-                const user = (await supabase.auth.getUser()).data.user;
-                let uniqueTapeNo = tapeNo;
-                if (!uniqueTapeNo) {
-                    const base = headerData.sowReportNo || 'SOW_REPORT';
-                    const platform = headerData.platformName || 'STRUCTURE';
-                    const postfix = inspMethod === 'DIVING' ? 'D' : 'R';
-                    let maxSeq = 0;
-                    jobTapes.forEach(t => {
-                        const match = t.tape_no.match(/V(\d{3})[DR]$/);
-                        if (match) {
-                            const seq = parseInt(match[1], 10);
-                            if (seq > maxSeq) maxSeq = seq;
-                        }
-                    });
-                    const nextSeq = String(maxSeq + 1).padStart(3, '0');
-                    uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
-                }
-                const { data: newTape } = await supabase.from('insp_video_tapes').insert({
-                    tape_no: uniqueTapeNo,
-                    tape_type: "DIGITAL - PRIMARY",
-                    chapter_no: 1,
-                    status: 'ACTIVE',
-                    [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: Number(activeDep.id),
-                    cr_user: user?.id || 'system'
-                }).select('tape_id').single();
-                if (newTape) {
-                    tId = newTape.tape_id;
+                if (existingTape) {
+                    tId = existingTape.tape_id;
                     setTapeId(tId);
+                } else {
+                    // Create one if none exists
+                    const userRes = await supabase.auth.getUser();
+                    const user = userRes.data.user;
+                    let uniqueTapeNo = tapeNo;
+                    if (!uniqueTapeNo) {
+                        const base = headerData.sowReportNo || 'SOW_REPORT';
+                        const platform = headerData.platformName || 'STRUCTURE';
+                        const postfix = inspMethod === 'DIVING' ? 'D' : 'R';
+                        let maxSeq = 0;
+                        jobTapes.forEach(t => {
+                            const match = t.tape_no.match(/V(\d{3})[DR]$/);
+                            if (match) {
+                                const seq = parseInt(match[1], 10);
+                                if (seq > maxSeq) maxSeq = seq;
+                            }
+                        });
+                        const nextSeq = String(maxSeq + 1).padStart(3, '0');
+                        uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
+                    }
+                    const { data: newTape } = await supabase.from('insp_video_tapes').insert({
+                        tape_no: uniqueTapeNo,
+                        tape_type: "DIGITAL - PRIMARY",
+                        chapter_no: 1,
+                        status: 'ACTIVE',
+                        [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: Number(activeDep.id),
+                        cr_user: user?.id || 'system'
+                    }).select('tape_id').single();
+                    if (newTape) {
+                        tId = newTape.tape_id;
+                        setTapeId(tId);
+                    }
                 }
             }
-        }
 
-        setIsCommitting(true);
-        const user = (await supabase.auth.getUser()).data.user;
+            const userRes = await supabase.auth.getUser();
+            const user = userRes.data.user;
 
-        const it = allInspectionTypes.find(t => t.name === activeSpec || t.code === activeSpec);
+            const it = allInspectionTypes.find(t => t.name === activeSpec || t.code === activeSpec);
 
-        // Capture latest data acquisition values
-        const currentDataAcq: Record<string, any> = {};
-        if (dataAcqConnected) {
-            dataAcqFields.forEach(f => {
-                if (f.value && f.value !== '--' && f.targetField) {
-                    currentDataAcq[f.targetField] = f.value;
-                }
-            });
-        }
+            // Capture latest data acquisition values
+            const currentDataAcq: Record<string, any> = {};
+            if (dataAcqConnected) {
+                dataAcqFields.forEach(f => {
+                    if (f.value && f.value !== '--' && f.targetField) {
+                        currentDataAcq[f.targetField] = f.value;
+                    }
+                });
+            }
 
-        const activeProps = { ...dynamicProps, ...currentDataAcq };
+            const activeProps = { ...dynamicProps, ...currentDataAcq };
 
-        const payload: any = {
-            [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: activeDep.id,
-            structure_id: parseInt(structureId || "0"),
-            component_id: selectedComp.id,
-            component_type: selectedComp.raw?.code || selectedComp.raw?.metadata?.comp_type || selectedComp.raw?.metadata?.type || null,
-            jobpack_id: jobPackId ? parseInt(jobPackId) : null,
-            sow_report_no: headerData.sowReportNo || null,
-            inspection_type_id: it?.id || null,
-            inspection_type_code: it?.code || activeSpec,
-            inspection_date: (activeProps.inspection_date && activeProps.inspection_date !== '--') ? String(activeProps.inspection_date) : format(new Date(), 'yyyy-MM-dd'),
-            inspection_time: (activeProps.inspection_time && activeProps.inspection_time !== '--') ? String(activeProps.inspection_time) : format(new Date(), 'HH:mm:ss'),
-            description: recordNotes,
-            status: findingType === 'Incomplete' ? 'INCOMPLETE' : 'COMPLETED',
-            has_anomaly: findingType === 'Anomaly' || findingType === 'Finding',
-            tape_id: tId,
-            tape_count_no: (activeProps.tape_count_no && activeProps.tape_count_no !== '--') ? activeProps.tape_count_no : vidTimer,
-            elevation: (() => {
-                const p = activeProps.elevation && activeProps.elevation !== '--' ? parseFloat(activeProps.elevation as string) : NaN;
-                if (!isNaN(p)) return p;
-                return selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? parseFloat(selectedComp.lowestElev) : 0;
-            })(),
-            fp_kp: (activeProps.fp_kp !== undefined && activeProps.fp_kp !== '--') ? String(activeProps.fp_kp) : null,
-            inspection_data: {
-                ...activeProps,
-                _meta_timecode: formatTime(vidTimer),
-                _meta_status: findingType,
-                incomplete_reason: findingType === 'Incomplete' ? incompleteReason : null
-            },
-            cr_user: user?.id || 'system'
-        };
-
-        if (editingRecordId) {
-            payload.insp_id = editingRecordId;
-        }
-
-        // Commit Calibration/Required Record if needed
-        if (requiredSpec && Object.keys(requiredProps).length > 0) {
-            const reqPayload: any = {
+            const payload: any = {
                 [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: activeDep.id,
                 structure_id: parseInt(structureId || "0"),
                 component_id: selectedComp.id,
                 component_type: selectedComp.raw?.code || selectedComp.raw?.metadata?.comp_type || selectedComp.raw?.metadata?.type || null,
                 jobpack_id: jobPackId ? parseInt(jobPackId) : null,
                 sow_report_no: headerData.sowReportNo || null,
-                inspection_type_id: requiredSpec.id,
-                inspection_type_code: requiredSpec.code,
-                inspection_date: payload.inspection_date,
-                inspection_time: payload.inspection_time,
-                status: 'COMPLETED',
-                has_anomaly: false,
+                inspection_type_id: it?.id || null,
+                inspection_type_code: it?.code || activeSpec,
+                inspection_date: (activeProps.inspection_date && activeProps.inspection_date !== '--') ? String(activeProps.inspection_date) : format(new Date(), 'yyyy-MM-dd'),
+                inspection_time: (activeProps.inspection_time && activeProps.inspection_time !== '--') ? String(activeProps.inspection_time) : format(new Date(), 'HH:mm:ss'),
+                description: recordNotes,
+                status: findingType === 'Incomplete' ? 'INCOMPLETE' : 'COMPLETED',
+                has_anomaly: findingType === 'Anomaly' || findingType === 'Finding',
                 tape_id: tId,
-                tape_count_no: payload.tape_count_no,
-                elevation: payload.elevation,
-                fp_kp: payload.fp_kp,
+                tape_count_no: (activeProps.tape_count_no && activeProps.tape_count_no !== '--') ? activeProps.tape_count_no : vidTimer,
+                elevation: (() => {
+                    const p = activeProps.elevation && activeProps.elevation !== '--' ? parseFloat(activeProps.elevation as string) : NaN;
+                    if (!isNaN(p)) return p;
+                    return selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? parseFloat(selectedComp.lowestElev) : 0;
+                })(),
+                fp_kp: (activeProps.fp_kp !== undefined && activeProps.fp_kp !== '--') ? String(activeProps.fp_kp) : null,
                 inspection_data: {
-                    ...requiredProps,
+                    ...activeProps,
                     _meta_timecode: formatTime(vidTimer),
-                    _is_calibration: true
+                    _meta_status: findingType,
+                    incomplete_reason: findingType === 'Incomplete' ? incompleteReason : null
                 },
                 cr_user: user?.id || 'system'
             };
 
-            if (requiredRecordId) {
-                await supabase.from('insp_records').update(reqPayload).eq('insp_id', requiredRecordId);
-            } else {
-                const { data: newReqData } = await supabase.from('insp_records').insert(reqPayload).select('insp_id').single();
-                if (newReqData) setRequiredRecordId(newReqData.insp_id);
+            if (editingRecordId) {
+                payload.insp_id = editingRecordId;
             }
-        }
 
-        // anomaly_details is handled separately in the insp_anomalies table
+            // Commit Calibration/Required Record if needed
+            if (requiredSpec && Object.keys(requiredProps).length > 0) {
+                const reqPayload: any = {
+                    [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: activeDep.id,
+                    structure_id: parseInt(structureId || "0"),
+                    component_id: selectedComp.id,
+                    component_type: selectedComp.raw?.code || selectedComp.raw?.metadata?.comp_type || selectedComp.raw?.metadata?.type || null,
+                    jobpack_id: jobPackId ? parseInt(jobPackId) : null,
+                    sow_report_no: headerData.sowReportNo || null,
+                    inspection_type_id: requiredSpec.id,
+                    inspection_type_code: requiredSpec.code,
+                    inspection_date: payload.inspection_date,
+                    inspection_time: payload.inspection_time,
+                    status: 'COMPLETED',
+                    has_anomaly: false,
+                    tape_id: tId,
+                    tape_count_no: payload.tape_count_no,
+                    elevation: payload.elevation,
+                    fp_kp: payload.fp_kp,
+                    inspection_data: {
+                        ...requiredProps,
+                        _meta_timecode: formatTime(vidTimer),
+                        _is_calibration: true
+                    },
+                    cr_user: user?.id || 'system'
+                };
 
-        const { data: opData, error: opError } = await (editingRecordId
-            ? supabase.from('insp_records').update(payload).eq('insp_id', editingRecordId).select('*').single()
-            : supabase.from('insp_records').insert(payload).select('*').single()
-        );
+                if (requiredRecordId) {
+                    await supabase.from('insp_records').update(reqPayload).eq('insp_id', requiredRecordId);
+                } else {
+                    const { data: newReqData } = await supabase.from('insp_records').insert(reqPayload).select('insp_id').single();
+                    if (newReqData) setRequiredRecordId(newReqData.insp_id);
+                }
+            }
 
-        if (opError) {
-            console.error("Commit Error:", opError);
-            toast.error(`Error saving record: ${opError.message}`);
-            setIsCommitting(false);
-            return;
-        }
-        const newStatus = findingType === 'Incomplete' ? 'incomplete' : 'completed';
-        await supabase.from('u_sow_items')
-            .update({ status: newStatus })
-            .eq('sow_id', sowId)
-            .eq('component_id', selectedComp.id)
-            .filter('inspection_type_id', it?.id ? 'eq' : 'is', it?.id || null);
+            // anomaly_details is handled separately in the insp_anomalies table
 
-        if (findingType === 'Anomaly' || findingType === 'Finding') {
-            const isAnomaly = findingType === 'Anomaly';
-            const category = isAnomaly ? 'ANOMALY' : 'FINDING';
-            const prefix = isAnomaly ? 'A' : 'F';
+            const { data: opData, error: opError } = await (editingRecordId
+                ? supabase.from('insp_records').update(payload).eq('insp_id', editingRecordId).select('*').single()
+                : supabase.from('insp_records').insert(payload).select('*').single()
+            );
 
-            const { data: existingAnomaly } = await supabase.from('insp_anomalies')
-                .select('anomaly_id, anomaly_ref_no, sequence_no')
-                .eq('inspection_id', opData.insp_id)
-                .maybeSingle();
+            if (opError) throw opError;
 
-            let autoRefNo = "";
-            let finalSeq = existingAnomaly?.sequence_no || 0;
+            const newStatus = findingType === 'Incomplete' ? 'incomplete' : 'completed';
+            await supabase.from('u_sow_items')
+                .update({ status: newStatus })
+                .eq('sow_id', sowId)
+                .eq('component_id', selectedComp.id)
+                .filter('inspection_type_id', it?.id ? 'eq' : 'is', it?.id || null);
 
-            if (!existingAnomaly) {
-                const { data: sequenceData } = await supabase.rpc('get_next_record_sequence', {
-                    p_structure_id: parseInt(structureId || "0"),
-                    p_jobpack_id: parseInt(jobPackId || "0"),
-                    p_report_no: headerData.sowReportNo,
-                    p_category: category
+            if (findingType === 'Anomaly' || findingType === 'Finding') {
+                const isAnomaly = findingType === 'Anomaly';
+                const category = isAnomaly ? 'ANOMALY' : 'FINDING';
+                const prefix = isAnomaly ? 'A' : 'F';
+
+                const { data: existingAnomaly } = await supabase.from('insp_anomalies')
+                    .select('anomaly_id, anomaly_ref_no, sequence_no')
+                    .eq('inspection_id', opData.insp_id)
+                    .maybeSingle();
+
+                let finalSeq = existingAnomaly?.sequence_no || 0;
+
+                if (!existingAnomaly) {
+                    // Calculate sequence directly in JS since the DB column might be missing
+                    const { data: allAnoms } = await supabase
+                        .from('insp_anomalies')
+                        .select('sequence_no, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)')
+                        .eq('insp_records.structure_id', parseInt(structureId || "0"))
+                        .eq('insp_records.jobpack_id', parseInt(jobPackId || "0"))
+                        .eq('insp_records.sow_report_no', headerData.sowReportNo);
+                        
+                    let vMaxSeq = 0;
+                    if (allAnoms) {
+                        for (const a of allAnoms) {
+                            const refCategory = a.anomaly_ref_no?.includes(' / A-') ? 'ANOMALY' : 'FINDING';
+                            if (refCategory === category && a.sequence_no > vMaxSeq) {
+                                vMaxSeq = a.sequence_no;
+                            }
+                        }
+                    }
+                    const seq = vMaxSeq + 1;
+                    finalSeq = seq;
+                    
+                    const baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, '0')}`;
+                    if (anomalyData.rectify) {
+                        autoRefNo = baseRef + "R";
+                    } else {
+                        autoRefNo = baseRef;
+                    }
+                } else {
+                    // Postfix logic for amendment/rectification
+                    let baseRef = (existingAnomaly.anomaly_ref_no || "").replace(/[AR]$/, "");
+                    if (anomalyData.rectify) {
+                        autoRefNo = baseRef + "R";
+                    } else {
+                        autoRefNo = baseRef + "A";
+                    }
+                }
+
+                // If anomalyData was empty on state but got generated now, we might want to update it
+                if (!anomalyData.referenceNo) {
+                    setAnomalyData(prev => ({ ...prev, referenceNo: autoRefNo }));
+                }
+
+                const anomalyPayload: any = {
+                    inspection_id: opData.insp_id,
+                    defect_type_code: anomalyData.defectCode,
+                    priority_code: anomalyData.priority,
+                    defect_category_code: anomalyData.defectType,
+                    status: anomalyData.rectify ? 'CLOSED' : 'OPEN',
+                    defect_description: anomalyData.description,
+                    recommended_action: anomalyData.recommendedAction,
+                    rectified_date: anomalyData.rectify ? (anomalyData.rectifiedDate || new Date().toISOString()) : null,
+                    rectified_remarks: anomalyData.rectify ? anomalyData.rectifiedRemarks : null,
+                    severity: (anomalyData.severity || 'MINOR').toUpperCase(),
+                    anomaly_ref_no: autoRefNo,
+                    sequence_no: finalSeq,
+                    record_category: category
+                };
+
+                let anomalyErr = null;
+                if (existingAnomaly) {
+                    const { error } = await supabase.from('insp_anomalies').update(anomalyPayload).eq('anomaly_id', existingAnomaly.anomaly_id);
+                    anomalyErr = error;
+                } else {
+                    const { error } = await supabase.from('insp_anomalies').insert(anomalyPayload);
+                    anomalyErr = error;
+                }
+
+                if (anomalyErr) {
+                    console.error("Anomaly Save Error:", anomalyErr);
+                    toast.error(`Warning: Inspection saved, but failed to link ${category}! (${anomalyErr.message || 'Check DB schema'})`, { duration: 6000 });
+                } else {
+                    toast.success(`Record and ${category} saved successfully!`);
+                }
+            } else {
+                // If it was an anomaly/finding but now changed to Pass/Incomplete, remove the record
+                await supabase.from('insp_anomalies').delete().eq('inspection_id', opData.insp_id);
+            }
+
+            if (editingRecordId) {
+                await supabase.from('insp_video_logs').update({
+                    timecode_start: formatTime(vidTimer),
+                    tape_counter_start: vidTimer,
+                    tape_id: tId
+                }).eq('inspection_id', editingRecordId);
+            } else {
+                await supabase.from('insp_video_logs').insert({
+                    inspection_id: opData.insp_id,
+                    event_type: "PRE_INSPECTION",
+                    event_time: new Date().toISOString(),
+                    timecode_start: formatTime(vidTimer),
+                    tape_counter_start: vidTimer,
+                    tape_id: tId
                 });
-                const seq = sequenceData || 1;
-                finalSeq = seq;
-                const baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, '0')}`;
-                if (anomalyData.rectify) {
-                    autoRefNo = baseRef + "R";
-                } else {
-                    autoRefNo = baseRef;
-                }
-            } else {
-                // Postfix logic for amendment/rectification
-                let baseRef = existingAnomaly.anomaly_ref_no.replace(/[AR]$/, "");
-                if (anomalyData.rectify) {
-                    autoRefNo = baseRef + "R";
-                } else {
-                    autoRefNo = baseRef + "A";
+            }
+
+            // Process Attachments (Upload to Storage & Create attachment entries)
+            if (pendingAttachments.length > 0) {
+                console.log("Processing attachments for insp_id:", opData.insp_id);
+                for (const att of pendingAttachments) {
+                    try {
+                        // If already exists, we only update metadata if it might have changed
+                        if (att.isExisting) {
+                            await supabase.from('attachment').update({
+                                name: att.title || att.name,
+                                meta: {
+                                    ...att.meta,
+                                    description: att.description
+                                }
+                            }).eq('id', att.id);
+                            continue;
+                        }
+
+                        const fileExt = att.name.split('.').pop();
+                        const filePath = `${opData.insp_id}/${att.id}.${fileExt}`;
+
+                        // Use generated refNo in title if still Draft/Pending
+                        let finalTitle = att.title || att.name;
+                        if (autoRefNo && (finalTitle.includes('Draft') || finalTitle.includes('Pending'))) {
+                            finalTitle = finalTitle.replace('Draft', autoRefNo).replace('Pending', autoRefNo);
+                        }
+                        
+                        // Upload to Storage
+                        if (!att.file) {
+                            console.warn("Skipping upload: No file blob for", att.name);
+                            continue;
+                        }
+
+                        const { error: uploadError } = await supabase.storage
+                            .from('attachments')
+                            .upload(filePath, att.file, {
+                                contentType: (att.file as any).type || undefined,
+                                upsert: true
+                            });
+
+                        if (uploadError) {
+                            console.error("Media Storage Upload Error:", uploadError);
+                            toast.error(`Failed to upload ${att.name}: ${uploadError.message}`);
+                            continue;
+                        }
+
+                        // Insert Metadata to 'attachment' table
+                        const { error: mediaErr } = await supabase.from('attachment').insert({
+                            name: finalTitle,
+                            source_id: opData.insp_id,
+                            source_type: 'INSPECTION',
+                            path: filePath,
+                            user_id: user?.id,
+                            meta: {
+                                type: att.type,
+                                size: (att.file as File).size,
+                                mime: (att.file as File).type || null,
+                                description: att.description
+                            }
+                        });
+
+                        if (mediaErr) {
+                            console.error("Media DB Insert Error:", mediaErr);
+                            toast.error(`Attachment metadata failed for ${att.name}: ${mediaErr.message}`);
+                        }
+                    } catch (err: any) {
+                        console.error("Attachment processing exception:", err);
+                        toast.error(`Unexpected error with attachment ${att.name}`);
+                    }
                 }
             }
 
-            const anomalyPayload: any = {
-                inspection_id: opData.insp_id,
-                defect_type_code: anomalyData.defectCode,
-                priority_code: anomalyData.priority,
-                defect_category_code: anomalyData.defectType,
-                status: anomalyData.rectify ? 'CLOSED' : 'OPEN',
-                defect_description: anomalyData.description,
-                recommended_action: anomalyData.recommendedAction,
-                rectified_date: anomalyData.rectify ? (anomalyData.rectifiedDate || new Date().toISOString()) : null,
-                rectified_remarks: anomalyData.rectifiedRemarks,
-                severity: anomalyData.severity,
-                record_category: category,
-                anomaly_ref_no: autoRefNo,
-                sequence_no: finalSeq
-            };
-
-            if (existingAnomaly) {
-                await supabase.from('insp_anomalies').update(anomalyPayload).eq('anomaly_id', existingAnomaly.anomaly_id);
-            } else {
-                await supabase.from('insp_anomalies').insert(anomalyPayload);
-            }
-        } else {
-            // If it was an anomaly/finding but now changed to Pass/Incomplete, remove the record
-            await supabase.from('insp_anomalies').delete().eq('inspection_id', opData.insp_id);
+            syncDeploymentState();
+            fetchHistory();
+            resetForm();
+            setPendingAttachments([]); // Clear attachments
+            toast.success(editingRecordId ? "Record updated" : "Record committed");
+        } catch (err: any) {
+            console.error("HandleCommitRecord Error:", err);
+            toast.error(`Error saving record: ${err.message || 'Unknown error'}`);
+        } finally {
+            setIsCommitting(false);
         }
-
-        if (editingRecordId) {
-            await supabase.from('insp_video_logs').update({
-                timecode_start: formatTime(vidTimer),
-                tape_counter_start: vidTimer,
-                tape_id: tId
-            }).eq('inspection_id', editingRecordId);
-        } else {
-            await supabase.from('insp_video_logs').insert({
-                inspection_id: opData.insp_id,
-                event_type: "PRE_INSPECTION",
-                event_time: new Date().toISOString(),
-                timecode_start: formatTime(vidTimer),
-                tape_counter_start: vidTimer,
-                tape_id: tId
-            });
-        }
-
-        syncDeploymentState();
-        fetchHistory();
-        setActiveSpec(null);
-        setRecordNotes("");
-        setDynamicProps({});
-        setDebouncedProps({});
-        setFindingType("Pass");
-        setIncompleteReason("");
-        setEditingRecordId(null);
-        setRequiredRecordId(null);
-        setRequiredProps({});
-        setRequiredSpec(null);
-        setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
-            rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
-        toast.success(editingRecordId ? "Record updated" : "Record committed");
-        setIsCommitting(false);
     };
+
+
 
     const handleEditRecord = async (record: any) => {
         let fullRecord = record;
-        if (!record.inspection_data || !record.component_id || !record.inspection_type) {
-            const { data } = await supabase.from('insp_records')
+        const recordId = record.insp_id || record.id;
+        
+        // Fetch full record if missing essential data or if joined anomalies might be missing
+        // Especially important if has_anomaly is TRUE but anomalies didn't load in history/list
+        if (!record.inspection_data || !record.component_id || !record.inspection_type || 
+           (record.has_anomaly && (!record.insp_anomalies || record.insp_anomalies.length === 0))) {
+            const { data, error } = await supabase.from('insp_records')
                 .select('*, inspection_type(id, code, name), insp_anomalies(*)')
-                .eq('insp_id', record.insp_id)
-                .single();
-            if (data) fullRecord = data;
+                .eq('insp_id', recordId)
+                .maybeSingle();
+                
+            if (data) {
+                fullRecord = data;
+            } else if (error) {
+                console.error("Error fetching record for edit:", error);
+                toast.error("Could not load full record details");
+            }
         }
 
         const comp = componentsSow.find(c => c.id === fullRecord.component_id) || componentsNonSow.find(c => c.id === fullRecord.component_id);
         if (comp) setSelectedComp(comp);
 
-        setActiveSpec(fullRecord.inspection_type?.name || fullRecord.inspection_type_code);
-        setEditingRecordId(fullRecord.insp_id);
-        setRecordNotes(fullRecord.observation || "");
+        // Map data from DB to UI state
+        setActiveSpec(fullRecord.inspection_type?.name || fullRecord.inspection_type?.code || fullRecord.inspection_type_code);
+        setEditingRecordId(fullRecord.insp_id || fullRecord.id);
+        setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
         setDynamicProps(fullRecord.inspection_data || {});
+        // Do not set debounced props immediately to avoid triggering validation without user interaction
         setDebouncedProps(fullRecord.inspection_data || {});
-        setFindingType(fullRecord.has_anomaly ? (fullRecord.record_category === 'FINDING' ? "Finding" : "Anomaly") : (fullRecord.status === 'INCOMPLETE' ? "Incomplete" : "Pass"));
+        setIsUserInteraction(false); 
+        setLastAutoMatchedRuleId(null); 
+        setPendingRule(null);
+        setShowCriteriaConfirm(false);
+        setShowRemovalConfirm(false);
+
+        // Fetch existing attachments
+        const { data: atts } = await supabase.from('attachment')
+            .select('*')
+            .eq('source_id', recordId)
+            .eq('source_type', 'INSPECTION');
+
+        if (atts && atts.length > 0) {
+            const mapped = atts.map(a => {
+                const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(a.path);
+                return {
+                    id: a.id,
+                    name: a.name,
+                    title: a.name,
+                    description: a.meta?.description || '',
+                    type: a.meta?.type || 'PHOTO',
+                    source: a.source_type,
+                    previewUrl: publicUrl,
+                    path: a.path,
+                    meta: a.meta || {},
+                    isExisting: true
+                };
+            });
+            setPendingAttachments(mapped);
+        } else {
+            setPendingAttachments([]);
+        }
+        
+        // Resolve anomaly details from join or fallback
+        const anomalyObj = fullRecord.insp_anomalies?.[0] || fullRecord.anomaly_details;
+        
+        // Determine finding type (Handling both record flags and anomaly categories)
+        const isFinding = anomalyObj?.record_category === 'FINDING' || fullRecord.inspection_data?._meta_status === 'Finding';
+        setFindingType(fullRecord.has_anomaly ? (isFinding ? "Finding" : "Anomaly") : (fullRecord.status === 'INCOMPLETE' ? "Incomplete" : "Pass"));
+        
         setIncompleteReason(fullRecord.inspection_data?.incomplete_reason || "");
 
-        const anomalyObj = fullRecord.insp_anomalies?.[0] || fullRecord.anomaly_details;
         if (fullRecord.has_anomaly && anomalyObj) {
-            setAnomalyData({defectCode: anomalyObj.defect_type_code || anomalyObj.defect_code || "",
+            setAnomalyData({
+                defectCode: anomalyObj.defect_type_code || anomalyObj.defect_code || "",
                 priority: anomalyObj.priority_code || anomalyObj.priority || "",
                 defectType: anomalyObj.defect_category_code || anomalyObj.defect_type || "",
                 description: anomalyObj.defect_description || anomalyObj.description || "",
@@ -2812,7 +3112,9 @@ function V10PreviewLayout() {
                 rectify: anomalyObj.status === 'CLOSED' || anomalyObj.rectified || false,
                 rectifiedDate: anomalyObj.rectified_date || "",
                 rectifiedRemarks: anomalyObj.rectified_remarks || "",
-                severity: anomalyObj.severity || "Minor", referenceNo: anomalyObj.anomaly_ref_no || "" });
+                severity: (anomalyObj.severity || "MINOR").toUpperCase(), 
+                referenceNo: anomalyObj.anomaly_ref_no || "" 
+            });
         }
 
         setTimeout(() => {
@@ -2847,7 +3149,7 @@ function V10PreviewLayout() {
             return await generateDefectAnomalyReport(
                 { id: jobPackId || "0", name: headerData.jobpackName },
                 { id: structureId || "0", str_name: headerData.platformName },
-                "",
+                headerData.sowReportNo || "",
                 { company_name: settings.companyName, logo_url: settings.companyLogo },
                 config
             );
@@ -3191,7 +3493,7 @@ function V10PreviewLayout() {
                             <span className="font-mono font-bold text-slate-200">{headerData.jobpackName}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                            <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Platform:</span>
+                            <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Structure Title:</span>
                             <span className="font-mono font-bold text-slate-200">{headerData.platformName}</span>
                         </div>
                         <div className="flex items-center gap-1.5 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700">
@@ -4179,7 +4481,7 @@ function V10PreviewLayout() {
                                                 <button onClick={() => setCompSpecDialogOpen(true)} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications">
                                                     <Info className="w-4 h-4" />
                                                 </button>
-                                                <button onClick={() => setActiveSpec(null)} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Cancel/Close"><X className="w-4 h-4" /></button>
+                                                <button onClick={() => resetForm()} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Cancel/Close"><X className="w-4 h-4" /></button>
                                             </div>
                                         </div>
 
@@ -4313,6 +4615,7 @@ function V10PreviewLayout() {
                                                         <Button
                                                             variant={findingType === 'Finding' ? 'default' : 'outline'}
                                                             onClick={() => {
+                                                                if (findingType !== 'Finding') setAnomalyData(prev => ({ ...prev, referenceNo: '' }));
                                                                 setFindingType('Finding');
                                                                 setIsManualOverride(true);
                                                             }}
@@ -4323,6 +4626,7 @@ function V10PreviewLayout() {
                                                         <Button
                                                             variant={findingType === 'Anomaly' ? 'default' : 'outline'}
                                                             onClick={() => {
+                                                                if (findingType !== 'Anomaly') setAnomalyData(prev => ({ ...prev, referenceNo: '' }));
                                                                 setFindingType('Anomaly');
                                                                 setIsManualOverride(true);
                                                             }}
@@ -4496,10 +4800,112 @@ function V10PreviewLayout() {
                                                     <textarea value={recordNotes} onChange={(e) => setRecordNotes(e.target.value)} placeholder="Observation specifics, dimensions, characteristics..." className="w-full min-h-[100px] rounded-lg border border-slate-300 p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50"></textarea>
                                                 </div>
 
-                                                {/* Linking Photo Option */}
-                                                <div className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg bg-slate-50 transition-colors hover:bg-slate-100">
-                                                    <input type="checkbox" id="linkPhoto" checked={photoLinked} onChange={(e) => setPhotoLinked(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-blue-600 cursor-pointer focus:ring-blue-500" />
-                                                    <label htmlFor="linkPhoto" className="text-sm font-bold text-slate-700 cursor-pointer flex-1 flex items-center gap-1.5"><Camera className="w-4 h-4 text-slate-400" /> Attach Last Captured Frame</label>
+                                                {/* Enhanced Attachment Manager */}
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                                                            <Paperclip className="w-3.5 h-3.5" /> Attachments ({pendingAttachments.length})
+                                                        </label>
+                                                        <div className="flex gap-1.5">
+                                                            <Button 
+                                                                variant="outline" 
+                                                                size="sm" 
+                                                                className="h-7 text-[10px] font-bold border-slate-300 hover:bg-slate-100"
+                                                                onClick={() => {
+                                                                    // Capture logic for images in recordedFiles
+                                                                    const snaps = recordedFiles.filter(f => f.type === 'photo');
+                                                                    if (snaps.length > 0) {
+                                                                        setIsAttachmentManagerOpen(true);
+                                                                    } else {
+                                                                        toast.info("No screen captures available. Grab frames from the stream first.");
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <Camera className="w-3.5 h-3.5 mr-1 text-blue-500" /> From Grabs
+                                                            </Button>
+                                                            <Button 
+                                                                variant="outline" 
+                                                                size="sm" 
+                                                                className="h-7 text-[10px] font-bold border-slate-300 hover:bg-slate-100"
+                                                                onClick={() => {
+                                                                    const input = document.createElement('input');
+                                                                    input.type = 'file';
+                                                                    input.multiple = true;
+                                                                    input.onchange = (e) => {
+                                                                        const files = (e.target as HTMLInputElement).files;
+                                                                        if (files) {
+                                                                            const newAtts = Array.from(files).map(f => {
+                                                                                const isAnomaly = findingType === 'Anomaly';
+                                                                                const isFinding = findingType === 'Finding';
+                                                                                const prefix = isAnomaly ? 'Anomaly - ' : (isFinding ? 'Findings - ' : '');
+                                                                                const refNo = anomalyData.referenceNo || 'Pending';
+                                                                                
+                                                                                return {
+                                                                                    id: Math.random().toString(36).substr(2, 9),
+                                                                                    file: f,
+                                                                                    name: f.name,
+                                                                                    type: f.type.startsWith('video') ? 'VIDEO' as const : (f.type.startsWith('image') ? 'PHOTO' as const : 'DOCUMENT' as const),
+                                                                                    title: prefix ? `${prefix}${refNo}` : f.name,
+                                                                                    description: '',
+                                                                                    source: 'UPLOAD',
+                                                                                    previewUrl: URL.createObjectURL(f)
+                                                                                };
+                                                                            });
+                                                                            setPendingAttachments(prev => [...prev, ...newAtts]);
+                                                                        }
+                                                                    };
+                                                                    input.click();
+                                                                }}
+                                                            >
+                                                                <CloudUpload className="w-3.5 h-3.5 mr-1 text-green-500" /> Upload
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+
+                                                    {pendingAttachments.length > 0 && (
+                                                        <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-1 bg-slate-50/50 rounded-lg border border-slate-100">
+                                                            {pendingAttachments.map(att => (
+                                                                <div key={att.id} className="relative group bg-white border border-slate-200 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 transition-all">
+                                                                    <div className="w-12 h-12 bg-slate-100 rounded overflow-hidden flex-shrink-0 relative">
+                                                                        {att.previewUrl ? (
+                                                                            <img src={att.previewUrl} className="w-full h-full object-cover" />
+                                                                        ) : (
+                                                                            <div className="w-full h-full flex items-center justify-center bg-slate-200">
+                                                                                {att.type === 'VIDEO' ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0 pr-6 flex flex-col gap-0.5">
+                                                                        <Input 
+                                                                            value={att.title} 
+                                                                            onChange={(e) => setPendingAttachments(prev => prev.map(a => a.id === att.id ? { ...a, title: e.target.value } : a))}
+                                                                            className="h-5 text-[10px] font-black border-none bg-slate-50/50 rounded-sm px-1 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-800"
+                                                                            placeholder="Title..."
+                                                                        />
+                                                                        <Input 
+                                                                            value={att.description} 
+                                                                            onChange={(e) => setPendingAttachments(prev => prev.map(a => a.id === att.id ? { ...a, description: e.target.value } : a))}
+                                                                            className="h-4 text-[9px] font-medium italic border-none bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-500"
+                                                                            placeholder="Remark..."
+                                                                        />
+                                                                    </div>
+                                                                    <button 
+                                                                        onClick={() => setPendingAttachments(prev => prev.filter(a => a.id !== att.id))}
+                                                                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                                                                    >
+                                                                        <X className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {pendingAttachments.length === 0 && (
+                                                        <div className="py-6 border border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center bg-slate-50 opacity-60">
+                                                            <Paperclip className="w-6 h-6 text-slate-300 mb-1" />
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No Attachments Picked</span>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 <div className="pt-2 pb-6">
@@ -4612,19 +5018,33 @@ function V10PreviewLayout() {
                                                     {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
                                                 </td>
                                                 <td className="px-3 py-3 align-top text-center">
-                                                    <div className="flex justify-center mt-0.5">
+                                                    <div className="flex flex-col items-center gap-1.5 mt-0.5">
                                                         {r.has_anomaly ? (
-                                                            <div title="Anomaly Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
-                                                                <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+                                                            <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
+                                                                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
                                                             </div>
                                                         ) : r.status === 'COMPLETED' ? (
-                                                            <div title="Inspected / Completed" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
-                                                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                                            <div title="Passed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
+                                                                <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
                                                             </div>
                                                         ) : (
                                                             <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100">
-                                                                <FileClock className="h-3.5 w-3.5 text-amber-600" />
+                                                                <FileClock className="w-3.5 h-3.5 text-amber-600" />
                                                             </div>
+                                                        )}
+
+                                                        {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="sm" 
+                                                                className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
+                                                                onClick={async () => {
+                                                                    const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
+                                                                    if (data) setViewingRecordAttachments(data);
+                                                                }}
+                                                            >
+                                                                <Paperclip className="w-3 h-3" />
+                                                            </Button>
                                                         )}
                                                     </div>
                                                 </td>
@@ -4715,7 +5135,7 @@ function V10PreviewLayout() {
                                                 {componentsSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
                                                     const isSelected = selectedComp?.id === c.id;
                                                     return (
-                                                        <button key={c.id} onClick={() => { setSelectedComp(c); setActiveSpec(null); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
+                                                        <button key={c.id} onClick={() => { setSelectedComp(c); resetForm(); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                             <div className="flex justify-between font-bold">
                                                                 <div className="flex items-center gap-2">
                                                                     <span>{c.name}</span>
@@ -4770,7 +5190,7 @@ function V10PreviewLayout() {
                                             <div className="text-[9px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200">Non-SOW</div>
                                             <div className="space-y-1">
                                                 {componentsNonSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
-                                                    <button key={c.id} onClick={() => { setSelectedComp(c); setActiveSpec(null); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
+                                                    <button key={c.id} onClick={() => { setSelectedComp(c); resetForm(); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                         <div className="flex justify-between font-bold">
                                                             <div className="flex items-center gap-2">
                                                                 <span>{c.name}</span>
@@ -5057,70 +5477,224 @@ function V10PreviewLayout() {
                 </DialogContent>
             </Dialog>
 
-            {/* Attachment Dialogue */}
-            <Dialog open={isAttachDialogOpen} onOpenChange={setIsAttachDialogOpen}>
-                <DialogContent className="max-w-md p-6">
+            {/* Attachment Management Suite */}
+            {/* Viewing Saved Attachments Dialog */}
+            <Dialog open={!!viewingRecordAttachments} onOpenChange={(open) => !open && setViewingRecordAttachments(null)}>
+                <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-6 overflow-hidden">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Paperclip className="w-5 h-5 text-blue-600" />
-                            Link Media to Record
+                            Record Attachments
                         </DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4 pt-4">
-                        <div className="space-y-1.5">
-                            <Label className="text-[10px] font-bold uppercase text-slate-500">Target Inspection Record</Label>
-                            <select
-                                value={selectedRecordToLink || ""}
-                                onChange={(e) => setSelectedRecordToLink(e.target.value)}
-                                className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
-                            >
-                                <option value="">Select Record from Session...</option>
-                                {currentRecords.map((r: any) => (
-                                    <option key={r.insp_id} value={r.insp_id}>
-                                        {r.inspection_type?.name} - {r.structure_components?.q_id} ({r.inspection_time?.slice(0, 5)})
-                                    </option>
-                                ))}
-                            </select>
-                            {currentRecords.length === 0 && (
-                                <p className="text-[10px] text-amber-600 font-medium italic mt-1">No records found in current session. Commit a record first.</p>
-                            )}
-                        </div>
+                    <div className="flex-1 overflow-y-auto mt-4 pr-2">
+                        {viewingRecordAttachments && viewingRecordAttachments.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {viewingRecordAttachments.map((att: any) => {
+                                    const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(att.path);
+                                    return (
+                                        <Card key={att.id} className="overflow-hidden border-slate-200 group flex flex-col bg-slate-50">
+                                            <div className="aspect-video bg-slate-900 flex items-center justify-center text-white relative">
+                                                {(!att.meta?.type || att.meta.type === 'PHOTO') ? (
+                                                    <img src={publicUrl} className="w-full h-full object-contain cursor-pointer" onClick={() => window.open(publicUrl, '_blank')} title={att.name} />
+                                                ) : (
+                                                    <div className="flex flex-col items-center gap-2 opacity-60">
+                                                        {att.meta.type === 'VIDEO' ? <Video className="w-10 h-10" /> : <FileText className="w-10 h-10" />}
+                                                        <span className="text-[10px] uppercase font-bold tracking-widest">{att.meta.type}</span>
+                                                    </div>
+                                                )}
+                                                <div className="absolute inset-x-0 bottom-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2">
+                                                    <Button size="sm" variant="secondary" className="w-full text-[10px] h-7 font-black uppercase tracking-wider" onClick={() => window.open(publicUrl, '_blank')}>Open Fullsize</Button>
+                                                </div>
+                                            </div>
+                                            <div className="p-3 flex-1 flex flex-col gap-1 bg-white">
+                                                <div className="text-[10px] font-black text-slate-800 uppercase tracking-tight line-clamp-2 leading-[1.3]">{att.name}</div>
+                                                {att.meta?.description && <div className="text-[9px] text-slate-500 font-medium italic border-l-2 border-slate-200 pl-2 mt-0.5">{att.meta.description}</div>}
+                                                <div className="mt-auto pt-2 text-[8px] text-slate-400 font-black uppercase tracking-widest flex items-center justify-between border-t border-slate-50">
+                                                    <span className="bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">SOURCE: {att.source_type}</span>
+                                                    {att.created_at && <span>{new Date(att.created_at).toLocaleDateString()}</span>}
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="h-40 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-100 rounded-xl">
+                                <Paperclip className="w-8 h-8 mb-2 opacity-20" />
+                                <span className="text-[10px] font-black uppercase tracking-widest">No attachments found</span>
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
 
-                        <div className="space-y-1.5">
-                            <Label className="text-[10px] font-bold uppercase text-slate-500">Attachment Title</Label>
-                            <Input
-                                value={attachmentMetadata.title}
-                                onChange={(e) => setAttachmentMetadata({ ...attachmentMetadata, title: e.target.value })}
-                                placeholder="Enter title (e.g. Photo of Anomaly)..."
-                                className="h-10 text-sm font-medium"
-                            />
-                        </div>
+            {/* Selection/Upload Manager Dialog */}
+            <Dialog open={isAttachmentManagerOpen} onOpenChange={setIsAttachmentManagerOpen}>
+                <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col p-6 bg-white overflow-hidden">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                             <div className="bg-blue-600 p-1.5 rounded-lg shadow-lg shadow-blue-500/20">
+                                <Camera className="w-4 h-4 text-white" />
+                             </div>
+                            <span className="font-black uppercase tracking-widest text-slate-800">Media Management</span>
+                        </DialogTitle>
+                        <DialogDescription className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Session Attachments & External Uploads</DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="flex-1 min-h-0 mt-6 flex flex-col gap-5 overflow-hidden">
+                        {/* Pending Attachments Strip */}
+                        {pendingAttachments.length > 0 && (
+                            <div className="flex-shrink-0 bg-blue-50/30 border border-blue-100 rounded-xl p-3">
+                                <h4 className="text-[10px] font-black uppercase text-blue-700 tracking-widest mb-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Paperclip className="w-3 h-3" /> {pendingAttachments.length} Pending Attachments
+                                    </div>
+                                    <span className="text-[8px] bg-blue-100 px-2 py-0.5 rounded-full">Final Review</span>
+                                </h4>
+                                <ScrollArea className="h-40">
+                                    <div className="flex gap-4 pb-4 px-1">
+                                        {pendingAttachments.map((att) => (
+                                            <div key={att.id} className="w-56 flex-shrink-0 bg-white border border-slate-200 rounded-xl p-2 relative group shadow-sm hover:shadow-md transition-all">
+                                                <div className="aspect-video bg-slate-100 rounded-lg overflow-hidden mb-3 border border-slate-50">
+                                                    {att.previewUrl ? (
+                                                        <img src={att.previewUrl} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="h-full flex items-center justify-center bg-slate-50">
+                                                            <FileText className="w-6 h-6 text-slate-300" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-2.5">
+                                                    <div>
+                                                        <Label className="text-[8px] font-black uppercase text-blue-600 tracking-widest ml-1 mb-1 block">Attachment Title</Label>
+                                                        <Input 
+                                                            value={att.title} 
+                                                            onChange={(e) => setPendingAttachments(prev => prev.map(a => a.id === att.id ? { ...a, title: e.target.value } : a))}
+                                                            className="h-8 text-[11px] font-black border-slate-100 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/5 transition-all shadow-none placeholder:text-slate-300"
+                                                            placeholder="Enter Title..."
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <Label className="text-[8px] font-black uppercase text-slate-400 tracking-widest ml-1 mb-1 block">Remark / Observation</Label>
+                                                        <Input 
+                                                            value={att.description} 
+                                                            onChange={(e) => setPendingAttachments(prev => prev.map(a => a.id === att.id ? { ...a, description: e.target.value } : a))}
+                                                            className="h-8 text-[10px] font-medium border-slate-100 bg-slate-50 focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/5 transition-all italic shadow-none placeholder:text-slate-300"
+                                                            placeholder="Add detail..."
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => setPendingAttachments(prev => prev.filter(a => a.id !== att.id))} 
+                                                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xl hover:bg-black transition-all hover:scale-110 active:scale-90 border-2 border-white"
+                                                    title="Remove Attachment"
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </ScrollArea>
+                            </div>
+                        )}
 
-                        <div className="space-y-1.5">
-                            <Label className="text-[10px] font-bold uppercase text-slate-500">Description / Observation</Label>
-                            <textarea
-                                value={attachmentMetadata.description}
-                                onChange={(e) => setAttachmentMetadata({ ...attachmentMetadata, description: e.target.value })}
-                                className="w-full h-24 p-3 text-sm border border-slate-200 bg-slate-50 rounded-md focus:ring-2 focus:ring-blue-500 outline-none resize-none font-medium"
-                                placeholder="Describe what this media shows..."
-                            />
-                        </div>
+                        <div className="flex-1 grid grid-cols-4 gap-6 overflow-hidden min-h-0">
+                            {/* Upload Section */}
+                            <div className="col-span-1 flex flex-col gap-3">
+                                <Label className="text-[10px] font-black uppercase text-slate-500 tracking-widest pl-1">External Media</Label>
+                                <Button 
+                                    variant="outline" 
+                                    className="flex-1 border-dashed border-2 flex flex-col items-center justify-center gap-3 hover:bg-blue-50/50 hover:border-blue-300 transition-all border-slate-200 bg-slate-50/50 rounded-2xl group"
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    <div className="p-3 bg-white rounded-full shadow-sm group-hover:scale-110 transition-transform">
+                                        <CloudUpload className="w-6 h-6 text-blue-500" />
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="text-[10px] font-black uppercase text-slate-700">Upload Files</div>
+                                        <div className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Images or Videos</div>
+                                    </div>
+                                    <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleExternalFileUpload} accept="image/*,video/*" />
+                                </Button>
+                            </div>
 
-                        <div className="pt-2 flex gap-2">
-                            <Button variant="outline" className="flex-1 font-bold h-11" onClick={() => setIsAttachDialogOpen(false)}>Cancel</Button>
-                            <Button
-                                disabled={isCommitting || !selectedRecordToLink}
-                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 shadow-lg shadow-blue-500/20"
-                                onClick={confirmAttachToRecord}
-                            >
-                                {isCommitting ? (
-                                    <span className="flex items-center gap-2"><CloudUpload className="w-4 h-4 animate-bounce" /> Uploading...</span>
-                                ) : (
-                                    <span className="flex items-center gap-2"><Check className="w-4 h-4" /> Confirm & Link</span>
-                                )}
-                            </Button>
+                            {/* Session Grabs Section */}
+                            <div className="col-span-3 flex flex-col gap-3 overflow-hidden min-h-0">
+                                <Label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center justify-between pl-1">
+                                    <span>Stream Session Grabs</span>
+                                    <span className="bg-slate-100 px-2 py-0.5 rounded-full text-[9px] text-slate-400 font-bold">{recordedFiles.filter(f => f.type === 'photo').length} Found</span>
+                                </Label>
+                                <ScrollArea className="flex-1 border border-slate-100 rounded-2xl bg-slate-50/20 p-4">
+                                    <div className="grid grid-cols-3 gap-4 pb-4">
+                                        {recordedFiles.filter(f => f.type === 'photo').length === 0 ? (
+                                            <div className="col-span-3 h-48 flex flex-col items-center justify-center text-slate-300 border-2 border-dashed border-slate-100 rounded-xl space-y-2">
+                                                <Camera className="w-8 h-8 opacity-20" />
+                                                <span className="text-[10px] font-black uppercase tracking-widest italic opacity-50">No stream snapshots captured yet</span>
+                                            </div>
+                                        ) : recordedFiles.filter(f => f.type === 'photo').map((file) => {
+                                            const isSelected = pendingAttachments.some(a => a.previewUrl === file.url);
+                                            return (
+                                                <div 
+                                                    key={file.id} 
+                                                    onClick={() => {
+                                                        if (isSelected) setPendingAttachments(prev => prev.filter(a => a.previewUrl !== file.url));
+                                                        else {
+                                                            const isAnomaly = findingType === 'Anomaly';
+                                                            const isFinding = findingType === 'Finding';
+                                                            const prefix = isAnomaly ? 'Anomaly - ' : (isFinding ? 'Findings - ' : '');
+                                                            const refNo = anomalyData.referenceNo || 'Draft';
+                                                            setPendingAttachments(prev => [...prev, {
+                                                                id: Math.random().toString(36).substr(2, 9),
+                                                                file: file.blob,
+                                                                name: file.name,
+                                                                type: 'PHOTO',
+                                                                title: prefix ? `${prefix}${refNo}` : file.name,
+                                                                description: '',
+                                                                source: 'LIVE_SNAPSHOT',
+                                                                previewUrl: file.url,
+                                                                isFromRecording: true
+                                                            }]);
+                                                        }
+                                                    }}
+                                                    className={`relative aspect-video rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${isSelected ? 'border-blue-600 ring-4 ring-blue-500/10 shadow-xl shadow-blue-500/10 scale-[0.98]' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
+                                                >
+                                                    <img src={file.url} className="w-full h-full object-cover" />
+                                                    {isSelected && (
+                                                        <div className="absolute inset-0 bg-blue-600/10 flex items-center justify-center">
+                                                            <div className="bg-blue-600 text-white rounded-full p-1 shadow-lg border-2 border-white scale-125">
+                                                                <Check className="w-3.5 h-3.5" />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {!isSelected && (
+                                                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-black/40 text-white flex items-center justify-center backdrop-blur-sm border border-white/20">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-white/40" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </ScrollArea>
+                            </div>
                         </div>
-</div>
+                    </div>
+
+                    <div className="pt-6 mt-6 flex justify-between items-center border-t border-slate-100">
+                         <div className="flex items-center gap-3">
+                            <div className="bg-slate-100 rounded-full px-4 py-2 border border-slate-200">
+                                <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{pendingAttachments.length} Selected</span>
+                            </div>
+                            {pendingAttachments.length > 0 && <span className="text-[10px] font-bold text-amber-500 animate-pulse">Set titles & descriptions above ↑</span>}
+                         </div>
+                        <Button 
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-[0.15em] px-12 h-12 rounded-full shadow-2xl shadow-blue-500/30 transition-all hover:scale-[1.02] active:scale-[0.98] text-[11px]" 
+                            onClick={() => setIsAttachmentManagerOpen(false)}
+                        >
+                            Sync with Record
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
 

@@ -68,15 +68,24 @@ export const generateDefectAnomalyReport = async (
     try {
         let url = `/api/reports/anomaly-report?`;
 
-        if (jobPack?.id) url += `jobpack_id=${jobPack.id}&`;
-        if (sowReportNo) url += `sow_report_no=${sowReportNo}&`;
-        if (structure?.id) url += `structure_id=${structure.id}&`;
-        if (config.inspectionId) url += `inspection_id=${config.inspectionId}&`;
-        if (config.prefix) url += `prefix=${config.prefix}&`;
+        // If specific inspection ID is requested, PRIORITIZE it and ignore broader filters 
+        // to avoid mismatch on jobpack/sow_report_no during direct print
+        if (config.inspectionId) {
+            url += `inspection_id=${config.inspectionId}&`;
+        } else {
+            if (jobPack?.id && jobPack.id !== "0") url += `jobpack_id=${jobPack.id}&`;
+            if (sowReportNo) url += `sow_report_no=${sowReportNo}&`;
+            if (structure?.id && structure.id !== "0") url += `structure_id=${structure.id}&`;
+            if (config.prefix) url += `prefix=${config.prefix}&`;
+        }
 
         const res = await fetch(url);
         const json = await res.json();
-        if (json.data) anomalies = json.data;
+        if (json.data && json.data.length > 0) {
+            anomalies = json.data;
+        } else {
+            console.warn("No anomaly records returned from API for query:", url);
+        }
     } catch (e) {
         console.error("Error fetching anomaly data", e);
     }
@@ -300,8 +309,8 @@ export const generateDefectAnomalyReport = async (
         const install = record.structure_name || structure.str_name || "N/A";
         const ref = anomalyDetails.display_ref_no || "N/A";
         // Report No resolution
-        // Check record first, then jobPack metadata, then fallback
-        const reportNoDisplay = record.sow_report_no || (jobPack.metadata && jobPack.metadata.report_no) || "N/A";
+        // Change: Prioritize sowReportNo (passed from workstation context) over record.sow_report_no
+        const reportNoDisplay = sowReportNo || record.sow_report_no || (jobPack.metadata && jobPack.metadata.report_no) || "N/A";
         // Format date to show time if needed? Usually just date.
         const inspDate = record.inspection_date ? new Date(record.inspection_date).toLocaleDateString("en-GB") : "N/A";
 
@@ -381,22 +390,22 @@ export const generateDefectAnomalyReport = async (
             head: [],
             body: [
                 [
-                    { content: "Project Description:", styles: headStylesString },
+                    { content: "Jobpack:", styles: headStylesString },
                     { content: record.jobpack_name || jobPack.name || "N/A" },
                     { content: "Priority:", styles: headStylesString },
                     { content: priority, styles: { fillColor: priorityColor, fontStyle: 'bold', halign: 'center' } }
                 ],
                 [
-                    { content: "Field :", styles: headStylesString }, { content: field },
-                    { content: "Installation:", styles: headStylesString }, { content: install }
+                    { content: "Field:", styles: headStylesString }, { content: field },
+                    { content: "Structure Title:", styles: headStylesString }, { content: install }
                 ],
                 [
                     { content: config.isFindingsReport ? "Findings Ref. No.:" : "Anomaly Ref. No.:", styles: headStylesString }, { content: ref },
                     { content: "Report No.:", styles: headStylesString }, { content: reportNoDisplay }
                 ],
                 [
-                    { content: "Date :", styles: headStylesString }, { content: inspDate },
-                    { content: "Vessel :", styles: headStylesString }, { content: vessel }
+                    { content: "Date:", styles: headStylesString }, { content: inspDate },
+                    { content: "Vessel:", styles: headStylesString }, { content: vessel }
                 ],
                 [
                     { content: "DVD/Recording No.:", styles: headStylesString }, { content: recording },

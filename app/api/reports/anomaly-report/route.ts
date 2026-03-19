@@ -12,11 +12,12 @@ export async function GET(request: NextRequest) {
         let structureId = searchParams.get("structure_id");
         let inspectionId = searchParams.get("inspection_id");
 
-        // Clean up "undefined" or "null" strings
-        if (sowReportNo === "undefined" || sowReportNo === "null") sowReportNo = null;
-        if (jobpackId === "undefined" || jobpackId === "null") jobpackId = null;
-        if (structureId === "undefined" || structureId === "null") structureId = null;
-        if (inspectionId === "undefined" || inspectionId === "null") inspectionId = null;
+        // Robust cleanup for parameters
+        const clean = (val: string | null) => (val === "undefined" || val === "null" || !val) ? null : val;
+        sowReportNo = clean(sowReportNo);
+        jobpackId = clean(jobpackId);
+        structureId = clean(structureId);
+        inspectionId = clean(inspectionId);
 
         if (!jobpackId && !inspectionId) {
             return NextResponse.json({ error: "JobPack ID or Inspection ID is required" }, { status: 400 });
@@ -29,18 +30,20 @@ export async function GET(request: NextRequest) {
             .from("v_anomaly_details")
             .select("*");
 
-        if (jobpackId) {
-            query = query.eq("jobpack_id", jobpackId);
-        }
-
-        if (structureId) {
-            query = query.eq("structure_id", structureId);
-        }
-        if (sowReportNo) {
-            query = query.eq("sow_report_no", sowReportNo);
-        }
+        // If specific inspection ID is requested, prioritize it and ignore broad filters
         if (inspectionId) {
-            query = query.eq("id", inspectionId); // View maps insp_id to 'id'
+            query = query.eq("id", inspectionId); 
+        } else {
+            // Apply broad filters only if no direct ID is provided
+            if (jobpackId) {
+                query = query.eq("jobpack_id", jobpackId);
+            }
+            if (structureId) {
+                query = query.eq("structure_id", structureId);
+            }
+            if (sowReportNo) {
+                query = query.eq("sow_report_no", sowReportNo);
+            }
         }
 
         let prefix = searchParams.get("prefix");
@@ -79,7 +82,7 @@ export async function GET(request: NextRequest) {
             const { data: attData } = await (supabase as any)
                 .from("attachment")
                 .select("*")
-                .or(`and(source_type.eq.inspection,source_id.in.(${inspIds.join(',')})),and(source_type.eq.anomaly,source_id.in.(${anomalyIds.join(',')}))`);
+                .or(`and(source_type.eq.INSPECTION,source_id.in.(${inspIds.join(',')})),and(source_type.eq.ANOMALY,source_id.in.(${anomalyIds.join(',')}))`);
 
             if (attData) attachments.push(...attData);
         }
@@ -87,8 +90,8 @@ export async function GET(request: NextRequest) {
         // 3. Merge Attachments
         const result = anomalies.map((a: any) => {
             const relAttachments = attachments.filter((att: any) => {
-                const isInsp = att.source_type === 'inspection' && String(att.source_id) === String(a.id);
-                const isAnom = att.source_type === 'anomaly' && String(att.source_id) === String(a.anomaly_id);
+                const isInsp = att.source_type?.toUpperCase() === 'INSPECTION' && String(att.source_id) === String(a.id);
+                const isAnom = att.source_type?.toUpperCase() === 'ANOMALY' && String(att.source_id) === String(a.anomaly_id);
                 return isInsp || isAnom;
             });
 

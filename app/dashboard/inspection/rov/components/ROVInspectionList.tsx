@@ -197,7 +197,7 @@ export default function ROVInspectionList({
             return await generateDefectAnomalyReport(
                 jp,
                 str,
-                "",
+                record.sow_report_no || "",
                 {
                     company_name: settings.companyName,
                     logo_url: settings.companyLogo || undefined,
@@ -216,7 +216,10 @@ export default function ROVInspectionList({
         if (!confirm("Are you sure you want to delete this inspection record? This cannot be undone.")) return;
 
         try {
-            // first delete associated video log if any (manual cascade since DB is set to SET NULL)
+            // Get the record we're about to delete so we know its component/sow context
+            const recordToDelete = records.find(r => r.insp_id === id);
+
+            // 1. Delete associated video log
             const { error: logError } = await supabase
                 .from('insp_video_logs')
                 .delete()
@@ -224,7 +227,7 @@ export default function ROVInspectionList({
 
             if (logError) console.error("Error deleting video log:", logError);
 
-            // then delete the record
+            // 2. Delete the inspection record
             const { error } = await supabase
                 .from('insp_records')
                 .delete()
@@ -232,8 +235,58 @@ export default function ROVInspectionList({
 
             if (error) throw error;
 
+            // 3. After deletion, check if any remaining insp_records exist for this
+            //    component + sow_report_no. If none remain, reset u_sow_items to 'pending'.
+            if (recordToDelete?.component_id && recordToDelete?.sow_report_no) {
+                const { count: remaining } = await supabase
+                    .from('insp_records')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('component_id', recordToDelete.component_id)
+                    .eq('sow_report_no', recordToDelete.sow_report_no)
+                    .neq('insp_id', id); // exclude the just-deleted one (DB may lag)
+
+                if ((remaining ?? 0) === 0) {
+                    // No inspection records left — reset SOW item status back to pending
+                    const { error: sowResetError } = await supabase
+                        .from('u_sow_items')
+                        .update({
+                            status: 'pending',
+                            notes: null,
+                            last_inspection_date: null
+                        })
+                        .eq('report_number', recordToDelete.sow_report_no)
+                        .eq('component_id', recordToDelete.component_id);
+
+                    if (sowResetError) {
+                        console.error('Error resetting SOW item status:', sowResetError);
+                    }
+                }
+            } else if (recordToDelete?.component_id && recordToDelete?.rov_job_id) {
+                // Fallback: use rov_job to find sow_report_no
+                const rovJob = recordToDelete.insp_rov_jobs;
+                const sowReportNo = rovJob?.sow_report_no || recordToDelete.sow_report_no;
+                if (sowReportNo) {
+                    const { count: remaining } = await supabase
+                        .from('insp_records')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('component_id', recordToDelete.component_id)
+                        .eq('sow_report_no', sowReportNo);
+
+                    if ((remaining ?? 0) === 0) {
+                        await supabase
+                            .from('u_sow_items')
+                            .update({ 
+                                status: 'pending', 
+                                notes: null, 
+                                last_inspection_date: null
+                            })
+                            .eq('report_number', sowReportNo)
+                            .eq('component_id', recordToDelete.component_id);
+                    }
+                }
+            }
+
             toast.success("Record deleted");
-            // Refresh list
             setRecords(prev => prev.filter(r => r.insp_id !== id));
             if (onDelete) onDelete();
         } catch (error) {
