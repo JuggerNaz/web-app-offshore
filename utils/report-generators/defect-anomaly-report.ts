@@ -74,8 +74,10 @@ export const generateDefectAnomalyReport = async (
             url += `inspection_id=${config.inspectionId}&`;
         } else {
             if (jobPack?.id && jobPack.id !== "0") url += `jobpack_id=${jobPack.id}&`;
-            if (sowReportNo) url += `sow_report_no=${sowReportNo}&`;
-            if (structure?.id && structure.id !== "0") url += `structure_id=${structure.id}&`;
+            if (sowReportNo) url += `sow_report_no=${encodeURIComponent(sowReportNo)}&`;
+            // Use id OR str_id (numeric) to ensure the filter is never silently omitted
+            const structureIdVal = structure?.id || structure?.str_id;
+            if (structureIdVal && String(structureIdVal) !== "0") url += `structure_id=${structureIdVal}&`;
             if (config.prefix) url += `prefix=${config.prefix}&`;
         }
 
@@ -91,9 +93,28 @@ export const generateDefectAnomalyReport = async (
     }
 
     // Load Client Logo (Right Side)
+    // Use the dedicated logo endpoint which reads logo_path directly from DB
+    // and serves the binary - avoids all CORS/URL-parsing issues with canvas.
     let clientLogo: any = null;
-    if (companySettings.logo_url) {
-        clientLogo = await loadLogoWithTransparency(companySettings.logo_url);
+    try {
+        // Primary: clean dedicated endpoint (same-origin, no CORS, no URL parsing needed)
+        const primaryLogo = await loadLogoWithTransparency("/api/company-settings/logo");
+        if (primaryLogo) {
+            clientLogo = primaryLogo;
+        } else if (companySettings.logo_url) {
+            // Fallback 1: proxy through attachment download API
+            const logoUrl = companySettings.logo_url;
+            const proxyUrl = `/api/attachment/download?path=${encodeURIComponent(logoUrl)}&bucket=company-assets`;
+            const proxiedLogo = await loadLogoWithTransparency(proxyUrl);
+            if (proxiedLogo) {
+                clientLogo = proxiedLogo;
+            } else {
+                // Fallback 2: try direct URL (may work if CORS is configured on Supabase)
+                clientLogo = await loadLogoWithTransparency(logoUrl);
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to load company logo:", e);
     }
 
     // Load Contractor Logo (Left Side)

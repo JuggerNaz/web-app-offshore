@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
         // Robust cleanup for parameters
         const clean = (val: string | null) => (val === "undefined" || val === "null" || !val) ? null : val;
         sowReportNo = clean(sowReportNo);
+        if (sowReportNo) sowReportNo = decodeURIComponent(sowReportNo);
         jobpackId = clean(jobpackId);
         structureId = clean(structureId);
         inspectionId = clean(inspectionId);
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
             query = query.ilike("display_ref_no", `%${prefix}%`);
         }
 
-        const { data: anomalies, error: viewError } = await query;
+        let { data: anomalies, error: viewError } = await query;
 
         if (viewError) {
             console.error("View Error:", viewError);

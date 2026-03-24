@@ -2620,9 +2620,15 @@ function V10PreviewLayout() {
                 const fName = rule.fieldName || '*';
                 const fNameClean = fName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
+                const ignoreFields = ['northing', 'easting', 'elevation', 'depth', 'kp', 'latitude', 'longitude'];
+
                 const relevantFields = fName === '*'
-                    ? Object.keys(debouncedProps).filter(k => !isNaN(parseFloat(debouncedProps[k])))
+                    ? Object.keys(debouncedProps).filter(k => {
+                        if (ignoreFields.some(ign => k.toLowerCase().includes(ign))) return false;
+                        return !isNaN(parseFloat(debouncedProps[k]));
+                    })
                     : Object.keys(debouncedProps).filter(k => {
+                        if (ignoreFields.some(ign => k.toLowerCase().includes(ign))) return false;
                         const kClean = k.toLowerCase().replace(/[^a-z0-9]/g, '');
                         return kClean === fNameClean || fNameClean.includes(kClean) || kClean.includes(fNameClean);
                     });
@@ -4508,17 +4514,67 @@ function V10PreviewLayout() {
                                                 {(() => {
     const activeSpecClean = (activeSpec || '').trim();
     const activeIt = allInspectionTypes.find(t => (t.code || '').trim() === activeSpecClean || (t.name || '').trim() === activeSpecClean);
-    let props = [];
-    if (typeof activeIt?.default_properties === 'string') {
-        try {
-            const parsed = JSON.parse(activeIt.default_properties);
-            props = Array.isArray(parsed) ? parsed : (parsed?.properties || parsed?.fields || []);
-        } catch (e) { }
-    } else if (Array.isArray(activeIt?.default_properties)) {
-        props = activeIt.default_properties;
-    } else if (activeIt?.default_properties && typeof activeIt.default_properties === 'object') {
-        props = activeIt.default_properties.properties || activeIt.default_properties.fields || [];
+    
+    let props: any[] = [];
+    let parsedProps: any = null;
+
+    if (activeIt?.default_properties) {
+        if (typeof activeIt.default_properties === 'string') {
+            try { parsedProps = JSON.parse(activeIt.default_properties); } catch (e) { }
+        } else {
+            parsedProps = activeIt.default_properties;
+        }
     }
+
+    if (parsedProps) {
+        const raw = selectedComp?.raw || {};
+        const compTypeStr = String(raw.type || raw.code || raw.component_type || selectedComp?.type || '').toUpperCase().trim();
+        let overrideMatch: any = null;
+
+        if (parsedProps.component_overrides && Array.isArray(parsedProps.component_overrides)) {
+            overrideMatch = parsedProps.component_overrides.find((ov: any) =>
+                ov.component_types && Array.isArray(ov.component_types) && ov.component_types.includes(compTypeStr)
+            );
+        }
+
+        if (overrideMatch && overrideMatch.fields) {
+            props = [...overrideMatch.fields];
+        } else if (Array.isArray(parsedProps)) {
+            props = [...parsedProps];
+        } else {
+            props = [...(parsedProps.fields || parsedProps.properties || [])];
+        }
+    }
+
+    // Historical data preservation
+    if (editingRecordId) {
+        const recordRow = currentRecords.find(r => r.insp_id === editingRecordId);
+        if (recordRow && recordRow.inspection_data) {
+            try {
+                const recordData = typeof recordRow.inspection_data === 'string' 
+                    ? JSON.parse(recordRow.inspection_data) 
+                    : recordRow.inspection_data;
+                
+                Object.keys(recordData).forEach(key => {
+                    const exists = props.find((p: any) => p.name === key || String(p.label).toLowerCase() === key.toLowerCase());
+                    const ignoreKeys = ['has_anomaly', 'anomalydata', 'defectcode', 'defectreferenceno', 'northing', 'easting', 'elevation', 'kp', 'depth', 'fields', 'inspno', 'strid', 'str_id', 'compid', 'comp_id', 'inspid', 'insp_id', 'record_category', 'incomplete_reason', 'component_overrides'];
+                    const lowerKey = key.toLowerCase();
+                    
+                    if (!exists && 
+                        !ignoreKeys.includes(lowerKey) && 
+                        !lowerKey.startsWith('_meta') && 
+                        !lowerKey.startsWith('_is') && 
+                        !lowerKey.includes('legacy') && 
+                        typeof recordData[key] !== 'object') {
+                        // Dynamically append historical field
+                        const niceLabel = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                        props.push({ name: key, label: `${niceLabel} (Legacy)`, type: 'text' });
+                    }
+                });
+            } catch (e) {}
+        }
+    }
+
     if (!Array.isArray(props) || props.length === 0) return null;
 
     const isAnomaly = findingType === 'Anomaly';

@@ -131,9 +131,18 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const { data: structuresData } = useSWR("/api/structures", fetcher);
     const structures = structuresData?.data || [];
 
-    // Data Fetching for JobPacks
-    const { data: jobPacksData } = useSWR("/api/jobpack?limit=1000", fetcher);
-    const jobPacks = jobPacksData?.data || [];
+    // Inspection-specific categories that should only show jobpacks with inspection data
+    const INSPECTION_CATEGORIES = ["inspection"];
+    const isInspectionTemplate = INSPECTION_CATEGORIES.includes(selections.category);
+
+    // Data Fetching for JobPacks - two variants
+    const { data: allJobPacksData } = useSWR("/api/jobpack?limit=1000", fetcher);
+    const { data: inspJobPacksData } = useSWR("/api/jobpack?limit=1000&has_inspection=true", fetcher);
+
+    // Show only jobpacks with inspection data for inspection report templates
+    const jobPacks = isInspectionTemplate
+        ? (inspJobPacksData?.data || [])
+        : (allJobPacksData?.data || []);
 
     const plannings = [
         { id: "1", name: "Q1 2024 Inspection Plan" },
@@ -147,6 +156,30 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [jobPackSearch, setJobPackSearch] = useState("");
     const [availableSowReports, setAvailableSowReports] = useState<string[]>([]);
     const [isLoadingSowReports, setIsLoadingSowReports] = useState(false);
+
+    // Filter state for inspection reports
+    const [inspectionFilters, setInspectionFilters] = useState<{ structure_id: number; sow_report_no: string }[]>([]);
+
+    // Fetch inspection filters when jobpack is selected and it's an inspection template
+    useEffect(() => {
+        if (selections.jobPackId && isInspectionTemplate) {
+            fetch(`/api/reports/inspection-filters?jobpack_id=${selections.jobPackId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        setInspectionFilters(data.data);
+                    } else {
+                        setInspectionFilters([]);
+                    }
+                })
+                .catch(err => {
+                    console.error("Error fetching inspection filters:", err);
+                    setInspectionFilters([]);
+                });
+        } else {
+            setInspectionFilters([]);
+        }
+    }, [selections.jobPackId, isInspectionTemplate]);
 
     // Fetch procedures for Defect Criteria
     const { data: proceduresData } = useSWR("/api/defect-criteria/procedures", fetcher);
@@ -170,26 +203,35 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     // Fetch SOW Reports when JobPack and Structure are selected
     useEffect(() => {
         if (selections.jobPackId && selections.structureId && getCurrentTemplate()?.requires.includes("sow_report")) {
-            setIsLoadingSowReports(true);
-            fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.data) {
-                        // Assuming data.data.report_numbers is array of { number: string } or similar
-                        // Fallback to empty array if not present
-                        const numbers = data.data.report_numbers?.map((r: any) => r.number || r) || [];
-                        setAvailableSowReports(numbers);
-                    } else {
+            if (isInspectionTemplate) {
+                // If inspection template, ONLY show SOW reports that have actual inspection data for this structure
+                const validSows = inspectionFilters
+                    .filter(f => f.structure_id.toString() === selections.structureId && f.sow_report_no)
+                    .map(f => f.sow_report_no);
+                setAvailableSowReports(Array.from(new Set(validSows)));
+                setIsLoadingSowReports(false);
+            } else {
+                setIsLoadingSowReports(true);
+                fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.data) {
+                            // Assuming data.data.report_numbers is array of { number: string } or similar
+                            // Fallback to empty array if not present
+                            const numbers = data.data.report_numbers?.map((r: any) => r.number || r) || [];
+                            setAvailableSowReports(numbers);
+                        } else {
+                            setAvailableSowReports([]);
+                        }
+                    })
+                    .catch(err => {
+                        console.error("Error fetching SOW reports:", err);
                         setAvailableSowReports([]);
-                    }
-                })
-                .catch(err => {
-                    console.error("Error fetching SOW reports:", err);
-                    setAvailableSowReports([]);
-                })
-                .finally(() => setIsLoadingSowReports(false));
+                    })
+                    .finally(() => setIsLoadingSowReports(false));
+            }
         }
-    }, [selections.jobPackId, selections.structureId, selections.templateId]);
+    }, [selections.jobPackId, selections.structureId, selections.templateId, isInspectionTemplate, inspectionFilters]);
 
     const getCurrentTemplate = () => {
         if (!selections.category || !selections.templateId) return null;
@@ -252,6 +294,15 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
+        // Apply inspection data filters if active
+        if (isInspectionTemplate && inspectionFilters.length > 0) {
+            const validStructureIds = Array.from(new Set(inspectionFilters.map(f => f.structure_id)));
+            result = result.filter((s: any) => validStructureIds.includes(s.id));
+        } else if (isInspectionTemplate && inspectionFilters.length === 0 && selections.jobPackId) {
+            // If it's an inspection template and no inspection data exists, return empty
+            result = [];
+        }
+
         if (structureSearch) {
             const lower = structureSearch.toLowerCase();
             result = result.filter((s: any) =>
@@ -260,7 +311,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             );
         }
         return result;
-    }, [structures, structureSearch, selections.jobPackId, jobPacks]);
+    }, [structures, structureSearch, selections.jobPackId, jobPacks, isInspectionTemplate, inspectionFilters]);
 
     // Filtered Job Packs
     const filteredJobPacks = useMemo(() => {

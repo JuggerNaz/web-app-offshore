@@ -1,6 +1,62 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 
+/**
+ * GET /api/company-settings/logo
+ * Returns the company logo image binary directly — used as a CORS-safe proxy
+ * for report generators running in the browser (jsPDF canvas operations).
+ */
+export async function GET() {
+    try {
+        const supabase = createClient();
+
+        // Fetch the stored logo_path from the database
+        const { data: settings, error } = await supabase
+            .from("company_settings" as any)
+            .select("logo_path")
+            .eq("id", 1)
+            .single() as any;
+
+        if (error || !settings?.logo_path) {
+            return NextResponse.json({ error: "No logo configured" }, { status: 404 });
+        }
+
+        // Download directly from Supabase storage using the stored path
+        const { data: fileData, error: downloadError } = await supabase.storage
+            .from("company-assets")
+            .download(settings.logo_path);
+
+        if (downloadError || !fileData) {
+            console.error("[Logo] Error downloading logo:", downloadError);
+            return NextResponse.json({ error: "Failed to download logo" }, { status: 500 });
+        }
+
+        const buffer = await fileData.arrayBuffer();
+        // Determine content type from the path extension
+        const ext = settings.logo_path.split(".").pop()?.toLowerCase();
+        const contentTypeMap: Record<string, string> = {
+            png: "image/png",
+            jpg: "image/jpeg",
+            jpeg: "image/jpeg",
+            gif: "image/gif",
+            webp: "image/webp",
+            svg: "image/svg+xml",
+        };
+        const contentType = contentTypeMap[ext || ""] || fileData.type || "image/png";
+
+        return new NextResponse(buffer, {
+            headers: {
+                "Content-Type": contentType,
+                "Content-Length": buffer.byteLength.toString(),
+                "Cache-Control": "public, max-age=3600",
+            },
+        });
+    } catch (error) {
+        console.error("Error in GET /api/company-settings/logo:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}
+
 export async function POST(request: Request) {
     try {
         const supabase = createClient();
