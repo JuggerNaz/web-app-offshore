@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useCallback, useRef } from "react";
+import React, { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams,
     useRouter } from "next/navigation";
@@ -129,6 +129,14 @@ const COMPONENT_CONDITION_LIST = [
     "Ruptured", "Fittings", "Flooded Member (FMD)", "Other Defect"
 ];
 
+const ANODE_TYPE_LIST = [
+    "Zn - Zinc", "Al - Aluminum", "Mg - Magnesium", "Other"
+];
+
+const ANODE_DEPLETION_LIST = [
+    "0%", "5%", "10%", "15%", "20%", "25%", "30%", "35%", "40%", "45%", "50%", "55%", "60%", "65%", "70%", "75%", "80%", "85%", "90%", "95%", "100%"
+];
+
 const ROV_MOVEMENT_BRANCHES: Record<string, string[]> = {
     'Awaiting Deployment': ['Rov On Hire', 'Rov Launched'],
     'Rov On Hire': ['Rov Launched'],
@@ -167,6 +175,245 @@ const CURRENT_RECORDS = [
     { id: 2, time: "11:20", type: "HSTAT", comp: "LEG B2", status: "Anomaly", timer: "00:30:45", hasPhoto: false },
 ];
 
+const InspectionFieldComponent = ({ p, type, handler, currentValue, libOptionsMap, openPopovers, setOpenPopovers, selectedComp, setDebouncedProps }: any) => {
+    const [searchTerm, setSearchTerm] = useState("");
+    const fieldName = String(p.label || p.name || '').toLowerCase();
+    
+    const isLocation = fieldName === 'location' || fieldName === 'loc';
+    const isPosition = fieldName === 'position' || fieldName === 'pos';
+    const isMarineGrowth = fieldName.includes('marine growth') || fieldName.includes('marinegrowth') || fieldName === 'mgi' || fieldName.includes('marine_growth');
+    const isCoating = fieldName.includes('coating condition') || fieldName.includes('coatingcondition') || fieldName.includes('coating_condition');
+    const isCompCondition = fieldName.includes('component condition') || fieldName.includes('componentcondition') || fieldName.includes('component_condition');
+
+    const isAnodeType = fieldName === 'anode type' || fieldName === 'anode_type';
+    const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
+
+    const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code;
+    const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
+    const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
+
+    if (isComboEligible) {
+        let options = [...(p.options || [])];
+        
+        if (p.lib_code) {
+            const libOpts = libOptionsMap[p.lib_code];
+            if (libOpts && Array.isArray(libOpts)) {
+                const libDescriptions = libOpts.map((o: any) => o.lib_desc);
+                options = Array.from(new Set([...options, ...libDescriptions]));
+            }
+        }
+
+        if (isLocation && selectedComp) {
+            const locOptions = [
+                selectedComp.startNode !== '-' ? `At Node : ${selectedComp.startNode}` : null,
+                selectedComp.endNode !== '-' ? `At Node : ${selectedComp.endNode}` : null
+            ].filter(Boolean) as string[];
+            options = Array.from(new Set([...options, ...locOptions]));
+        } else if (isPosition && options.length === 0) {
+            options = [
+                "AT 12 O'CLK", "AT 01 O'CLK", "AT 02 O'CLK", "AT 03 O'CLK", "AT 04 O'CLK", "AT 05 O'CLK",
+                "AT 06 O'CLK", "AT 07 O'CLK", "AT 08 O'CLK", "AT 09 O'CLK", "AT 10 O'CLK", "AT 11 O'CLK"
+            ];
+        } else if (isMarineGrowth) {
+            options = Array.from(new Set([...options, ...MARINE_GROWTH_LIST]));
+        } else if (isCoating) {
+            options = Array.from(new Set([...options, ...COATING_CONDITION_LIST]));
+        } else if (isCompCondition) {
+            options = Array.from(new Set([...options, ...COMPONENT_CONDITION_LIST]));
+        } else if (isAnodeType && options.length === 0) {
+            options = [...ANODE_TYPE_LIST];
+        } else if (isAnodeDep && options.length === 0) {
+            options = [...ANODE_DEPLETION_LIST];
+        }
+
+        const filteredOptions = options.filter(opt => 
+            String(opt).toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+        return (
+            <div className="relative group/combo">
+                <Popover 
+                    open={openPopovers[p.name || p.label] || false} 
+                    onOpenChange={(val) => {
+                        setOpenPopovers((prev: any) => ({ ...prev, [p.name || p.label]: val }));
+                        if (!val) setSearchTerm(""); // Reset search on close
+                    }}
+                >
+                    <PopoverTrigger asChild>
+                        <div className="relative">
+                            <Input
+                                placeholder={`Select or enter ${p.label || p.name}`}
+                                className={`h-9 text-sm bg-white pr-16 ${type === 'secondary' ? 'border-amber-200' : 'border-slate-200'}`}
+                                value={currentValue}
+                                onChange={(e) => handler(p.name || p.label, e.target.value)}
+                                onBlur={(e) => {
+                                    if (type === 'primary') {
+                                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
+                                    }
+                                }}
+                            />
+                            <div className="absolute right-1 top-1 flex items-center gap-0.5">
+                                {currentValue && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-slate-400 hover:text-slate-600"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            handler(p.name || p.label, "");
+                                            if (type === 'primary') {
+                                                setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: "" }));
+                                            }
+                                        }}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </Button>
+                                )}
+                                <div className="h-7 w-7 flex items-center justify-center text-slate-500">
+                                    <ChevronDown className="h-4 w-4" />
+                                </div>
+                            </div>
+                        </div>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-white border border-slate-200 shadow-xl z-[200] overflow-hidden rounded-lg" align="start">
+                        <div className="p-2 border-b border-slate-100 bg-slate-50/50">
+                            <div className="relative">
+                                <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-slate-400" />
+                                <Input 
+                                    placeholder="Search..." 
+                                    className="h-8 pl-8 text-xs bg-white border-slate-200 focus-visible:ring-slate-400"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+                        <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
+                            {filteredOptions.length > 0 ? (
+                                <div className="space-y-0.5">
+                                    {filteredOptions.map((opt) => (
+                                        <button
+                                            key={opt}
+                                            className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded transition-colors font-medium flex items-center justify-between group"
+                                            onClick={() => {
+                                                handler(p.name || p.label, opt);
+                                                if (type === 'primary') {
+                                                    setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: opt }));
+                                                }
+                                                setOpenPopovers((prev: any) => ({ ...prev, [p.name || p.label]: false }));
+                                            }}
+                                        >
+                                            {opt}
+                                            {currentValue === opt && <div className={`w-1.5 h-1.5 ${type === 'secondary' ? 'bg-amber-500' : 'bg-slate-800'} rounded-full`} />}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="p-3 text-center text-xs text-slate-400 italic">No matches found</div>
+                            )}
+                        </div>
+                    </PopoverContent>
+                </Popover>
+            </div>
+        );
+    }
+
+    if (p.type === 'select') {
+        return (
+            <select
+                value={currentValue}
+                onChange={(e) => {
+                    handler(p.name || p.label, e.target.value);
+                    if (type === 'primary') {
+                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
+                    }
+                }}
+                className={`flex h-9 w-full rounded-md border ${borderClass} bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+            >
+                <option value="">Select {p.label}</option>
+                {(p.options || []).map((opt: string) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                ))}
+            </select>
+        );
+    }
+
+    if (p.type === 'repeater') {
+        const rows = Array.isArray(currentValue) ? currentValue : [];
+        return (
+            <div className="space-y-2">
+                {rows.map((row: any, idx: number) => (
+                    <div key={idx} className="p-2 border rounded-md bg-slate-50/50 space-y-2 relative group-row">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute -right-1 -top-1 h-6 w-6 text-red-400 hover:text-red-600 opacity-0 group-row-hover:opacity-100 transition-opacity"
+                            onClick={() => {
+                                const newRows = [...rows];
+                                newRows.splice(idx, 1);
+                                handler(p.name || p.label, newRows);
+                            }}
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                        <div className="grid grid-cols-2 gap-2">
+                            {(p.subFields || []).map((sf: any) => (
+                                <div key={sf.name} className="space-y-1">
+                                    <label className="text-[10px] uppercase text-slate-400 font-bold">{sf.label}</label>
+                                    <Input
+                                        type={sf.type === 'number' ? 'number' : 'text'}
+                                        step={sf.step}
+                                        value={row[sf.name] || ''}
+                                        onChange={(e) => {
+                                            const newRows = [...rows];
+                                            newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
+                                            handler(p.name || p.label, newRows);
+                                        }}
+                                        onBlur={(e) => {
+                                            if (type === 'primary') {
+                                                const newRows = [...rows];
+                                                newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
+                                                setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: newRows }));
+                                            }
+                                        }}
+                                        className="h-8 text-xs"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full h-8 border-dashed border-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                    onClick={() => {
+                        handler(p.name || p.label, [...rows, {}]);
+                    }}
+                >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Reading
+                </Button>
+            </div>
+        );
+    }
+
+    return (
+        <Input
+            type={p.type === 'number' ? 'number' : 'text'}
+            step={p.step}
+            value={currentValue || ""}
+            onChange={(e) => handler(p.name || p.label, e.target.value)}
+            onBlur={(e) => {
+                if (type === 'primary') {
+                    setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
+                }
+            }}
+            placeholder={`Enter ${p.label}`}
+            className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass}`}
+        />
+    );
+};
+
 export default function WorkspaceV2Page() {
     return (
         <Suspense fallback={<div className="p-10 flex min-h-screen items-center justify-center font-bold text-slate-500">Loading Cockpit...</div>}>
@@ -198,206 +445,21 @@ function V10PreviewLayout() {
     };
 
     const renderInspectionField = (p: any, type: 'primary' | 'secondary') => {
-        const fieldName = String(p.label || p.name || '').toLowerCase();
-        const currentProps = type === 'primary' ? dynamicProps : requiredProps;
         const handler = type === 'primary' ? handleDynamicPropChange : handleRequiredPropChange;
+        const currentProps = type === 'primary' ? dynamicProps : requiredProps;
         const currentValue = currentProps[p.name || p.label] || "";
 
-        const isLocation = fieldName === 'location' || fieldName === 'loc';
-        const isPosition = fieldName === 'position' || fieldName === 'pos';
-        const isMarineGrowth = fieldName.includes('marine growth') || fieldName.includes('marinegrowth') || fieldName === 'mgi' || fieldName.includes('marine_growth');
-        const isCoating = fieldName.includes('coating condition') || fieldName.includes('coatingcondition') || fieldName.includes('coating_condition');
-        const isCompCondition = fieldName.includes('component condition') || fieldName.includes('componentcondition') || fieldName.includes('component_condition');
-
-        const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition;
-        const colorClass = type === 'secondary' ? 'amber' : 'slate';
-        const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
-        const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
-
-        if (isComboEligible) {
-            let options = [...(p.options || [])];
-            if (isLocation && selectedComp) {
-                const locOptions = [
-                    selectedComp.startNode !== '-' ? `At Node : ${selectedComp.startNode}` : null,
-                    selectedComp.endNode !== '-' ? `At Node : ${selectedComp.endNode}` : null
-                ].filter(Boolean) as string[];
-                options = Array.from(new Set([...options, ...locOptions]));
-            } else if (isPosition && options.length === 0) {
-                options = [
-                    "AT 12 O'CLK", "AT 01 O'CLK", "AT 02 O'CLK", "AT 03 O'CLK", "AT 04 O'CLK", "AT 05 O'CLK",
-                    "AT 06 O'CLK", "AT 07 O'CLK", "AT 08 O'CLK", "AT 09 O'CLK", "AT 10 O'CLK", "AT 11 O'CLK"
-                ];
-            } else if (isMarineGrowth) {
-                options = Array.from(new Set([...options, ...MARINE_GROWTH_LIST]));
-            } else if (isCoating) {
-                options = Array.from(new Set([...options, ...COATING_CONDITION_LIST]));
-            } else if (isCompCondition) {
-                options = Array.from(new Set([...options, ...COMPONENT_CONDITION_LIST]));
-            }
-
-            return (
-                <div className="relative group/combo">
-                    <Popover open={openPopovers[p.name || p.label] || false} onOpenChange={(val) => setOpenPopovers(prev => ({ ...prev, [p.name || p.label]: val }))}>
-                        <PopoverTrigger asChild>
-                            <div className="relative">
-                                <Input
-                                    placeholder={`Select or enter ${p.label || p.name}`}
-                                    className={`h-9 text-sm bg-white pr-16 ${type === 'secondary' ? 'border-amber-200' : 'border-slate-200'}`}
-                                    value={currentValue}
-                                    onChange={(e) => handler(p.name || p.label, e.target.value)}
-                                    onBlur={(e) => {
-                                        if (type === 'primary') {
-                                            setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: e.target.value }));
-                                        }
-                                    }}
-                                />
-                                <div className="absolute right-1 top-1 flex items-center gap-0.5">
-                                    {currentValue && (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 text-slate-400 hover:text-slate-600"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                handler(p.name || p.label, "");
-                                                if (type === 'primary') {
-                                                    setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: "" }));
-                                                }
-                                            }}
-                                        >
-                                            <X className="h-3 w-3" />
-                                        </Button>
-                                    )}
-                                    <div className="h-7 w-7 flex items-center justify-center text-slate-500">
-                                        <ChevronDown className="h-4 w-4" />
-                                    </div>
-                                </div>
-                            </div>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1 bg-white border border-slate-200 shadow-xl z-[200]" align="start">
-                            <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
-                                {options.length > 0 ? (
-                                    <div className="space-y-0.5">
-                                        {options.map((opt) => (
-                                            <button
-                                                key={opt}
-                                                className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded transition-colors font-medium flex items-center justify-between group"
-                                                onClick={() => {
-                                                    handler(p.name || p.label, opt);
-                                                    if (type === 'primary') {
-                                                        setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: opt }));
-                                                    }
-                                                    // Close popover on selection (Pic-1 fix)
-                                                    setOpenPopovers(prev => ({ ...prev, [p.name || p.label]: false }));
-                                                }}
-                                            >
-                                                {opt}
-                                                {currentValue === opt && <div className={`w-1.5 h-1.5 ${type === 'secondary' ? 'bg-amber-500' : 'bg-slate-800'} rounded-full`} />}
-                                            </button>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="p-2 text-xs text-slate-400 italic">No options defined</div>
-                                )}
-                            </div>
-                        </PopoverContent>
-                    </Popover>
-                </div>
-            );
-        }
-
-        if (p.type === 'select') {
-            return (
-                <select
-                    value={currentValue}
-                    onChange={(e) => {
-                        handler(p.name || p.label, e.target.value);
-                        if (type === 'primary') {
-                            setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: e.target.value }));
-                        }
-                    }}
-                    className={`flex h-9 w-full rounded-md border ${borderClass} bg-white px-2.5 text-xs font-semibold ${ringClass}`}
-                >
-                    <option value="">Select {p.label}</option>
-                    {(p.options || []).map((opt: string) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                </select>
-            );
-        }
-
-        if (p.type === 'repeater') {
-            const rows = currentProps[p.name || p.label] || [];
-            return (
-                <div className="space-y-2">
-                    {rows.map((row: any, idx: number) => (
-                        <div key={idx} className="p-2 border rounded-md bg-slate-50/50 space-y-2 relative group-row">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="absolute -right-1 -top-1 h-6 w-6 text-red-400 hover:text-red-600 opacity-0 group-row-hover:opacity-100 transition-opacity"
-                                onClick={() => {
-                                    const newRows = [...rows];
-                                    newRows.splice(idx, 1);
-                                    handler(p.name || p.label, newRows);
-                                }}
-                            >
-                                <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                            <div className="grid grid-cols-2 gap-2">
-                                {(p.subFields || []).map((sf: any) => (
-                                    <div key={sf.name} className="space-y-1">
-                                        <label className="text-[10px] uppercase text-slate-400 font-bold">{sf.label}</label>
-                                        <Input
-                                            type={sf.type === 'number' ? 'number' : 'text'}
-                                            step={sf.step}
-                                            value={row[sf.name] || ''}
-                                            onChange={(e) => {
-                                                const newRows = [...rows];
-                                                newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
-                                                handler(p.name || p.label, newRows);
-                                            }}
-                                            onBlur={(e) => {
-                                                if (type === 'primary') {
-                                                    const newRows = [...rows];
-                                                    newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
-                                                    setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: newRows }));
-                                                }
-                                            }}
-                                            className="h-8 text-xs"
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full h-8 border-dashed border-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
-                        onClick={() => {
-                            handler(p.name || p.label, [...rows, {}]);
-                        }}
-                    >
-                        <Plus className="w-3.5 h-3.5 mr-1" /> Add Reading
-                    </Button>
-                </div>
-            );
-        }
-
         return (
-            <Input
-                type={p.type === 'number' ? 'number' : 'text'}
-                step={p.step}
-                value={currentProps[p.name || p.label] || ""}
-                onChange={(e) => handler(p.name || p.label, e.target.value)}
-                onBlur={(e) => {
-                    if (type === 'primary') {
-                        setDebouncedProps(prev => ({ ...prev, [p.name || p.label]: e.target.value }));
-                    }
-                }}
-                placeholder={`Enter ${p.label}`}
-                className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass}`}
+            <InspectionFieldComponent 
+                p={p} 
+                type={type} 
+                handler={handler} 
+                currentValue={currentValue}
+                libOptionsMap={libOptionsMap}
+                openPopovers={openPopovers}
+                setOpenPopovers={setOpenPopovers}
+                selectedComp={selectedComp}
+                setDebouncedProps={setDebouncedProps}
             />
         );
     };
@@ -593,6 +655,7 @@ function V10PreviewLayout() {
     });
     const [incompleteReason, setIncompleteReason] = useState("");
     const [openPopovers, setOpenPopovers] = useState<Record<string, boolean>>({});
+    const [libOptionsMap, setLibOptionsMap] = useState<Record<string, any[]>>({});
 
     const [criteriaRules, setCriteriaRules] = useState<any[]>([]);
     const [pendingRule, setPendingRule] = useState<any>(null);
@@ -2463,6 +2526,147 @@ function V10PreviewLayout() {
         }
         fetchInitialLists();
     }, [supabase]);
+    
+    // Calculate current form fields (props) in a stable way for both logic and rendering
+    const activeFormProps = useMemo(() => {
+        if (!activeSpec || !allInspectionTypes.length) return [];
+
+        const activeSpecClean = (activeSpec || '').trim();
+        const activeIt = allInspectionTypes.find(t => (t.code || '').trim() === activeSpecClean) || 
+                         allInspectionTypes.find(t => (t.name || '').trim() === activeSpecClean);
+        
+        if (!activeIt?.default_properties) return [];
+
+        let props: any[] = [];
+        let parsed: any = null;
+        try {
+            parsed = typeof activeIt.default_properties === 'string' ? JSON.parse(activeIt.default_properties) : activeIt.default_properties;
+        } catch (e) { return []; }
+
+        if (parsed) {
+            const raw = selectedComp?.raw || {};
+            const compTypeStr = String(raw.type || raw.code || raw.component_type || selectedComp?.type || '').toUpperCase().trim();
+            const matchingOverrides = parsed.component_overrides?.filter((ov: any) =>
+                ov.component_types && Array.isArray(ov.component_types) && ov.component_types.includes(compTypeStr)
+            ) || [];
+            
+            // Use the last matching override (most recent) if available
+            const lastMatch = matchingOverrides.length > 0 ? matchingOverrides[matchingOverrides.length - 1] : null;
+            props = lastMatch?.fields || parsed.fields || (Array.isArray(parsed) ? parsed : []);
+        }
+
+        // 1. Historical data preservation (Legacy Fields)
+        if (editingRecordId) {
+            const recordRow = currentRecords.find(r => r.insp_id === editingRecordId);
+            if (recordRow && recordRow.inspection_data) {
+                try {
+                    const recordData = typeof recordRow.inspection_data === 'string' 
+                        ? JSON.parse(recordRow.inspection_data) 
+                        : recordRow.inspection_data;
+                    
+                    Object.keys(recordData).forEach(key => {
+                        const exists = props.find((p: any) => p.name === key || String(p.label).toLowerCase() === key.toLowerCase());
+                        const ignoreKeys = ['has_anomaly', 'anomalydata', 'defectcode', 'defectreferenceno', 'northing', 'easting', 'elevation', 'kp', 'depth', 'fields', 'inspno', 'strid', 'str_id', 'compid', 'comp_id', 'inspid', 'insp_id', 'record_category', 'incomplete_reason', 'component_overrides'];
+                        const lowerKey = key.toLowerCase();
+                        
+                        if (!exists && 
+                            !ignoreKeys.includes(lowerKey) && 
+                            !lowerKey.startsWith('_meta') && 
+                            !lowerKey.startsWith('_is') && 
+                            !lowerKey.includes('legacy') && 
+                            typeof recordData[key] !== 'object') {
+                            const niceLabel = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                            props.push({ name: key, label: `${niceLabel} (Legacy)`, type: 'text' });
+                        }
+                    });
+                } catch (e) {}
+            }
+        }
+
+        // 2. Add ROV specific fields (Northing, Easting) if needed
+        const isRovType = inspMethod === 'ROV' || (String(activeIt?.code || '').toUpperCase().startsWith('R') ||
+            String(activeIt?.name || '').toUpperCase().includes('ROV') ||
+            activeIt?.metadata?.rov == 1);
+
+        if (isRovType) {
+            const extraFields = [];
+            const existingNames = props.map((p: any) => String(p.name || p.label || '').toLowerCase());
+            if (!existingNames.includes('northing')) extraFields.push({ name: 'northing', label: 'Northing', type: 'text' });
+            if (!existingNames.includes('easting')) extraFields.push({ name: 'easting', label: 'Easting', type: 'text' });
+            if (extraFields.length > 0) props = [...extraFields, ...props];
+        }
+
+        // 3. CP/UT Special Handling (Repeaters)
+        const hasCpRdgField = props.some((sibling: any) => {
+            const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
+            return sLbl.includes('cp rdg') || sLbl === 'cp_rdg';
+        }) || dataAcqFields.some(f => f.targetField === 'cp_reading');
+
+        const hasCpRepeater = props.some(p => {
+            const l = String(p.label || p.name || '').toLowerCase();
+            return l.includes('cp') && l.includes('reading');
+        });
+
+        if (hasCpRdgField && !hasCpRepeater) {
+            props.push({
+                name: 'cp_readings',
+                label: 'CP Readings',
+                type: 'repeater',
+                subFields: [
+                    { name: 'location', label: 'Location', type: 'text' },
+                    { name: 'reading', label: 'Reading (mV)', type: 'number' }
+                ]
+            });
+        }
+
+        return props;
+    }, [activeSpec, selectedComp, allInspectionTypes, editingRecordId, currentRecords, inspMethod, dataAcqFields]);
+
+    // Auto-fetch dynamic library options when inspection type or component changes
+    useEffect(() => {
+        async function fetchDynamicOptions() {
+            if (!activeFormProps.length) return;
+
+            // Recursive function to find all lib_codes in the field tree
+            const extractCodes = (fields: any[]): string[] => {
+                let codes: string[] = [];
+                fields.forEach(f => {
+                    if (f.lib_code) codes.push(f.lib_code);
+                    if (f.subFields && Array.isArray(f.subFields)) {
+                        codes = [...codes, ...extractCodes(f.subFields)];
+                    }
+                    if (f.fields && Array.isArray(f.fields)) { // Handle any other nested fields
+                        codes = [...codes, ...extractCodes(f.fields)];
+                    }
+                });
+                return codes;
+            };
+
+            const allCodes = extractCodes(activeFormProps);
+            const libCodesToFetch = Array.from(new Set(
+                allCodes.filter(c => !libOptionsMap[c])
+            )) as string[];
+
+            if (libCodesToFetch.length === 0) return;
+
+            for (const code of libCodesToFetch) {
+                const { data, error } = await supabase.from('u_lib_list')
+                    .select('lib_id, lib_desc')
+                    .ilike('lib_code', code.trim())
+                    .order('lib_desc');
+
+                if (data && data.length > 0) {
+                    console.log(`[fetchDynamicOptions] Found ${data.length} records for ${code}`);
+                    setLibOptionsMap(prev => ({ ...prev, [code]: data }));
+                } else {
+                    // Even if 0 records, set to empty array to avoid re-fetching
+                    setLibOptionsMap(prev => ({ ...prev, [code]: [] }));
+                    if (error) console.error(`[fetchDynamicOptions] Error for ${code}:`, error);
+                }
+            }
+        }
+        fetchDynamicOptions();
+    }, [activeFormProps, supabase, libOptionsMap]);
 
     const diveActionsList = ((activeDep as any)?.raw?.dive_type?.toUpperCase() || "AIR").includes("BELL") || ((activeDep as any)?.raw?.dive_type?.toUpperCase() || "AIR").includes("SAT") ? BELL_DIVE_ACTIONS : AIR_DIVE_ACTIONS;
 
@@ -2620,7 +2824,7 @@ function V10PreviewLayout() {
                 const fName = rule.fieldName || '*';
                 const fNameClean = fName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-                const ignoreFields = ['northing', 'easting', 'elevation', 'depth', 'kp', 'latitude', 'longitude'];
+                const ignoreFields = ['northing', 'easting', 'elevation', 'depth', 'kp', 'latitude', 'longitude', 'anode_type', 'anode_depletion', 'anode_type_list', 'anode_depletion_list', 'serial_no', 'remarks', 'reference_no'];
 
                 const relevantFields = fName === '*'
                     ? Object.keys(debouncedProps).filter(k => {
@@ -3057,10 +3261,24 @@ function V10PreviewLayout() {
         }
 
         const comp = componentsSow.find(c => c.id === fullRecord.component_id) || componentsNonSow.find(c => c.id === fullRecord.component_id);
-        if (comp) setSelectedComp(comp);
+        if (comp) {
+            setSelectedComp(comp);
+        } else {
+            // Fallback: If component is not in current sidebar list, create a minimal object from record metadata
+            // to ensure component_overrides (e.g. Anode fields) still work based on component_type
+            setSelectedComp({
+                id: fullRecord.component_id,
+                name: fullRecord.component_name || `Component ${fullRecord.component_id}`,
+                type: fullRecord.component_type,
+                raw: { 
+                    type: fullRecord.component_type,
+                    code: fullRecord.component_type
+                }
+            });
+        }
 
-        // Map data from DB to UI state
-        setActiveSpec(fullRecord.inspection_type?.name || fullRecord.inspection_type?.code || fullRecord.inspection_type_code);
+        // Map data from DB to UI state - USE CODE FIRST to avoid name ambiguity (e.g. GVI vs RGVI)
+        setActiveSpec(fullRecord.inspection_type?.code || fullRecord.inspection_type_code || fullRecord.inspection_type?.name);
         setEditingRecordId(fullRecord.insp_id || fullRecord.id);
         setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
         setDynamicProps(fullRecord.inspection_data || {});
@@ -4478,7 +4696,9 @@ function V10PreviewLayout() {
                                             <span className="font-black tracking-wide text-sm flex items-center gap-2">
                                                 <FileText className="w-4 h-4 text-blue-200" />
                                                 <span className="text-blue-100 opacity-60 font-medium">{selectedComp.name} /</span> Spec: {(() => {
-                                                    const specObj = allInspectionTypes.find(t => t.code === activeSpec || t.name === activeSpec);
+                                                    // Prioritize code match to distinguish between similar names like GVI and RGVI
+                                                    const specObj = allInspectionTypes.find(t => (t.code || '').trim() === (activeSpec || '').trim()) || 
+                                                                   allInspectionTypes.find(t => (t.name || '').trim() === (activeSpec || '').trim());
                                                     return specObj ? specObj.name : activeSpec;
                                                 })()}
                                             </span>
@@ -4511,139 +4731,24 @@ function V10PreviewLayout() {
 
 
                                                 {/* Dynamic Spec Forms based on Inspection Type */}
-                                                {(() => {
-    const activeSpecClean = (activeSpec || '').trim();
-    const activeIt = allInspectionTypes.find(t => (t.code || '').trim() === activeSpecClean || (t.name || '').trim() === activeSpecClean);
-    
-    let props: any[] = [];
-    let parsedProps: any = null;
+                                                {activeFormProps.length > 0 && (
+                                                    <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">
+                                                        <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Inspection Specification</div>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            {activeFormProps.map((p: any, idx: number) => {
+                                                                const isAnomaly = findingType === 'Anomaly';
+                                                                if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
 
-    if (activeIt?.default_properties) {
-        if (typeof activeIt.default_properties === 'string') {
-            try { parsedProps = JSON.parse(activeIt.default_properties); } catch (e) { }
-        } else {
-            parsedProps = activeIt.default_properties;
-        }
-    }
-
-    if (parsedProps) {
-        const raw = selectedComp?.raw || {};
-        const compTypeStr = String(raw.type || raw.code || raw.component_type || selectedComp?.type || '').toUpperCase().trim();
-        let overrideMatch: any = null;
-
-        if (parsedProps.component_overrides && Array.isArray(parsedProps.component_overrides)) {
-            overrideMatch = parsedProps.component_overrides.find((ov: any) =>
-                ov.component_types && Array.isArray(ov.component_types) && ov.component_types.includes(compTypeStr)
-            );
-        }
-
-        if (overrideMatch && overrideMatch.fields) {
-            props = [...overrideMatch.fields];
-        } else if (Array.isArray(parsedProps)) {
-            props = [...parsedProps];
-        } else {
-            props = [...(parsedProps.fields || parsedProps.properties || [])];
-        }
-    }
-
-    // Historical data preservation
-    if (editingRecordId) {
-        const recordRow = currentRecords.find(r => r.insp_id === editingRecordId);
-        if (recordRow && recordRow.inspection_data) {
-            try {
-                const recordData = typeof recordRow.inspection_data === 'string' 
-                    ? JSON.parse(recordRow.inspection_data) 
-                    : recordRow.inspection_data;
-                
-                Object.keys(recordData).forEach(key => {
-                    const exists = props.find((p: any) => p.name === key || String(p.label).toLowerCase() === key.toLowerCase());
-                    const ignoreKeys = ['has_anomaly', 'anomalydata', 'defectcode', 'defectreferenceno', 'northing', 'easting', 'elevation', 'kp', 'depth', 'fields', 'inspno', 'strid', 'str_id', 'compid', 'comp_id', 'inspid', 'insp_id', 'record_category', 'incomplete_reason', 'component_overrides'];
-                    const lowerKey = key.toLowerCase();
-                    
-                    if (!exists && 
-                        !ignoreKeys.includes(lowerKey) && 
-                        !lowerKey.startsWith('_meta') && 
-                        !lowerKey.startsWith('_is') && 
-                        !lowerKey.includes('legacy') && 
-                        typeof recordData[key] !== 'object') {
-                        // Dynamically append historical field
-                        const niceLabel = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                        props.push({ name: key, label: `${niceLabel} (Legacy)`, type: 'text' });
-                    }
-                });
-            } catch (e) {}
-        }
-    }
-
-    if (!Array.isArray(props) || props.length === 0) return null;
-
-    const isAnomaly = findingType === 'Anomaly';
-    const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
-    const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
-
-    const isRovType = inspMethod === 'ROV' || (String(activeIt?.code || '').toUpperCase().startsWith('R') ||
-        String(activeIt?.name || '').toUpperCase().includes('ROV') ||
-        activeIt?.metadata?.rov == 1);
-
-    if (isRovType) {
-        const extraFields = [];
-        const existingNames = props.map((p: any) => String(p.name || p.label || '').toLowerCase());
-        if (!existingNames.includes('northing')) extraFields.push({ name: 'northing', label: 'Northing', type: 'text' });
-        if (!existingNames.includes('easting')) extraFields.push({ name: 'easting', label: 'Easting', type: 'text' });
-        if (extraFields.length > 0) props = [...extraFields, ...props];
-    }
-
-    const hasCpRdgField = props.some((sibling: any) => {
-        const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
-        return sLbl.includes('cp rdg') || sLbl === 'cp_rdg';
-    }) || dataAcqFields.some(f => f.targetField === 'cp_reading');
-
-    const hasUtThkField = props.some((sibling: any) => {
-        if (sibling.type === 'repeater') return false;
-        const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
-        return sLbl.includes('ut') || sLbl.includes('wall thickness');
-    }) || (activeIt?.code || '').toUpperCase().includes('UT');
-
-    const hasCpRepeater = props.some(p => {
-        const l = String(p.label || p.name || '').toLowerCase();
-        return l.includes('cp') && l.includes('reading');
-    });
-    if (hasCpRdgField && !hasCpRepeater) {
-        props.push({
-            name: 'cp_readings',
-            label: 'CP Readings',
-            type: 'repeater',
-            subFields: [
-                { name: 'location', label: 'Location', type: 'text' },
-                { name: 'reading', label: 'Reading (mV)', type: 'number' }
-            ]
-        });
-    }
-
-    const visibleProps = props.filter((p: any) => {
-        const l = String(p.label || p.name || '').toLowerCase();
-        if (l === 'cp readings' && !hasCpRdgField) return false;
-        if (l === 'ut thickness' && p.type === 'repeater' && !hasUtThkField) return false;
-        return true;
-    });
-
-    if (visibleProps.length === 0) return null;
-
-    return (
-        <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">
-            <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Inspection Specification</div>
-            <div className="grid grid-cols-2 gap-4">
-                {visibleProps.map((p: any) => (
-                    <div key={p.name || p.label} className={p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">{p.label || p.name}</label>
-                        {renderInspectionField(p, 'primary')}
-                    </div>
-                ))}
-            </div>
-                
-        </div>
-    );
-})()}
+                                                                return (
+                                                                    <div key={`${p.name || p.label}-${idx}`} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
+                                                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">{p.label || p.name}</label>
+                                                                        {renderInspectionField(p, 'primary')}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                                 {/* Inspection Result Toggle moved below spec fields */}
                                                 <div className="space-y-3 p-4 border-2 border-slate-200 rounded-lg bg-white shadow-sm animate-in fade-in slide-in-from-top-2">
