@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "react";
+import * as React from "react";
+import { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams,
     useRouter } from "next/navigation";
@@ -66,8 +67,6 @@ import { generateMultiInspectionReport } from "@/utils/report-generators/multi-i
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
 import { createMediaRecorder, startRecording, saveFile, generateFilename, getPhotoExtension, FORMAT_CONFIGS } from '@/lib/video-recorder/media-recorder';
 import { CanvasOverlayManager, type DrawingTool } from '@/lib/video-recorder/canvas-overlay';
-// Storage utils (not needed as using supabase directly in this file for now)
-
 
 import { Card } from "@/components/ui/card";
 import DiveJobSetupDialog from "../../inspection/dive/components/DiveJobSetupDialog";
@@ -90,329 +89,33 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
-const AIR_DIVE_ACTIONS = [
-    { label: "Left Surface", value: "LEAVING_SURFACE" },
-    { label: "Arrived Bottom", value: "AT_WORKSITE" },
-    { label: "Diver at Worksite", value: "AT_WORKSITE" },
-    { label: "Diver Left Worksite", value: "LEAVING_WORKSITE" },
-    { label: "Left Bottom", value: "LEAVING_WORKSITE" },
-    { label: "Arrived Surface", value: "BACK_TO_SURFACE" }
-];
 
-const BELL_DIVE_ACTIONS = [
-    { label: "Left Surface", value: "BELL_LAUNCHED" },
-    { label: "Bell at Working Depth", value: "BELL_AT_DEPTH" },
-    { label: "Diver Locked Out", value: "DIVER_EXITING_BELL" },
-    { label: "Diver Locked In", value: "DIVER_RETURNING_TO_BELL" },
-    { label: "Bell Left Bottom", value: "BELL_ASCENDING" },
-    { label: "Bell on Surface", value: "BELL_AT_SURFACE" },
-    { label: "TUP Complete", value: "BELL_MATED_TO_CHAMBER" }
-];
+import { 
+    AIR_DIVE_ACTIONS, 
+    BELL_DIVE_ACTIONS, 
+    ROV_MOVEMENT_BRANCHES,
+    INITIAL_VIDEO_EVENTS,
+    COMPONENTS_SOW,
+    COMPONENTS_NON_SOW,
+    HISTORICAL_DATA,
+    CURRENT_RECORDS
+} from "./constants";
 
-const MARINE_GROWTH_LIST = [
-    "Hard: 0-20% Coverage", "Hard: 20-40% Coverage", "Hard: 40-60% Coverage", "Hard: 60-80% Coverage", "Hard: 80-100% Coverage", "Hard: All Over",
-    "Soft: 0-20% Coverage", "Soft: 20-40% Coverage", "Soft: 40-60% Coverage", "Soft: 60-80% Coverage", "Soft: 80-100% Coverage", "Soft: All Over",
-    "Hard and Soft: 0-20% Coverage", "Hard and Soft: 20-40% Coverage", "Hard and Soft: 40-60% Coverage", "Hard and Soft: 60-80% Coverage", "Hard and Soft: 80-100% Coverage", "Hard and Soft: All Over",
-    "MGI: 0-20% Coverage", "MGI: 20-40% Coverage", "MGI: 40-60% Coverage", "MGI: 60-80% Coverage", "MGI: 80-100% Coverage", "MGI: All Over"
-];
-
-const COATING_CONDITION_LIST = [
-    "Good", "Satisfactory", "Bare Metal Showing", "Coating Cracked", "Coating Cracked Longitudinally",
-    "Coating Cracked Circumferentially", "Superficial Damage", "Other Defect", "None", "N/A"
-];
-
-const COMPONENT_CONDITION_LIST = [
-    "Good", "Satisfactory", "None", "N/A",
-    "Dent: At 3 'O Clock", "Dent: At 6 'O Clock", "Dent: At 9 'O Clock", "Dent: At 12 'O Clock",
-    "Ruptured", "Fittings", "Flooded Member (FMD)", "Other Defect"
-];
-
-const ANODE_TYPE_LIST = [
-    "Zn - Zinc", "Al - Aluminum", "Mg - Magnesium", "Other"
-];
-
-const ANODE_DEPLETION_LIST = [
-    "0%", "5%", "10%", "15%", "20%", "25%", "30%", "35%", "40%", "45%", "50%", "55%", "60%", "65%", "70%", "75%", "80%", "85%", "90%", "95%", "100%"
-];
-
-const ROV_MOVEMENT_BRANCHES: Record<string, string[]> = {
-    'Awaiting Deployment': ['Rov On Hire', 'Rov Launched'],
-    'Rov On Hire': ['Rov Launched'],
-    'Rov Launched': ['Rov at the Worksite'],
-    'ROV_DEPLOYED': ['Rov at the Worksite'], // Alias for compatibility with old logs
-    'ROV_TRANSITING': ['Rov at the Worksite'],
-    'Rov at the Worksite': ['Rov Leaving the Worksite'],
-    'ROV_AT_WORKSITE': ['Rov Leaving the Worksite'], // Alias
-    'ROV_WORKING': ['Rov Leaving the Worksite'], // Alias
-    'Rov Leaving the Worksite': ['Rov Recovered', 'Rov Back to TMS'],
-    'ROV_LEAVING_WORKSITE': ['Rov Recovered', 'Rov Back to TMS'], // Alias
-    'Rov Back to TMS': ['Rov Launched', 'Rov Recovered'],
-    'Rov Recovered': ['Rov Launched', 'Rov Off Hire'],
-    'ROV_RECOVERED': ['Rov Launched', 'Rov Off Hire'], // Alias
-    'Rov Off Hire': []
-};
-const INITIAL_VIDEO_EVENTS = [
-    { id: 1, time: "00:00:00", action: "Start Tape", diveLogId: "DIVE-02" },
-    { id: 2, time: "00:15:20", action: "Pause", diveLogId: "DIVE-02" },
-    { id: 3, time: "00:16:05", action: "Resume", diveLogId: "DIVE-02" },
-];
-const COMPONENTS_SOW = [
-    { id: "LEG_B2", name: "LEG B2", depth: "-12m", tasks: ["GVINS", "HSTAT"] },
-    { id: "BAN_001", name: "BAN001", depth: "-8m", tasks: ["CVINS"] },
-];
-const COMPONENTS_NON_SOW = [
-    { id: "NODE_X", name: "NODE X", depth: "-15m", tasks: ["GVINS"] },
-    { id: "RISER_A", name: "RISER A", depth: "-22m", tasks: ["CVINS"] },
-];
-const HISTORICAL_DATA = [
-    { year: 2024, type: "GVINS", status: "Anomaly", finding: "Minor marine growth", inspector: "Alex" },
-    { year: 2022, type: "CVINS", status: "Pass", finding: "Clear", inspector: "Jitesh" },
-];
-const CURRENT_RECORDS = [
-    { id: 1, time: "10:57", type: "GVINS", comp: "LEG B2", status: "Pass", timer: "00:15:10", hasPhoto: true },
-    { id: 2, time: "11:20", type: "HSTAT", comp: "LEG B2", status: "Anomaly", timer: "00:30:45", hasPhoto: false },
-];
-
-const InspectionFieldComponent = ({ p, type, handler, currentValue, libOptionsMap, openPopovers, setOpenPopovers, selectedComp, setDebouncedProps }: any) => {
-    const [searchTerm, setSearchTerm] = useState("");
-    const fieldName = String(p.label || p.name || '').toLowerCase();
-    
-    const isLocation = fieldName === 'location' || fieldName === 'loc';
-    const isPosition = fieldName === 'position' || fieldName === 'pos';
-    const isMarineGrowth = fieldName.includes('marine growth') || fieldName.includes('marinegrowth') || fieldName === 'mgi' || fieldName.includes('marine_growth');
-    const isCoating = fieldName.includes('coating condition') || fieldName.includes('coatingcondition') || fieldName.includes('coating_condition');
-    const isCompCondition = fieldName.includes('component condition') || fieldName.includes('componentcondition') || fieldName.includes('component_condition');
-
-    const isAnodeType = fieldName === 'anode type' || fieldName === 'anode_type';
-    const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
-
-    const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code;
-    const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
-    const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
-
-    if (isComboEligible) {
-        let options = [...(p.options || [])];
-        
-        if (p.lib_code) {
-            const libOpts = libOptionsMap[p.lib_code];
-            if (libOpts && Array.isArray(libOpts)) {
-                const libDescriptions = libOpts.map((o: any) => o.lib_desc);
-                options = Array.from(new Set([...options, ...libDescriptions]));
-            }
-        }
-
-        if (isLocation && selectedComp) {
-            const locOptions = [
-                selectedComp.startNode !== '-' ? `At Node : ${selectedComp.startNode}` : null,
-                selectedComp.endNode !== '-' ? `At Node : ${selectedComp.endNode}` : null
-            ].filter(Boolean) as string[];
-            options = Array.from(new Set([...options, ...locOptions]));
-        } else if (isPosition && options.length === 0) {
-            options = [
-                "AT 12 O'CLK", "AT 01 O'CLK", "AT 02 O'CLK", "AT 03 O'CLK", "AT 04 O'CLK", "AT 05 O'CLK",
-                "AT 06 O'CLK", "AT 07 O'CLK", "AT 08 O'CLK", "AT 09 O'CLK", "AT 10 O'CLK", "AT 11 O'CLK"
-            ];
-        } else if (isMarineGrowth) {
-            options = Array.from(new Set([...options, ...MARINE_GROWTH_LIST]));
-        } else if (isCoating) {
-            options = Array.from(new Set([...options, ...COATING_CONDITION_LIST]));
-        } else if (isCompCondition) {
-            options = Array.from(new Set([...options, ...COMPONENT_CONDITION_LIST]));
-        } else if (isAnodeType && options.length === 0) {
-            options = [...ANODE_TYPE_LIST];
-        } else if (isAnodeDep && options.length === 0) {
-            options = [...ANODE_DEPLETION_LIST];
-        }
-
-        const filteredOptions = options.filter(opt => 
-            String(opt).toLowerCase().includes(searchTerm.toLowerCase())
-        );
-
-        return (
-            <div className="relative group/combo">
-                <Popover 
-                    open={openPopovers[p.name || p.label] || false} 
-                    onOpenChange={(val) => {
-                        setOpenPopovers((prev: any) => ({ ...prev, [p.name || p.label]: val }));
-                        if (!val) setSearchTerm(""); // Reset search on close
-                    }}
-                >
-                    <PopoverTrigger asChild>
-                        <div className="relative">
-                            <Input
-                                placeholder={`Select or enter ${p.label || p.name}`}
-                                className={`h-9 text-sm bg-white pr-16 ${type === 'secondary' ? 'border-amber-200' : 'border-slate-200'}`}
-                                value={currentValue}
-                                onChange={(e) => handler(p.name || p.label, e.target.value)}
-                                onBlur={(e) => {
-                                    if (type === 'primary') {
-                                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
-                                    }
-                                }}
-                            />
-                            <div className="absolute right-1 top-1 flex items-center gap-0.5">
-                                {currentValue && (
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-slate-400 hover:text-slate-600"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            handler(p.name || p.label, "");
-                                            if (type === 'primary') {
-                                                setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: "" }));
-                                            }
-                                        }}
-                                    >
-                                        <X className="h-3 w-3" />
-                                    </Button>
-                                )}
-                                <div className="h-7 w-7 flex items-center justify-center text-slate-500">
-                                    <ChevronDown className="h-4 w-4" />
-                                </div>
-                            </div>
-                        </div>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-white border border-slate-200 shadow-xl z-[200] overflow-hidden rounded-lg" align="start">
-                        <div className="p-2 border-b border-slate-100 bg-slate-50/50">
-                            <div className="relative">
-                                <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-slate-400" />
-                                <Input 
-                                    placeholder="Search..." 
-                                    className="h-8 pl-8 text-xs bg-white border-slate-200 focus-visible:ring-slate-400"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    autoFocus
-                                />
-                            </div>
-                        </div>
-                        <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
-                            {filteredOptions.length > 0 ? (
-                                <div className="space-y-0.5">
-                                    {filteredOptions.map((opt) => (
-                                        <button
-                                            key={opt}
-                                            className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded transition-colors font-medium flex items-center justify-between group"
-                                            onClick={() => {
-                                                handler(p.name || p.label, opt);
-                                                if (type === 'primary') {
-                                                    setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: opt }));
-                                                }
-                                                setOpenPopovers((prev: any) => ({ ...prev, [p.name || p.label]: false }));
-                                            }}
-                                        >
-                                            {opt}
-                                            {currentValue === opt && <div className={`w-1.5 h-1.5 ${type === 'secondary' ? 'bg-amber-500' : 'bg-slate-800'} rounded-full`} />}
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="p-3 text-center text-xs text-slate-400 italic">No matches found</div>
-                            )}
-                        </div>
-                    </PopoverContent>
-                </Popover>
-            </div>
-        );
-    }
-
-    if (p.type === 'select') {
-        return (
-            <select
-                value={currentValue}
-                onChange={(e) => {
-                    handler(p.name || p.label, e.target.value);
-                    if (type === 'primary') {
-                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
-                    }
-                }}
-                className={`flex h-9 w-full rounded-md border ${borderClass} bg-white px-2.5 text-xs font-semibold ${ringClass}`}
-            >
-                <option value="">Select {p.label}</option>
-                {(p.options || []).map((opt: string) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                ))}
-            </select>
-        );
-    }
-
-    if (p.type === 'repeater') {
-        const rows = Array.isArray(currentValue) ? currentValue : [];
-        return (
-            <div className="space-y-2">
-                {rows.map((row: any, idx: number) => (
-                    <div key={idx} className="p-2 border rounded-md bg-slate-50/50 space-y-2 relative group-row">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute -right-1 -top-1 h-6 w-6 text-red-400 hover:text-red-600 opacity-0 group-row-hover:opacity-100 transition-opacity"
-                            onClick={() => {
-                                const newRows = [...rows];
-                                newRows.splice(idx, 1);
-                                handler(p.name || p.label, newRows);
-                            }}
-                        >
-                            <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                        <div className="grid grid-cols-2 gap-2">
-                            {(p.subFields || []).map((sf: any) => (
-                                <div key={sf.name} className="space-y-1">
-                                    <label className="text-[10px] uppercase text-slate-400 font-bold">{sf.label}</label>
-                                    <Input
-                                        type={sf.type === 'number' ? 'number' : 'text'}
-                                        step={sf.step}
-                                        value={row[sf.name] || ''}
-                                        onChange={(e) => {
-                                            const newRows = [...rows];
-                                            newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
-                                            handler(p.name || p.label, newRows);
-                                        }}
-                                        onBlur={(e) => {
-                                            if (type === 'primary') {
-                                                const newRows = [...rows];
-                                                newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
-                                                setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: newRows }));
-                                            }
-                                        }}
-                                        className="h-8 text-xs"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full h-8 border-dashed border-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
-                    onClick={() => {
-                        handler(p.name || p.label, [...rows, {}]);
-                    }}
-                >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Reading
-                </Button>
-            </div>
-        );
-    }
-
-    return (
-        <Input
-            type={p.type === 'number' ? 'number' : 'text'}
-            step={p.step}
-            value={currentValue || ""}
-            onChange={(e) => handler(p.name || p.label, e.target.value)}
-            onBlur={(e) => {
-                if (type === 'primary') {
-                    setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
-                }
-            }}
-            placeholder={`Enter ${p.label}`}
-            className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass}`}
-        />
-    );
-};
+import InspectionField from "./components/InspectionField";
+import { TapeManagementCard } from "./components/TapeManagementCard";
+import { TapeLogEvents } from "./components/TapeLogEvents";
+import { VideoInterface } from "./components/VideoInterface";
+import { InspectionHeader } from "./components/InspectionHeader";
+import { InspectionForm } from "./components/InspectionForm";
 
 export default function WorkspaceV2Page() {
     return (
@@ -450,7 +153,7 @@ function V10PreviewLayout() {
         const currentValue = currentProps[p.name || p.label] || "";
 
         return (
-            <InspectionFieldComponent 
+            <InspectionField 
                 p={p} 
                 type={type} 
                 handler={handler} 
@@ -494,6 +197,7 @@ function V10PreviewLayout() {
 
     // Component Target Tab Mode
     const [compView, setCompView] = useState<"LIST" | "MODEL_3D">("LIST");
+    const [tapeLogExpanded, setTapeLogExpanded] = useState(false);
     const [compSearchTerm, setCompSearchTerm] = useState("");
     const [specDialogOpen, setSpecDialogOpen] = useState(false);
     const [compSpecDialogOpen, setCompSpecDialogOpen] = useState(false);
@@ -3541,225 +3245,56 @@ function V10PreviewLayout() {
         }
     };
 
+    const handleToggleStreamRecording = () => {
+        if (isStreamRecording) {
+            handleStopStreamRecording();
+        } else {
+            handleStartStreamRecording();
+        }
+    };
+
     const renderStreamUI = () => (
-        <>
-            {/* Conditional Stream Box */}
-            <div className="flex-1 relative bg-slate-900 border-b border-white/5 flex items-center justify-center overflow-hidden min-h-[160px]">
-                {streamActive ? (
-                    <>
-                        <video
-                            ref={videoRef}
-                            autoPlay
-                            playsInline
-                            muted
-                            className="absolute inset-0 w-full h-full object-fill bg-black opacity-90"
-                        />
-                        <canvas
-                            ref={canvasRef}
-                            className="absolute inset-0 w-full h-full z-10 cursor-crosshair"
-                            onMouseDown={() => {
-                                if (overlayManager) overlayManager.setTool(currentTool);
-                            }}
-                        />
-                        <div className="absolute bottom-2 left-2 font-mono text-cyan-400 text-[10px] font-bold blur-[0.2px] drop-shadow-md z-20">DPT: {selectedComp?.depth || '-0.0m'} | T: 24C</div>
-
-                        {/* Drawing Tools Overlay Toggle - Moved down to avoid header overlap */}
-                        <button
-                            onClick={() => setShowDrawingTools(!showDrawingTools)}
-                            className={`absolute top-12 left-2 z-40 p-1.5 rounded-full transition-all ${showDrawingTools ? 'bg-blue-600 text-white shadow-lg' : 'bg-black/50 text-white/70 hover:bg-black/70 border border-white/10'}`}
-                        >
-                            <Edit className="w-4 h-4" />
-                        </button>
-
-                        {showDrawingTools && (
-                            <div className="absolute top-12 left-12 z-40 flex gap-1 bg-black/80 p-1.5 rounded-lg backdrop-blur-md border border-white/20 animate-in fade-in slide-in-from-left-2 shadow-2xl">
-                                {(['pen', 'circle', 'arrow', 'line', 'rectangle'] as DrawingTool[]).map((tool) => (
-                                    <button
-                                        key={tool}
-                                        onClick={() => {
-                                            setCurrentTool(tool);
-                                            if (overlayManager) overlayManager.setTool(tool);
-                                        }}
-                                        className={`p-1 rounded transition-colors ${currentTool === tool ? 'bg-white/20 text-blue-400' : 'text-white/60 hover:text-white'}`}
-                                        title={tool}
-                                    >
-                                        {tool === 'pen' && <Edit className="w-3 h-3" />}
-                                        {tool === 'circle' && <div className="w-3 h-3 rounded-full border border-current"></div>}
-                                        {tool === 'arrow' && <ArrowRight className="w-3 h-3" />}
-                                        {tool === 'line' && <div className="w-3 h-0.5 bg-current"></div>}
-                                        {tool === 'rectangle' && <Box className="w-3 h-3 border border-current" />}
-                                    </button>
-                                ))}
-                                <Separator orientation="vertical" className="h-5 bg-white/20 mx-1" />
-                                {['#ef4444', '#10b981', '#3b82f6', '#ffffff'].map(c => (
-                                    <button
-                                        key={c}
-                                        onClick={() => {
-                                            setCurrentColor(c);
-                                            if (overlayManager) overlayManager.setColor(c);
-                                        }}
-                                        className={`w-4 h-4 rounded-full border border-white/20 transition-transform hover:scale-110 ${currentColor === c ? 'ring-2 ring-white/50 border-white' : ''}`}
-                                        style={{ backgroundColor: c }}
-                                    />
-                                ))}
-                                <button
-                                    onClick={() => overlayManager?.clear()}
-                                    className="p-1 hover:text-red-400 text-white/60 ml-0.5"
-                                    title="Clear All"
-                                >
-                                    <Trash2 className="w-3 h-3" />
-                                </button>
-                            </div>
-                        )}
-                    </>
-                ) : (
-                    <div className="text-center text-slate-500">
-                        <VideoOff className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        <span className="text-[10px] uppercase font-bold tracking-widest">Stream Stopped</span>
-                    </div>
-                )}
-            </div>
-
-            {/* Video Controls (Interactive in PiP) */}
-            <div className="w-full bg-black/90 flex flex-col pt-1 pb-3 border-t border-white/10 shrink-0 z-20">
-                {/* Stream On/Off Tools */}
-                <div className="flex justify-between items-center px-3 py-1.5 mb-1.5 bg-white/5">
-                    <span className="text-[9px] font-bold uppercase text-slate-400 w-16">Stream:</span>
-                    <div className="flex gap-1">
-                        <Button onClick={() => setStreamActive(true)} size="sm" variant={streamActive ? "default" : "secondary"} className={`h-6 text-[10px] px-3 font-bold ${streamActive ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-none'}`}>Show</Button>
-                        <Button onClick={() => setStreamActive(false)} size="sm" variant={!streamActive ? "default" : "secondary"} className={`h-6 text-[10px] px-3 font-bold ${!streamActive ? 'bg-slate-700 text-white hover:bg-slate-600 border-none' : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-none'}`}>Stop</Button>
-                    </div>
-                </div>
-
-                {/* Recording Tools (Local Stream Capture) */}
-                <div className="flex justify-between items-center px-3">
-                    <div className="flex gap-2">
-                        {!isStreamRecording ? (
-                            <button
-                                onClick={handleStartStreamRecording}
-                                disabled={!streamActive}
-                                className="w-16 h-8 rounded-md text-[11px] font-bold flex items-center justify-center shadow-lg transition-all bg-slate-700 hover:bg-slate-600 text-white disabled:opacity-50 ring-1 ring-white/10"
-                            >
-                                <Play className="w-3 h-3 mr-1 fill-current" /> Rec
-                            </button>
-                        ) : (
-                            <div className="flex gap-1">
-                                {isStreamPaused ? (
-                                    <button onClick={handleResumeStreamRecording} className="w-8 h-8 bg-blue-600 hover:bg-blue-500 rounded-md text-center flex items-center justify-center text-white shadow-lg"><Play className="w-3.5 h-3.5 fill-current" /></button>
-                                ) : (
-                                    <button onClick={handlePauseStreamRecording} className="w-8 h-8 bg-amber-500 hover:bg-amber-400 rounded-md text-center flex items-center justify-center text-white shadow-lg"><Pause className="w-3.5 h-3.5 fill-current" /></button>
-                                )}
-                                <button onClick={handleStopStreamRecording} className="w-16 h-8 bg-red-600 hover:bg-red-500 animate-pulse rounded-md text-[11px] font-bold flex items-center justify-center text-white shadow-lg transition-all ring-1 ring-red-400/20">
-                                    <Square className="w-3 h-3 fill-current mr-1" /> Stop
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <div className="flex flex-col items-end">
-                        <span className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter leading-none mb-1">Stream REC</span>
-                        <span className={`font-mono text-[13px] font-black ${isStreamRecording ? 'text-red-500' : 'text-slate-400'}`}>{formatTime(streamTimer)}</span>
-                    </div>
-                    <button
-                        onClick={handleGrabPhoto}
-                        disabled={!streamActive}
-                        className="w-10 h-8 bg-white/10 rounded-md text-white flex items-center justify-center hover:bg-white/20 transition-all disabled:opacity-50 ring-1 ring-white/5"
-                        title="Grab Photo"
-                    >
-                        <Camera className="w-4 h-4" />
-                    </button>
-                </div>
-            </div>
-        </>
+        <VideoInterface
+            onPopOut={handlePopOutStream}
+            onStopStream={() => setStreamActive(false)}
+            pipActive={!!pipWindow}
+            onCapturePhoto={handleGrabPhoto}
+            onStartRecording={handleStartStreamRecording}
+            vidState={vidState}
+            vidTimer={vidTimer}
+            tapeNo={tapeNo}
+            videoVisible={videoVisible}
+            setVideoVisible={setVideoVisible}
+            streamActive={streamActive}
+            setStreamActive={setStreamActive}
+            isStreamRecording={isStreamRecording}
+            isStreamPaused={isStreamPaused}
+            previewStream={previewStream}
+            videoRef={videoRef}
+            canvasRef={canvasRef}
+            onPauseRecording={handlePauseStreamRecording}
+            onResumeRecording={handleResumeStreamRecording}
+            onStopRecording={handleStopStreamRecording}
+            onToggleRecording={handleToggleStreamRecording}
+            formatTime={formatTime}
+            showDrawingTools={showDrawingTools}
+            setShowDrawingTools={setShowDrawingTools}
+        />
     );
-
 
     return (
         <div className="flex flex-col h-[calc(100vh)] bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 overflow-hidden">
-
-            {/* WORKSPACE HEADER */}
-            <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-lg font-black uppercase tracking-widest flex items-center gap-2 text-blue-400">
-                        <Activity className="w-5 h-5" /> INSPECTION
-                    </h1>
-                    <div className="h-5 w-px bg-slate-700"></div>
-
-                    {/* Mode Toggle */}
-                    <div className="flex bg-slate-800 rounded p-1 mr-4">
-                        <button
-                            onClick={() => {
-                                setInspMethod("DIVING");
-                                const params = new URLSearchParams(searchParams.toString());
-                                params.set("mode", "DIVING");
-                                router.replace(`?${params.toString()}`);
-                            }}
-                            className={`px-4 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
-                        >
-                            DIVING
-                        </button>
-                        <button
-                            onClick={() => {
-                                setInspMethod("ROV");
-                                const params = new URLSearchParams(searchParams.toString());
-                                params.set("mode", "ROV");
-                                router.replace(`?${params.toString()}`);
-                            }}
-                            className={`px-4 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
-                        >
-                            ROV
-                        </button>
-                    </div>
-
-                    {/* Header Context Info - Inline */}
-                    <div className="hidden md:flex items-center text-xs ml-3 space-x-3">
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Jobpack:</span>
-                            <span className="font-mono font-bold text-slate-200">{headerData.jobpackName}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Structure Title:</span>
-                            <span className="font-mono font-bold text-slate-200">{headerData.platformName}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700">
-                            <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">SOW Report:</span>
-                            <span className="font-mono font-black text-cyan-400">{headerData.sowReportNo}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex gap-2">
-                    <Link href="/dashboard/inspection-v2"><Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><ArrowLeft className="w-4 h-4 mr-2" /> Back</Button></Link>
-
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><Printer className="w-4 h-4 mr-2" /> Reports</Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56 p-1">
-                            <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-50 mb-1">Inspection Reports</div>
-                            <ScrollArea className="h-48">
-                                {allInspectionTypes.filter(t => currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))).map(t => (
-                                    <DropdownMenuItem key={t.id} onClick={() => generateInspectionReportByType(t.id)} className="text-xs py-2 cursor-pointer flex items-center justify-between">
-                                        <div className="flex items-center">
-                                            <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-blue-500" />
-                                            <span className="truncate max-w-[140px]">{t.name}</span>
-                                        </div>
-                                        <Badge variant="outline" className="text-[8px] h-3.5 px-1 font-black bg-slate-50 text-slate-400 border-slate-200">{t.code}</Badge>
-                                    </DropdownMenuItem>
-                                ))}
-                                {allInspectionTypes.filter(t => currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))).length === 0 && (
-                                    <div className="text-[10px] text-slate-400 p-4 text-center italic">No records captured yet</div>
-                                )}
-                            </ScrollArea>
-                            <div className="border-t border-slate-50 my-1"></div>
-                            <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600">
-                                <Layout className="w-3.5 h-3.5 mr-2" /> All Captured Records
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    <Link href="/dashboard/settings"><Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><Settings className="w-4 h-4 mr-2" /> Workspace</Button></Link>
-                </div>
-            </header>
+            <InspectionHeader 
+                headerData={headerData}
+                inspMethod={inspMethod}
+                setInspMethod={setInspMethod}
+                router={router}
+                searchParams={searchParams}
+                allInspectionTypes={allInspectionTypes}
+                currentRecords={currentRecords}
+                generateInspectionReportByType={generateInspectionReportByType}
+                generateFullInspectionReport={generateFullInspectionReport}
+            />
 
             {/* DEPLOYMENTS SUB-HEADER */}
             <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex items-center gap-3 shrink-0">
@@ -4077,27 +3612,36 @@ function V10PreviewLayout() {
                         </div>
                     </Card>
 
+                    {/* 2. Video Tape Management (MODULAR) */}
+                    <TapeManagementCard
+                        vidState={vidState}
+                        vidTimer={vidTimer}
+                        tapeId={tapeId}
+                        tapeNo={tapeNo}
+                        activeChapter={activeChapter}
+                        jobTapes={jobTapes}
+                        handleLogEvent={handleLogEvent}
+                        setTapeId={setTapeId}
+                        setTapeNo={setTapeNo}
+                        setActiveChapter={setActiveChapter}
+                        setIsNewTapeOpen={setIsNewTapeOpen}
+                        formatTime={formatTime}
+                    />
 
+                    {/* Tape Log Events (MODULAR) */}
+                    <TapeLogEvents 
+                        videoEvents={videoEvents}
+                        handleDeleteEvent={handleDeleteEvent}
+                        onEditEvent={setEditingEvent}
+                        expanded={tapeLogExpanded}
+                        setExpanded={setTapeLogExpanded}
+                    />
 
-                    {/* 6. Small Video Stream Area */}
+                    {/* 6. Video Interface (Reduced Size) */}
                     {!pipWindow && (
-                        <Card
-                            className="flex flex-col border-slate-200 shadow-sm rounded-md shrink-0 bg-black overflow-hidden relative"
-                            style={{ height: videoVisible ? '240px' : '44px' }}
-                        >
-                            <div className="absolute top-0 w-full bg-gradient-to-b from-black/90 to-transparent p-2 flex justify-between items-center z-50 transition-all">
-                                <span className="text-[10px] text-white font-bold uppercase tracking-widest flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-                                    <Video className="w-3 h-3 text-red-500" /> LIVE STREAMING CONTROL
-                                </span>
-                                <div className="flex gap-1 items-center">
-                                    <button onClick={handlePopOutStream} className="text-white/90 hover:text-white p-1 hover:bg-white/10 rounded transition-colors" title="Pop-out Stream"><Maximize2 className="w-3.5 h-3.5" /></button>
-                                    <button onClick={() => setIsGalleryOpen(true)} className="text-white/90 hover:text-white p-1 hover:bg-white/10 rounded transition-colors" title="View Gallery"><List className="w-3.5 h-3.5" /></button>
-                                    <Link href="/dashboard/settings/video-capture" className="text-white/90 hover:text-white p-1 hover:bg-white/10 rounded transition-colors" title="Stream Settings"><Settings className="w-3.5 h-3.5" /></Link>
-                                    <button onClick={() => setVideoVisible(!videoVisible)} className="text-white/90 hover:text-white p-1 ml-1 hover:bg-white/10 rounded transition-colors">{videoVisible ? <ChevronDown className="w-4 h-4" /> : <Activity className="w-4 h-4" />}</button>
-                                </div>
-                            </div>
-                            {videoVisible && renderStreamUI()}
-                        </Card>
+                        <div className="flex-1 min-h-[180px] bg-black rounded-lg overflow-hidden border border-slate-800 shadow-xl relative">
+                            {renderStreamUI()}
+                        </div>
                     )}
 
                     {/* PiP Portal */}
@@ -4115,366 +3659,6 @@ function V10PreviewLayout() {
                         </div>,
                         pipWindow.document.body
                     )}
-
-                    {/* 2. Video Log Session */}
-                    <Card className="flex flex-col flex-1 border-slate-200 shadow-sm rounded-md overflow-hidden bg-white">
-                        {/* Dark Header matching "1. DIVER LOG" style */}
-                        <div className="bg-[#1f2937] text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md shrink-0">
-                            <span className="flex items-center gap-2">
-                                VIDEO LOG
-                                {!isDeploymentValid && <Badge className="bg-red-500 text-[8px] h-3.5 px-1 animate-pulse">Save Error</Badge>}
-                            </span>
-                            <div className="flex items-center gap-2 text-slate-300">
-                                {!!tapeId && (
-                                    <button
-                                        onClick={() => {
-                                            const currentTape = jobTapes.find(t => t.tape_id === tapeId);
-                                            setEditTapeNo(tapeNo || "");
-                                            setEditTapeChapter(currentTape?.chapter_no?.toString() || "");
-                                            setEditTapeRemarks(currentTape?.remarks || "");
-                                            setEditTapeStatus(currentTape?.status || "ACTIVE");
-                                            setIsEditTapeOpen(true);
-                                        }}
-                                        className="p-1 hover:text-white transition"
-                                        title="Edit Tape Details"
-                                    ><Edit className="w-4 h-4" /></button>
-                                )}
-                                <button onClick={() => setIsVideoSettingsOpen(!isVideoSettingsOpen)} className={`p-1 hover:text-white transition ${isVideoSettingsOpen ? 'text-white' : ''}`} title="Video Session Settings"><Settings className="w-4 h-4" /></button>
-                            </div>
-                        </div>
-
-                        {/* Tape Selector Bar */}
-                        <div className="px-3 py-1.5 border-b border-slate-200 bg-slate-50 flex items-center gap-2 shrink-0">
-                            <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider whitespace-nowrap">Tape:</span>
-                            {jobTapes.length > 0 ? (
-                                <select
-                                    value={tapeId ? String(tapeId) : ""}
-                                    onChange={(e) => {
-                                        if (e.target.value === "__new__") {
-                                            const base = headerData.sowReportNo || 'SOW_REPORT';
-                                            const platform = headerData.platformName || 'STRUCTURE';
-                                            const postfix = inspMethod === 'DIVING' ? 'D' : 'R';
-
-                                            let maxSeq = 0;
-                                            jobTapes.forEach(t => {
-                                                const match = t.tape_no.match(/V(\d{3})[DR]$/);
-                                                if (match) {
-                                                    const seq = parseInt(match[1], 10);
-                                                    if (seq > maxSeq) maxSeq = seq;
-                                                }
-                                            });
-                                            const nextSeq = String(maxSeq + 1).padStart(3, '0');
-
-                                            setNewTapeNo(`${base} / ${platform} / V${nextSeq}${postfix}`);
-                                            setNewTapeChapter("1");
-                                            setNewTapeRemarks("");
-                                            setIsNewTapeOpen(true);
-                                        } else {
-                                            const selected = jobTapes.find(t => String(t.tape_id) === e.target.value);
-                                            if (selected) {
-                                                setTapeId(selected.tape_id);
-                                                setTapeNo(selected.tape_no);
-                                                setActiveChapter(selected.chapter_no || 1);
-                                            }
-                                        }
-                                    }}
-                                    className="h-7 text-xs font-mono font-bold bg-white border border-slate-300 rounded px-2 min-w-[140px] focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                >
-                                    {jobTapes.map(t => (
-                                        <option key={t.tape_id} value={String(t.tape_id)}>
-                                            {t.status === 'ACTIVE' ? '● ' : t.status === 'FULL' ? '◉ ' : '○ '}{t.tape_no}{t.chapter_no ? ` Ch.${t.chapter_no}` : ''} [{t.status || 'ACTIVE'}]
-                                        </option>
-                                    ))}
-                                    <option value="__new__">＋ New Tape</option>
-                                </select>
-                            ) : (
-                                <div className="flex items-center gap-1">
-                                    <span className="font-mono text-xs font-bold text-slate-600 bg-white border border-slate-300 rounded px-2 py-1 min-w-[100px]">{tapeNo || 'No Tape'}</span>
-                                    <button
-                                        onClick={() => {
-                                            const base = headerData.sowReportNo || 'SOW_REPORT';
-                                            const platform = headerData.platformName || 'STRUCTURE';
-                                            const postfix = inspMethod === 'DIVING' ? 'D' : 'R';
-
-                                            let maxSeq = 0;
-                                            jobTapes.forEach(t => {
-                                                const match = t.tape_no.match(/V(\d{3})[DR]$/);
-                                                if (match) {
-                                                    const seq = parseInt(match[1], 10);
-                                                    if (seq > maxSeq) maxSeq = seq;
-                                                }
-                                            });
-                                            const nextSeq = String(maxSeq + 1).padStart(3, '0');
-
-                                            setNewTapeNo(`${base} / ${platform} / V${nextSeq}${postfix}`);
-                                            setNewTapeChapter("1");
-                                            setNewTapeRemarks("");
-                                            setIsNewTapeOpen(true);
-                                        }}
-                                        className="text-[9px] font-bold text-blue-600 hover:text-blue-800 uppercase px-1.5 py-1 hover:bg-blue-50 rounded transition-colors"
-                                    >+ New</button>
-                                </div>
-                            )}
-                            {!!tapeId && (() => {
-                                const currentTape = jobTapes.find(t => t.tape_id === tapeId);
-                                if (!currentTape) return null;
-                                // Determine effective status: if last video event is Stop/END, mark as Completed
-                                const lastEvent = videoEvents.find(ev => ev.logType === 'video_log');
-                                const isStoppedByEvent = lastEvent && (lastEvent.action === 'Stop Tape' || lastEvent.action === 'END');
-                                const effectiveStatus = isStoppedByEvent ? 'COMPLETED' : currentTape.status;
-                                const isActive = effectiveStatus === 'ACTIVE';
-                                const isFull = effectiveStatus === 'FULL';
-                                const isCompleted = effectiveStatus === 'COMPLETED';
-                                return (
-                                    <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 h-5 rounded-full border ${isActive ? 'border-green-300 text-green-700 bg-green-50' :
-                                        isFull ? 'border-amber-300 text-amber-700 bg-amber-50' :
-                                            isCompleted ? 'border-slate-400 text-slate-600 bg-slate-100' :
-                                                'border-slate-300 text-slate-500 bg-slate-50'
-                                        }`}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : isFull ? 'bg-amber-500' : isCompleted ? 'bg-slate-500' : 'bg-slate-400'}`} />
-                                        {isCompleted ? 'Completed' : effectiveStatus}
-                                    </span>
-                                );
-                            })()}
-                            {activeChapter && <span className="text-[9px] font-bold text-slate-400 ml-auto">Ch. {activeChapter}</span>}
-                        </div>
-
-                        {/* Edit Tape Dialog */}
-                        <Dialog open={isEditTapeOpen} onOpenChange={setIsEditTapeOpen}>
-                            <DialogContent className="sm:max-w-[425px]">
-                                <DialogHeader>
-                                    <DialogTitle>Edit Tape Details</DialogTitle>
-                                </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label className="text-right text-xs">Tape No</Label>
-                                        <Input value={editTapeNo} onChange={(e) => setEditTapeNo(e.target.value)} className="col-span-3 h-9" />
-                                    </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label className="text-right text-xs">Chapter</Label>
-                                        <Input value={editTapeChapter} onChange={(e) => setEditTapeChapter(e.target.value)} className="col-span-3 h-9" placeholder="e.g. 01" />
-                                    </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label className="text-right text-xs">Remarks</Label>
-                                        <Input value={editTapeRemarks} onChange={(e) => setEditTapeRemarks(e.target.value)} className="col-span-3 h-9" placeholder="Optional notes" />
-                                    </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label className="text-right text-xs">Status</Label>
-                                        <select value={editTapeStatus} onChange={(e) => setEditTapeStatus(e.target.value)} className="col-span-3 h-9 rounded-md border border-slate-300 px-3 text-sm">
-                                            <option value="ACTIVE">Active</option>
-                                            <option value="FULL">Full</option>
-                                            <option value="CLOSED">Closed</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between mt-4">
-                                    <Button variant="destructive" onClick={async () => {
-                                        if (!tapeId) return;
-                                        const { data: logCheck, error: err1 } = await supabase.from('insp_video_logs').select('video_log_id').eq('tape_id', tapeId).limit(1);
-                                        const { data: recCheck, error: err2 } = await supabase.from('insp_records').select('insp_id').eq('tape_id', tapeId).limit(1);
-                                        if (err1 || err2) { toast.error("Error checking tape dependencies"); return; }
-                                        if ((logCheck && logCheck.length > 0) || (recCheck && recCheck.length > 0)) {
-                                            toast.error("Cannot delete tape: inspection records or event logs exist under this tape.", { duration: 4000 });
-                                            return;
-                                        }
-                                        if (confirm("Are you sure you want to delete this tape? This action cannot be undone.")) {
-                                            const { data: deleted, error } = await supabase.from('insp_video_tapes').delete().eq('tape_id', tapeId).select();
-                                            if (error) { toast.error("Failed to delete tape."); return; }
-                                            if (!deleted || deleted.length === 0) {
-                                                toast.error("Database policy prevented deletion. Please run the SQL file to allow deletes.");
-                                                return;
-                                            }
-                                            toast.success("Tape deleted successfully");
-                                            setJobTapes(prev => {
-                                                const filtered = prev.filter(t => t.tape_id !== tapeId);
-                                                if (filtered.length > 0) {
-                                                    const nextTape = filtered[0];
-                                                    setTapeId(nextTape.tape_id);
-                                                    setTapeNo(nextTape.tape_no);
-                                                    setActiveChapter(nextTape.chapter_no || 1);
-                                                } else {
-                                                    setTapeId(0);
-                                                    setTapeNo("");
-                                                    setActiveChapter(1);
-                                                }
-                                                return filtered;
-                                            });
-                                            setIsEditTapeOpen(false);
-                                        }
-                                    }}>Delete Tape</Button>
-                                    <Button onClick={async () => {
-                                        if (!tapeId) return;
-                                        const { error } = await supabase.from('insp_video_tapes').update({
-                                            tape_no: editTapeNo,
-                                            chapter_no: editTapeChapter || null,
-                                            remarks: editTapeRemarks || null,
-                                            status: editTapeStatus
-                                        }).eq('tape_id', tapeId);
-                                        if (error) { toast.error('Failed to update tape'); return; }
-                                        toast.success('Tape updated');
-                                        setTapeNo(editTapeNo);
-                                        setActiveChapter(editTapeChapter ? parseInt(editTapeChapter) : 1);
-                                        setJobTapes(prev => prev.map(t => t.tape_id === tapeId ? { ...t, tape_no: editTapeNo, chapter_no: editTapeChapter || null, remarks: editTapeRemarks || null, status: editTapeStatus } : t));
-                                        setIsEditTapeOpen(false);
-                                    }}>Save changes</Button>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
-
-                        {/* New Tape Dialog */}
-                        <Dialog open={isNewTapeOpen} onOpenChange={setIsNewTapeOpen}>
-                            <DialogContent className="sm:max-w-[425px]">
-                                <DialogHeader>
-                                    <DialogTitle>Create New Tape</DialogTitle>
-                                </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label className="text-right text-xs">Tape No</Label>
-                                        <Input value={newTapeNo} onChange={(e) => setNewTapeNo(e.target.value)} className="col-span-3 h-9" />
-                                    </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label className="text-right text-xs">Chapter</Label>
-                                        <Input value={newTapeChapter} onChange={(e) => setNewTapeChapter(e.target.value)} className="col-span-3 h-9" placeholder="e.g. 01" />
-                                    </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label className="text-right text-xs">Remarks</Label>
-                                        <Input value={newTapeRemarks} onChange={(e) => setNewTapeRemarks(e.target.value)} className="col-span-3 h-9" placeholder="Optional notes" />
-                                    </div>
-                                </div>
-                                <div className="flex justify-end">
-                                    <Button onClick={async () => {
-                                        if (!activeDep?.id || !newTapeNo) return;
-
-                                        // Validation: Tape number must include SOW report and Structure title if they exist.
-                                        if (headerData.sowReportNo && !newTapeNo.includes(headerData.sowReportNo)) {
-                                            toast.error('Tape No must contain the SOW Report No.');
-                                            return;
-                                        }
-                                        if (headerData.platformName && !newTapeNo.includes(headerData.platformName)) {
-                                            toast.error('Tape No must contain the Structure Title (Platform).');
-                                            return;
-                                        }
-
-                                        const insertData: any = {
-                                            tape_no: newTapeNo,
-                                            chapter_no: newTapeChapter || null,
-                                            remarks: newTapeRemarks || null,
-                                            status: 'ACTIVE'
-                                        };
-                                        if (inspMethod === 'DIVING') insertData.dive_job_id = activeDep.id;
-                                        else insertData.rov_job_id = activeDep.id;
-                                        const { data, error } = await supabase.from('insp_video_tapes').insert(insertData).select().single();
-                                        if (error) { toast.error('Failed to create tape'); return; }
-                                        toast.success('Tape created');
-                                        setJobTapes(prev => [data, ...prev]);
-                                        setTapeId(data.tape_id);
-                                        setTapeNo(data.tape_no);
-                                        setActiveChapter(data.chapter_no || 1);
-                                        setIsNewTapeOpen(false);
-                                    }}>Create Tape</Button>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
-
-                        <div className="p-2 space-y-2 shrink-0 border-b border-slate-100">
-                            {isVideoSettingsOpen && (
-                                <div className="flex gap-2">
-                                    <div className="bg-slate-50 border border-slate-100 rounded p-1.5 flex-1">
-                                        <span className="text-[9px] uppercase font-bold text-slate-400 block pb-0.5">Tape No.</span>
-                                        <Input value={tapeNo} onChange={(e) => setTapeNo(e.target.value)} className="h-6 text-xs font-mono px-2" />
-                                    </div>
-                                    <div className="bg-slate-50 border border-slate-100 rounded p-1.5 w-16 shrink-0">
-                                        <span className="text-[9px] uppercase font-bold text-slate-400 block pb-0.5">Chap.</span>
-                                        <Input type="number" value={activeChapter} onChange={(e: any) => setActiveChapter(e.target.value)} className="h-6 text-xs font-mono px-2" />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Event Logging Dashboard */}
-                            <div className="bg-slate-800 text-white rounded p-1.5 shadow-inner flex flex-col gap-1.5">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-[9px] font-bold uppercase text-slate-400 ml-1">Auto Counter</span>
-                                    <span className="font-mono text-sm font-black text-cyan-400 tracking-wider bg-black/30 px-2 py-0.5 rounded">{formatTime(vidTimer)}</span>
-                                </div>
-                                {(() => {
-                                    const lastVideoEvent = videoEvents.find(ev => ev.logType === 'video_log' && ["Start Tape", "Stop Tape", "Pause", "Resume"].includes(ev.action));
-                                    const lastAction = lastVideoEvent?.action;
-
-                                    const canStart = !lastAction || lastAction === "Stop Tape";
-                                    const canPause = lastAction === "Start Tape" || lastAction === "Resume";
-                                    const canResume = lastAction === "Pause";
-                                    const canStop = lastAction === "Start Tape" || lastAction === "Pause" || lastAction === "Resume";
-
-                                    return (
-                                        <div className="grid grid-cols-4 gap-1">
-                                            <button disabled={!canStart} onClick={() => handleLogEvent("Start Tape")} className={`bg-green-600 text-white rounded py-1.5 text-[9px] font-bold uppercase shadow-sm transition-all ${canStart ? 'hover:bg-green-500' : 'opacity-40 cursor-not-allowed'}`}>Start</button>
-                                            <button disabled={!canPause} onClick={() => handleLogEvent("Pause")} className={`bg-amber-500 text-amber-950 rounded py-1.5 text-[9px] font-bold uppercase shadow-sm transition-all ${canPause ? 'hover:bg-amber-400' : 'opacity-40 cursor-not-allowed'}`}>Pause</button>
-                                            <button disabled={!canResume} onClick={() => handleLogEvent("Resume")} className={`bg-blue-600 text-white rounded py-1.5 text-[9px] font-bold uppercase shadow-sm transition-all ${canResume ? 'hover:bg-blue-500' : 'opacity-40 cursor-not-allowed'}`}>Resume</button>
-                                            <button disabled={!canStop} onClick={() => handleLogEvent("Stop Tape")} className={`bg-red-600 text-white rounded py-1.5 text-[9px] font-bold uppercase shadow-sm transition-all ${canStop ? 'hover:bg-red-500' : 'opacity-40 cursor-not-allowed'}`}>Stop</button>
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-                        </div>
-
-                        <div className="px-2 py-1.5 text-[10px] font-bold uppercase text-slate-500 tracking-widest border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-                            <span className="flex items-center gap-2">
-                                Video Log
-                                {!!tapeId && <span className="font-mono text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 normal-case tracking-normal">Tape: {tapeNo || `#${tapeId}`}</span>}
-                            </span>
-                            <Badge className="h-4 text-[9px] px-1 bg-slate-200 text-slate-600 rounded">{videoEvents.length}</Badge>
-                        </div>
-                        <ScrollArea className="flex-1 p-1">
-                            <div className="space-y-1">
-                                {syncLoading && videoEvents.length === 0 && (
-                                    <div className="flex items-center justify-center py-4 text-slate-400">
-                                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                                        <span className="text-[10px] font-bold uppercase">Loading video logs...</span>
-                                    </div>
-                                )}
-                                {!syncLoading && videoEvents.length === 0 && activeDep?.id && (
-                                    <div className="flex items-center justify-center py-4 text-slate-400">
-                                        <span className="text-[10px] uppercase">No video log events. Press START to begin.</span>
-                                    </div>
-                                )}
-                                {videoEvents.map((ev: any) => (
-                                    <div key={ev.id} className="flex justify-between items-center text-[10px] px-2 py-1.5 bg-white border border-slate-100 rounded hover:border-blue-200 group transition-all">
-                                        <div className="flex gap-2 items-center">
-                                            <div className="flex flex-col">
-                                                <span className="font-mono text-slate-500 bg-slate-50 px-1 py-0.5 rounded border border-slate-200">{ev.time}</span>
-                                                <span className="text-[8px] text-slate-400 font-mono mt-0.5">{ev.eventTime ? parseDbDate(ev.eventTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : ''}</span>
-                                            </div>
-                                            <span className={`font-bold ${ev.action === 'Start Tape' || ev.action === 'Resume' ? 'text-green-600' : ev.action === 'Pause' ? 'text-amber-600' : ev.action === 'Stop Tape' ? 'text-red-600' : ev.action === 'ANOMALY' ? 'text-red-600 tracking-wider text-[9px]' : 'text-blue-600 tracking-wider text-[9px]'}`}>{ev.action}</span>
-                                        </div>
-                                        <div className="flex gap-0.5 opacity-20 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={async () => {
-                                                    setEditingEvent(ev);
-                                                    if (ev.logType === 'video_log') {
-                                                        const { data } = await supabase.from('insp_video_logs')
-                                                            .select('event_time, tape_counter_start')
-                                                            .eq('tape_id', tapeId)
-                                                            .lt('event_time', ev.eventTime)
-                                                            .in('event_type', ['NEW_LOG_START', 'RESUME', 'START_TASK', 'RESUME_TASK'])
-                                                            .order('event_time', { ascending: false })
-                                                            .limit(1)
-                                                            .maybeSingle();
-                                                        setLastStartEventForEdit(data || null);
-                                                    }
-                                                }}
-                                                className="p-1 hover:bg-slate-100 rounded text-slate-600"
-                                                title="Modify Event"
-                                                disabled={ev.logType === 'insp'}
-                                            >
-                                                <Edit className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button onClick={() => handleDeleteEvent(ev.id, ev.logType, ev.realId)} className="p-1 hover:bg-red-50 rounded text-red-500" title="Delete Event"><Trash2 className="w-3.5 h-3.5" /></button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </ScrollArea>
-                    </Card>
 
                 </div>
 
@@ -4690,423 +3874,45 @@ function V10PreviewLayout() {
                                         </div>
                                     </div>
                                 ) : (
-                                    // Dynamic Form (In-page inline, collapsible)
-                                    <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white z-10">
-                                        <div className="p-3 bg-blue-600 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700">
-                                            <span className="font-black tracking-wide text-sm flex items-center gap-2">
-                                                <FileText className="w-4 h-4 text-blue-200" />
-                                                <span className="text-blue-100 opacity-60 font-medium">{selectedComp.name} /</span> Spec: {(() => {
-                                                    // Prioritize code match to distinguish between similar names like GVI and RGVI
-                                                    const specObj = allInspectionTypes.find(t => (t.code || '').trim() === (activeSpec || '').trim()) || 
-                                                                   allInspectionTypes.find(t => (t.name || '').trim() === (activeSpec || '').trim());
-                                                    return specObj ? specObj.name : activeSpec;
-                                                })()}
-                                            </span>
-                                            <div className="flex items-center gap-3">
-                                                <span className="font-mono text-xs font-bold bg-black/20 px-2 py-1 rounded border border-white/10 flex items-center gap-1.5"><Video className="w-3 h-3 text-blue-200" /> {formatTime(vidTimer)}</span>
-                                                <button onClick={() => setCompSpecDialogOpen(true)} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications">
-                                                    <Info className="w-4 h-4" />
-                                                </button>
-                                                <button onClick={() => resetForm()} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Cancel/Close"><X className="w-4 h-4" /></button>
-                                            </div>
-                                        </div>
-
-                                        <ScrollArea className="flex-1 p-5">
-                                            <div className="space-y-5 max-w-2xl mx-auto">
-                                                <div className="grid grid-cols-2 gap-5">
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><MapPin className="w-3 h-3" /> Verification Depth</label>
-                                                        <Input defaultValue={selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? `${selectedComp.lowestElev}m` : selectedComp.depth} className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500" />
-                                                    </div>
-                                                    {(selectedComp.startElev !== '-' || selectedComp.endElev !== '-') && (
-                                                        <div className="space-y-1">
-                                                            <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">Elevation Range</label>
-                                                            <div className="h-10 px-3 flex items-center text-sm font-bold bg-slate-50 border border-slate-200 rounded-md text-slate-600">
-                                                                {selectedComp.startElev}m → {selectedComp.endElev}m
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-
-
-                                                {/* Dynamic Spec Forms based on Inspection Type */}
-                                                {activeFormProps.length > 0 && (
-                                                    <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">
-                                                        <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Inspection Specification</div>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            {activeFormProps.map((p: any, idx: number) => {
-                                                                const isAnomaly = findingType === 'Anomaly';
-                                                                if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
-
-                                                                return (
-                                                                    <div key={`${p.name || p.label}-${idx}`} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
-                                                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">{p.label || p.name}</label>
-                                                                        {renderInspectionField(p, 'primary')}
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Inspection Result Toggle moved below spec fields */}
-                                                <div className="space-y-3 p-4 border-2 border-slate-200 rounded-lg bg-white shadow-sm animate-in fade-in slide-in-from-top-2">
-                                                    <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">Inspection Result</label>
-                                                    <div className="grid grid-cols-4 gap-2">
-                                                        <Button
-                                                            variant={findingType === 'Pass' ? 'default' : 'outline'}
-                                                            onClick={() => {
-                                                                if (findingType === 'Anomaly' || findingType === 'Finding') {
-                                                                    // If switching away from anomaly/finding, check if we should warn
-                                                                    if (anomalyData.defectCode || anomalyData.description) {
-                                                                        if (!confirm('Switching to Pass will clear the defect/finding details. Continue?')) return;
-                                                                    }
-                                                                    setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
-                                                                        rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
-                                                                    setLastAutoMatchedRuleId(null);
-                                                                    setIsManualOverride(false);
-                                                                }
-                                                                setFindingType('Pass');
-                                                            }}
-                                                            className={`h-11 text-xs font-bold transition-all ${findingType === 'Pass' ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-green-50'}`}
-                                                        >
-                                                            <CheckCircle2 className="w-4 h-4 mr-1" /> Pass
-                                                        </Button>
-                                                        <Button
-                                                            variant={findingType === 'Finding' ? 'default' : 'outline'}
-                                                            onClick={() => {
-                                                                if (findingType !== 'Finding') setAnomalyData(prev => ({ ...prev, referenceNo: '' }));
-                                                                setFindingType('Finding');
-                                                                setIsManualOverride(true);
-                                                            }}
-                                                            className={`h-11 text-xs font-bold transition-all ${findingType === 'Finding' ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-blue-50'}`}
-                                                        >
-                                                            <FileText className="w-4 h-4 mr-1" /> Finding
-                                                        </Button>
-                                                        <Button
-                                                            variant={findingType === 'Anomaly' ? 'default' : 'outline'}
-                                                            onClick={() => {
-                                                                if (findingType !== 'Anomaly') setAnomalyData(prev => ({ ...prev, referenceNo: '' }));
-                                                                setFindingType('Anomaly');
-                                                                setIsManualOverride(true);
-                                                            }}
-                                                            className={`h-11 text-xs font-bold transition-all ${findingType === 'Anomaly' ? 'bg-red-600 hover:bg-red-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-red-50'}`}
-                                                        >
-                                                            <AlertCircle className="w-4 h-4 mr-1" /> Anomaly
-                                                        </Button>
-                                                        <Button
-                                                            variant={findingType === 'Incomplete' ? 'default' : 'outline'}
-                                                            onClick={() => {
-                                                                if (findingType === 'Anomaly' || findingType === 'Finding') {
-                                                                    if (anomalyData.defectCode || anomalyData.description) {
-                                                                        if (!confirm('Switching to Incomplete will clear the defect/finding details. Continue?')) return;
-                                                                    }
-                                                                    setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
-                                                                        rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
-                                                                }
-                                                                setFindingType('Incomplete');
-                                                                setIsManualOverride(true);
-                                                            }}
-                                                            className={`h-11 text-xs font-bold transition-all ${findingType === 'Incomplete' ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-amber-50'}`}
-                                                        >
-                                                            <Clock className="w-4 h-4 mr-1" /> Incomplete
-                                                        </Button>
-                                                    </div>
-                                                </div>
-
-                                                {/* Conditional Anomaly/Finding Extra Fields */}
-                                                {(findingType === 'Anomaly' || findingType === 'Finding') && (() => {
-                                                    const isAnomaly = findingType === 'Anomaly';
-                                                    const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
-                                                    const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
-                                                    return (
-                                                        <div className={`mt-3 p-3 rounded-lg border-2 space-y-3 animate-in fade-in slide-in-from-top-2 ${isAnomaly ? 'border-red-200 bg-red-50/30' : 'border-blue-200 bg-blue-50/30'}`}>
-                                                            <div className={`text-[10px] font-black uppercase tracking-widest border-b pb-2 ${isAnomaly ? 'text-red-700 border-red-200' : 'text-blue-700 border-blue-200'}`}>
-                                                                {isAnomaly ? '⚠ Anomaly / Defect Details' : '📋 Finding Details'}
-                                                            </div>
-                                                            <div className="grid grid-cols-2 gap-4">
-                                                                <div className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Code' : 'Finding Code'} *</label>
-                                                                    <select
-                                                                        value={anomalyData.defectCode}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, defectCode: e.target.value })}
-                                                                        className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                    >
-                                                                        <option value="">Select Code</option>
-                                                                        {defectCodes.map(c => (
-                                                                            <option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-                                                                <div className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">{isAnomaly ? 'Defect Type' : 'Finding Type'}</label>
-                                                                    <select
-                                                                        value={anomalyData.defectType}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, defectType: e.target.value })}
-                                                                        className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                    >
-                                                                        <option value="">Select Type</option>
-                                                                        {availableDefectTypes.map(t => (
-                                                                            <option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                    {anomalyData.defectCode && availableDefectTypes.length < allDefectTypes.length && (
-                                                                        <span className="text-[9px] text-blue-500 font-medium tracking-wide">Filtered by selected code ({availableDefectTypes.length} types)</span>
-                                                                    )}
-                                                                </div>
-                                                                <div className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Priority *</label>
-                                                                    <select
-                                                                        value={anomalyData.priority}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, priority: e.target.value })}
-                                                                        className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
-                                                                    >
-                                                                        <option value="">Select Priority</option>
-                                                                        {priorities.map(p => (
-                                                                            <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-                                                                <div className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Reference No</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type="text"
-                                                                            readOnly
-                                                                            value={anomalyData.referenceNo}
-                                                                            placeholder="Auto-generated on Save..."
-                                                                            className={`flex h-9 w-full rounded-md border border-slate-200 bg-slate-50/50 px-2.5 text-xs font-mono font-bold text-slate-500 cursor-not-allowed`}
-                                                                        />
-                                                                        {!anomalyData.referenceNo && (
-                                                                            <div className="absolute left-0 -bottom-4">
-                                                                                <span className="text-[9px] text-slate-400 font-medium italic">Format: {new Date().getFullYear()} / {headerData.platformName.slice(0, 10)}... / {findingType === 'Anomaly' ? 'A' : 'F'}-XXX</span>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">{categoryLabel} Description</label>
-                                                                <textarea
-                                                                    value={anomalyData.description}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, description: e.target.value })}
-                                                                    placeholder={`Detailed description of the ${categoryLabel.toLowerCase()}...`}
-                                                                    className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
-                                                                ></textarea>
-                                                            </div>
-
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Recommended Action</label>
-                                                                <textarea
-                                                                    value={anomalyData.recommendedAction}
-                                                                    onChange={(e) => setAnomalyData({ ...anomalyData, recommendedAction: e.target.value })}
-                                                                    placeholder="Recommended remedial action..."
-                                                                    className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
-                                                                ></textarea>
-                                                            </div>
-
-                                                            <div className="p-3 border border-green-100 bg-green-50/80 rounded-lg space-y-3">
-                                                                <div className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        id="rectifyCheck"
-                                                                        checked={anomalyData.rectify}
-                                                                        onChange={(e) => setAnomalyData({ ...anomalyData, rectify: e.target.checked })}
-                                                                        className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-green-300 cursor-pointer"
-                                                                    />
-                                                                    <label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800 cursor-pointer">Rectify {categoryLabel}</label>
-                                                                </div>
-                                                                {anomalyData.rectify && (
-                                                                    <div className="space-y-3 animate-in fade-in zoom-in-95">
-                                                                        <div className="space-y-1">
-                                                                            <label className="text-[9px] font-bold text-green-700 uppercase">Rectified Date</label>
-                                                                            <Input
-                                                                                type="date"
-                                                                                value={anomalyData.rectifiedDate}
-                                                                                onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedDate: e.target.value })}
-                                                                                className="h-8 text-xs bg-white border-green-200"
-                                                                            />
-                                                                        </div>
-                                                                        <div className="space-y-1">
-                                                                            <label className="text-[9px] font-bold text-green-700 uppercase">Rectification Remarks</label>
-                                                                            <textarea
-                                                                                value={anomalyData.rectifiedRemarks}
-                                                                                onChange={(e) => setAnomalyData({ ...anomalyData, rectifiedRemarks: e.target.value })}
-                                                                                placeholder="How was it rectified?"
-                                                                                className="w-full min-h-[50px] rounded border border-green-200 p-2 text-xs bg-white focus:ring-green-500"
-                                                                            ></textarea>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )})()}
-
-                                                    {findingType === 'Incomplete' && (
-                                                        <div className="pt-3 animate-in fade-in slide-in-from-top-2">
-                                                            <label className="text-[10px] font-bold text-amber-600 uppercase mb-1.5 block">Reason for Incomplete Task *</label>
-                                                            <textarea
-                                                                value={incompleteReason}
-                                                                onChange={(e) => setIncompleteReason(e.target.value)}
-                                                                placeholder="e.g. Visibility issues, limited access, dive time limit..."
-                                                                className="w-full min-h-[80px] rounded border border-amber-200 p-2 text-xs bg-amber-50/30 focus:ring-amber-500"
-                                                            ></textarea>
-                                                        </div>
-                                                    )}
-
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><FileText className="w-3 h-3" /> Detailed Field Notes</label>
-                                                    <textarea value={recordNotes} onChange={(e) => setRecordNotes(e.target.value)} placeholder="Observation specifics, dimensions, characteristics..." className="w-full min-h-[100px] rounded-lg border border-slate-300 p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50"></textarea>
-                                                </div>
-
-                                                {/* Enhanced Attachment Manager */}
-                                                <div className="space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                                                            <Paperclip className="w-3.5 h-3.5" /> Attachments ({pendingAttachments.length})
-                                                        </label>
-                                                        <div className="flex gap-1.5">
-                                                            <Button 
-                                                                variant="outline" 
-                                                                size="sm" 
-                                                                className="h-7 text-[10px] font-bold border-slate-300 hover:bg-slate-100"
-                                                                onClick={() => {
-                                                                    // Capture logic for images in recordedFiles
-                                                                    const snaps = recordedFiles.filter(f => f.type === 'photo');
-                                                                    if (snaps.length > 0) {
-                                                                        setIsAttachmentManagerOpen(true);
-                                                                    } else {
-                                                                        toast.info("No screen captures available. Grab frames from the stream first.");
-                                                                    }
-                                                                }}
-                                                            >
-                                                                <Camera className="w-3.5 h-3.5 mr-1 text-blue-500" /> From Grabs
-                                                            </Button>
-                                                            <Button 
-                                                                variant="outline" 
-                                                                size="sm" 
-                                                                className="h-7 text-[10px] font-bold border-slate-300 hover:bg-slate-100"
-                                                                onClick={() => {
-                                                                    const input = document.createElement('input');
-                                                                    input.type = 'file';
-                                                                    input.multiple = true;
-                                                                    input.onchange = (e) => {
-                                                                        const files = (e.target as HTMLInputElement).files;
-                                                                        if (files) {
-                                                                            const newAtts = Array.from(files).map(f => {
-                                                                                const isAnomaly = findingType === 'Anomaly';
-                                                                                const isFinding = findingType === 'Finding';
-                                                                                const prefix = isAnomaly ? 'Anomaly - ' : (isFinding ? 'Findings - ' : '');
-                                                                                const refNo = anomalyData.referenceNo || 'Pending';
-                                                                                
-                                                                                return {
-                                                                                    id: Math.random().toString(36).substr(2, 9),
-                                                                                    file: f,
-                                                                                    name: f.name,
-                                                                                    type: f.type.startsWith('video') ? 'VIDEO' as const : (f.type.startsWith('image') ? 'PHOTO' as const : 'DOCUMENT' as const),
-                                                                                    title: prefix ? `${prefix}${refNo}` : f.name,
-                                                                                    description: '',
-                                                                                    source: 'UPLOAD',
-                                                                                    previewUrl: URL.createObjectURL(f)
-                                                                                };
-                                                                            });
-                                                                            setPendingAttachments(prev => [...prev, ...newAtts]);
-                                                                        }
-                                                                    };
-                                                                    input.click();
-                                                                }}
-                                                            >
-                                                                <CloudUpload className="w-3.5 h-3.5 mr-1 text-green-500" /> Upload
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-
-                                                    {pendingAttachments.length > 0 && (
-                                                        <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-1 bg-slate-50/50 rounded-lg border border-slate-100">
-                                                            {pendingAttachments.map(att => (
-                                                                <div key={att.id} className="relative group bg-white border border-slate-200 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 transition-all">
-                                                                    <div className="w-12 h-12 bg-slate-100 rounded overflow-hidden flex-shrink-0 relative">
-                                                                        {att.previewUrl ? (
-                                                                            <img src={att.previewUrl} className="w-full h-full object-cover" />
-                                                                        ) : (
-                                                                            <div className="w-full h-full flex items-center justify-center bg-slate-200">
-                                                                                {att.type === 'VIDEO' ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0 pr-6 flex flex-col gap-0.5">
-                                                                        <Input 
-                                                                            value={att.title} 
-                                                                            onChange={(e) => setPendingAttachments(prev => prev.map(a => a.id === att.id ? { ...a, title: e.target.value } : a))}
-                                                                            className="h-5 text-[10px] font-black border-none bg-slate-50/50 rounded-sm px-1 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-800"
-                                                                            placeholder="Title..."
-                                                                        />
-                                                                        <Input 
-                                                                            value={att.description} 
-                                                                            onChange={(e) => setPendingAttachments(prev => prev.map(a => a.id === att.id ? { ...a, description: e.target.value } : a))}
-                                                                            className="h-4 text-[9px] font-medium italic border-none bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-500"
-                                                                            placeholder="Remark..."
-                                                                        />
-                                                                    </div>
-                                                                    <button 
-                                                                        onClick={() => setPendingAttachments(prev => prev.filter(a => a.id !== att.id))}
-                                                                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                                                                    >
-                                                                        <X className="w-3 h-3" />
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {pendingAttachments.length === 0 && (
-                                                        <div className="py-6 border border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center bg-slate-50 opacity-60">
-                                                            <Paperclip className="w-6 h-6 text-slate-300 mb-1" />
-                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No Attachments Picked</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="pt-2 pb-6">
-                                                    {(() => {
-                                                        const isDepActive = !!activeDep && activeDep.raw?.status !== 'COMPLETED';
-                                                        const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
-                                                        const hasTape = !!tapeId;
-                                                        const isRecording = vidState === 'RECORDING';
-                                                        const canCommit = (isDepActive && isAtWorksite && hasTape && isRecording) || manualOverride;
-
-                                                        const issues: string[] = [];
-                                                        if (!isDepActive) issues.push(`${inspMethod === 'DIVING' ? 'Dive' : 'ROV'} log not active`);
-                                                        if (!isAtWorksite) issues.push('Not at worksite yet');
-                                                        if (!hasTape) issues.push('No tape selected');
-                                                        if (!isRecording) issues.push('Video not recording');
-
-                                                        return (
-                                                            <>
-                                                                {!canCommit && (
-                                                                    <div className="mb-2 p-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-semibold flex items-start gap-2">
-                                                                        <span className="text-amber-500 text-sm leading-none mt-0.5">⚠</span>
-                                                                        <div>
-                                                                            <span className="font-black uppercase text-[9px] tracking-wider block mb-0.5">Checklist incomplete</span>
-                                                                            {issues.map((issue, i) => (
-                                                                                <span key={i} className="block text-amber-700">• {issue}</span>
-                                                                            ))}
-                                                                            <span className="block mt-1 text-[9px] text-amber-500">Enable <b>Manual Entry</b> mode in the header to bypass.</span>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                                <Button disabled={isCommitting || !canCommit} onClick={handleCommitRecord} className={`w-full h-14 font-black shadow-lg text-white text-base tracking-wide rounded-xl transition-all ${canCommit ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300 cursor-not-allowed'}`}>
-                                                                    <Save className="w-5 h-5 mr-2" /> {isCommitting ? "Committing..." : "Commit Record & Reset"}
-                                                                </Button>
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            </div>
-                                        </ScrollArea>
-                                    </div>
+                                    <InspectionForm
+                                        selectedComp={selectedComp}
+                                        activeSpec={activeSpec}
+                                        allInspectionTypes={allInspectionTypes}
+                                        activeFormProps={activeFormProps}
+                                        findingType={findingType}
+                                        setFindingType={setFindingType}
+                                        renderInspectionField={renderInspectionField}
+                                        anomalyData={anomalyData}
+                                        setAnomalyData={setAnomalyData}
+                                        defectCodes={defectCodes}
+                                        allDefectTypes={allDefectTypes}
+                                        availableDefectTypes={availableDefectTypes}
+                                        priorities={priorities}
+                                        headerData={headerData}
+                                        isManualOverride={manualOverride}
+                                        setIsManualOverride={setManualOverride}
+                                        setLastAutoMatchedRuleId={setLastAutoMatchedRuleId}
+                                        handleCommitRecord={handleCommitRecord}
+                                        onClose={resetForm}
+                                        onCapturePhoto={handleGrabPhoto}
+                                        isCommitting={isCommitting}
+                                        vidTimer={vidTimer}
+                                        formatTime={formatTime}
+                                        setCompSpecDialogOpen={setCompSpecDialogOpen}
+                                        resetForm={resetForm}
+                                        incompleteReason={incompleteReason}
+                                        setIncompleteReason={setIncompleteReason}
+                                        recordNotes={recordNotes}
+                                        setRecordNotes={setRecordNotes}
+                                        pendingAttachments={pendingAttachments}
+                                        setPendingAttachments={setPendingAttachments}
+                                        setIsAttachmentManagerOpen={setIsAttachmentManagerOpen}
+                                        recordedFiles={recordedFiles}
+                                        activeDep={activeDep}
+                                        currentMovement={currentMovement}
+                                        tapeId={tapeId}
+                                        vidState={vidState}
+                                    />
                                 )}
                             </div>
                         )}
