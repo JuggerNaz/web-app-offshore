@@ -16,7 +16,8 @@ import {
     COATING_CONDITION_LIST, 
     COMPONENT_CONDITION_LIST, 
     ANODE_TYPE_LIST, 
-    ANODE_DEPLETION_LIST 
+    ANODE_DEPLETION_LIST,
+    ANODE_DEPLETION_GROUPS 
 } from "../constants";
 
 interface InspectionFieldProps {
@@ -92,6 +93,8 @@ const InspectionField = ({
             options = [...ANODE_DEPLETION_LIST];
         }
 
+        const isGrouped = isAnodeDep && options.length > 0 && ANODE_DEPLETION_GROUPS.length > 0;
+
         const filteredOptions = options.filter(opt => 
             String(opt).toLowerCase().includes(searchTerm.toLowerCase())
         );
@@ -154,8 +157,36 @@ const InspectionField = ({
                                 />
                             </div>
                         </div>
-                        <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
-                            {filteredOptions.length > 0 ? (
+                        <div className="max-h-[240px] overflow-y-auto custom-scrollbar p-1">
+                            {isGrouped && !searchTerm ? (
+                                <div className="space-y-1">
+                                    {ANODE_DEPLETION_GROUPS.map((group) => (
+                                        <div key={group.type}>
+                                            <div className="px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 rounded sticky top-0 z-10 border-b border-slate-100">
+                                                {group.type}
+                                            </div>
+                                            <div className="space-y-0.5 mt-0.5">
+                                                {group.options.map((opt) => (
+                                                    <button
+                                                        key={opt}
+                                                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 hover:text-blue-700 rounded transition-colors font-medium flex items-center justify-between group"
+                                                        onClick={() => {
+                                                            handler(p.name || p.label, opt);
+                                                            if (type === 'primary') {
+                                                                setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: opt }));
+                                                            }
+                                                            setOpenPopovers((prev: any) => ({ ...prev, [p.name || p.label]: false }));
+                                                        }}
+                                                    >
+                                                        <span>{opt.split(': ')[1]}</span>
+                                                        {currentValue === opt && <div className={`w-1.5 h-1.5 ${type === 'secondary' ? 'bg-amber-500' : 'bg-blue-600'} rounded-full`} />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : filteredOptions.length > 0 ? (
                                 <div className="space-y-0.5">
                                     {filteredOptions.map((opt) => (
                                         <button

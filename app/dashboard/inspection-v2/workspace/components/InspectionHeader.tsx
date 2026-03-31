@@ -10,7 +10,8 @@ import {
     Layout,
     History,
     ChevronDown,
-    Check
+    Check,
+    Grid3X3
 } from "lucide-react";
 import Link from 'next/link';
 import {
@@ -31,6 +32,8 @@ interface InspectionHeaderProps {
     currentRecords: any[];
     generateInspectionReportByType: (id: any) => void;
     generateFullInspectionReport: () => void;
+    jobPackId?: string | null;
+    structureId?: string | null;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
@@ -42,7 +45,9 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     allInspectionTypes,
     currentRecords,
     generateInspectionReportByType,
-    generateFullInspectionReport
+    generateFullInspectionReport,
+    jobPackId,
+    structureId
 }) => {
     return (
         <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0">
@@ -120,7 +125,25 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                     </DropdownMenuContent>
                 </DropdownMenu>
 
-                <Link href="/dashboard/settings"><Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><Settings className="w-4 h-4 mr-2" /> Workspace</Button></Link>
+                {jobPackId && structureId ? (
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="bg-blue-600 border-blue-700 text-white hover:bg-blue-700 hover:text-white h-8"
+                        onClick={() => {
+                            const structType = headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM';
+                            const currentUrl = window.location.href;
+                            const returnTo = encodeURIComponent(currentUrl);
+                            router.push(`/dashboard/jobpack/${jobPackId}?tab=sow&structure=${structType}-${structureId}&returnTo=${returnTo}`);
+                        }}
+                    >
+                        <Grid3X3 className="w-4 h-4 mr-2" /> Workspace
+                    </Button>
+                ) : (
+                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-400 h-8 cursor-not-allowed opacity-50" disabled>
+                        <Grid3X3 className="w-4 h-4 mr-2" /> Workspace
+                    </Button>
+                )}
             </div>
         </header>
     );

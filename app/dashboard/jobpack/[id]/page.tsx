@@ -1340,6 +1340,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
             data?.data?.status === "CLOSED" ||
             structureStatus?.[`${sowStructure.type}-${sowStructure.id}`]?.status === "CLOSED"
           }
+          returnTo={searchParams.get('returnTo') ? decodeURIComponent(searchParams.get('returnTo')!) : null}
         />
       )}
 

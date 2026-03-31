@@ -3294,6 +3294,8 @@ function V10PreviewLayout() {
                 currentRecords={currentRecords}
                 generateInspectionReportByType={generateInspectionReportByType}
                 generateFullInspectionReport={generateFullInspectionReport}
+                jobPackId={jobPackId}
+                structureId={structureId}
             />
 
             {/* DEPLOYMENTS SUB-HEADER */}

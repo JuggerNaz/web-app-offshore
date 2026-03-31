@@ -74,7 +74,7 @@ export const VideoInterface = ({
         <Card className="overflow-hidden border-slate-200 shadow-xl bg-slate-900 flex flex-col h-full relative group">
             <div className="flex-1 relative min-h-0 bg-black flex items-center justify-center overflow-hidden">
                 {!streamActive && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 z-10 bg-slate-900/80 backdrop-blur-sm">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 z-30 bg-slate-900/80 backdrop-blur-sm">
                         <div className="h-20 w-20 rounded-full bg-slate-800 flex items-center justify-center animate-pulse">
                             <VideoOff className="h-10 w-10 text-slate-600" />
                         </div>
@@ -119,6 +119,7 @@ export const VideoInterface = ({
                 </div>
 
                 {/* Bottom Controls Overlay */}
+                {streamActive && (
                 <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -180,6 +181,7 @@ export const VideoInterface = ({
                         </div>
                     </div>
                 </div>
+                )}
             </div>
         </Card>
     );
