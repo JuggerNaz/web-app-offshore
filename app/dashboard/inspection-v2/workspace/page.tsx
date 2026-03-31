@@ -242,6 +242,7 @@ function V10PreviewLayout() {
     const [attachmentMetadata, setAttachmentMetadata] = useState({ title: '', description: '' });
     const [isCommitting, setIsCommitting] = useState(false);
     const [pipWindow, setPipWindow] = useState<any>(null);
+    const [capturedEventsPipWindow, setCapturedEventsPipWindow] = useState<any>(null);
 
     // Multiple Attachment State
     const [pendingAttachments, setPendingAttachments] = useState<Array<{
@@ -558,6 +559,57 @@ function V10PreviewLayout() {
             return new Date();
         }
     }, []);
+
+    const handlePopoutCapturedEvents = async () => {
+        if (!('documentPictureInPicture' in window)) {
+            toast.error("Floating window is not supported in this browser. Please use Chrome or Edge.");
+            return;
+        }
+
+        try {
+            if (capturedEventsPipWindow) {
+                capturedEventsPipWindow.close();
+                return;
+            }
+
+            const pip = await (window as any).documentPictureInPicture.requestWindow({
+                width: 1000,
+                height: 600,
+            });
+
+            Array.from(document.styleSheets).forEach((styleSheet) => {
+                try {
+                    const cssRules = styleSheet.cssRules;
+                    if (cssRules) {
+                        const newStyleEl = document.createElement('style');
+                        Array.from(cssRules).forEach((rule) => {
+                            newStyleEl.appendChild(document.createTextNode(rule.cssText));
+                        });
+                        pip.document.head.appendChild(newStyleEl);
+                    }
+                } catch (e) {
+                    if (styleSheet.href) {
+                        const newLinkEl = document.createElement('link');
+                        newLinkEl.rel = 'stylesheet';
+                        newLinkEl.href = styleSheet.href;
+                        pip.document.head.appendChild(newLinkEl);
+                    }
+                }
+            });
+
+            // Add basic HTML structure overlay
+            pip.document.head.insertAdjacentHTML('beforeend', '<style>body { margin: 0; padding: 0; overflow: hidden; background: #fff; font-family: system-ui, -apple-system, sans-serif; }</style>');
+
+            setCapturedEventsPipWindow(pip);
+
+            pip.addEventListener("pagehide", () => {
+                setCapturedEventsPipWindow(null);
+            });
+        } catch (error) {
+            console.error("Failed to open captured events floating window:", error);
+            toast.error("Failed to open floating window");
+        }
+    };
 
     const handleDeleteRecord = async (id: number) => {
         // Fetch record to check for latest anomaly/finding rule
@@ -3921,14 +3973,28 @@ function V10PreviewLayout() {
                     </Card>
 
                     {/* Session Records Table (Records session completed before in the current dive) */}
-                    <Card className="flex flex-col h-[280px] border-slate-200 shadow-sm rounded-md bg-white overflow-hidden shrink-0">
-                        <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center">
-                            <span>CAPTURED EVENTS</span>
-                            <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
+                    <Card className={`flex flex-col ${capturedEventsPipWindow ? 'h-[40px]' : 'h-[280px]'} border-slate-200 shadow-sm rounded-md bg-white overflow-hidden shrink-0 transition-all duration-500 ease-in-out`}>
+                        <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
+                            <div className="flex items-center gap-2">
+                                <span>CAPTURED EVENTS</span>
+                                <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
+                            </div>
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-6 px-2 text-[10px] text-slate-300 hover:text-white hover:bg-slate-700" 
+                                onClick={handlePopoutCapturedEvents} 
+                                title={capturedEventsPipWindow ? "Close Floating Window" : "Float as Window"}
+                            >
+                                {capturedEventsPipWindow ? <X className="w-3.5 h-3.5 mr-1" /> : <Maximize2 className="w-3.5 h-3.5 mr-1" />}
+                                {capturedEventsPipWindow ? "Dock" : "Float"}
+                            </Button>
                         </div>
-                        <ScrollArea className="flex-1 w-full relative">
-                            <table className="w-full text-left text-xs whitespace-nowrap">
-                                <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+                        
+                        {!capturedEventsPipWindow && (
+                            <ScrollArea className="flex-1 w-full relative">
+                                <table className="w-full text-left text-xs whitespace-nowrap">
+                                    <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
                                     <tr>
                                         <th className="px-3 py-3 w-20">Date <History className="w-3.5 h-3.5 ml-1 inline opacity-60" /></th>
                                         <th className="px-3 py-3">Type</th>
@@ -4074,8 +4140,170 @@ function V10PreviewLayout() {
                                 </tbody>
                             </table>
                         </ScrollArea>
+                        )}
                     </Card>
 
+                    {/* Captured Events PiP Portal */}
+                    {capturedEventsPipWindow && createPortal(
+                        <div className="h-screen w-screen flex flex-col bg-white overflow-hidden">
+                            <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-2">
+                                    <span>CAPTURED EVENTS (FLOATING)</span>
+                                    <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
+                                </div>
+                                <button onClick={() => capturedEventsPipWindow.close()} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"><X className="w-4 h-4" /></button>
+                            </div>
+                            <ScrollArea className="flex-1 w-full relative">
+                                <table className="w-full text-left text-xs whitespace-nowrap">
+                                    <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+                                        <tr>
+                                            <th className="px-3 py-3 w-20">Date <History className="w-3.5 h-3.5 ml-1 inline opacity-60" /></th>
+                                            <th className="px-3 py-3">Type</th>
+                                            <th className="px-3 py-3">Component</th>
+                                            <th className="px-3 py-3 text-center">Elev/KP</th>
+                                            <th className="px-3 py-3 text-center">Status</th>
+                                            <th className="px-3 py-3 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {currentRecords.map((r: any) => {
+                                            const formatCounter = (val: any) => {
+                                                if (!val) return null;
+                                                if (typeof val === 'string' && val.includes(':')) return val;
+                                                const sec = Number(val);
+                                                if (!isNaN(sec)) {
+                                                    const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+                                                    const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+                                                    const s = Math.floor(sec % 60).toString().padStart(2, '0');
+                                                    return `${h}:${m}:${s}`;
+                                                }
+                                                return val;
+                                            };
+                                            return (
+                                                <tr key={r.insp_id} className="hover:bg-slate-50 group">
+                                                    <td className="px-3 py-3 text-slate-600 align-top">
+                                                        <div className="text-sm font-medium">{r.inspection_date ? format(new Date(r.inspection_date), 'dd MMM') : '-'}</div>
+                                                        <div className="text-[10px] opacity-70 mt-0.5">{r.inspection_time?.slice(0, 5)}</div>
+                                                    </td>
+                                                    <td className="px-3 py-3 font-bold text-slate-800 align-top">
+                                                        <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
+                                                        <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
+                                                            {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
+                                                        </Badge>
+                                                        {(r.tape_id || r.inspection_data?._meta_timecode || r.tape_count_no) && (
+                                                            <div className="mt-1.5 flex flex-col gap-1">
+                                                                {r.tape_id && (
+                                                                    <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
+                                                                        {jobTapes.find(t => t.tape_id === r.tape_id)?.tape_no || `TAPE ID: ${r.tape_id}`}
+                                                                    </span>
+                                                                )}
+                                                                {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
+                                                                    <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5">
+                                                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                                                        {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-3 py-3 align-top text-slate-700">
+                                                        <div className="font-bold text-sm">{r.structure_components?.q_id || '-'}</div>
+                                                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
+                                                    </td>
+                                                    <td className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                                                        {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
+                                                    </td>
+                                                    <td className="px-3 py-3 align-top text-center">
+                                                        <div className="flex flex-col items-center gap-1.5 mt-0.5">
+                                                            {r.has_anomaly ? (
+                                                                <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
+                                                                    <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                                                </div>
+                                                            ) : r.status === 'COMPLETED' ? (
+                                                                <div title="Passed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
+                                                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                                                                </div>
+                                                            ) : (
+                                                                <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100">
+                                                                    <FileClock className="w-3.5 h-3.5 text-amber-600" />
+                                                                </div>
+                                                            )}
+
+                                                            {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="sm" 
+                                                                    className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
+                                                                    onClick={async () => {
+                                                                        const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
+                                                                        if (data) setViewingRecordAttachments(data);
+                                                                    }}
+                                                                >
+                                                                    <Paperclip className="w-3 h-3" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3 text-right align-top">
+                                                        <div className="flex items-center justify-end gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <button className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-white" title="Report Options">
+                                                                        <FileText className="w-3.5 h-3.5" /> Actions
+                                                                    </button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end" className="w-48">
+                                                                    {r.has_anomaly && (
+                                                                        <>
+                                                                            <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Reports</div>
+                                                                            {r.inspection_data?._meta_status === 'Finding' ? (
+                                                                                <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700">
+                                                                                    <ClipboardCheck className="w-3.5 h-3.5 mr-2" /> Print Finding Report
+                                                                                </DropdownMenuItem>
+                                                                            ) : (
+                                                                                <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                                                                    <AlertTriangle className="w-3.5 h-3.5 mr-2" /> Print {r.inspection_data?._meta_status || 'Defect'} Report
+                                                                                </DropdownMenuItem>
+                                                                            )}
+                                                                            <div className="border-t border-slate-50 my-1"></div>
+                                                                        </>
+                                                                    )}
+                                                                    <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Details</div>
+                                                                    <DropdownMenuItem onClick={() => {
+                                                                        const comp = (allComps || []).find((c: any) => c.id === r.component_id);
+                                                                        if (comp) {
+                                                                            const obj = {
+                                                                                id: comp.id,
+                                                                                name: comp.q_id || comp.name || `Node ${comp.id}`,
+                                                                                raw: comp
+                                                                            };
+                                                                            setSelectedComp(obj);
+                                                                            setCompSpecDialogOpen(true);
+                                                                        }
+                                                                    }} className="text-xs py-2 cursor-pointer">
+                                                                        <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" /> View Component Spec
+                                                                    </DropdownMenuItem>
+                                                                    <div className="border-t border-slate-50 my-1"></div>
+                                                                    <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Modify</div>
+                                                                    <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer">
+                                                                        <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" /> Edit Record
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                                                        <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
+                                                                    </DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            </ScrollArea>
+                        </div>,
+                        capturedEventsPipWindow.document.body
+                    )}
                 </div>
 
                 {/* ======== COL 3: SELECTION & HISTORY (RIGHT) ======== */}
