@@ -183,6 +183,7 @@ function V10PreviewLayout() {
 
     const [deployments, setDeployments] = useState<any[]>([]);
     const [activeDep, setActiveDep] = useState<{ id: string, jobNo?: string, name: string, raw?: any } | null>(null);
+    const [isFetchingDeps, setIsFetchingDeps] = useState(true);
     const [isDeploymentValid, setIsDeploymentValid] = useState(true);
     const [syncLoading, setSyncLoading] = useState(false);
     const [componentsSow, setComponentsSow] = useState<any[]>([]);
@@ -220,6 +221,27 @@ function V10PreviewLayout() {
     const [newTapeNo, setNewTapeNo] = useState("");
     const [newTapeChapter, setNewTapeChapter] = useState("");
     const [newTapeRemarks, setNewTapeRemarks] = useState("");
+
+    // Auto-populate tape number when opening the new tape dialog
+    useEffect(() => {
+        if (isNewTapeOpen) {
+            const base = headerData.sowReportNo || 'SOW_REPORT';
+            const platform = headerData.platformName || 'STRUCTURE';
+            const postfix = inspMethod === 'DIVING' ? 'D' : 'R';
+            let maxSeq = 0;
+            jobTapes.forEach(t => {
+                const match = t.tape_no?.match(/V(\d{3})[DR]$/);
+                if (match) {
+                    const seq = parseInt(match[1], 10);
+                    if (seq > maxSeq) maxSeq = seq;
+                }
+            });
+            const nextSeq = String(maxSeq + 1).padStart(3, '0');
+            setNewTapeNo(`${base} / ${platform} / V${nextSeq}${postfix}`);
+            setNewTapeChapter("1");
+            setNewTapeRemarks("");
+        }
+    }, [isNewTapeOpen]);
 
     // Live session records
     const [currentRecords, setCurrentRecords] = useState<any[]>([]);
@@ -553,7 +575,9 @@ function V10PreviewLayout() {
         if (!dateString) return new Date();
         try {
             const t = dateString.replace(' ', 'T');
-            const d = new Date(t.includes('Z') || t.includes('+') ? t : `${t}Z`);
+            // Stop artificially converting raw timestamps dynamically to UTC with `Z` suffix.
+            // When postgres stores 'timestamp without tz', treating it implicitly as local is correct.
+            const d = new Date(t);
             return isNaN(d.getTime()) ? new Date() : d;
         } catch (e) {
             return new Date();
@@ -716,6 +740,7 @@ function V10PreviewLayout() {
 
             toast.success("Record and associated media deleted successfully");
             setCurrentRecords(prev => prev.filter(r => r.insp_id !== id));
+            setVideoEvents(prev => prev.filter(ev => ev.inspectionId !== id));
             
             if (editingRecordId !== null && Number(id) === Number(editingRecordId)) {
                 resetForm();
@@ -1547,7 +1572,7 @@ function V10PreviewLayout() {
                             time: r.inspection_data?._meta_timecode || '00:00:00',
                             action: status,
                             logType: 'insp',
-                            eventTime: r.inspection_date && r.inspection_time ? parseDbDate(`${r.inspection_date} ${r.inspection_time}`).toISOString() : new Date().toISOString()
+                            eventTime: r.inspection_date && r.inspection_time ? format(parseDbDate(`${r.inspection_date} ${r.inspection_time}`), "yyyy-MM-dd'T'HH:mm:ss") : format(new Date(), "yyyy-MM-dd'T'HH:mm:ss")
                         });
                     }
                 });
@@ -1739,7 +1764,7 @@ function V10PreviewLayout() {
         const optimisticId = `log_${Date.now()}`;
         const tcode = formatTime(currentTimer);
         const now = new Date();
-        const eventTime = now.toISOString();
+        const eventTime = format(now, "yyyy-MM-dd'T'HH:mm:ss");
         setVideoEvents([{ id: optimisticId, realId: 0, time: tcode, action, logType: 'video_log', eventTime }, ...videoEvents]);
 
         // Map UI labels to valid DB constraint values
@@ -1828,7 +1853,7 @@ function V10PreviewLayout() {
             const { data: newLog } = await supabase.from('insp_video_logs').insert({
                 tape_id: tId,
                 event_type: dbAction,
-                event_time: new Date().toISOString(),
+                event_time: format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"), // Store EXACT region local time safely
                 timecode_start: tcode,
                 tape_counter_start: currentTimer,
                 remarks: ""
@@ -2004,6 +2029,7 @@ function V10PreviewLayout() {
     // Handle method switch overriding deps
     useEffect(() => {
         async function fetchDeps() {
+            setIsFetchingDeps(true);
             // Clear current states when switching modes
             setDeployments([]);
             setActiveDep(null);
@@ -2108,6 +2134,7 @@ function V10PreviewLayout() {
                 setDeployments([]);
                 setActiveDep(null);
             }
+            setIsFetchingDeps(false);
         }
         fetchDeps();
     }, [inspMethod, jobPackId, structureId, supabase]);
@@ -2433,8 +2460,8 @@ function V10PreviewLayout() {
         if (!activeDep?.id) return;
 
         // Find the database record value for the label
-        const actionItem = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.label === actionLabel);
-        const dbValue = actionItem?.value || actionLabel;
+        // We save the exact label to avoid ambiguity when reading since multiple actions map to the same value in constants
+        const dbValue = actionLabel;
 
         const mvtTable = inspMethod === "DIVING" ? 'insp_dive_movements' : 'insp_rov_movements';
         const mvtCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
@@ -2901,7 +2928,7 @@ function V10PreviewLayout() {
             } else {
                 await supabase.from('insp_video_logs').insert({
                     inspection_id: opData.insp_id,
-                    event_type: "PRE_INSPECTION",
+                    event_type: `${it?.name || activeSpec} - ${selectedComp.q_id || selectedComp.name}`,
                     event_time: new Date().toISOString(),
                     timecode_start: formatTime(vidTimer),
                     tape_counter_start: vidTimer,
@@ -2982,6 +3009,28 @@ function V10PreviewLayout() {
 
             syncDeploymentState();
             fetchHistory();
+
+            // Optimistic UI update: refresh task status on component list & scope cards
+            const taskCode = it?.code || activeSpec;
+            const uiStatus = findingType === 'Incomplete' ? 'incomplete' : 'completed';
+            setComponentsSow(prev => prev.map(comp => {
+                if (comp.id === selectedComp.id) {
+                    const updatedComp = {
+                        ...comp,
+                        taskStatuses: comp.taskStatuses.map((ts: any) => {
+                            if (ts.code === taskCode) {
+                                return { ...ts, status: uiStatus };
+                            }
+                            return ts;
+                        })
+                    };
+                    // Also update selectedComp reference so scope cards re-render
+                    setSelectedComp(updatedComp);
+                    return updatedComp;
+                }
+                return comp;
+            }));
+
             resetForm();
             setPendingAttachments([]); // Clear attachments
             toast.success(editingRecordId ? "Record updated" : "Record committed");
@@ -3352,10 +3401,16 @@ function V10PreviewLayout() {
 
             {/* DEPLOYMENTS SUB-HEADER */}
             <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex items-center gap-3 shrink-0">
-                {deployments.length === 0 && !activeDep && (
+                {deployments.length === 0 && !activeDep && isFetchingDeps && (
                     <div className="flex items-center gap-2 text-slate-400 px-2 py-1">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Loading deployments...</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Loading {inspMethod === 'DIVING' ? 'dives' : 'deployments'}...</span>
+                    </div>
+                )}
+                {deployments.length === 0 && !activeDep && !isFetchingDeps && (
+                    <div className="flex items-center gap-2 text-slate-500 px-2 py-1">
+                        <Info className="w-3.5 h-3.5" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider">No {inspMethod === 'DIVING' ? 'Dive' : 'ROV'} Action Recorded</span>
                     </div>
                 )}
 
@@ -3680,16 +3735,17 @@ function V10PreviewLayout() {
                         setActiveChapter={setActiveChapter}
                         setIsNewTapeOpen={setIsNewTapeOpen}
                         formatTime={formatTime}
-                    />
-
-                    {/* Tape Log Events (MODULAR) */}
-                    <TapeLogEvents 
-                        videoEvents={videoEvents}
-                        handleDeleteEvent={handleDeleteEvent}
-                        onEditEvent={setEditingEvent}
-                        expanded={tapeLogExpanded}
-                        setExpanded={setTapeLogExpanded}
-                    />
+                    >
+                        {/* Tape Log Events (MODULAR) */}
+                        <TapeLogEvents 
+                            videoEvents={videoEvents}
+                            handleDeleteEvent={handleDeleteEvent}
+                            onEditEvent={setEditingEvent}
+                            expanded={tapeLogExpanded}
+                            setExpanded={setTapeLogExpanded}
+                            isFloating={!!pipWindow}
+                        />
+                    </TapeManagementCard>
 
                     {/* 6. Video Interface (Reduced Size) */}
                     {!pipWindow && (
@@ -4616,6 +4672,92 @@ function V10PreviewLayout() {
                     </div>
                 </div>
             )}
+            {/* New Tape Creation Dialog */}
+            <Dialog open={isNewTapeOpen} onOpenChange={setIsNewTapeOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Create New Tape</DialogTitle>
+                        <DialogDescription>
+                            Create a new video tape sequence for the current {inspMethod === 'DIVING' ? 'dive' : 'ROV'} deployment.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="ws_new_tape_no" className="text-right text-sm font-semibold">Tape No</Label>
+                            <Input
+                                id="ws_new_tape_no"
+                                value={newTapeNo}
+                                onChange={(e) => setNewTapeNo(e.target.value)}
+                                className="col-span-3 font-mono"
+                                placeholder="e.g. RPT-001 / PLAT-C / V001D"
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="ws_new_tape_chapter" className="text-right text-sm font-semibold">Chapter</Label>
+                            <Input
+                                id="ws_new_tape_chapter"
+                                value={newTapeChapter}
+                                onChange={(e) => setNewTapeChapter(e.target.value)}
+                                className="col-span-3"
+                                placeholder="e.g. 1"
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="ws_new_tape_remarks" className="text-right text-sm font-semibold">Remarks</Label>
+                            <Input
+                                id="ws_new_tape_remarks"
+                                value={newTapeRemarks}
+                                onChange={(e) => setNewTapeRemarks(e.target.value)}
+                                className="col-span-3"
+                                placeholder="Optional notes"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setIsNewTapeOpen(false)}>Cancel</Button>
+                        <Button
+                            onClick={async () => {
+                                if (!newTapeNo) { toast.error("Tape number is required"); return; }
+                                if (!activeDep?.id) { toast.error("No active deployment selected"); return; }
+                                try {
+                                    const { data: { user } } = await supabase.auth.getUser();
+                                    const depCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
+                                    const payload: any = {
+                                        tape_no: newTapeNo,
+                                        status: 'ACTIVE',
+                                        tape_type: 'DIGITAL - PRIMARY',
+                                        cr_user: user?.id || 'system',
+                                        chapter_no: parseInt(newTapeChapter) || 1,
+                                        remarks: newTapeRemarks || null,
+                                        [depCol]: Number(activeDep.id),
+                                    };
+                                    const { data: createdTape, error } = await supabase
+                                        .from('insp_video_tapes')
+                                        .insert(payload)
+                                        .select('*')
+                                        .single();
+                                    if (error) throw error;
+                                    toast.success(`Tape "${newTapeNo}" created successfully`);
+                                    setJobTapes(prev => [createdTape, ...prev]);
+                                    setTapeId(createdTape.tape_id);
+                                    setTapeNo(createdTape.tape_no);
+                                    setActiveChapter(createdTape.chapter_no || 1);
+                                    setIsNewTapeOpen(false);
+                                    setNewTapeNo("");
+                                    setNewTapeChapter("");
+                                    setNewTapeRemarks("");
+                                } catch (err: any) {
+                                    console.error("Failed to create tape:", err);
+                                    toast.error("Failed to create tape: " + (err.message || "Unknown error"));
+                                }
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700"
+                        >
+                            Create Tape
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
             {/* Component Specification Dialog */}
             <ComponentSpecDialog
                 open={specDialogOpen}

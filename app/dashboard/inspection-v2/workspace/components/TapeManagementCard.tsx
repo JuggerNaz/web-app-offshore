@@ -10,6 +10,7 @@ import {
     SelectTrigger, 
     SelectValue 
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Video, Play, Pause, Square, Plus } from "lucide-react";
 
 interface TapeManagementCardProps {
@@ -25,6 +26,7 @@ interface TapeManagementCardProps {
     setActiveChapter: (ch: number) => void;
     setIsNewTapeOpen: (open: boolean) => void;
     formatTime: (seconds: number) => string;
+    children?: React.ReactNode;
 }
 
 export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
@@ -39,13 +41,14 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
     setTapeNo,
     setActiveChapter,
     setIsNewTapeOpen,
-    formatTime
+    formatTime,
+    children
 }) => {
     return (
         <Card className="border-slate-200 shadow-md rounded-lg bg-white overflow-hidden flex flex-col min-w-0">
             <div className="bg-slate-900 px-2.5 py-2 flex items-center justify-between min-w-0">
                 <h3 className="text-[11px] font-black uppercase text-white tracking-widest flex items-center gap-2 min-w-0 truncate">
-                    <Video className="w-4 h-4 text-blue-400 shrink-0" /> Tape Management
+                    <Video className="w-4 h-4 text-blue-400 shrink-0" /> VIDEO LOG
                 </h3>
                 <div className="flex items-center gap-1.5 shrink-0">
                     <div className={`h-2 w-2 rounded-full shrink-0 ${vidState === 'RECORDING' ? 'bg-red-500 animate-pulse' : (vidState === 'PAUSED' ? 'bg-amber-500' : 'bg-slate-500')}`} />
@@ -57,41 +60,52 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
                 <div className="flex items-end gap-2 min-w-0">
                     <div className="flex-1 min-w-0">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Active Tape</label>
-                        <Select value={String(tapeId || '')} onValueChange={(v) => {
-                            const t = jobTapes.find(x => String(x.tape_id) === v);
-                            if (t) {
-                                setTapeId(t.tape_id);
-                                setTapeNo(t.tape_no);
-                                setActiveChapter(t.chapter_no || 1);
-                            }
-                        }}>
-                            <SelectTrigger className="h-9 text-[11px] font-bold bg-slate-50 border-slate-200 focus:ring-blue-500/20 min-w-0">
-                                <SelectValue placeholder="Select Tape" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white border-slate-200 shadow-xl">
-                                <div className="p-1 border-b border-slate-100 mb-1">
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className="w-full justify-start h-8 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50" 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setIsNewTapeOpen(true);
-                                        }}
-                                    >
-                                        <Plus className="w-3.5 h-3.5 mr-1" /> CREATE NEW TAPE
-                                    </Button>
-                                </div>
-                                {jobTapes.map((t: any) => (
-                                    <SelectItem key={t.tape_id} value={String(t.tape_id)} className="text-[12px] font-medium py-2 focus:bg-blue-50 focus:text-blue-700">
-                                        <div className="flex flex-col">
-                                            <span className="font-bold">{t.tape_no}</span>
-                                            <span className="text-[10px] text-slate-400">Chapters: {t.chapter_no || 1} • Status: {t.status}</span>
+                        <div className="flex items-center gap-1.5">
+                            <Select value={String(tapeId || '')} onValueChange={(v) => {
+                                const t = jobTapes.find(x => String(x.tape_id) === v);
+                                if (t) {
+                                    setTapeId(t.tape_id);
+                                    setTapeNo(t.tape_no);
+                                    setActiveChapter(t.chapter_no || 1);
+                                }
+                            }}>
+                                <SelectTrigger className="h-9 text-[11px] font-bold bg-slate-50 border-slate-200 focus:ring-blue-500/20 min-w-0 flex-1">
+                                    <SelectValue placeholder="Select Tape" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-white border-slate-200 shadow-xl">
+                                    {jobTapes.map((t: any) => (
+                                        <SelectItem key={t.tape_id} value={String(t.tape_id)} className="text-[12px] font-medium py-2 focus:bg-blue-50 focus:text-blue-700">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold">{t.tape_no}</span>
+                                                <span className="text-[10px] text-slate-400">Chapters: {t.chapter_no || 1} • Status: {t.status}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                    {jobTapes.length === 0 && (
+                                        <div className="px-2 py-3 text-center text-[11px] text-slate-400 italic">
+                                            No tapes yet
                                         </div>
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-9 w-9 shrink-0 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+                                            onClick={() => setIsNewTapeOpen(true)}
+                                        >
+                                            <Plus className="w-4 h-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">
+                                        <p className="text-xs font-bold">Create New Tape</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
                     </div>
                     <div className="w-16 shrink-0">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Chapter</label>
@@ -146,6 +160,7 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
                         )}
                     </div>
                 </div>
+                {children}
             </div>
         </Card>
     );

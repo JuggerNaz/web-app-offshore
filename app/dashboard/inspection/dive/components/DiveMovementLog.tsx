@@ -213,7 +213,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                             </SelectTrigger>
                             <SelectContent>
                                 {diveActionsList.map(action => (
-                                    <SelectItem key={action.label} value={action.value || action.label}>{action.label}</SelectItem>
+                                    <SelectItem key={action.label} value={action.label}>{action.label}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -306,7 +306,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                                         <div className="space-y-2 mt-2 pb-2">
                                             <Input type="datetime-local" value={editForm?.movement_time ? new Date(parseDbDate(editForm.movement_time).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEditForm({ ...editForm!, movement_time: new Date(e.target.value).toISOString() })} className="h-8 text-sm bg-white" />
                                             <Select
-                                                value={editForm?.movement_type || ""}
+                                                value={diveActionsList.find(a => a.value === editForm?.movement_type || a.label === editForm?.movement_type)?.label || editForm?.movement_type || ""}
                                                 onValueChange={(val) => setEditForm(editForm ? { ...editForm, movement_type: val } : null)}
                                             >
                                                 <SelectTrigger className="h-8 text-sm bg-white">
@@ -314,7 +314,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {diveActionsList.map(action => (
-                                                        <SelectItem key={`edit-${action.label}`} value={action.value || action.label}>{action.label}</SelectItem>
+                                                        <SelectItem key={`edit-${action.label}`} value={action.label}>{action.label}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
