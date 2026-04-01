@@ -736,18 +736,8 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
       if (sow) {
         setSowRecordId(sow.id);
 
-        // Extract report number from JSONB array
-        let reportNo = null;
-        if (Array.isArray(sow.report_numbers) && sow.report_numbers.length > 0) {
-          // Check if it's an object with 'number' or just a string
-          const entry = sow.report_numbers[0];
-          reportNo = typeof entry === "object" ? entry?.number : entry;
-        }
-
-        // Only override if we don't have a specific SOW ID from URL
-        if (!sowId) {
-          setSowReportNumber(reportNo);
-        }
+        // Do not forcefully override sowReportNumber with the first SOW array element.
+        // ROV jobs should not inherit an arbitrary SOW just because one isn't strictly defined.
 
         // Get items for this component
         const { data: items, error: itemsError } = await supabase

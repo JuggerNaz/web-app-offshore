@@ -6,7 +6,8 @@ SELECT
     s.str_type,
     COALESCE(p.title, pl.title) as title,
     COALESCE(p.pfield, pl.pfield) as pfield,
-    COALESCE(p.pdesc, pl.pdesc) as pdesc
+    COALESCE(p.pdesc, pl.pdesc) as pdesc,
+    COALESCE(p.def_unit, pl.def_unit) as def_unit
 FROM structure s
 LEFT JOIN platform p ON s.str_id = p.plat_id
 LEFT JOIN u_pipeline pl ON s.str_id = pl.pipe_id;

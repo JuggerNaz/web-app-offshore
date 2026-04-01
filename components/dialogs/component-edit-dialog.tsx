@@ -478,49 +478,39 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                 {/* Row 6: Level / Face / Part */}
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-level" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Level</Label>
-                  {pageType === "platform" ? (
-                    <Select
-                      value={formData.lvl}
-                      onValueChange={(val) => handleChange("lvl", val)}
-                      disabled={levelOptions.length === 0}
-                    >
-                      <SelectTrigger id="edit-level" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
-                        <SelectValue placeholder="Select level" />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-xl">
-                        {levelOptions.map((opt: any) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
-                  )}
+                  <Select
+                    value={formData.lvl}
+                    onValueChange={(val) => handleChange("lvl", val)}
+                  >
+                    <SelectTrigger id="edit-level" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
+                      <SelectValue placeholder="Select level" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl z-[9999]">
+                      {levelOptions.map((opt: any) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-face" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Face</Label>
-                  {pageType === "platform" ? (
-                    <Select
-                      value={formData.face}
-                      onValueChange={(val) => handleChange("face", val)}
-                      disabled={faceOptions.length === 0}
-                    >
-                      <SelectTrigger id="edit-face" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
-                        <SelectValue placeholder="Select face" />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-xl">
-                        {faceOptions.map((opt: any) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
-                  )}
+                  <Select
+                    value={formData.face}
+                    onValueChange={(val) => handleChange("face", val)}
+                  >
+                    <SelectTrigger id="edit-face" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
+                      <SelectValue placeholder="Select face" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl z-[9999]">
+                      {faceOptions.map((opt: any) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-part" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Part</Label>
@@ -531,7 +521,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                     <SelectTrigger id="edit-part" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
                       <SelectValue placeholder="Select part" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-xl">
+                    <SelectContent className="rounded-xl z-[9999]">
                       <SelectItem value="TOPSIDE">TOPSIDE</SelectItem>
                       <SelectItem value="SUBSEA">SUBSEA</SelectItem>
                     </SelectContent>
@@ -544,12 +534,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                   <Select
                     value={formData.comp_group}
                     onValueChange={(val) => handleChange("comp_group", val)}
-                    disabled={!compGroupLib}
                   >
                     <SelectTrigger id="edit-group" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-12 font-bold">
                       <SelectValue placeholder="Select structural group" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-xl">
+                    <SelectContent className="rounded-xl z-[9999]">
                       {compGroupLib?.data
                         ?.filter((x: any) => x.lib_code === "COMPGRP")
                         .map((x: any) => (

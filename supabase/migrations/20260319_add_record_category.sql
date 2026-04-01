@@ -1,0 +1,2 @@
+ALTER TABLE insp_anomalies
+ADD COLUMN IF NOT EXISTS record_category VARCHAR(50) DEFAULT 'ANOMALY';

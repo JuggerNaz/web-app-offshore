@@ -174,13 +174,13 @@ export default function InspectionLanding() {
                 if (uniqueStructureIds.length > 0) {
                     const { data: structureData } = await supabase
                         .from("structure")
-                        .select("str_id, str_name")
+                        .select("str_id, str_title")
                         .in("str_id", uniqueStructureIds);
 
                     console.log("Structure data:", structureData);
 
                     structureMap = new Map(
-                        structureData?.map((s: any) => [s.str_id, s.str_name]) || []
+                        structureData?.map((s: any) => [s.str_id, s.str_title]) || []
                     );
                 }
 

@@ -45,6 +45,7 @@ export interface DefectCriteriaRule {
     id: string;                    // BIGINT from sequence (transmitted as string in JSON)
     procedureId: string;           // FK to defect_criteria_procedures (transmitted as string in JSON)
     structureGroup: string;        // Primary Member, Secondary Member, etc.
+    fieldName?: string;            // The specific inspection form field to evaluate (e.g. 'CP RDG (MV)'). '*' = any numeric field.
     priorityId: string;            // LIB_ID from U_LIB_LIST (AMLY_TYP)
     defectCodeId: string;          // LIB_ID from U_LIB_LIST (AMLY_COD)
     defectTypeId: string;          // LIB_ID from U_LIB_LIST (AMLY_FND)
@@ -59,7 +60,8 @@ export interface DefectCriteriaRule {
     autoFlag: boolean;             // Auto-flag on match
     alertMessage: string;          // Message to show user
     order: number;                 // Rule evaluation order
-    evaluationPriority: number;    // Priority for conflict resolution (higher = more important)
+    evaluationPriority: number;    // Priority for conflict resolution
+    referenceNo?: string;          // Pre-defined reference number for this rule (e.g. from a specification)
 }
 
 // ============================================================================
@@ -95,6 +97,7 @@ export interface DefectCriteriaCustomParam {
 // For the rule builder form
 export interface RuleFormData {
     structureGroup: string;
+    fieldName?: string;         // Which inspection field to evaluate
     priorityId: string;
     defectCodeId: string;
     defectTypeId: string;

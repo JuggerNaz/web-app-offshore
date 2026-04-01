@@ -14,22 +14,22 @@ import { toast } from "sonner";
 
 // DIVE ACTIONS
 const AIR_DIVE_ACTIONS = [
-    { label: "Left Surface", location: "Surface" },
-    { label: "Arrived Bottom", location: "Bottom" },
-    { label: "Diver at Worksite", location: "Worksite" },
-    { label: "Diver Left Worksite", location: "Worksite" },
-    { label: "Left Bottom", location: "Bottom" },
-    { label: "Arrived Surface", location: "Surface" }
+    { label: "Left Surface", value: "LEAVING_SURFACE", location: "Surface" },
+    { label: "Arrived Bottom", value: "AT_WORKSITE", location: "Bottom" },
+    { label: "Diver at Worksite", value: "AT_WORKSITE", location: "Worksite" },
+    { label: "Diver Left Worksite", value: "LEAVING_WORKSITE", location: "Worksite" },
+    { label: "Left Bottom", value: "LEAVING_WORKSITE", location: "Bottom" },
+    { label: "Arrived Surface", value: "BACK_TO_SURFACE", location: "Surface" }
 ];
 
 const BELL_DIVE_ACTIONS = [
-    { label: "Left Surface", location: "Surface" },
-    { label: "Bell at Working Depth", location: "Bottom" },
-    { label: "Diver Locked Out", location: "Worksite" },
-    { label: "Diver Locked In", location: "Bell" },
-    { label: "Bell Left Bottom", location: "Bottom" },
-    { label: "Bell on Surface", location: "Surface" },
-    { label: "TUP Complete", location: "Deck" }
+    { label: "Left Surface", value: "BELL_LAUNCHED", location: "Surface" },
+    { label: "Bell at Working Depth", value: "BELL_AT_DEPTH", location: "Bottom" },
+    { label: "Diver Locked Out", value: "DIVER_EXITING_BELL", location: "Worksite" },
+    { label: "Diver Locked In", value: "DIVER_RETURNING_TO_BELL", location: "Bell" },
+    { label: "Bell Left Bottom", value: "BELL_ASCENDING", location: "Bottom" },
+    { label: "Bell on Surface", value: "BELL_AT_SURFACE", location: "Surface" },
+    { label: "TUP Complete", value: "BELL_MATED_TO_CHAMBER", location: "Deck" }
 ];
 
 interface DiveMovementLogProps {
@@ -306,7 +306,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                                         <div className="space-y-2 mt-2 pb-2">
                                             <Input type="datetime-local" value={editForm?.movement_time ? new Date(parseDbDate(editForm.movement_time).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEditForm({ ...editForm!, movement_time: new Date(e.target.value).toISOString() })} className="h-8 text-sm bg-white" />
                                             <Select
-                                                value={editForm?.movement_type || ""}
+                                                value={diveActionsList.find(a => a.value === editForm?.movement_type || a.label === editForm?.movement_type)?.label || editForm?.movement_type || ""}
                                                 onValueChange={(val) => setEditForm(editForm ? { ...editForm, movement_type: val } : null)}
                                             >
                                                 <SelectTrigger className="h-8 text-sm bg-white">
@@ -331,7 +331,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                                                     Action:
                                                 </span>
                                                 <span className="text-sm font-semibold text-slate-900 dark:text-white">
-                                                    {movement.movement_type}
+                                                    {diveActionsList.find(a => a.value === movement.movement_type || a.label === movement.movement_type)?.label || movement.movement_type}
                                                 </span>
                                             </div>
 

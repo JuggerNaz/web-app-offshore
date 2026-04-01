@@ -243,8 +243,8 @@ function filterApplicableRules(
     }
 ): DefectCriteriaRule[] {
     return rules.filter(rule => {
-        // Check structure group match
-        if (rule.structureGroup !== context.structureGroup) {
+        // Check structure group match - 'All Structure Groups' acts as a wildcard
+        if (rule.structureGroup !== 'All Structure Groups' && rule.structureGroup !== context.structureGroup) {
             return false;
         }
 
@@ -375,6 +375,70 @@ export async function evaluateCriteria(
 
     // Filter to applicable rules based on context
     const applicableRules = filterApplicableRules(allRules, {
+        structureGroup: inspectionData.structureGroup,
+        jobpackType: inspectionData.jobpackType,
+        elevation: inspectionData.elevation,
+    });
+
+    // Evaluate each applicable rule
+    const matchedRules: DefectCriteriaRule[] = [];
+
+    for (const rule of applicableRules) {
+        let ruleMatches = true;
+
+        // Evaluate threshold condition if defined
+        if (
+            rule.thresholdOperator &&
+            rule.thresholdValue != null &&
+            inspectionData.measurementValue !== undefined
+        ) {
+            ruleMatches = evaluateThreshold(
+                inspectionData.measurementValue,
+                rule.thresholdOperator,
+                rule.thresholdValue
+            );
+        }
+
+        // Evaluate custom parameters if defined
+        if (ruleMatches && rule.customParameters && inspectionData.customParameters) {
+            ruleMatches = evaluateCustomParameters(
+                inspectionData.customParameters,
+                rule.customParameters
+            );
+        }
+
+        if (ruleMatches) {
+            matchedRules.push(rule);
+        }
+    }
+
+    // Resolve conflicts (get highest priority rule)
+    const highestPriorityRule = resolveRuleConflicts(matchedRules);
+
+    return {
+        isValid: matchedRules.length === 0,
+        matchedRules,
+        highestPriorityRule,
+        shouldAutoFlag: highestPriorityRule?.autoFlag || false,
+        alertMessage: highestPriorityRule?.alertMessage,
+    };
+}
+
+/**
+ * Synchronous version of evaluateCriteria for client-side use
+ */
+export function evaluateCriteriaSync(
+    rules: DefectCriteriaRule[],
+    inspectionData: {
+        structureGroup: string;
+        jobpackType?: string;
+        elevation?: number;
+        measurementValue?: number;
+        customParameters?: Record<string, any>;
+    }
+): ValidationResult {
+    // Filter to applicable rules based on context
+    const applicableRules = filterApplicableRules(rules, {
         structureGroup: inspectionData.structureGroup,
         jobpackType: inspectionData.jobpackType,
         elevation: inspectionData.elevation,

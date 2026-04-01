@@ -23,7 +23,7 @@ export default function Comments() {
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <div className="w-8 h-8 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin" />
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Fetching Discussions...</p>
+      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Fetching Comments...</p>
     </div>
   );
 

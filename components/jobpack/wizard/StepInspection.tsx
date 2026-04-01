@@ -138,18 +138,54 @@ export function StepInspection({ state, updateState, onNext, onBack, isSubmittin
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {inspTypes.map((t: any) => {
                                 const isSelected = activeSelection.includes(t.code || t.type);
+
+                                // Determine inspection mode from metadata
+                                const isRov = t.metadata?.rov === 1 || t.metadata?.job_type?.includes('ROV');
+                                const isDiving = t.metadata?.diving === 1 || t.metadata?.job_type?.includes('DIVING');
+
+                                let modeColor = "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200";
+                                let modeHighlight = "border-slate-200 hover:border-slate-300";
+                                let modeLabel = "General";
+
+                                if (isRov && !isDiving) {
+                                    modeColor = "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200";
+                                    modeHighlight = "border-blue-100 hover:border-blue-300 dark:border-blue-900/30";
+                                    modeLabel = "ROV";
+                                } else if (isDiving && !isRov) {
+                                    modeColor = "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200";
+                                    modeHighlight = "border-amber-100 hover:border-amber-300 dark:border-amber-900/30";
+                                    modeLabel = "DIVING";
+                                } else if (isRov && isDiving) {
+                                    modeColor = "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200";
+                                    modeHighlight = "border-purple-100 hover:border-purple-300 dark:border-purple-900/30";
+                                    modeLabel = "ROV & DIVING";
+                                }
+
+                                const baseContainerClass = isSelected
+                                    ? "border-green-500 bg-green-50 dark:bg-green-900/20"
+                                    : modeHighlight;
+
                                 return (
                                     <div
                                         key={t.code || t.id}
-                                        className={`flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${isSelected ? "border-green-500 bg-green-50 dark:bg-green-900/20" : "border-slate-200 hover:border-blue-300"}`}
+                                        className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${baseContainerClass}`}
                                         onClick={() => toggleInspectionType(t.code || t.type)}
                                     >
-                                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${isSelected ? "bg-green-500 border-green-500 text-white" : "border-slate-300"}`}>
+                                        <div className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${isSelected ? "bg-green-500 border-green-500 text-white shadow-[0_0_10px_rgba(34,197,94,0.4)]" : "border-slate-300 dark:border-slate-600"}`}>
                                             {isSelected && <Check className="h-3 w-3" />}
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm truncate" title={t.descrip || t.name}>{t.descrip || t.name || t.type}</div>
-                                            <div className="text-xs text-slate-500 font-mono">{t.code || t.id}</div>
+                                        <div className="flex-1 min-w-0 pr-1">
+                                            <div className="font-medium text-sm truncate text-slate-900 dark:text-slate-100" title={t.descrip || t.name}>
+                                                {t.descrip || t.name || t.type}
+                                            </div>
+                                            <div className="flex items-center justify-between mt-1">
+                                                <div className="text-xs text-slate-500 font-mono">
+                                                    {t.code || t.id}
+                                                </div>
+                                                <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${modeColor}`}>
+                                                    {modeLabel}
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 );

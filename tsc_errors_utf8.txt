@@ -1,0 +1,70 @@
+﻿app/dashboard/inspection-v2/workspace/page.tsx(3,8): error TS1259: Module '"C:/Users/nq352/Documents/GitHub/web-app-offshore/node_modules/@types/react/index"' can only be default-imported using the 'esModuleInterop' flag
+app/dashboard/inspection-v2/workspace/page.tsx(8,30): error TS2307: Cannot find module '@/utils/supabase/client' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(62,42): error TS2307: Cannot find module '@/utils/report-generators/inspection-report' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(63,45): error TS2307: Cannot find module '@/utils/report-generators/defect-anomaly-report' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(64,47): error TS2307: Cannot find module '@/utils/report-generators/multi-inspection-report' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(66,56): error TS2307: Cannot find module '@/lib/video-recorder/settings-manager' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(67,116): error TS2307: Cannot find module '@/lib/video-recorder/media-recorder' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(68,56): error TS2307: Cannot find module '@/lib/video-recorder/canvas-overlay' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(72,22): error TS2307: Cannot find module '@/components/ui/card' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(77,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(78,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(79,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(80,28): error TS2307: Cannot find module '@/components/ui/scroll-area' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(81,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(82,27): error TS2307: Cannot find module '@/components/ui/separator' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(83,85): error TS2307: Cannot find module '@/components/ui/dialog' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(84,37): error TS2307: Cannot find module '@/components/dialogs/component-spec-dialog' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(90,8): error TS2307: Cannot find module '@/components/ui/dropdown-menu' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(91,57): error TS2307: Cannot find module '@/components/ui/popover' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(92,37): error TS2307: Cannot find module '@/components/ReportPreviewDialog' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(94,32): error TS2307: Cannot find module '@/utils/client-state' or its corresponding type declarations.
+app/dashboard/inspection-v2/workspace/page.tsx(512,34): error TS2339: Property 'type' does not exist on type 'unknown'.
+app/dashboard/inspection-v2/workspace/page.tsx(513,34): error TS2339: Property 'type' does not exist on type 'unknown'.
+app/dashboard/inspection-v2/workspace/page.tsx(522,28): error TS2339: Property 'name' does not exist on type 'unknown'.
+app/dashboard/inspection-v2/workspace/page.tsx(524,60): error TS2339: Property 'name' does not exist on type 'unknown'.
+app/dashboard/inspection-v2/workspace/page.tsx(527,49): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'Blob | MediaSource'.
+app/dashboard/inspection-v2/workspace/page.tsx(532,31): error TS2345: Argument of type '(prev: { id: string; file: Blob | File; name: string; type: "PHOTO" | "VIDEO" | "DOCUMENT"; title: string; description: string; source: string; previewUrl?: string; isFromRecording?: boolean; }[]) => ({ ...; } | { ...; })[]' is not assignable to parameter of type 'SetStateAction<{ id: string; file: Blob | File; name: string; type: "PHOTO" | "VIDEO" | "DOCUMENT"; title: string; description: string; source: string; previewUrl?: string; isFromRecording?: boolean; }[]>'.
+  Type '(prev: { id: string; file: Blob | File; name: string; type: "PHOTO" | "VIDEO" | "DOCUMENT"; title: string; description: string; source: string; previewUrl?: string; isFromRecording?: boolean; }[]) => ({ ...; } | { ...; })[]' is not assignable to type '(prevState: { id: string; file: Blob | File; name: string; type: "PHOTO" | "VIDEO" | "DOCUMENT"; title: string; description: string; source: string; previewUrl?: string; isFromRecording?: boolean; }[]) => { ...; }[]'.
+    Type '({ id: string; file: Blob | File; name: string; type: "PHOTO" | "VIDEO" | "DOCUMENT"; title: string; description: string; source: string; previewUrl?: string; isFromRecording?: boolean; } | { ...; })[]' is not assignable to type '{ id: string; file: Blob | File; name: string; type: "PHOTO" | "VIDEO" | "DOCUMENT"; title: string; description: string; source: string; previewUrl?: string; isFromRecording?: boolean; }[]'.
+      Type '{ id: string; file: Blob | File; name: string; type: "PHOTO" | "VIDEO" | "DOCUMENT"; title: string; description: string; source: string; previewUrl?: string; isFromRecording?: boolean; } | { ...; }' is not assignable to type '{ id: string; file: Blob | File; name: string; type: "PHOTO" | "VIDEO" | "DOCUMENT"; title: string; description: string; source: string; previewUrl?: string; isFromRecording?: boolean; }'.
+        Type '{ id: string; file: unknown; name: any; type: any; title: any; description: string; source: string; previewUrl: string; isFromRecording: boolean; }' is not assignable to type '{ id: string; file: Blob | File; name: string; type: "PHOTO" | "VIDEO" | "DOCUMENT"; title: string; description: string; source: string; previewUrl?: string; isFromRecording?: boolean; }'.
+          Types of property 'file' are incompatible.
+            Type 'unknown' is not assignable to type 'Blob | File'.
+app/dashboard/inspection-v2/workspace/page.tsx(790,11): error TS2451: Cannot redeclare block-scoped variable 'handleDeleteRecord'.
+app/dashboard/inspection-v2/workspace/page.tsx(2970,11): error TS2451: Cannot redeclare block-scoped variable 'handleDeleteRecord'.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(10,8): error TS2307: Cannot find module '@/components/ui/dialog' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(11,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(12,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(13,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(20,8): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(22,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(23,28): error TS2307: Cannot find module '@/components/ui/scroll-area' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(24,57): error TS2307: Cannot find module '@/components/ui/popover' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(25,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveJobSetupDialog.tsx(26,30): error TS2307: Cannot find module '@/utils/supabase/client' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveMovementLog.tsx(4,22): error TS2307: Cannot find module '@/components/ui/card' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveMovementLog.tsx(5,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveMovementLog.tsx(6,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveMovementLog.tsx(7,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveMovementLog.tsx(8,26): error TS2307: Cannot find module '@/components/ui/textarea' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveMovementLog.tsx(9,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveMovementLog.tsx(10,79): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+app/dashboard/inspection/dive/components/DiveMovementLog.tsx(12,30): error TS2307: Cannot find module '@/utils/supabase/client' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVJobSetupDialog.tsx(10,8): error TS2307: Cannot find module '@/components/ui/dialog' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVJobSetupDialog.tsx(11,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVJobSetupDialog.tsx(12,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVJobSetupDialog.tsx(13,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVJobSetupDialog.tsx(15,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVJobSetupDialog.tsx(16,28): error TS2307: Cannot find module '@/components/ui/scroll-area' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVJobSetupDialog.tsx(17,57): error TS2307: Cannot find module '@/components/ui/popover' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVJobSetupDialog.tsx(18,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVJobSetupDialog.tsx(19,30): error TS2307: Cannot find module '@/utils/supabase/client' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVMovementLog.tsx(4,22): error TS2307: Cannot find module '@/components/ui/card' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVMovementLog.tsx(5,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVMovementLog.tsx(6,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVMovementLog.tsx(7,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVMovementLog.tsx(8,26): error TS2307: Cannot find module '@/components/ui/textarea' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVMovementLog.tsx(9,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVMovementLog.tsx(10,79): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+app/dashboard/inspection/rov/components/ROVMovementLog.tsx(12,30): error TS2307: Cannot find module '@/utils/supabase/client' or its corresponding type declarations.
