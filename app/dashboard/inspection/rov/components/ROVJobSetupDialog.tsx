@@ -16,6 +16,13 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -43,6 +50,7 @@ export default function ROVJobSetupDialog({
 
     const [formData, setFormData] = useState({
         deployment_no: "",
+        rov_type: "",
         rov_serial_no: "",
         rov_operator: "",
         rov_supervisor: "",
@@ -67,6 +75,7 @@ export default function ROVJobSetupDialog({
             // Reset for new deployment
             setFormData({
                 deployment_no: "",
+                rov_type: "",
                 rov_serial_no: "",
                 rov_operator: "",
                 rov_supervisor: "",
@@ -85,6 +94,7 @@ export default function ROVJobSetupDialog({
             // Load existing
             setFormData({
                 deployment_no: existingJob.deployment_no,
+                rov_type: existingJob.rov_type || "",
                 rov_serial_no: existingJob.rov_serial_no,
                 rov_operator: existingJob.rov_operator,
                 rov_supervisor: existingJob.rov_supervisor,
@@ -341,6 +351,7 @@ export default function ROVJobSetupDialog({
             let query;
             const payload = {
                 deployment_no: formData.deployment_no,
+                rov_type: formData.rov_type,
                 rov_operator: formData.rov_operator,
                 rov_supervisor: formData.rov_supervisor,
                 report_coordinator: formData.report_coordinator,
@@ -512,7 +523,7 @@ export default function ROVJobSetupDialog({
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-2">
                             <Label htmlFor="deployment_no">Deployment Number *</Label>
                             <Input
@@ -527,9 +538,29 @@ export default function ROVJobSetupDialog({
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="rov_serial_no">ROV Serial Number</Label>
+                            <Label>ROV Type</Label>
+                            <Select
+                                value={formData.rov_type}
+                                onValueChange={(val) => setFormData({ ...formData, rov_type: val })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select ROV Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Observation Class">Observation Class</SelectItem>
+                                    <SelectItem value="Micro / Mini">Micro / Mini</SelectItem>
+                                    <SelectItem value="Work Class">Work Class</SelectItem>
+                                    <SelectItem value="Heavy Work Class">Heavy Work Class</SelectItem>
+                                    <SelectItem value="Survey Class">Survey Class</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="rov_serial_no">ROV Model / Name</Label>
                             <Input
                                 id="rov_serial_no"
+                                placeholder="e.g. Tiger 800"
                                 value={formData.rov_serial_no}
                                 onChange={(e) =>
                                     setFormData({ ...formData, rov_serial_no: e.target.value })
