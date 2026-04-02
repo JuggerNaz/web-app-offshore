@@ -88,12 +88,15 @@ export function PresenceProvider({
             channel.subscribe(async (status) => {
                 if (status === 'SUBSCRIBED' && !isSubscribed) {
                     isSubscribed = true;
-                    // Force an immediate track
+                    // Initial track and heartbeat
                     await channel.track({
                         online_at: new Date().toISOString(),
                         userId,
                         userEmail,
                         status: 'ONLINE'
+                    });
+                    supabase.rpc('update_user_heartbeat').then(({ error }) => {
+                        if (error) console.error("Heartbeat error:", error);
                     });
                 }
             });
@@ -101,7 +104,7 @@ export function PresenceProvider({
 
         connectPresence();
 
-        // Refresh connection every 2 minutes as a safety ping
+        // Refresh connection and heartbeat every 60 seconds
         const refreshInterval = setInterval(() => {
             if (channelRef.current && isSubscribed) {
                 channelRef.current.track({
@@ -110,8 +113,12 @@ export function PresenceProvider({
                     userEmail,
                     ping_at: Date.now()
                 });
+                // Database Heartbeat for persistent "last active" tracking
+                supabase.rpc('update_user_heartbeat').then(({ error }) => {
+                    if (error) console.error("Heartbeat interval error:", error);
+                });
             }
-        }, 120000);
+        }, 60000);
 
         return () => {
             clearInterval(refreshInterval);
