@@ -598,11 +598,11 @@ export default function VideoRecorderSettings() {
                                 <span className="text-2xl">🎥</span>
                             </div>
                             <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
-                                Video Capture
+                                Live Stream & Video Settings
                             </h1>
                         </div>
                         <p className="text-muted-foreground ml-1">
-                            Configure camera, audio, and recording preferences for your workstation
+                            Configure camera, audio, and streaming preferences for your workstation
                         </p>
                     </div>
                 </div>
