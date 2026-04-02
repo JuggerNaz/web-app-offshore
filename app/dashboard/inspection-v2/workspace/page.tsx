@@ -22,30 +22,46 @@ import {
     CheckCircle2,
     CheckSquare,
     ChevronDown,
+    ChevronRight,
+    ChevronUp,
     ClipboardCheck,
     ClipboardList,
     Clock,
     CloudUpload,
+    Database,
+    Download,
     Edit,
+    Edit2,
+    ExternalLink,
+    Eye,
     FileClock,
     FileSpreadsheet,
     FileText,
+    FolderOpen,
     History,
     Info,
     Layers,
     Layout,
+    LayoutDashboard,
     LineChart,
     List,
     ListTodo,
     Loader2,
+    Lock,
     MapPin,
     Maximize2,
+    Menu,
+    MessageSquare,
+    MoreVertical,
+    Monitor,
+    Package,
     Paperclip,
     Pause,
     Play,
     Plus,
     Power,
     Printer,
+    RefreshCw,
     Save,
     Search,
     Settings,
@@ -58,6 +74,7 @@ import {
     Wifi,
     X
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
@@ -129,6 +146,7 @@ function V10PreviewLayout() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const supabase = createClient();
+    const queryClient = useQueryClient();
 
     const jobPackId = searchParams.get('jobpack');
     const structureId = searchParams.get('structure');
@@ -141,6 +159,50 @@ function V10PreviewLayout() {
         setDynamicProps(prev => ({ ...prev, [name]: value }));
         setIsUserInteraction(true);
     };
+
+    /**
+     * Robust SOW Status Synchronization
+     * Derived from aggregated insp_records for a specific COMPONENT + TASK
+     */
+    const syncSowStatus = useCallback(async (compId: number, taskCode: string) => {
+        if (!sowId) return;
+
+        // 1. Get all records for this component + task
+        const { data: records, error } = await supabase.from('insp_records')
+            .select('insp_id, finding_type, status, has_anomaly, inspection_data')
+            .eq('component_id', compId)
+            .eq('inspection_type_code', taskCode)
+            .order('inspection_date', { ascending: false })
+            .order('inspection_time', { ascending: false });
+
+        if (error) {
+            console.error(`Status sync failed for ${taskCode}:`, error);
+            return;
+        }
+
+        let newStatus: 'pending' | 'completed' | 'incomplete' = 'pending';
+        
+        if (records && records.length > 0) {
+            // Check for incomplete (latest record takes precedence for 'incomplete')
+            const latest = records[0];
+            if (latest.status?.toLowerCase() === 'incomplete') {
+                newStatus = 'incomplete';
+            } else {
+                newStatus = 'completed';
+            }
+        }
+
+        // 2. Update the sow item entry
+        // Use ID lookup if possible, or composite filter
+        await supabase.from('u_sow_items')
+            .update({ status: newStatus })
+            .eq('sow_id', Number(sowId))
+            .eq('component_id', compId)
+            .eq('inspection_code', taskCode);
+
+        // 3. Invalidate query to refresh UI
+        queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+    }, [sowId, supabase, queryClient]);
 
     const handleRequiredPropChange = (name: string, value: any) => {
         setRequiredProps(prev => ({ ...prev, [name]: value }));
@@ -335,6 +397,15 @@ function V10PreviewLayout() {
     const [isAddInspOpen, setIsAddInspOpen] = useState(false);
     const [photoLinked, setPhotoLinked] = useState(false);
     const [recordNotes, setRecordNotes] = useState("");
+    
+    // Reclassification States
+    const [pendingReclass, setPendingReclass] = useState<{ type: 'COMPONENT' | 'TASK', newComponent: any, newTask: string | null, componentTaskStatuses: any[], orphanedFields: string[] } | null>(null);
+    const [originalRecordContext, setOriginalRecordContext] = useState<any>(null);
+    const [archivedData, setArchivedData] = useState<Record<string, any>>({});
+    const [showTaskSelector, setShowTaskSelector] = useState(false);
+    const [showCompSelector, setShowCompSelector] = useState(false);
+    const [compSelectorSearch, setCompSelectorSearch] = useState("");
+    const [addTaskSearch, setAddTaskSearch] = useState("");
 
     // Edit Settings States
     const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
@@ -691,62 +762,18 @@ function V10PreviewLayout() {
                 return;
             }
 
-            if (record) {
-                // Fetch ALL remaining records... (rest of the logic from 825-871)
-                const { data: allRemaining } = await supabase
-                    .from('insp_records')
-                    .select('insp_id, status, has_anomaly, inspection_date')
-                    .eq('jobpack_id', record.jobpack_id)
-                    .eq('component_id', record.component_id)
-                    .eq('inspection_type_id', record.inspection_type_id)
-                    .eq('sow_report_no', record.sow_report_no);
-
-                let bestStatus = 'pending';
-                if (allRemaining && allRemaining.length > 0) {
-                    const hasAnom = allRemaining.some(r => r.has_anomaly);
-                    const isIncomplete = allRemaining.some(r => r.status === 'INCOMPLETE');
-                    const isCompleted = allRemaining.some(r => r.status === 'COMPLETED');
-                    
-                    if (hasAnom) bestStatus = 'anomaly';
-                    else if (isIncomplete) bestStatus = 'incomplete';
-                    else if (isCompleted) bestStatus = 'completed';
-                }
-
-                await supabase.from('u_sow_items')
-                    .update({ 
-                        status: bestStatus === 'anomaly' ? 'completed' : bestStatus, 
-                        last_inspection_date: allRemaining?.length ? allRemaining[0].inspection_date : null 
-                    })
-                    .eq('sow_id', sowId)
-                    .eq('component_id', record.component_id)
-                    .filter('inspection_type_id', record.inspection_type_id ? 'eq' : 'is', record.inspection_type_id || null);
-
-                // Optimistically update the UI Component List status
-                setComponentsSow(prev => prev.map(comp => {
-                    if (comp.id === record.component_id) {
-                        return {
-                            ...comp,
-                            taskStatuses: comp.taskStatuses.map((ts: any) => {
-                                if (ts.code === record.inspection_type_code) {
-                                    return { ...ts, status: bestStatus === 'anomaly' ? 'completed' : bestStatus };
-                                }
-                                return ts;
-                            })
-                        };
-                    }
-                    return comp;
-                }));
+            if (record && record.component_id && record.inspection_type_code) {
+                await syncSowStatus(record.component_id, record.inspection_type_code);
             }
 
-            toast.success("Record and associated media deleted successfully");
-            setCurrentRecords(prev => prev.filter(r => r.insp_id !== id));
-            setVideoEvents(prev => prev.filter(ev => ev.inspectionId !== id));
+            toast.success("Record deleted");
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+            queryClient.invalidateQueries({ queryKey: ['inspection-records'] });
             
             if (editingRecordId !== null && Number(id) === Number(editingRecordId)) {
                 resetForm();
             }
             
-            fetchHistory();
             syncDeploymentState();
         } catch (error) {
             console.error("Error deleting record:", error);
@@ -781,6 +808,85 @@ function V10PreviewLayout() {
         setPendingRule(null);
         setPhotoLinked(false);
         setPendingAttachments([]);
+    };
+
+    // Re-classification Logic
+    const diffSpecifications = (newComp: any, newTaskCode: string) => {
+        const newIt = allInspectionTypes.find(t => t.code === newTaskCode || t.name === newTaskCode);
+        const specProps = newIt?.default_properties || [];
+        let newPropsList: any[] = [];
+        if (typeof specProps === 'string') {
+             try {
+                 const parsed = JSON.parse(specProps);
+                 newPropsList = Array.isArray(parsed) ? parsed : (parsed.properties || []);
+             } catch (e) { }
+        } else if (Array.isArray(specProps)) {
+             newPropsList = [...specProps];
+        }
+
+        if (newComp?.type?.toUpperCase() === 'ANODE') {
+            newPropsList = newPropsList.filter(p => !['length', 'width', 'height', 'diameter', 'coating', 'weld_number'].includes(p.name));
+            newPropsList.unshift(
+                { name: 'anode_type', label: 'Anode Type', type: 'select', options: ['Stand-off', 'Flush', 'Bracelet', 'Sled'] },
+                { name: 'depletion', label: 'Depletion (%)', type: 'number', validation: { min: 0, max: 100 } }
+            );
+        } else if (newComp?.type?.toUpperCase() === 'PIPELINE') {
+            newPropsList.unshift({ name: 'kp', label: 'Kilometer Post (KP)', type: 'text' });
+        }
+        
+        const newFieldNames = new Set(newPropsList.map(p => p.name));
+        const orphaned: string[] = [];
+        
+        Object.keys(dynamicProps).forEach(key => {
+            if (key.startsWith('_')) return; // ignore metadata
+            if (!newFieldNames.has(key)) {
+                orphaned.push(key);
+            }
+        });
+        
+        return orphaned;
+    };
+
+    const handleComponentSelection = (c: any) => {
+        if (editingRecordId && selectedComp && c.id !== selectedComp.id) {
+            const orphaned = diffSpecifications(c, activeSpec || '');
+            setPendingReclass({
+                type: 'COMPONENT',
+                newComponent: c,
+                newTask: activeSpec,
+                componentTaskStatuses: c.taskStatuses || [],
+                orphanedFields: orphaned
+            });
+        } else {
+            setSelectedComp(c);
+            resetForm();
+        }
+    };
+
+    const confirmReclassification = () => {
+        if (!pendingReclass) return;
+        const { newComponent, newTask } = pendingReclass;
+        if (newComponent) setSelectedComp(newComponent);
+        if (newTask) setActiveSpec(newTask);
+        setPendingReclass(null);
+    };
+
+    const handleTaskChange = (newTask: string) => {
+        if (!selectedComp || !editingRecordId) {
+            setActiveSpec(newTask);
+            setShowTaskSelector(false);
+            return;
+        }
+        
+        const orphaned = diffSpecifications(selectedComp, newTask);
+        setPendingReclass({
+            type: 'TASK',
+            newComponent: selectedComp,
+            newTask: newTask,
+            componentTaskStatuses: selectedComp.taskStatuses || [],
+            orphanedFields: orphaned
+        });
+        setShowTaskSelector(false);
     };
 
     const [dataAcqFields, setDataAcqFields] = useState<Array<{ label: string, targetField: string, value: string }>>([]);
@@ -2139,40 +2245,30 @@ function V10PreviewLayout() {
         fetchDeps();
     }, [inspMethod, jobPackId, structureId, supabase]);
 
-    useEffect(() => {
-        async function fetchComps() {
-            if (!sowId || !structureId) return;
 
-            // First, get ALL components of the structure
-            const { data: allCompsData, error: compErr } = await supabase.from('structure_components')
+    // Replacement: useQuery for SOW and Component Data
+    const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
+        queryKey: ['sow-data', structureId, sowId, inspMethod],
+        queryFn: async () => {
+            if (!sowId || !structureId) return { assigned: [], unassigned: [], all: [] };
+
+            // 1. Fetch ALL components
+            const { data: allCompsData } = await supabase.from('structure_components')
                 .select('*')
                 .eq('structure_id', parseInt(structureId));
 
-            if (allCompsData) setAllComps(allCompsData);
-            if (!allCompsData || allCompsData.length === 0) {
-                setComponentsSow([]);
-                setComponentsNonSow([]);
-                return;
-            }
+            if (!allCompsData) return { assigned: [], unassigned: [], all: [] };
 
-            // Then fetch SOW items for the selected `sow_id`
+            // 2. Fetch SOW items
             const { data: sowItems } = await supabase.from('u_sow_items')
-                .select('*, inspection_type:inspection_type_id!left(id, code, name)')
+                .select('*, inspection_type:inspection_type_id!left(id, code, name, metadata)')
                 .eq('sow_id', sowId);
 
             const assignedCompsMap = new Map<number, { code: string; status: string }[]>();
 
             if (sowItems) {
-                // Fetch full inspection types to get their metadata since it's not joined completely
-                const { data: allTypesData } = await supabase.from('inspection_type').select('*');
-                const typesMap = new Map();
-                if (allTypesData) {
-                    allTypesData.forEach(t => typesMap.set(t.id, t));
-                }
-
                 sowItems.forEach(item => {
-                    const fullTypeData = typesMap.get(item.inspection_type?.id);
-                    const md = fullTypeData?.metadata || {};
+                    const md = item.inspection_type?.metadata || {};
                     const isRov = md.rov === 1 || md.rov === "1" || md.rov === true || md.job_type?.includes('ROV');
                     const isDiving = md.diving === 1 || md.diving === "1" || md.diving === true || md.job_type?.includes('DIVING');
 
@@ -2180,9 +2276,8 @@ function V10PreviewLayout() {
                     if (inspMethod === 'DIVING') isCompatible = isDiving;
                     if (inspMethod === 'ROV') isCompatible = isRov;
 
-                    if (!isCompatible) return; // Skip item if it doesn't match the current mode
+                    if (!isCompatible) return;
 
-                    // match by q_id or component_id or type
                     const matchingComp = (allCompsData || []).find((c: any) =>
                         (item.component_qid && c.q_id === item.component_qid) ||
                         (item.component_id && c.id === item.component_id) ||
@@ -2212,10 +2307,8 @@ function V10PreviewLayout() {
                 const startElev = md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || '-';
                 const endElev = md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || '-';
                 const nominalThk = md.nominal_thickness || md.NominalThickness || md.nominal_thk || comp.nominal_thickness || '-';
-
                 const taskItems = assignedCompsMap.get(comp.id) || [];
 
-                // Calculate display elevation: use the lower of elv_1 / elv_2
                 const elv1Num = parseFloat(String(startElev).replace(/[^\d.-]/g, ''));
                 const elv2Num = parseFloat(String(endElev).replace(/[^\d.-]/g, ''));
                 const hasElv1 = !isNaN(elv1Num);
@@ -2223,7 +2316,6 @@ function V10PreviewLayout() {
                 let displayDepth = comp.water_depth || '-0.0m';
                 let lowestElev = '-';
                 if (hasElv1 && hasElv2) {
-                    // if both positive -> lowest (min); if one neg one pos -> neg (min); if both neg -> lowest (min)
                     lowestElev = String(Math.min(elv1Num, elv2Num));
                     displayDepth = `${lowestElev}m`;
                 } else if (hasElv1) {
@@ -2245,18 +2337,23 @@ function V10PreviewLayout() {
                     taskStatuses: Array.from(new Map(taskItems.map(item => [item.code, item])).values())
                 };
 
-                if (isAssigned) {
-                    assigned.push(obj);
-                } else {
-                    unassigned.push(obj);
-                }
+                if (isAssigned) assigned.push(obj);
+                else unassigned.push(obj);
             });
 
-            setComponentsSow(assigned);
-            setComponentsNonSow(unassigned);
+            return { assigned, unassigned, all: allCompsData };
+        },
+        staleTime: 30000, // 30 seconds
+    });
+
+    // Populate local states whenever query data resolves
+    useEffect(() => {
+        if (sowAndComps) {
+            setComponentsSow(sowAndComps.assigned);
+            setComponentsNonSow(sowAndComps.unassigned);
+            setAllComps(sowAndComps.all);
         }
-        fetchComps();
-    }, [sowId, structureId, inspMethod, supabase]);
+    }, [sowAndComps]);
 
     useEffect(() => {
         async function fetchInitialLists() {
@@ -2743,6 +2840,31 @@ function V10PreviewLayout() {
 
             const activeProps = { ...dynamicProps, ...currentDataAcq };
 
+            // Process Archived Data during Re-classification
+            const newArchivedData = { ...archivedData };
+            const currentFieldNames = new Set(activeFormProps.map((p: any) => p.name));
+
+            if (activeFormProps.length > 0) {
+                // 1. Move orphaned activeProps to archived pool
+                Object.keys(activeProps).forEach(key => {
+                    if (key.startsWith('_')) return; // Ignore metadata
+                    if (!currentFieldNames.has(key)) {
+                        newArchivedData[key] = activeProps[key];
+                        delete activeProps[key];
+                    }
+                });
+
+                // 2. Restore any previously archived fields if they are now back in scope
+                currentFieldNames.forEach((name: string) => {
+                    if (newArchivedData[name] !== undefined) {
+                        if (activeProps[name] === undefined || activeProps[name] === '') {
+                             activeProps[name] = newArchivedData[name];
+                        }
+                        delete newArchivedData[name];
+                    }
+                });
+            }
+
             const payload: any = {
                 [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: activeDep.id,
                 structure_id: parseInt(structureId || "0"),
@@ -2771,6 +2893,7 @@ function V10PreviewLayout() {
                     _meta_status: findingType,
                     incomplete_reason: findingType === 'Incomplete' ? incompleteReason : null
                 },
+                archived_data: newArchivedData,
                 cr_user: user?.id || 'system'
             };
 
@@ -2823,11 +2946,22 @@ function V10PreviewLayout() {
             if (opError) throw opError;
 
             const newStatus = findingType === 'Incomplete' ? 'incomplete' : 'completed';
-            await supabase.from('u_sow_items')
-                .update({ status: newStatus })
-                .eq('sow_id', sowId)
-                .eq('component_id', selectedComp.id)
-                .filter('inspection_type_id', it?.id ? 'eq' : 'is', it?.id || null);
+            
+            // Robust SOW Status Synchronization
+            if (sowId) {
+                // 1. Sync the CURRENT component/task
+                await syncSowStatus(selectedComp.id, it?.code || activeSpec);
+
+                // 2. Sync the ORIGINAL component/task if it was changed (Rollback)
+                if (editingRecordId && originalRecordContext) {
+                    const compChanged = originalRecordContext.component_id !== selectedComp.id;
+                    const taskChanged = originalRecordContext.inspection_type_code !== (it?.code || activeSpec);
+                    
+                    if (compChanged || taskChanged) {
+                        await syncSowStatus(originalRecordContext.component_id, originalRecordContext.inspection_type_code);
+                    }
+                }
+            }
 
             if (findingType === 'Anomaly' || findingType === 'Finding') {
                 const isAnomaly = findingType === 'Anomaly';
@@ -2913,6 +3047,10 @@ function V10PreviewLayout() {
                     toast.error(`Warning: Inspection saved, but failed to link ${category}! (${anomalyErr.message || 'Check DB schema'})`, { duration: 6000 });
                 } else {
                     toast.success(`Record and ${category} saved successfully!`);
+
+            // Invalidate React Query cache for SOW and Events
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+            queryClient.invalidateQueries({ queryKey: ['inspection-events'] });
                 }
             } else {
                 // If it was an anomaly/finding but now changed to Pass/Incomplete, remove the record
@@ -3087,6 +3225,14 @@ function V10PreviewLayout() {
         setEditingRecordId(fullRecord.insp_id || fullRecord.id);
         setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
         setDynamicProps(fullRecord.inspection_data || {});
+        // Save Context for Re-classification feature
+        setOriginalRecordContext({
+            component_id: fullRecord.component_id,
+            inspection_type_id: fullRecord.inspection_type_id,
+            inspection_type_code: fullRecord.inspection_type?.code || fullRecord.inspection_type_code,
+            sow_report_no: fullRecord.sow_report_no
+        });
+        setArchivedData(fullRecord.archived_data || {});
         // Do not set debounced props immediately to avoid triggering validation without user interaction
         setDebouncedProps(fullRecord.inspection_data || {});
         setIsUserInteraction(false); 
@@ -3795,9 +3941,32 @@ function V10PreviewLayout() {
                                                     const status = taskStatus?.status || 'pending';
                                                     const isCompleted = status === 'completed';
                                                     const isIncomplete = status === 'incomplete';
-                                                    const hasAnomaly = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id);
-                                                    const isRectified = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id && r.insp_anomalies?.[0]?.status === 'CLOSED');
+                                                    
+                                                    // Records for this specific task
+                                                    const taskRecords = currentRecords.filter((r: any) => 
+                                                        (r.inspection_type?.code === t || r.inspection_type_code === t) && 
+                                                        r.component_id === selectedComp.id
+                                                    );
+
+                                                    const hasAnomaly = taskRecords.some((r: any) => r.has_anomaly && r.inspection_data?._meta_status !== 'Finding');
+                                                    const hasFinding = taskRecords.some((r: any) => r.has_anomaly && r.inspection_data?._meta_status === 'Finding');
+                                                    
+                                                    const isRectified = taskRecords.some((r: any) => r.has_anomaly && r.insp_anomalies?.[0]?.status === 'CLOSED');
                                                     const it = allInspectionTypes.find(type => type.code === t || type.name === t);
+                                                    
+                                                    // Determine color based on priority: Anomaly (Red) > Finding (Orange) > Pass (Green)
+                                                    const statusColor = hasAnomaly && !isRectified ? 'red' :
+                                                                       hasFinding ? 'orange' :
+                                                                       isRectified ? 'teal' :
+                                                                       isCompleted ? 'green' :
+                                                                       isIncomplete ? 'amber' : 'blue';
+
+                                                    const statusLabel = hasAnomaly && !isRectified ? '⚠ Anomaly Registered' :
+                                                                       hasFinding ? '⚠ Finding Registered' :
+                                                                       isRectified ? '✓ Rectified' :
+                                                                       isCompleted ? '✓ Completed' :
+                                                                       isIncomplete ? '◐ Incomplete' : '○ Pending';
+                                                    
                                                     return (
                                                         <Button key={t} onClick={() => {
                                                             setActiveSpec(t);
@@ -3839,61 +4008,69 @@ function V10PreviewLayout() {
                                                                 rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
                                                             setIsManualOverride(false);
                                                             setIsUserInteraction(false);
-                                                        }} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${isCompleted && !hasAnomaly ? 'border-green-200 hover:bg-green-50/50' :
-                                                            hasAnomaly && !isRectified ? 'border-red-200 hover:bg-red-50/30' :
-                                                                hasAnomaly && isRectified ? 'border-teal-200 hover:bg-teal-50/30' :
-                                                                    isIncomplete ? 'border-amber-200 hover:bg-amber-50/30' :
-                                                                        'border-blue-200 hover:bg-blue-50'
-                                                            }`}>
+                                                        }} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${
+                                                            statusColor === 'green' ? 'border-green-200 hover:bg-green-50/50' :
+                                                            statusColor === 'red' ? 'border-red-200 hover:bg-red-50/30' :
+                                                            statusColor === 'orange' ? 'border-orange-200 hover:bg-orange-50/30' :
+                                                            statusColor === 'teal' ? 'border-teal-200 hover:bg-teal-50/30' :
+                                                            statusColor === 'amber' ? 'border-amber-200 hover:bg-amber-50/30' :
+                                                            'border-blue-200 hover:bg-blue-50'
+                                                        }`}>
                                                             <div className="flex items-center gap-2.5">
                                                                 {/* Status indicator dot */}
-                                                                <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${isCompleted && !hasAnomaly ? 'bg-green-500' :
-                                                                    hasAnomaly && !isRectified ? 'bg-red-500 animate-pulse' :
-                                                                        hasAnomaly && isRectified ? 'bg-teal-500' :
-                                                                            isIncomplete ? 'bg-amber-500' :
-                                                                                'bg-slate-300'
-                                                                    }`}>
-                                                                    {isCompleted && !hasAnomaly && <Check className="w-2 h-2 text-white" />}
-                                                                    {hasAnomaly && !isRectified && <AlertTriangle className="w-2 h-2 text-white" />}
+                                                                <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${
+                                                                    statusColor === 'green' ? 'bg-green-500' :
+                                                                    statusColor === 'red' ? 'bg-red-500 animate-pulse' :
+                                                                    statusColor === 'orange' ? 'bg-orange-500' :
+                                                                    statusColor === 'teal' ? 'bg-teal-500' :
+                                                                    statusColor === 'amber' ? 'bg-amber-500' :
+                                                                    'bg-slate-300'
+                                                                }`}>
+                                                                    {statusColor === 'green' && <Check className="w-2 h-2 text-white" />}
+                                                                    {(statusColor === 'red' || statusColor === 'orange') && <AlertTriangle className="w-2 h-2 text-white" />}
                                                                 </div>
                                                                 <div className="flex flex-col items-start overflow-hidden flex-1 max-w-[170px]">
                                                                     <div className="flex items-baseline gap-1.5 w-full text-left truncate">
-                                                                        <span className={`text-sm font-bold truncate ${isCompleted && !hasAnomaly ? 'text-green-700' :
-                                                                            hasAnomaly && !isRectified ? 'text-red-700' :
-                                                                                hasAnomaly && isRectified ? 'text-teal-700' :
-                                                                                    isIncomplete ? 'text-amber-700' :
-                                                                                        'text-blue-700'
-                                                                            }`} title={it?.name || t}>
+                                                                        <span className={`text-sm font-bold truncate ${
+                                                                            statusColor === 'green' ? 'text-green-700' :
+                                                                            statusColor === 'red' ? 'text-red-700' :
+                                                                            statusColor === 'orange' ? 'text-orange-700' :
+                                                                            statusColor === 'teal' ? 'text-teal-700' :
+                                                                            statusColor === 'amber' ? 'text-amber-700' :
+                                                                            'text-blue-700'
+                                                                        }`} title={it?.name || t}>
                                                                             {it?.name || t}
                                                                         </span>
-                                                                        <span className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${isCompleted && !hasAnomaly ? 'bg-green-50 border-green-200 text-green-700' :
-                                                                            hasAnomaly && !isRectified ? 'bg-red-50 border-red-200 text-red-700' :
-                                                                                hasAnomaly && isRectified ? 'bg-teal-50 border-teal-200 text-teal-700' :
-                                                                                    isIncomplete ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                                                                                        'bg-blue-50 border-blue-200 text-blue-700'
-                                                                            }`}>
+                                                                        <span className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${
+                                                                            statusColor === 'green' ? 'bg-green-50 border-green-200 text-green-700' :
+                                                                            statusColor === 'red' ? 'bg-red-50 border-red-200 text-red-700' :
+                                                                            statusColor === 'orange' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                                                                            statusColor === 'teal' ? 'bg-teal-50 border-teal-200 text-teal-700' :
+                                                                            statusColor === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                                                            'bg-blue-50 border-blue-200 text-blue-700'
+                                                                        }`}>
                                                                             {it?.code || t}
                                                                         </span>
                                                                     </div>
-                                                                    <span className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${isCompleted && !hasAnomaly ? 'text-green-500' :
-                                                                        hasAnomaly && !isRectified ? 'text-red-500' :
-                                                                            hasAnomaly && isRectified ? 'text-teal-500' :
-                                                                                isIncomplete ? 'text-amber-500' :
-                                                                                    'text-slate-400'
-                                                                        }`}>
-                                                                        {isCompleted && !hasAnomaly ? '✓ Completed' :
-                                                                            hasAnomaly && !isRectified ? '⚠ Anomaly Registered' :
-                                                                                hasAnomaly && isRectified ? '✓ Rectified' :
-                                                                                    isIncomplete ? '◐ Incomplete' :
-                                                                                        '○ Pending'}
+                                                                    <span className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${
+                                                                        statusColor === 'green' ? 'text-green-500' :
+                                                                        statusColor === 'red' ? 'text-red-500' :
+                                                                        statusColor === 'orange' ? 'text-orange-500' :
+                                                                        statusColor === 'teal' ? 'text-teal-500' :
+                                                                        statusColor === 'amber' ? 'text-amber-500' :
+                                                                        'text-slate-400'
+                                                                    }`}>
+                                                                        {statusLabel}
                                                                     </span>
                                                                 </div>
                                                             </div>
-                                                            <ArrowRight className={`w-4 h-4 ${isCompleted && !hasAnomaly ? 'text-green-300' :
-                                                                hasAnomaly ? 'text-red-300' :
-                                                                    isIncomplete ? 'text-amber-300' :
-                                                                        'text-blue-300'
-                                                                }`} />
+                                                            <ArrowRight className={`w-4 h-4 ${
+                                                                statusColor === 'green' ? 'text-green-300' :
+                                                                statusColor === 'red' ? 'text-red-300' :
+                                                                statusColor === 'orange' ? 'text-orange-300' :
+                                                                statusColor === 'amber' ? 'text-amber-300' :
+                                                                'text-blue-300'
+                                                            }`} />
                                                         </Button>
                                                     );
                                                 })}
@@ -4022,6 +4199,9 @@ function V10PreviewLayout() {
                                         currentMovement={currentMovement}
                                         tapeId={tapeId}
                                         vidState={vidState}
+                                        onChangeTaskClick={() => setShowTaskSelector(true)}
+                                        onChangeComponentClick={() => setShowCompSelector(true)}
+                                        isEditing={!!editingRecordId}
                                     />
                                 )}
                             </div>
@@ -4388,7 +4568,7 @@ function V10PreviewLayout() {
                                                 {componentsSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
                                                     const isSelected = selectedComp?.id === c.id;
                                                     return (
-                                                        <button key={c.id} onClick={() => { setSelectedComp(c); resetForm(); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
+                                                        <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                             <div className="flex justify-between font-bold">
                                                                 <div className="flex items-center gap-2">
                                                                     <span>{c.name}</span>
@@ -4443,7 +4623,7 @@ function V10PreviewLayout() {
                                             <div className="text-[9px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200">Non-SOW</div>
                                             <div className="space-y-1">
                                                 {componentsNonSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
-                                                    <button key={c.id} onClick={() => { setSelectedComp(c); resetForm(); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
+                                                    <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                         <div className="flex justify-between font-bold">
                                                             <div className="flex items-center gap-2">
                                                                 <span>{c.name}</span>
@@ -5158,6 +5338,182 @@ function V10PreviewLayout() {
                                 })()}
                             </Button>
                         </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* RE-CLASSIFICATION WARNING MODAL */}
+            <Dialog open={!!pendingReclass} onOpenChange={() => setPendingReclass(null)}>
+                <DialogContent className="max-w-md bg-white border-2 border-amber-200">
+                    <DialogHeader>
+                        <div className="flex items-center gap-2 text-amber-600 mb-2">
+                            <AlertTriangle className="w-6 h-6" />
+                            <h2 className="text-lg font-bold uppercase tracking-tight">Warning: Data Impact</h2>
+                        </div>
+                        <DialogDescription className="text-slate-600 font-medium">
+                            Changing the {pendingReclass?.type === 'COMPONENT' ? 'Component' : 'Task Type'} while editing an existing record will hide fields not present in the new specification.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {pendingReclass?.orphanedFields && pendingReclass.orphanedFields.length > 0 && (
+                        <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-100">
+                            <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-2">Impacted Fields (Will be archived):</p>
+                            <div className="flex flex-wrap gap-2">
+                                {pendingReclass.orphanedFields.map(f => (
+                                    <span key={f} className="px-2 py-1 bg-white border border-amber-200 text-amber-800 text-[10px] font-bold rounded shadow-sm">
+                                        {f.replace(/_/g, ' ').toUpperCase()}
+                                    </span>
+                                ))}
+                            </div>
+                            <p className="mt-3 text-[10px] text-amber-600 leading-relaxed italic">
+                                Note: These fields are not lost. They are moved to an archive column and will be restored automatically if you switch back to the original specification.
+                            </p>
+                        </div>
+                    )}
+
+                    <div className="mt-6 flex gap-3">
+                        <Button variant="outline" className="flex-1 font-bold text-slate-500 border-slate-200" onClick={() => setPendingReclass(null)}>
+                            CANCEL
+                        </Button>
+                        <Button className="flex-1 font-bold bg-amber-600 hover:bg-amber-700 text-white" onClick={confirmReclassification}>
+                            CONFIRM CHANGE
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* TASK SELECTOR MODAL (FOR RE-CLASSIFICATION) */}
+            <Dialog open={showTaskSelector} onOpenChange={setShowTaskSelector}>
+                <DialogContent className="max-w-sm bg-white p-0 overflow-hidden border-2 border-blue-100 shadow-2xl">
+                    <div className="p-4 bg-blue-600 text-white">
+                        <h2 className="text-xs font-bold uppercase tracking-widest opacity-80 mb-1">Re-classify Task</h2>
+                        <p className="text-sm font-black">Change Specification for {selectedComp?.name}</p>
+                    </div>
+                    <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto bg-slate-50">
+                        {/* SOW TASKS */}
+                        <div>
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">SOW Tasks</h3>
+                            <div className="space-y-1.5">
+                                {selectedComp?.taskStatuses
+                                    ?.filter((ts: any) => {
+                                        const it = allInspectionTypes.find(type => type.code === ts.code);
+                                        if (!it) return true; // fallback
+                                        if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
+                                        if (inspMethod === 'ROV') return it.metadata?.rov === 1;
+                                        return true;
+                                    })
+                                    .map((ts: any) => (
+                                        <button 
+                                            key={ts.code} 
+                                            onClick={() => handleTaskChange(ts.code)}
+                                            className={`w-full text-left p-3 rounded-lg border flex justify-between items-center transition-all ${
+                                                activeSpec === ts.code 
+                                                ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm' 
+                                                : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300 hover:bg-blue-50/30'
+                                            }`}
+                                        >
+                                            <span className="font-bold text-xs uppercase tracking-wide">{ts.code}</span>
+                                            {activeSpec === ts.code && <Check className="w-4 h-4" />}
+                                        </button>
+                                    ))}
+                            </div>
+                        </div>
+
+                        {/* OTHER LIBRARY TASKS */}
+                        <div className="pt-2 border-t border-slate-200">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Add Selection from Library</h3>
+                            <div className="relative mb-2">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                                <Input 
+                                    placeholder="Search library..." 
+                                    className="pl-8 h-8 text-[11px] font-bold bg-white border-slate-200"
+                                    value={addTaskSearch}
+                                    onChange={(e) => setAddTaskSearch(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                {allInspectionTypes
+                                    .filter(it => {
+                                        const isInSow = selectedComp?.tasks?.includes(it.code);
+                                        if (isInSow) return false;
+                                        const matchesSearch = it.name.toLowerCase().includes(addTaskSearch.toLowerCase()) || 
+                                                            it.code.toLowerCase().includes(addTaskSearch.toLowerCase());
+                                        if (!matchesSearch) return false;
+                                        if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
+                                        if (inspMethod === 'ROV') return it.metadata?.rov === 1;
+                                        return true;
+                                    })
+                                    .slice(0, 10) // Limit to 10 for performance
+                                    .map((it: any) => (
+                                        <button 
+                                            key={it.id} 
+                                            onClick={() => {
+                                                handleTaskChange(it.code);
+                                                setAddTaskSearch("");
+                                            }}
+                                            className="w-full text-left p-2.5 rounded border border-dashed border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-200 text-slate-500 hover:text-blue-600 transition-all group"
+                                        >
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-bold text-[11px] uppercase tracking-wide">{it.name}</span>
+                                                <Plus className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            </div>
+                                            <p className="text-[9px] font-medium text-slate-400 uppercase tracking-tighter leading-none mt-0.5">{it.code}</p>
+                                        </button>
+                                    ))}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-3 bg-white border-t border-slate-100 flex justify-end">
+                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => setShowTaskSelector(false)}>CLOSE</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* COMPONENT SELECTOR MODAL (FOR RE-CLASSIFICATION) */}
+            <Dialog open={showCompSelector} onOpenChange={setShowCompSelector}>
+                <DialogContent className="max-w-md bg-white p-0 overflow-hidden border-2 border-blue-100 shadow-2xl">
+                    <div className="p-4 bg-blue-600 text-white">
+                        <h2 className="text-xs font-bold uppercase tracking-widest opacity-80 mb-1">Re-classify Component</h2>
+                        <p className="text-sm font-black">Transfer Record to Another Component</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 border-b border-slate-200">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input 
+                                placeholder="Search Component Name..." 
+                                className="pl-9 h-10 bg-white border-slate-200 text-sm font-bold focus-visible:ring-blue-500"
+                                value={compSelectorSearch}
+                                onChange={(e) => setCompSelectorSearch(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="p-2 space-y-1 max-h-[50vh] overflow-y-auto bg-white">
+                        {componentsSow
+                            .filter(c => c.name.toLowerCase().includes(compSelectorSearch.toLowerCase()))
+                            .map((c: any) => (
+                                <button 
+                                    key={c.id} 
+                                    onClick={() => {
+                                        handleComponentSelection(c);
+                                        setShowCompSelector(false);
+                                        setCompSelectorSearch("");
+                                    }}
+                                    className={`w-full text-left px-4 py-3 rounded-md flex justify-between items-center transition-all ${
+                                        selectedComp?.id === c.id 
+                                        ? 'bg-blue-50 border border-blue-200 text-blue-700' 
+                                        : 'hover:bg-slate-50 text-slate-600'
+                                    }`}
+                                >
+                                    <div>
+                                        <p className="font-black text-xs uppercase tracking-wide">{c.name}</p>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase leading-tight mt-0.5">{c.type || 'Structure Item'}</p>
+                                    </div>
+                                    {selectedComp?.id === c.id ? <Check className="w-4 h-4" /> : <ChevronRight className="w-4 h-4 text-slate-300" />}
+                                </button>
+                            ))}
+                    </div>
+                    <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => { setShowCompSelector(false); setCompSelectorSearch(""); }}>CANCEL</Button>
                     </div>
                 </DialogContent>
             </Dialog>

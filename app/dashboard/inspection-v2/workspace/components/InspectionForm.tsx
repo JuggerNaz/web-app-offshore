@@ -61,6 +61,9 @@ interface InspectionFormProps {
     currentMovement: string;
     tapeId: any;
     vidState: string;
+    onChangeTaskClick?: () => void;
+    onChangeComponentClick?: () => void;
+    isEditing?: boolean;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -100,7 +103,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     activeDep,
     currentMovement,
     tapeId,
-    vidState
+    vidState,
+    onChangeTaskClick,
+    onChangeComponentClick,
+    isEditing = false
 }) => {
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
@@ -111,11 +117,22 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             <div className="p-3 bg-blue-600 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700">
                 <span className="font-black tracking-wide text-sm flex items-center gap-2">
                     <FileText className="w-4 h-4 text-blue-200" />
-                    <span className="text-blue-100 opacity-60 font-medium">{selectedComp.name} /</span> Spec: {(() => {
+                    <span className="text-blue-100 opacity-90 font-bold">{selectedComp.name}</span>
+                    {onChangeComponentClick && (
+                        <button onClick={onChangeComponentClick} className="ml-1.5 px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/10">
+                            Change
+                        </button>
+                    )}
+                    <span className="text-blue-100/40 mx-1.5">/</span> Spec: {(() => {
                         const specObj = allInspectionTypes.find(t => (t.code || '').trim() === (activeSpec || '').trim()) || 
                                        allInspectionTypes.find(t => (t.name || '').trim() === (activeSpec || '').trim());
                         return specObj ? specObj.name : activeSpec;
                     })()}
+                    {onChangeTaskClick && (
+                        <button onClick={onChangeTaskClick} className="ml-1.5 px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/10">
+                            Change
+                        </button>
+                    )}
                 </span>
                 <div className="flex items-center gap-3">
                     <span className="font-mono text-xs font-bold bg-black/20 px-2 py-1 rounded border border-white/10 flex items-center gap-1.5"><Video className="w-3 h-3 text-blue-200" /> {formatTime(vidTimer)}</span>
@@ -474,7 +491,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
                             const hasTape = !!tapeId;
                             const isRecording = vidState === 'RECORDING';
-                            const canCommit = (isDepActive && isAtWorksite && hasTape && isRecording) || isManualOverride;
+                            const canCommit = (isDepActive && isAtWorksite && hasTape && isRecording) || isManualOverride || isEditing;
 
                             const issues: string[] = [];
                             if (!isDepActive) issues.push('Deployment record not active');
@@ -484,7 +501,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                             return (
                                 <>
-                                    {!canCommit && (
+                                    {!canCommit && !isEditing && (
                                         <div className="mb-2 p-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-semibold flex items-start gap-2">
                                             <span className="text-amber-500 text-sm leading-none mt-0.5">⚠</span>
                                             <div>
