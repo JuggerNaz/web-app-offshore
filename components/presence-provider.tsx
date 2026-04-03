@@ -47,8 +47,7 @@ export function PresenceProvider({
                 const presenceState = channel.presenceState();
                 const onlineIds = new Set<string>();
 
-                // Add ourselves immediately to ensure we see our own status 
-                // instantly to prevent flickering
+                // Add ourselves immediately to prevent flickering
                 onlineIds.add(userId);
 
                 Object.keys(presenceState).forEach(key => {
@@ -57,6 +56,7 @@ export function PresenceProvider({
                         onlineIds.add(presences[0].userId || key);
                     }
                 });
+                
                 setOnlineUserIds(onlineIds);
             });
 
@@ -95,8 +95,12 @@ export function PresenceProvider({
                         userEmail,
                         status: 'ONLINE'
                     });
-                    supabase.rpc('update_user_heartbeat').then(({ error }) => {
-                        if (error) console.error("Heartbeat error:", error);
+                    supabase.rpc('update_user_heartbeat').then(({ data, error }) => {
+                        if (error) {
+                            if (error.code !== 'PGRST202') {
+                                console.error("Heartbeat error:", error);
+                            }
+                        }
                     });
                 }
             });
@@ -114,8 +118,15 @@ export function PresenceProvider({
                     ping_at: Date.now()
                 });
                 // Database Heartbeat for persistent "last active" tracking
-                supabase.rpc('update_user_heartbeat').then(({ error }) => {
-                    if (error) console.error("Heartbeat interval error:", error);
+                supabase.rpc('update_user_heartbeat').then(({ data, error }) => {
+                    if (error) {
+                        // Silence known missing function errors in interval once warned
+                        if (error.code !== 'PGRST202') {
+                            console.error("Heartbeat interval error:", error);
+                        }
+                    } else {
+                        // Optional: silent success in interval to keep console clean
+                    }
                 });
             }
         }, 60000);

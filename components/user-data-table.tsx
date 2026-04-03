@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { UserData } from "@/types/user";
 import {
     Table,
     TableBody,
@@ -28,20 +29,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { UserProfileCard } from "@/components/user-profile-card";
 
-// Defined locally to match the updated RPC return type
-type UserData = {
-    id: string;
-    email: string;
-    last_sign_in_at: string | null;
-    created_at: string;
-    role: string;
-    modules: string[];
-    last_seen_at: string | null;
-    full_name: string | null;
-    designation: string | null;
-    avatar_url: string | null;
-};
 
 const AVAILABLE_MODULES = [
     "Field Assets",
@@ -74,6 +63,7 @@ export function UserDataTable() {
     const [editModules, setEditModules] = useState<string[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+    const [viewingUser, setViewingUser] = useState<UserData | null>(null);
 
     const requestSort = (key: string) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -172,19 +162,12 @@ export function UserDataTable() {
 
         // 2. Check Database Heartbeat (Fallback / Persistent)
         if (user.last_seen_at) {
-            const lastSeenDate = parseISO(user.last_seen_at);
+            const lastSeenDate = new Date(user.last_seen_at);
             const now = new Date();
-            const diffInSeconds = (now.getTime() - lastSeenDate.getTime()) / 1000;
-            // If active within last 2 minutes (heartbeat is 60s), consider online
-            if (diffInSeconds < 120) return true;
-        }
-
-        // 3. Fallback: Last sign in within 1 hour (Optional, for demo)
-        if (user.last_sign_in_at) {
-            const date = parseISO(user.last_sign_in_at);
-            const now = new Date();
-            const diffInMinutes = (now.getTime() - date.getTime()) / 1000 / 60;
-            return diffInMinutes < 60;
+            const diffInSeconds = Math.abs(now.getTime() - lastSeenDate.getTime()) / 1000;
+            
+            // Increased threshold to 300s (5m) to account for clock drift or refresh delays
+            if (diffInSeconds < 300) return true;
         }
 
         return false;
@@ -376,6 +359,17 @@ export function UserDataTable() {
                                         </div>
                                     </TableHead>
                                     <TableHead 
+                                        className="font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-blue-600 transition-colors group"
+                                        onClick={() => requestSort('created_at')}
+                                    >
+                                        <div className="flex items-center gap-2 uppercase tracking-tighter text-[11px]">
+                                            Registered / Enrolled Date
+                                            {sortConfig?.key === 'created_at' ? (
+                                                sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                            ) : <ChevronUp className="h-3 w-3 opacity-0 group-hover:opacity-50" />}
+                                        </div>
+                                    </TableHead>
+                                    <TableHead 
                                         className="font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-blue-600 transition-colors group text-right pr-6"
                                         onClick={() => requestSort('last_seen_at')}
                                     >
@@ -392,7 +386,7 @@ export function UserDataTable() {
                             <TableBody>
                                 {sortedUsers.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={isAdmin ? 6 : 5} className="h-32 text-center text-slate-500 font-medium">
+                                        <TableCell colSpan={isAdmin ? 7 : 6} className="h-32 text-center text-slate-500 font-medium">
                                             No user accounts match your search criteria.
                                         </TableCell>
                                     </TableRow>
@@ -407,22 +401,32 @@ export function UserDataTable() {
                                             >
                                                 <TableCell className="font-medium p-4">
                                                     <div className="flex items-center gap-4">
-                                                        <Avatar className="h-14 w-14 border-2 border-white dark:border-slate-900 shadow-md ring-1 ring-slate-200 dark:ring-slate-800">
-                                                            <AvatarImage 
-                                                                src={(user.id === currentUserId && localMetadata?.avatar_url) 
-                                                                    ? localMetadata.avatar_url 
-                                                                    : (user.avatar_url || "")} 
-                                                                className="object-cover" 
-                                                            />
-                                                            <AvatarFallback className="bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-700 dark:text-slate-300 font-black text-lg">
-                                                                {getInitials(user)}
-                                                            </AvatarFallback>
-                                                        </Avatar>
+                                                        <button 
+                                                            onClick={() => setViewingUser(user)}
+                                                            className="group relative focus:outline-none transition-transform active:scale-95"
+                                                            title={`View ${getDisplayName(user)}'s profile`}
+                                                        >
+                                                            <div className="absolute inset-0 rounded-full bg-blue-500/20 scale-0 group-hover:scale-110 transition-transform duration-300" />
+                                                            <Avatar className="h-14 w-14 border-2 border-white dark:border-slate-900 shadow-md ring-1 ring-slate-200 dark:ring-slate-800 transition-all group-hover:shadow-lg group-hover:ring-blue-400">
+                                                                <AvatarImage 
+                                                                    src={(user.id === currentUserId && localMetadata?.avatar_url) 
+                                                                        ? localMetadata.avatar_url 
+                                                                        : (user.avatar_url || "")} 
+                                                                    className="object-cover" 
+                                                                />
+                                                                <AvatarFallback className="bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-700 dark:text-slate-300 font-black text-lg">
+                                                                    {getInitials(user)}
+                                                                </AvatarFallback>
+                                                            </Avatar>
+                                                        </button>
                                                         <div className="flex flex-col">
                                                             <div className="flex items-center gap-2">
-                                                                <span className="text-sm font-black text-slate-900 dark:text-slate-100">
+                                                                <button 
+                                                                    onClick={() => setViewingUser(user)}
+                                                                    className="text-sm font-black text-slate-900 dark:text-slate-100 hover:text-blue-600 transition-colors"
+                                                                >
                                                                     {getDisplayName(user)}
-                                                                </span>
+                                                                </button>
                                                                 {isMe && <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200 text-[9px] h-4 font-bold border-0 px-1.5 uppercase">You</Badge>}
                                                             </div>
                                                             <span className="text-[11px] text-slate-500 font-medium truncate max-w-[180px]">
@@ -472,7 +476,7 @@ export function UserDataTable() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-slate-600 dark:text-slate-400 font-medium text-sm">
-                                                    {user.created_at ? format(parseISO(user.created_at), "dd MMM yyyy, hh:mm a") : "-"}
+                                                    {user.created_at ? format(new Date(user.created_at), "dd MMM yyyy, HH:mm:ss") : "-"}
                                                 </TableCell>
                                                 <TableCell className="text-slate-500 dark:text-slate-400 font-medium text-sm text-right pr-6">
                                                     {online ? (
@@ -482,12 +486,12 @@ export function UserDataTable() {
                                                         </div>
                                                     ) : user.last_seen_at ? (
                                                         <div className="flex flex-col items-end gap-1">
-                                                            <span>{format(parseISO(user.last_seen_at), "dd MMM yyyy, hh:mm a")}</span>
+                                                            <span>{format(new Date(user.last_seen_at), "dd MMM yyyy, HH:mm:ss")}</span>
                                                             <span className="text-[10px] text-slate-400">Last activity</span>
                                                         </div>
                                                     ) : user.last_sign_in_at ? (
                                                         <div className="flex flex-col items-end gap-1">
-                                                            <span>{format(parseISO(user.last_sign_in_at), "dd MMM yyyy, hh:mm a")}</span>
+                                                            <span>{format(new Date(user.last_sign_in_at), "dd MMM yyyy, HH:mm:ss")}</span>
                                                             <span className="text-[10px] text-slate-400">Last sign in</span>
                                                         </div>
                                                     ) : (
@@ -587,6 +591,20 @@ export function UserDataTable() {
                             Save Configuration
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Profile View Dialog */}
+            <Dialog open={!!viewingUser} onOpenChange={(open) => !open && setViewingUser(null)}>
+                <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden border-0 bg-white dark:bg-slate-950 rounded-3xl shadow-2xl ring-1 ring-slate-200 dark:ring-slate-800">
+                    {viewingUser && (
+                        <UserProfileCard 
+                            user={viewingUser} 
+                            isOnline={isOnline(viewingUser)} 
+                            isMe={viewingUser.id === currentUserId}
+                            currentUserMetadata={localMetadata}
+                        />
+                    )}
                 </DialogContent>
             </Dialog>
         </div>
