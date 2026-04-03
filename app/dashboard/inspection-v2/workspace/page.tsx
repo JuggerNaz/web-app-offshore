@@ -2282,6 +2282,57 @@ function V10PreviewLayout() {
         }
     };
 
+    const handleOpenEditTape = () => {
+        const tape = jobTapes.find(t => t.tape_id === tapeId);
+        if (tape) {
+            setEditTapeNo(tape.tape_no || "");
+            setEditTapeChapter(String(tape.chapter_no || ""));
+            setEditTapeRemarks(tape.remarks || "");
+            setEditTapeStatus(tape.status || "ACTIVE");
+            setIsEditTapeOpen(true);
+        }
+    };
+
+    const handleSaveTapeEdit = async () => {
+        if (!tapeId) return;
+        setIsCommitting(true);
+        try {
+            const { error } = await supabase.from('insp_video_tapes')
+                .update({
+                    tape_no: editTapeNo,
+                    chapter_no: parseInt(editTapeChapter) || 1,
+                    remarks: editTapeRemarks,
+                    status: editTapeStatus
+                })
+                .eq('tape_id', tapeId);
+
+            if (error) throw error;
+
+            // Update local state
+            setJobTapes(prev => prev.map(t => t.tape_id === tapeId ? {
+                ...t,
+                tape_no: editTapeNo,
+                chapter_no: parseInt(editTapeChapter) || 1,
+                remarks: editTapeRemarks,
+                status: editTapeStatus
+            } : t));
+            
+            setTapeNo(editTapeNo);
+            setActiveChapter(parseInt(editTapeChapter) || 1);
+            
+            setIsEditTapeOpen(false);
+            toast.success("Tape details updated successfully");
+            
+            // Refresh history to ensure tape numbers in table are updated
+            fetchHistory();
+        } catch (err: any) {
+            console.error("Failed to update tape:", err);
+            toast.error(`Update failed: ${err.message}`);
+        } finally {
+            setIsCommitting(false);
+        }
+    };
+
     // Calibration Required Spec Fetching
     useEffect(() => {
         if (!activeSpec || !activeDep?.id) {
@@ -4093,6 +4144,7 @@ function V10PreviewLayout() {
                         setTapeNo={setTapeNo}
                         setActiveChapter={setActiveChapter}
                         setIsNewTapeOpen={setIsNewTapeOpen}
+                        handleOpenEditTape={handleOpenEditTape}
                         formatTime={formatTime}
                     >
                         {/* Tape Log Events (MODULAR) */}
@@ -5085,6 +5137,84 @@ function V10PreviewLayout() {
                     </div>
                 </div>
             )}
+            {/* Edit Tape Dialog */}
+            <Dialog open={isEditTapeOpen} onOpenChange={setIsEditTapeOpen}>
+                <DialogContent className="max-w-md bg-white border-2 border-blue-100 shadow-2xl p-0 overflow-hidden">
+                    <DialogHeader className="p-4 bg-slate-900 text-white space-y-1">
+                        <DialogTitle className="text-xs font-bold uppercase tracking-widest opacity-80 mb-0">Tape Management</DialogTitle>
+                        <DialogDescription className="text-sm font-black text-white/90">Edit Tape Details</DialogDescription>
+                    </DialogHeader>
+                    <div className="p-5 space-y-5 bg-white">
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Video Tape Number / Name</Label>
+                                <Input 
+                                    value={editTapeNo} 
+                                    onChange={(e) => setEditTapeNo(e.target.value.toUpperCase())}
+                                    placeholder="Enter tape reference..."
+                                    className="h-11 text-sm font-bold bg-slate-50 border-slate-200 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Chapter No.</Label>
+                                    <Input 
+                                        type="number"
+                                        value={editTapeChapter} 
+                                        onChange={(e) => setEditTapeChapter(e.target.value)}
+                                        className="h-11 text-sm font-bold bg-slate-50 border-slate-200 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all"
+                                    />
+                                    <p className="text-[9px] text-amber-600 font-bold italic mt-1 leading-tight">
+                                        Note: Adjust this if you want to maintain a previous numbering sequence.
+                                    </p>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Status</Label>
+                                    <Select value={editTapeStatus} onValueChange={setEditTapeStatus}>
+                                        <SelectTrigger className="h-11 text-sm font-bold bg-slate-50 border-slate-200">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ACTIVE" className="font-bold text-xs">ACTIVE</SelectItem>
+                                            <SelectItem value="COMPLETED" className="font-bold text-xs">COMPLETED</SelectItem>
+                                            <SelectItem value="ARCHIVED" className="font-bold text-xs">ARCHIVED</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Tape Remarks</Label>
+                                <Input 
+                                    value={editTapeRemarks} 
+                                    onChange={(e) => setEditTapeRemarks(e.target.value)}
+                                    placeholder="Optional notes..."
+                                    className="h-11 text-sm font-bold bg-slate-50 border-slate-200 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <Button
+                                variant="outline"
+                                className="flex-1 h-11 text-[11px] font-black uppercase tracking-widest border-slate-200 hover:bg-slate-50 text-slate-500"
+                                onClick={() => setIsEditTapeOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                className="flex-1 h-11 text-[11px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20"
+                                onClick={handleSaveTapeEdit}
+                                disabled={isCommitting || !editTapeNo}
+                            >
+                                {isCommitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Changes"}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* New Tape Creation Dialog */}
             <Dialog open={isNewTapeOpen} onOpenChange={setIsNewTapeOpen}>
                 <DialogContent className="sm:max-w-[425px]">
