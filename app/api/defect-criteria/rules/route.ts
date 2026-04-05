@@ -34,6 +34,7 @@ export async function GET(request: Request) {
             id: r.id,
             procedureId: r.procedure_id,
             structureGroup: r.structure_group,
+            fieldName: r.field_name,
             priorityId: r.priority_id,
             defectCodeId: r.defect_code_id,
             defectTypeId: r.defect_type_id,
@@ -49,6 +50,7 @@ export async function GET(request: Request) {
             alertMessage: r.alert_message,
             ruleOrder: r.rule_order,
             evaluationPriority: r.evaluation_priority,
+            referenceNo: r.reference_no,
             createdAt: r.created_at,
             updatedAt: r.updated_at
         }));
@@ -74,6 +76,7 @@ export async function POST(request: Request) {
         const {
             procedureId,
             structureGroup,
+            fieldName,
             priorityId,
             defectCodeId,
             defectTypeId,
@@ -106,6 +109,7 @@ export async function POST(request: Request) {
             .insert({
                 procedure_id: procedureId,
                 structure_group: structureGroup,
+                field_name: fieldName || null,
                 priority_id: priorityId,
                 defect_code_id: defectCodeId,
                 defect_type_id: defectTypeId,

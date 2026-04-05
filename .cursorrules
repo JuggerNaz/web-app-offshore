@@ -1,0 +1,8 @@
+# Antigravity Agent Rules (Token Optimization)
+
+- **Context Control:** Never perform a full-repository scan (@codebase) unless I explicitly type the command. 
+- **File Limit:** Do not read more than 2 files at a time. If you need more context, ask me first.
+- **Conciseness:** Provide only the specific code block that needs changing. Do not rewrite the entire file or provide long explanations unless asked.
+- **Model Selection:** For simple syntax corrections or CSS changes, recommend that I switch to "Flash" mode to save my Pro quota.
+- **Thinking Process:** Do not use "Chain of Thought" or "Planning Mode" for minor edits. Just execute the fix directly.
+- **No Refactoring:** Only fix the specific bug I mentioned. Do not suggest "improvements" or "clean up" other parts of the code voluntarily.

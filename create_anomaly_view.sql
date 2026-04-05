@@ -43,7 +43,7 @@ SELECT
     -- Filtering IDs
     COALESCE(dj.jobpack_id, rj.jobpack_id, r.jobpack_id) as jobpack_id,
     COALESCE(dj.structure_id, rj.structure_id, r.structure_id) as structure_id,
-    COALESCE(dj.sow_report_no, rj.sow_report_no, r.sow_report_no) as sow_report_no,
+    COALESCE(r.sow_report_no, rj.sow_report_no, dj.sow_report_no) as sow_report_no,
 
     -- Job Pack Info
     jp.name as jobpack_name,

@@ -122,7 +122,7 @@ export function StepGeneral({ state, updateState, onNext }: StepGeneralProps) {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Company Rep */}
                         <div className="space-y-2">
                             <Label>Company Rep</Label>
@@ -143,12 +143,12 @@ export function StepGeneral({ state, updateState, onNext }: StepGeneralProps) {
                             />
                         </div>
 
-                        {/* Dive Type */}
+                        {/* Inspection Mode */}
                         <div className="space-y-2">
-                            <Label>Dive Type</Label>
+                            <Label>Inspection Mode</Label>
                             <Select value={state.diveType} onValueChange={(val) => updateState({ diveType: val })}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Select Dive Type" />
+                                    <SelectValue placeholder="Select Inspection Mode" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="Air Diving">Air Diving</SelectItem>
@@ -165,7 +165,7 @@ export function StepGeneral({ state, updateState, onNext }: StepGeneralProps) {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Contract Ref */}
                         <div className="space-y-2">
                             <Label>Contract Ref#</Label>
@@ -183,16 +183,6 @@ export function StepGeneral({ state, updateState, onNext }: StepGeneralProps) {
                                 value={state.contractorRef}
                                 onChange={(e) => updateState({ contractorRef: e.target.value })}
                                 placeholder="Contractor Ref"
-                            />
-                        </div>
-
-                        {/* Estimated Time */}
-                        <div className="space-y-2">
-                            <Label>Estimated Time</Label>
-                            <Input
-                                value={state.estimatedTime}
-                                onChange={(e) => updateState({ estimatedTime: e.target.value })}
-                                placeholder="e.g. 14 Days"
                             />
                         </div>
                     </div>

@@ -109,7 +109,7 @@ export default function DiveJobSetup({
                 </div>
                 <div>
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                        Dive Deployment Setup
+                        Inspection Mode Setup
                     </h2>
                     <p className="text-sm text-muted-foreground">
                         Configure dive deployment details
@@ -150,7 +150,7 @@ export default function DiveJobSetup({
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="dive_type">Dive Type *</Label>
+                        <Label htmlFor="dive_type">Inspection Mode *</Label>
                         <Select
                             value={formData.dive_type}
                             onValueChange={(value) =>
@@ -303,7 +303,7 @@ export default function DiveJobSetup({
                         disabled={loading}
                         className="w-full h-12 text-base font-semibold bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
                     >
-                        {loading ? "Creating..." : "Create Dive Deployment"}
+                        {loading ? "Creating..." : "Create Inspection Mode"}
                     </Button>
                 </div>
             </form>

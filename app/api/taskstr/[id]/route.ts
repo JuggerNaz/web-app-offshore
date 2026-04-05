@@ -23,7 +23,7 @@ export async function PUT(request: Request, context: any) {
   const body = await request.json();
   const supabase = createClient();
 
-  const { data, error } = await supabase.from("taskstr").update(body).eq("pipe_id", id);
+  const { data, error } = await supabase.from("taskstr").update(body).eq("inspno", id);
 
   if (error) {
     if (error.code === "PGRST116") {

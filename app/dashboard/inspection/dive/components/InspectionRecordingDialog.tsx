@@ -951,7 +951,7 @@ export default function InspectionRecordingDialog({
             if (insertedRecord?.insp_id && pendingAttachments.length > 0) {
                 toast.info(`Uploading ${pendingAttachments.length} attachments...`);
 
-                for (const pendingObj of pendingAttachments) {
+                for (const pendingObj of (pendingAttachments as any[])) {
                     const { file, title, description } = pendingObj;
                     const fileExt = file.name.split('.').pop();
                     // Clean filename to avoid issues
@@ -1140,7 +1140,7 @@ export default function InspectionRecordingDialog({
 
         // 2. AI Analysis
         if (pendingAttachments.length > 0) {
-            const pendingObj = pendingAttachments[pendingAttachments.length - 1]; // Use latest
+            const pendingObj = (pendingAttachments as any[])[pendingAttachments.length - 1]; // Use latest
             if (pendingObj.file.type.startsWith('image/')) {
                 const toastId = toast.loading("Analyzing image with AI...");
                 try {

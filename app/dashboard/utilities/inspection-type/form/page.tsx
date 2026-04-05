@@ -27,6 +27,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
+import { FieldConfiguration, DefaultProperties } from "./FieldConfiguration";
 
 interface Metadata {
     platform: number;
@@ -40,6 +41,7 @@ interface InspectionTypeData {
     name: string;
     sname: string;
     metadata: Metadata;
+    default_properties: DefaultProperties;
 }
 
 export default function InspectionTypeFormPage() {
@@ -59,6 +61,10 @@ export default function InspectionTypeFormPage() {
             sbm: 0,
             tank: 0
         },
+        default_properties: {
+            fields: [],
+            component_overrides: []
+        }
     });
 
     // Fetch data if editing
@@ -70,6 +76,23 @@ export default function InspectionTypeFormPage() {
     useEffect(() => {
         if (existingType?.data) {
             const data = existingType.data;
+            let dp: DefaultProperties = { fields: [], component_overrides: [] };
+            
+            if (data.default_properties) {
+                if (typeof data.default_properties === "string") {
+                    try {
+                        const parsed = JSON.parse(data.default_properties);
+                        if (Array.isArray(parsed)) dp.fields = parsed;
+                        else dp = { fields: parsed.fields || [], component_overrides: parsed.component_overrides || [] };
+                    } catch (e) {}
+                } else if (Array.isArray(data.default_properties)) {
+                    dp.fields = data.default_properties;
+                } else if (typeof data.default_properties === "object") {
+                    dp.fields = data.default_properties.fields || [];
+                    dp.component_overrides = data.default_properties.component_overrides || [];
+                }
+            }
+
             setFormData({
                 code: data.code || "",
                 name: data.name || "",
@@ -79,7 +102,8 @@ export default function InspectionTypeFormPage() {
                     pipeline: data.metadata?.pipeline ?? 0,
                     sbm: data.metadata?.sbm ?? 0,
                     tank: data.metadata?.tank ?? 0
-                }
+                },
+                default_properties: dp
             });
         }
     }, [existingType]);
@@ -273,6 +297,14 @@ export default function InspectionTypeFormPage() {
                         </Card>
                     </div>
                 </div>
+
+                <div className="w-full">
+                    <FieldConfiguration 
+                        properties={formData.default_properties} 
+                        onChange={props => setFormData(prev => ({ ...prev, default_properties: props }))} 
+                    />
+                </div>
+
             </div>
         </div>
     );
