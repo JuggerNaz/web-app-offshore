@@ -749,7 +749,16 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           <SelectItem value="m">m</SelectItem>
                           <SelectItem value="cm">cm</SelectItem>
                           <SelectItem value="mm">mm</SelectItem>
-                          <SelectItem value="inch">inch</SelectItem>
+                          <SelectItem value="tonne">tonne</SelectItem>
+                          <SelectItem value="kg">kg</SelectItem>
+                          <SelectItem value="g">g</SelectItem>
+                          <SelectItem value="bars">bars</SelectItem>
+                          <SelectItem value="C">C</SelectItem>
+                          <SelectItem value="Volts">Volts</SelectItem>
+                          <SelectItem value="mV">mV</SelectItem>
+                          <SelectItem value="Amps">Amps</SelectItem>
+                          <SelectItem value="mA">mA</SelectItem>
+                          <SelectItem value="Newton">Newton</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -778,7 +787,16 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           <SelectItem value="m">m</SelectItem>
                           <SelectItem value="cm">cm</SelectItem>
                           <SelectItem value="mm">mm</SelectItem>
-                          <SelectItem value="inch">inch</SelectItem>
+                          <SelectItem value="tonne">tonne</SelectItem>
+                          <SelectItem value="kg">kg</SelectItem>
+                          <SelectItem value="g">g</SelectItem>
+                          <SelectItem value="bars">bars</SelectItem>
+                          <SelectItem value="C">C</SelectItem>
+                          <SelectItem value="Volts">Volts</SelectItem>
+                          <SelectItem value="mV">mV</SelectItem>
+                          <SelectItem value="Amps">Amps</SelectItem>
+                          <SelectItem value="mA">mA</SelectItem>
+                          <SelectItem value="Newton">Newton</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -805,7 +823,16 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           <SelectItem value="m">m</SelectItem>
                           <SelectItem value="cm">cm</SelectItem>
                           <SelectItem value="mm">mm</SelectItem>
-                          <SelectItem value="inch">inch</SelectItem>
+                          <SelectItem value="tonne">tonne</SelectItem>
+                          <SelectItem value="kg">kg</SelectItem>
+                          <SelectItem value="g">g</SelectItem>
+                          <SelectItem value="bars">bars</SelectItem>
+                          <SelectItem value="C">C</SelectItem>
+                          <SelectItem value="Volts">Volts</SelectItem>
+                          <SelectItem value="mV">mV</SelectItem>
+                          <SelectItem value="Amps">Amps</SelectItem>
+                          <SelectItem value="mA">mA</SelectItem>
+                          <SelectItem value="Newton">Newton</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1212,7 +1239,16 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                                           <SelectItem value="m">m</SelectItem>
                                           <SelectItem value="cm">cm</SelectItem>
                                           <SelectItem value="mm">mm</SelectItem>
-                                          <SelectItem value="inch">inch</SelectItem>
+                                          <SelectItem value="tonne">tonne</SelectItem>
+                                          <SelectItem value="kg">kg</SelectItem>
+                                          <SelectItem value="g">g</SelectItem>
+                                          <SelectItem value="bars">bars</SelectItem>
+                                          <SelectItem value="C">C</SelectItem>
+                                          <SelectItem value="Volts">Volts</SelectItem>
+                                          <SelectItem value="mV">mV</SelectItem>
+                                          <SelectItem value="Amps">Amps</SelectItem>
+                                          <SelectItem value="mA">mA</SelectItem>
+                                          <SelectItem value="Newton">Newton</SelectItem>
                                         </SelectContent>
                                       </Select>
                                     </div>
