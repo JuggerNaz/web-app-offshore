@@ -40,6 +40,7 @@ export default function DefectCriteriaPage() {
     // Form data
     const [ruleForm, setRuleForm] = useState<RuleFormData>({
         structureGroup: '',
+        fieldName: '',
         priorityId: '',
         defectCodeId: '',
         defectTypeId: '',
@@ -321,6 +322,7 @@ export default function DefectCriteriaPage() {
         setEditingRule(rule);
         setRuleForm({
             structureGroup: rule.structureGroup,
+            fieldName: rule.fieldName || '',          // ← pre-populate fieldName
             priorityId: rule.priorityId,
             defectCodeId: rule.defectCodeId,
             defectTypeId: rule.defectTypeId,
@@ -346,6 +348,7 @@ export default function DefectCriteriaPage() {
         setEditingRule(null);
         setRuleForm({
             structureGroup: '',
+            fieldName: '',              // ← reset fieldName
             priorityId: '',
             defectCodeId: '',
             defectTypeId: '',
@@ -612,7 +615,7 @@ export default function DefectCriteriaPage() {
                                                                 <div>
                                                                     <span className="text-muted-foreground">Condition:</span>{' '}
                                                                     <span className="font-medium">
-                                                                        Value {rule.thresholdOperator} {rule.thresholdValue}
+                                                                        {rule.fieldName || 'Value'} {rule.thresholdOperator} {rule.thresholdValue || rule.thresholdText}
                                                                     </span>
                                                                 </div>
                                                             )}
@@ -824,6 +827,36 @@ export default function DefectCriteriaPage() {
                                                 ))}
                                             </SelectContent>
                                         </Select>
+                                    </div>
+                                </div>
+                                {/* Field to Evaluate — KEY FIELD */}
+                                <div className="space-y-2 border border-amber-200 bg-amber-50/50 p-3 rounded-md">
+                                    <Label htmlFor="fieldName" className="flex items-center gap-2 text-amber-800">
+                                        Field(s) to Evaluate
+                                        <span className="text-xs font-normal bg-amber-100 border border-amber-300 text-amber-700 px-2 py-0.5 rounded">
+                                            Required for auto-detection
+                                        </span>
+                                    </Label>
+                                    <Input
+                                        id="fieldName"
+                                        value={ruleForm.fieldName || ''}
+                                        onChange={(e) => setRuleForm({ ...ruleForm, fieldName: e.target.value })}
+                                        placeholder="e.g. CP RDG (MV), anode_cp, cp_potential_mv"
+                                    />
+                                    <div className="text-xs text-amber-700 space-y-1">
+                                        <p>
+                                            Enter the inspection form field label(s) to monitor. Matching is <strong>case-insensitive and partial</strong>.
+                                        </p>
+                                        <p>
+                                            <strong>Multiple fields</strong>: Separate with commas — the system checks each in order and uses the first one that has a value.
+                                            {' '}This lets one rule cover field name variations across different inspection types.
+                                        </p>
+                                        <p className="font-mono bg-amber-100 px-2 py-1 rounded text-[11px]">
+                                            Example: <span className="text-amber-900">CP RDG (MV), anode_cp, cp_potential_mv</span>
+                                        </p>
+                                        <p>
+                                            Leave blank or enter <code className="bg-amber-100 px-1 rounded font-mono">*</code> to check any numeric field (less precise).
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">

@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ChevronDown, ChevronRight, FileText, Plus, Search, Trash2, X, AlertTriangle, Check, Columns, CheckCircle, AlertCircle, Circle, ShieldCheck, Layers, Filter, CheckCircle2, XCircle, Clock, Settings2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, FileText, Plus, Search, Trash2, X, AlertTriangle, Check, Columns, CheckCircle, AlertCircle, Circle, ShieldCheck, Layers, Filter, CheckCircle2, XCircle, Clock, Settings2, ListFilter } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SOW, SOWItem, ReportNumber, InspectionStatus } from "@/types/sow";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ interface SOWDialogProps {
         id: number;
         code: string;
         name: string;
+        metadata?: any;
     }>;
     components: Array<{
         id: number;
@@ -44,6 +45,7 @@ interface SOWDialogProps {
     }>;
     onSave?: () => void;
     readOnly?: boolean;
+    returnTo?: string | null;
 }
 
 export function SOWDialog({
@@ -58,6 +60,7 @@ export function SOWDialog({
     components,
     onSave,
     readOnly = false,
+    returnTo,
 }: SOWDialogProps) {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -128,6 +131,26 @@ export function SOWDialog({
 
     // State for searching selected components
     const [selectedComponentSearch, setSelectedComponentSearch] = useState("");
+
+    // Status filter for scope matrix: 'all' | 'completed' | 'incomplete' | 'pending'
+    type ScopeFilterType = 'all' | 'completed' | 'incomplete' | 'pending';
+    const [scopeStatusFilter, setScopeStatusFilter] = useState<ScopeFilterType>('all');
+
+    // Return the set of statuses a component has across its SOW items for the active report
+    const getComponentStatuses = (componentId: number): Set<string> => {
+        const rpt = activeReportNumber || 'null';
+        const items = sowItems.filter(i =>
+            i.component_id === componentId &&
+            (i.report_number || 'null') === rpt
+        );
+        const statuses = new Set<string>();
+        if (items.length === 0) {
+            statuses.add('pending');
+        } else {
+            items.forEach(i => statuses.add(i.status || 'pending'));
+        }
+        return statuses;
+    };
 
 
 
@@ -700,12 +723,22 @@ export function SOWDialog({
         .map(id => components.find(c => c.id === id))
         .filter(Boolean);
 
-    // Filter selected components based on search
-    const filteredSelectedComponents = selectedComponentsList.filter(c =>
-        !selectedComponentSearch ||
-        c!.qid.toLowerCase().includes(selectedComponentSearch.toLowerCase()) ||
-        c!.type.toLowerCase().includes(selectedComponentSearch.toLowerCase())
-    );
+    // Filter selected components based on search and status filter
+    const filteredSelectedComponents = selectedComponentsList.filter(c => {
+        // Text search filter
+        if (selectedComponentSearch &&
+            !c!.qid.toLowerCase().includes(selectedComponentSearch.toLowerCase()) &&
+            !c!.type.toLowerCase().includes(selectedComponentSearch.toLowerCase())
+        ) return false;
+
+        // Status filter — match if the component has ANY item with the target status
+        if (scopeStatusFilter !== 'all') {
+            const statuses = getComponentStatuses(c!.id);
+            if (!statuses.has(scopeStatusFilter)) return false;
+        }
+
+        return true;
+    });
 
 
 
@@ -771,6 +804,18 @@ export function SOWDialog({
                                 </div>
                             </div>
                             <div className="flex items-center gap-4">
+                                {returnTo && (
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        className="h-9 px-4 gap-2 bg-blue-600 hover:bg-blue-700 text-white border-blue-700 font-bold text-xs uppercase tracking-wider shadow-lg shadow-blue-500/20 transition-all"
+                                        onClick={() => {
+                                            window.location.href = returnTo;
+                                        }}
+                                    >
+                                        <ArrowLeft className="w-4 h-4" /> Back to Inspection
+                                    </Button>
+                                )}
                                 <div className="text-right px-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-800">
                                     <div className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-0.5">Job Pack Reference</div>
                                     <div className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">{jobpackTitle || `ID: ${jobpackId}`}</div>
@@ -872,12 +917,21 @@ export function SOWDialog({
                                 {/* Stats Panel - Compact Horizontal Row */}
                                 <div className="flex-[2] flex items-center gap-2 h-full">
                                     {[
-                                        { label: "Selected", value: stats.total, color: "text-slate-700 dark:text-slate-300", bg: "bg-white dark:bg-slate-900", border: "border-slate-200 dark:border-slate-800", icon: Filter },
-                                        { label: "Pending", value: stats.pending, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50/30 dark:bg-blue-900/20", border: "border-blue-100 dark:border-blue-900", icon: Clock },
-                                        { label: "Incomplete", value: stats.incomplete, color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-50/30 dark:bg-rose-900/20", border: "border-rose-100 dark:border-rose-900", icon: XCircle },
-                                        { label: "Done", value: stats.completed, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50/30 dark:bg-emerald-900/20", border: "border-emerald-100 dark:border-emerald-900", icon: CheckCircle2 }
+                                        { label: "Selected", value: stats.total, color: "text-slate-700 dark:text-slate-300", bg: "bg-white dark:bg-slate-900", border: "border-slate-200 dark:border-slate-800", icon: Filter, filterKey: 'all' as ScopeFilterType },
+                                        { label: "Pending", value: stats.pending, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50/30 dark:bg-blue-900/20", border: "border-blue-100 dark:border-blue-900", icon: Clock, filterKey: 'pending' as ScopeFilterType },
+                                        { label: "Incomplete", value: stats.incomplete, color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-50/30 dark:bg-rose-900/20", border: "border-rose-100 dark:border-rose-900", icon: XCircle, filterKey: 'incomplete' as ScopeFilterType },
+                                        { label: "Done", value: stats.completed, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50/30 dark:bg-emerald-900/20", border: "border-emerald-100 dark:border-emerald-900", icon: CheckCircle2, filterKey: 'completed' as ScopeFilterType }
                                     ].map((stat, i) => (
-                                        <div key={i} className={`flex-1 min-w-0 ${stat.bg} px-2 py-2 rounded-xl border ${stat.border} flex flex-col justify-center items-center h-full relative`}>
+                                        <div 
+                                            key={i} 
+                                            className={`flex-1 min-w-0 ${stat.bg} px-2 py-2 rounded-xl border ${stat.border} flex flex-col justify-center items-center h-full relative cursor-pointer transition-all hover:shadow-md ${
+                                                scopeStatusFilter === stat.filterKey 
+                                                    ? 'ring-2 ring-blue-500 ring-offset-1 shadow-md' 
+                                                    : 'hover:ring-1 hover:ring-slate-300'
+                                            }`}
+                                            onClick={() => setScopeStatusFilter(scopeStatusFilter === stat.filterKey ? 'all' : stat.filterKey)}
+                                            title={`Click to filter by ${stat.label}`}
+                                        >
                                             <stat.icon className="absolute top-2 right-2 h-3 w-3 text-slate-400 opacity-30" />
                                             <span className="text-[8px] uppercase font-bold text-slate-400 tracking-wider truncate mb-1">{stat.label}</span>
                                             <div className={`text-xl font-black leading-none ${stat.color} truncate`}>{stat.value}</div>
@@ -976,11 +1030,38 @@ export function SOWDialog({
                                 <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
                                     {/* Elevation Split Toggle and Controls */}
                                     <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center gap-4">
-                                        <div className="flex flex-col">
+                                        <div className="flex items-center gap-3">
                                             <div className="text-sm font-bold text-slate-800 dark:text-slate-200 tracking-wide uppercase flex items-center gap-2">
                                                 <Settings2 className="h-4 w-4 text-blue-500" />
                                                 Scope Matrix
                                             </div>
+
+                                            {/* Status Filter Pills */}
+                                            {selectedComponentsList.length > 0 && (
+                                                <div className="flex items-center gap-1 ml-2">
+                                                    <ListFilter className="h-3.5 w-3.5 text-slate-400 mr-1" />
+                                                    {[
+                                                        { key: 'all' as ScopeFilterType, label: 'All', count: selectedComponentsList.length, dotColor: 'bg-slate-400' },
+                                                        { key: 'completed' as ScopeFilterType, label: 'Done', count: selectedComponentsList.filter(c => getComponentStatuses(c!.id).has('completed')).length, dotColor: 'bg-emerald-500' },
+                                                        { key: 'incomplete' as ScopeFilterType, label: 'Incomplete', count: selectedComponentsList.filter(c => getComponentStatuses(c!.id).has('incomplete')).length, dotColor: 'bg-rose-500' },
+                                                        { key: 'pending' as ScopeFilterType, label: 'Pending', count: selectedComponentsList.filter(c => getComponentStatuses(c!.id).has('pending')).length, dotColor: 'bg-blue-500' },
+                                                    ].map(f => (
+                                                        <button
+                                                            key={f.key}
+                                                            onClick={() => setScopeStatusFilter(scopeStatusFilter === f.key ? 'all' : f.key)}
+                                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                                                                scopeStatusFilter === f.key
+                                                                    ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-sm'
+                                                                    : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                                            }`}
+                                                        >
+                                                            <span className={`h-1.5 w-1.5 rounded-full ${f.dotColor}`} />
+                                                            {f.label}
+                                                            <span className={`text-[9px] font-mono ${scopeStatusFilter === f.key ? 'text-white/60 dark:text-slate-900/60' : 'text-slate-400 dark:text-slate-500'}`}>{f.count}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Selected Components Search */}
@@ -1023,14 +1104,37 @@ export function SOWDialog({
                                                         <th className="p-2 text-left font-bold text-slate-600 dark:text-slate-400 border-r border-b border-slate-200 dark:border-slate-700 w-[240px] sticky left-0 bg-slate-50 dark:bg-slate-800 z-30 shadow-[4px_0_16px_-4px_rgba(0,0,0,0.05)]">
                                                             Component Details
                                                         </th>
-                                                        {filteredInspectionTypes.map((inspection) => (
-                                                            <th key={inspection.id} className="p-1 border-b border-slate-200 dark:border-slate-700 min-w-[50px] relative group hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors bg-slate-50 dark:bg-slate-800">
-                                                                <div className="writing-mode-vertical text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 whitespace-normal leading-snug transform rotate-180 py-2 h-32 w-full flex items-center justify-center text-center tracking-wider" style={{ writingMode: 'vertical-rl' }} title={`${inspection.code} - ${inspection.name}`}>
-                                                                    {inspection.name}
-                                                                </div>
-                                                                <div className="absolute inset-x-0 bottom-0 h-1 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                                            </th>
-                                                        ))}
+                                                        {filteredInspectionTypes.map((inspection) => {
+                                                            const isRov = inspection.metadata?.rov === 1 || inspection.metadata?.rov === "1" || inspection.metadata?.rov === true || inspection.metadata?.job_type?.includes('ROV');
+                                                            const isDiving = inspection.metadata?.diving === 1 || inspection.metadata?.diving === "1" || inspection.metadata?.diving === true || inspection.metadata?.job_type?.includes('DIVING');
+
+                                                            let barColor = "bg-blue-500";
+                                                            let textColor = "text-slate-500 dark:text-slate-400";
+                                                            let hoverBg = "hover:bg-blue-50/50 dark:hover:bg-blue-900/20";
+
+                                                            if (isRov && !isDiving) {
+                                                                barColor = "bg-blue-500";
+                                                                textColor = "text-blue-600 dark:text-blue-400 font-bold";
+                                                                hoverBg = "hover:bg-blue-50/50 dark:hover:bg-blue-900/20";
+                                                            } else if (isDiving && !isRov) {
+                                                                barColor = "bg-amber-500";
+                                                                textColor = "text-amber-600 dark:text-amber-400 font-bold";
+                                                                hoverBg = "hover:bg-amber-50/50 dark:hover:bg-amber-900/20";
+                                                            } else if (isRov && isDiving) {
+                                                                barColor = "bg-purple-500";
+                                                                textColor = "text-purple-600 dark:text-purple-400 font-bold";
+                                                                hoverBg = "hover:bg-purple-50/50 dark:hover:bg-purple-900/20";
+                                                            }
+
+                                                            return (
+                                                                <th key={inspection.id} className={`p-1 border-b border-slate-200 dark:border-slate-700 min-w-[50px] relative group transition-colors bg-slate-50 dark:bg-slate-800 ${hoverBg}`}>
+                                                                    <div className={`writing-mode-vertical text-[10px] uppercase font-bold whitespace-normal leading-snug transform rotate-180 py-2 h-32 w-full flex items-center justify-center text-center tracking-wider ${textColor}`} style={{ writingMode: 'vertical-rl' }} title={`${inspection.code} - ${inspection.name}`}>
+                                                                        {inspection.name}
+                                                                    </div>
+                                                                    <div className={`absolute inset-x-0 bottom-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity ${barColor}`}></div>
+                                                                </th>
+                                                            );
+                                                        })}
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1097,9 +1201,24 @@ export function SOWDialog({
                                                                                 <div className="flex items-center justify-between">
                                                                                     <div className="font-bold text-sm truncate" title={component!.qid || ''}>{component!.qid}</div>
                                                                                     <button
-                                                                                        onClick={() => handleRemoveComponent(component!.id)}
-                                                                                        className="text-red-600 hover:text-red-700 flex-shrink-0"
-                                                                                        title="Remove component"
+                                                                                        onClick={() => {
+                                                                                            const statuses = getComponentStatuses(component!.id);
+                                                                                            if (statuses.has('completed') || statuses.has('incomplete')) {
+                                                                                                return; // locked
+                                                                                            }
+                                                                                            handleRemoveComponent(component!.id);
+                                                                                        }}
+                                                                                        className={`flex-shrink-0 ${
+                                                                                            (() => { const s = getComponentStatuses(component!.id); return s.has('completed') || s.has('incomplete'); })()
+                                                                                                ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                                                                                                : 'text-red-600 hover:text-red-700'
+                                                                                        }`}
+                                                                                        title={
+                                                                                            (() => { const s = getComponentStatuses(component!.id); return s.has('completed') || s.has('incomplete'); })()
+                                                                                                ? 'Cannot remove — component has inspection records'
+                                                                                                : 'Remove component'
+                                                                                        }
+                                                                                        disabled={(() => { const s = getComponentStatuses(component!.id); return s.has('completed') || s.has('incomplete'); })()}
                                                                                     >
                                                                                         <Trash2 className="h-3 w-3" />
                                                                                     </button>
@@ -1234,24 +1353,28 @@ export function SOWDialog({
                                                                             </div>
                                                                         </div>
                                                                     </td>
-                                                                    {filteredInspectionTypes.map((inspection) => (
+                                                                    {filteredInspectionTypes.map((inspection) => {
+                                                                        const itemStatus = getItemStatus(component!.id, inspection.id, 0, 0);
+                                                                        const isLocked = itemStatus === 'completed' || itemStatus === 'incomplete';
+                                                                        return (
                                                                         <td key={inspection.id} className="p-2 border-r text-center align-top pt-4 bg-gray-50/30 dark:bg-slate-800/30">
-                                                                            <div className="flex justify-center items-center gap-2" title="Select for WHOLE component">
+                                                                            <div className="flex justify-center items-center gap-2" title={isLocked ? `Cannot untick — status: ${itemStatus}` : "Select for WHOLE component"}>
                                                                                 <input
                                                                                     type="checkbox"
-                                                                                    className="h-4 w-4 rounded border-gray-400 dark:border-slate-500 text-blue-600 dark:text-blue-500 focus:ring-blue-500 dark:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                                    className={`h-4 w-4 rounded border-gray-400 dark:border-slate-500 text-blue-600 dark:text-blue-500 focus:ring-blue-500 dark:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed ${isLocked ? 'accent-emerald-600' : ''}`}
                                                                                     checked={isSelected(component!.id, inspection.id, 0, 0)}
-                                                                                    onChange={() => !readOnly && toggleSelection(component!.id, inspection.id, 0, 0)}
-                                                                                    disabled={readOnly}
+                                                                                    onChange={() => !readOnly && !isLocked && toggleSelection(component!.id, inspection.id, 0, 0)}
+                                                                                    disabled={readOnly || isLocked}
                                                                                 />
                                                                                 {isSelected(component!.id, inspection.id, 0, 0) && (
-                                                                                    <div title={getItemStatus(component!.id, inspection.id, 0, 0)}>
-                                                                                        {getStatusIcon(getItemStatus(component!.id, inspection.id, 0, 0))}
+                                                                                    <div title={itemStatus}>
+                                                                                        {getStatusIcon(itemStatus)}
                                                                                     </div>
                                                                                 )}
                                                                             </div>
                                                                         </td>
-                                                                    ))}
+                                                                        );
+                                                                    })}
                                                                 </tr>
 
                                                                 {/* SPLIT ROWS: Only if split is enabled */}
@@ -1263,19 +1386,21 @@ export function SOWDialog({
                                                                             </td>
                                                                             {filteredInspectionTypes.map((inspection) => {
                                                                                 const isWholeSelected = isSelected(component!.id, inspection.id, 0, 0);
+                                                                                const splitStatus = getItemStatus(component!.id, inspection.id, range.start, range.end);
+                                                                                const isSplitLocked = splitStatus === 'completed' || splitStatus === 'incomplete';
                                                                                 return (
                                                                                     <td key={inspection.id} className="p-2 border-r border-slate-100 dark:border-slate-800 text-center bg-white dark:bg-slate-900">
                                                                                         <div className="flex justify-center items-center gap-2">
                                                                                             <input
                                                                                                 type="checkbox"
-                                                                                                className="h-3 w-3 rounded border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                                                                className={`h-3 w-3 rounded border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500 disabled:opacity-30 disabled:cursor-not-allowed ${isSplitLocked ? 'accent-emerald-600' : ''}`}
                                                                                                 checked={isSelected(component!.id, inspection.id, range.start, range.end)}
-                                                                                                onChange={() => !readOnly && toggleSelection(component!.id, inspection.id, range.start, range.end)}
-                                                                                                disabled={isWholeSelected || readOnly}
+                                                                                                onChange={() => !readOnly && !isSplitLocked && toggleSelection(component!.id, inspection.id, range.start, range.end)}
+                                                                                                disabled={isWholeSelected || readOnly || isSplitLocked}
                                                                                             />
                                                                                             {isSelected(component!.id, inspection.id, range.start, range.end) && (
-                                                                                                <div title={getItemStatus(component!.id, inspection.id, range.start, range.end)}>
-                                                                                                    {getStatusIcon(getItemStatus(component!.id, inspection.id, range.start, range.end))}
+                                                                                                <div title={splitStatus}>
+                                                                                                    {getStatusIcon(splitStatus)}
                                                                                                 </div>
                                                                                             )}
                                                                                         </div>

@@ -13,10 +13,16 @@ SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"rov": 1}'
 WHERE code IN ('GVINS', 'CP', 'FMD'); -- Add your codes here
 
 -- 3. Set 'DIVING' flag for specific inspection types (diving=1)
--- Replace codes as needed
+-- Added ILIKE matching to capture ASCAN, EDDY CURRENT, MAGNETIC PARTICLE, HYDROSTATIC, etc.
 UPDATE inspection_type
 SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"diving": 1}'
-WHERE code IN ('MPI', 'BSINS', 'CVINS'); -- Add your codes here
+WHERE 
+    code IN ('MPI', 'BSINS', 'CVINS', 'ASCAN')
+    OR name ILIKE '%ASCAN%'
+    OR name ILIKE '%A-SCAN%'
+    OR name ILIKE '%EDDY%'
+    OR name ILIKE '%MAGNETIC%'
+    OR name ILIKE '%HYDROSTATIC%';
 
 -- 4. Set Platform scope (platform=1) if needed (assuming these are Platform inspections)
 UPDATE inspection_type

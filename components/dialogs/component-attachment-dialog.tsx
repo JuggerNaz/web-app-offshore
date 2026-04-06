@@ -22,6 +22,8 @@ type ComponentAttachmentDialogProps = {
 export function ComponentAttachmentDialog({ componentId }: ComponentAttachmentDialogProps) {
   const [formData, setFormData] = useState({
     filename: "",
+    title: "",
+    description: ""
   });
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -32,7 +34,9 @@ export function ComponentAttachmentDialog({ componentId }: ComponentAttachmentDi
     if (!file) return;
 
     const data = new FormData();
-    data.append("name", formData.filename);
+    data.append("name", formData.filename || file.name);
+    data.append("title", formData.title || formData.filename || file.name);
+    data.append("description", formData.description);
     data.append("source_id", componentId.toString());
     data.append("source_type", "component");
     data.append("file", file);
@@ -45,6 +49,8 @@ export function ComponentAttachmentDialog({ componentId }: ComponentAttachmentDi
       mutate(`/api/attachment/component/${componentId}`);
       setFormData({
         filename: "",
+        title: "",
+        description: ""
       });
       setFile(null);
       toast.success("Attachment added successfully");
@@ -98,18 +104,24 @@ export function ComponentAttachmentDialog({ componentId }: ComponentAttachmentDi
         <div className="p-8 space-y-6">
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">File Name</label>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Title</label>
               <Input
-                placeholder="Enter display name or leave blank"
-                name="filename"
-                className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                value={formData.filename}
+                placeholder="Photo Title (e.g. Overview of Component)"
+                name="title"
+                className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-semibold"
+                value={formData.title}
                 onChange={handleChange}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    SubmitAttachment(e);
-                  }
-                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Description</label>
+              <textarea
+                placeholder="Enter description or observation..."
+                name="description"
+                className="w-full h-20 p-3 text-sm rounded-xl border border-slate-200 dark:border-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none transition-all"
+                value={formData.description}
+                onChange={handleChange}
               />
             </div>
 

@@ -541,7 +541,7 @@ export default function V10PreviewLayout() {
                                                 </div>
 
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><FileText className="w-3 h-3" /> Detailed Field Notes</label>
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><FileText className="w-3 h-3" /> Findings</label>
                                                     <textarea placeholder="Observation specifics, dimensions, characteristics..." className="w-full min-h-[100px] rounded-lg border border-slate-300 p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50"></textarea>
                                                 </div>
 

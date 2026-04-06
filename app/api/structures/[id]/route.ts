@@ -92,6 +92,7 @@ export async function GET(
 
             detailedData = {
                 ...structure,
+                id: structureId,
                 str_name: platform.title || `Platform ${structureId}`,
                 str_id: structureId,
                 str_type: "PLATFORM",
@@ -225,6 +226,7 @@ export async function GET(
 
             detailedData = {
                 ...structure,
+                id: structureId,
                 str_name: pipeline.title || `Pipeline ${structureId}`,
                 str_id: structureId,
                 str_type: "PIPELINE",

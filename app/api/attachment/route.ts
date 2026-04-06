@@ -207,6 +207,8 @@ export async function POST(request: Request, context: any) {
   const name = formData.get("name") as string; // more like label
   const source_type = formData.get("source_type") as string;
   const source_id = formData.get("source_id") as string;
+  const title = (formData.get("title") as string) || "";
+  const description = (formData.get("description") as string) || "";
 
   // Get file
   const file = formData.get("file") as File;
@@ -249,6 +251,8 @@ export async function POST(request: Request, context: any) {
         source_type: source_type,
         source_id: Number(source_id),
         meta: {
+          title: title || name,
+          description: description,
           file_label: name,
           original_file_name: file.name,
           file_url: publicUrl,
@@ -357,5 +361,54 @@ export async function DELETE(request: NextRequest) {
     console.error(`[DELETE] Exception for ID ${attachmentId}:`, err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
   }
+}
+
+/**
+ * PATCH /api/attachment
+ * Update an attachment by ID
+ * Body: { id, title, description, ... }
+ */
+export async function PATCH(request: NextRequest) {
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
+  const body = await request.json();
+  const { id, title, description, name } = body;
+
+  if (!id) {
+    return NextResponse.json({ error: "No ID provided" }, { status: 400 });
+  }
+
+  // Fetch current attachment to get existing meta
+  const { data: current, error: fetchError } = await supabase
+    .from("attachment")
+    .select("meta, name")
+    .eq("id", id)
+    .single();
+
+  if (fetchError) {
+    return handleSupabaseError(fetchError, "Attachment not found");
+  }
+
+  const updatedMeta = {
+    ...(current.meta as object || {}),
+    title: title !== undefined ? title : (current.meta as any)?.title,
+    description: description !== undefined ? description : (current.meta as any)?.description,
+  };
+
+  const { data, error } = await supabase
+    .from("attachment")
+    .update({
+      name: name || current.name,
+      meta: updatedMeta
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    return handleSupabaseError(error, "Failed to update attachment");
+  }
+
+  return NextResponse.json({ success: true, data });
 }
 

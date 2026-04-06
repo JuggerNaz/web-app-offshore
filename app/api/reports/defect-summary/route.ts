@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
         if (jobpackId === "undefined" || jobpackId === "null") jobpackId = null;
         if (structureId === "undefined" || structureId === "null") structureId = null;
         if (sowReportNo === "undefined" || sowReportNo === "null") sowReportNo = null;
+        if (sowReportNo) sowReportNo = decodeURIComponent(sowReportNo);
 
         if (!jobpackId) {
             return NextResponse.json({ error: "jobpack_id is required" }, { status: 400 });
@@ -45,12 +46,16 @@ export async function GET(request: NextRequest) {
             .select("*")
             .eq("jobpack_id", jobpackId);
 
+        let prefix = searchParams.get("prefix");
+        if (prefix === "undefined" || prefix === "null") prefix = null;
+
         if (structureId) query = query.eq("structure_id", structureId);
         if (sowReportNo) query = query.eq("sow_report_no", sowReportNo);
+        if (prefix) query = query.ilike("display_ref_no", `%${prefix}%`);
 
         query = query.order("priority", { ascending: true });
 
-        const { data: anomalies, error: anomalyError } = await query;
+        let { data: anomalies, error: anomalyError } = await query;
         if (anomalyError) {
             console.error("[DefectSummary] Anomaly query error:", anomalyError);
             throw anomalyError;

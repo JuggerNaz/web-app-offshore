@@ -27,14 +27,14 @@ export async function GET(request: Request, context: any) {
   if (data && data.length > 0) {
     const userIds = Array.from(new Set(data.map((item) => item.user_id).filter(Boolean)));
     console.log('[Comment API] User IDs to fetch:', userIds);
-    
+
     // Fetch user information using RPC function
     const { data: usersData, error: usersError } = await (supabase.rpc as any)('get_user_info', {
       user_ids: userIds
     });
-    
+
     console.log('[Comment API] RPC Response:', { usersData, usersError });
-    
+
     // Create a map of user_id to user name
     const userMap = new Map();
     if (usersData && !usersError && Array.isArray(usersData)) {
@@ -89,10 +89,24 @@ export async function PUT(request: Request, context: any) {
   const body = await request.json();
   const supabase = createClient();
 
+  // Extract comment id from body for targeted update
+  const commentId = body.id;
+  if (!commentId) {
+    return NextResponse.json(
+      { error: "Missing comment id in request body" },
+      { status: 400 }
+    );
+  }
+
+  // Remove id from update payload
+  const { id: _, ...updateData } = body;
+
   const { data, error } = await supabase
     .from("comment")
-    .update(body)
+    .update(updateData)
+    .eq("id", commentId)
     .eq("structure_id", id)
+    .select()
     .single();
 
   if (error) {
@@ -108,4 +122,34 @@ export async function PUT(request: Request, context: any) {
   }
 
   return NextResponse.json({ data });
+}
+
+export async function DELETE(request: Request, context: any) {
+  const { id } = await context.params;
+  const body = await request.json();
+  const supabase = createClient();
+
+  const commentId = body.id;
+  if (!commentId) {
+    return NextResponse.json(
+      { error: "Missing comment id in request body" },
+      { status: 400 }
+    );
+  }
+
+  const { error } = await supabase
+    .from("comment")
+    .delete()
+    .eq("id", commentId)
+    .eq("structure_id", id);
+
+  if (error) {
+    console.error("Error deleting comment:", error);
+    return NextResponse.json(
+      { error: `Failed to delete comment ${commentId}` },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

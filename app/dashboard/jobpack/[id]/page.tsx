@@ -705,7 +705,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                     </div>
 
                     <div className="space-y-4">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Dive Type</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inspection Mode</Label>
                       <FormField
                         control={form.control}
                         name="divetyp"
@@ -836,7 +836,6 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <FormFieldWrap label="Estimated Time" name="site_hrs" form={form} ftype="vertical" type="number" />
                       <FormFieldWrap
                         label="Status"
                         name="status"
@@ -980,38 +979,62 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                               {/* Inspection Summary Badges */}
                               <div className="flex flex-wrap gap-1.5 min-h-[1.5rem]">
                                 {assignedInspections.length > 0 ? (
-                                  assignedInspections.map((insp: any) => (
-                                    <TooltipProvider key={insp.id}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="group/badge relative px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[9px] font-bold border border-blue-100 dark:border-blue-500/20 uppercase tracking-tight cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
-                                            {insp.code}
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (!isClosed && structureStatus[key]?.status !== "CLOSED") {
-                                                  // Show confirmation dialog
-                                                  const confirmed = window.confirm(
-                                                    `Are you sure you want to remove "${insp.name}" (${insp.code}) from this structure?\n\nThis action cannot be undone.`
-                                                  );
-                                                  if (confirmed) {
-                                                    toggleInspection(insp, key);
+                                  assignedInspections.map((insp: any) => {
+                                    // Look up the live inspection type to guarantee we have the latest metadata attributes,
+                                    // since historical jobpack JSONs might not include the full nested metadata object.
+                                    const liveInsp = inspectionTypes?.data?.find((t: any) => t.code === insp.code) || insp;
+
+                                    // Determine inspection mode from LIVE metadata
+                                    const isRov = liveInsp.metadata?.rov === 1 || liveInsp.metadata?.rov === "1" || liveInsp.metadata?.rov === true || liveInsp.metadata?.job_type?.includes('ROV');
+                                    const isDiving = liveInsp.metadata?.diving === 1 || liveInsp.metadata?.diving === "1" || liveInsp.metadata?.diving === true || liveInsp.metadata?.job_type?.includes('DIVING');
+
+                                    // Default color (General) - Slate
+                                    let badgeColor = "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700";
+
+                                    if (isRov && !isDiving) {
+                                      // ROV - Blue
+                                      badgeColor = "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-500/20 hover:bg-blue-100 dark:hover:bg-blue-500/20";
+                                    } else if (isDiving && !isRov) {
+                                      // DIVING - Amber
+                                      badgeColor = "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20";
+                                    } else if (isRov && isDiving) {
+                                      // BOTH - Purple
+                                      badgeColor = "bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-500/20 hover:bg-purple-100 dark:hover:bg-purple-500/20";
+                                    }
+
+                                    return (
+                                      <TooltipProvider key={insp.id}>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className={`group/badge relative px-1.5 py-0.5 rounded-md text-[9px] font-bold border uppercase tracking-tight cursor-pointer transition-colors ${badgeColor}`}>
+                                              {insp.code}
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  if (!isClosed && structureStatus[key]?.status !== "CLOSED") {
+                                                    // Show confirmation dialog
+                                                    const confirmed = window.confirm(
+                                                      `Are you sure you want to remove "${insp.name}" (${insp.code}) from this structure?\n\nThis action cannot be undone.`
+                                                    );
+                                                    if (confirmed) {
+                                                      toggleInspection(insp, key);
+                                                    }
                                                   }
-                                                }
-                                              }}
-                                              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/badge:opacity-100 transition-opacity hover:bg-red-600"
-                                              disabled={isClosed || structureStatus[key]?.status === "CLOSED"}
-                                            >
-                                              <X className="w-2 h-2" />
-                                            </button>
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p className="text-xs font-medium">{insp.name}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  ))
+                                                }}
+                                                className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/badge:opacity-100 transition-opacity hover:bg-red-600"
+                                                disabled={isClosed || structureStatus[key]?.status === "CLOSED"}
+                                              >
+                                                <X className="w-2 h-2" />
+                                              </button>
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="text-xs font-medium">{insp.name}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    );
+                                  })
                                 ) : (
                                   <span className="text-[10px] italic text-slate-400 dark:text-slate-500">No inspections assigned</span>
                                 )}
@@ -1301,7 +1324,13 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
           }}
           availableStructures={selectedStructures || []}
           onSwitchStructure={(newStruct) => setSOWStructure(newStruct)}
-          inspectionTypes={inspectionsByStruct[`${sowStructure.type}-${sowStructure.id}`] || []}
+          inspectionTypes={(inspectionsByStruct[`${sowStructure.type}-${sowStructure.id}`] || []).map(insp => {
+            const liveInsp = inspectionTypes?.data?.find((t: any) => t.code === insp.code);
+            return {
+              ...insp,
+              metadata: liveInsp?.metadata || insp.metadata
+            };
+          })}
           components={sowComponents}
           onSave={() => {
             // Optionally refresh data
@@ -1311,6 +1340,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
             data?.data?.status === "CLOSED" ||
             structureStatus?.[`${sowStructure.type}-${sowStructure.id}`]?.status === "CLOSED"
           }
+          returnTo={searchParams.get('returnTo') ? decodeURIComponent(searchParams.get('returnTo')!) : null}
         />
       )}
 
