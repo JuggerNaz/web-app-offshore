@@ -10,11 +10,14 @@ try {
     const supabase = createClient(url, key);
 
     async function check() {
-        const { data, error } = await supabase.from('u_lib_list').select('*').limit(1);
-        if (data && data.length > 0) {
-            console.log('Columns in u_lib_list:', Object.keys(data[0]));
+        const { data: cols, error: colError } = await supabase.from('information_schema.columns')
+            .select('column_name, is_nullable, column_default, data_type')
+            .eq('table_name', 'structure_components');
+        
+        if (colError) {
+            console.error('Error fetching columns:', colError);
         } else {
-            console.log('No data found in u_lib_list');
+            console.log('Columns:', JSON.stringify(cols, null, 2));
         }
     }
     check();

@@ -10,11 +10,11 @@ try {
     const supabase = createClient(url, key);
 
     async function check() {
-        const { data, error } = await supabase.from('u_lib_list').select('*').limit(1);
-        if (data && data.length > 0) {
-            console.log('Columns in u_lib_list:', Object.keys(data[0]));
+        const { data, error } = await supabase.from('structure_components').select('code, compcode, q_id, id_no').limit(5);
+        if (error) {
+            console.error('Error:', error);
         } else {
-            console.log('No data found in u_lib_list');
+            console.log('Sample Components:', JSON.stringify(data, null, 2));
         }
     }
     check();

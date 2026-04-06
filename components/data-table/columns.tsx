@@ -205,7 +205,7 @@ export const comments: ColumnDef<Comment>[] = [
   },
   {
     accessorKey: "text",
-    header: "Text",
+    header: "Comment",
   },
   {
     accessorKey: "user_name",

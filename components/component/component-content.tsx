@@ -104,6 +104,12 @@ export default function ComponentContent() {
     return matchesSearch;
   });
 
+  const getComponentName = (code: string | null) => {
+    if (!code) return null;
+    const type = componentTypes.find((t) => t.code === code);
+    return type?.name || code;
+  };
+
   const handleRowClick = (component: Component) => {
     setSelectedComponent(component);
     setDialogMode('view');
@@ -405,6 +411,8 @@ export default function ComponentContent() {
           onOpenChange={handleDialogOpenChange}
           mode={dialogMode}
           defaultCode={selectedCode}
+          typeName={dialogMode === 'view' ? (getComponentName(selectedComponent?.code || null) || "Component") : selectedType}
+          listKey={apiUrl}
         />
       )}
       {editDialogOpen && (
@@ -413,6 +421,7 @@ export default function ComponentContent() {
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           listKey={apiUrl}
+          typeName={getComponentName(editingComponent?.code || null) || "Component"}
         />
       )}
       <DeleteConfirmDialog

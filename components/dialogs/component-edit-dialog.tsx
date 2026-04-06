@@ -48,6 +48,7 @@ interface ComponentEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   listKey?: string | null; // SWR key for revalidation
+  typeName?: string | null;
 }
 
 // Helper to build ID No
@@ -73,7 +74,7 @@ const buildIdNoEdit = (
   return `${code}/${startNode}-${endNode}/${distance}/${clockPos}`;
 };
 
-export function ComponentEditDialog({ component, open, onOpenChange, listKey }: ComponentEditDialogProps) {
+export function ComponentEditDialog({ component, open, onOpenChange, listKey, typeName }: ComponentEditDialogProps) {
   const [structureId] = useAtom(urlId);
   const [pageType] = useAtom(urlType);
   const [isSaving, setIsSaving] = useState(false);
@@ -115,7 +116,8 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
   // Face specific options
   const { data: facePosData } = useSWR(`/api/library/FACE_POS`, fetcher);
   // Member Material options
-  const { data: membMatData } = useSWR(`/api/library/MEMB_MAT`, fetcher);
+  const { data: membMatData } = useSWR(`/api/library/mast/MEMB_MAT`, fetcher);
+  const { data: stdMembMatData } = useSWR(`/api/library/MEMB_MAT`, fetcher);
   // Hose specific options
   const { data: hoseTypData } = useSWR(`/api/library/HOSE_TYP`, fetcher);
   const { data: hoseManData } = useSWR(`/api/library/HOSE_MAN`, fetcher);
@@ -126,6 +128,10 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
   const { data: weldDesData } = useSWR(`/api/library/WELD_DES`, fetcher);
   const { data: weldMatData } = useSWR(`/api/library/WELD_MAT`, fetcher);
   const { data: weldCfgData } = useSWR(`/api/library/WELD_CFG`, fetcher);
+  // Anode specific options
+  const { data: anodeTypeData } = useSWR(`/api/library/ANOD_TYP`, fetcher);
+  const { data: anodeMatData } = useSWR(`/api/library/ANOD_MAT`, fetcher);
+  const { data: anodeFitData } = useSWR(`/api/library/FITTING`, fetcher);
 
 
   // Platform details for legs
@@ -178,8 +184,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
     s_leg: "",
     f_leg: "",
     dist: "",
+    dist_unit: "m",
     elv_1: "",
+    elv_1_unit: "m",
     elv_2: "",
+    elv_2_unit: "m",
     clk_pos: "",
     lvl: "",
     face: "",
@@ -295,8 +304,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
         s_leg: component.metadata?.s_leg ?? "",
         f_leg: component.metadata?.f_leg ?? "",
         dist: component.metadata?.dist ?? "",
+        dist_unit: component.metadata?.dist_unit ?? "m",
         elv_1: component.metadata?.elv_1 ?? "",
+        elv_1_unit: component.metadata?.elv_1_unit ?? "m",
         elv_2: component.metadata?.elv_2 ?? "",
+        elv_2_unit: component.metadata?.elv_2_unit ?? "m",
         clk_pos: component.metadata?.clk_pos ?? "",
         lvl: component.metadata?.lvl ?? "",
         face: component.metadata?.face ?? "",
@@ -310,10 +322,15 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
           };
 
           const code = component.code?.trim().toLowerCase();
-          const isSpecialComp = ['fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg'].includes(code || '');
+          const isSpecialComp = ['fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd'].includes(code || '');
 
           if (isSpecialComp) {
-            if (['fd', 'an', 'cs'].includes(code || '')) {
+            if (code === 'ct') {
+              delete info.id_chk;
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+            } else if (['fd', 'an', 'cs', 'fv'].includes(code || '')) {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
@@ -411,12 +428,59 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
               delete info.manufacturer;
               delete info.assoc_str;
               delete info.id_chk;
+            } else if (code === 'wn') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.id_chk;
+              delete info.weld_confg;
+              delete info.weld_type;
+              delete info.desg_code;
+              delete info.material;
+            } else if (code === 'wp') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.weld_confg;
+              delete info.weld_type;
+              delete info.thetype;
+              delete info.desg_code;
+              delete info.material;
+              delete info.id_chk;
+            } else if (code === 'gs') {
+              delete info.wall_thk;
+            } else if (code === 'gp') {
+              delete info.wall_thk;
+              delete info.diameter;
+              delete info.depth;
+            } else if (code === 'bl') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.thetype;
+              delete info.id_chk;
+              delete info.width;
+            } else if (code === 'ce') {
+              delete info.wall_thk;
+              delete info.id_chk;
+            } else if (code === 'sd') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.id_chk;
+              delete info.dist_leg;
+              delete info.stub_mat;
             }
           } else {
             info.wall_thk = component.metadata?.additionalInfo?.wall_thk ?? "";
             info.depth = component.metadata?.additionalInfo?.depth ?? "";
             info.diameter = component.metadata?.additionalInfo?.diameter ?? "";
           }
+
+          if (info.electrically_cont !== undefined) {
+            info.electrically_cont = info.electrically_cont === true || info.electrically_cont === "true";
+          }
+
           return info;
         })(),
       });
@@ -462,8 +526,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
         s_leg: formData.s_leg,
         f_leg: formData.f_leg,
         dist: formData.dist,
+        dist_unit: formData.dist_unit,
         elv_1: formData.elv_1,
+        elv_1_unit: formData.elv_1_unit,
         elv_2: formData.elv_2,
+        elv_2_unit: formData.elv_2_unit,
         clk_pos: formData.clk_pos,
         lvl: formData.lvl,
         face: formData.face,
@@ -528,13 +595,20 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
               <DialogTitle className="text-2xl font-black uppercase tracking-tight">
                 Edit Component Spec
               </DialogTitle>
-              <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                <span className="text-blue-600 font-black">{component?.id_no}</span>
-                {component?.updated_at && (
-                  <>
-                    <span className="opacity-20 text-slate-400">|</span>
-                    <span>Updated: {new Date(component.updated_at).toLocaleDateString()}</span>
-                  </>
+              <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex flex-col gap-1">
+                <span className="flex items-center gap-2">
+                  <span className="text-blue-600 font-black">{component?.id_no}</span>
+                  {component?.updated_at && (
+                    <>
+                      <span className="opacity-20 text-slate-400">|</span>
+                      <span>Updated: {new Date(component.updated_at).toLocaleDateString()}</span>
+                    </>
+                  )}
+                </span>
+                {typeName && (
+                  <span className="text-blue-600 dark:text-blue-400 font-black mt-1">
+                    {typeName}
+                  </span>
                 )}
               </DialogDescription>
             </div>
@@ -659,11 +733,26 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                   <div className="relative">
                     <Input
                       id="edit-dist"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-8"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
                       value={formData.dist}
                       onChange={(e) => handleChange("dist", e.target.value)}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">m</span>
+                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                      <Select
+                        value={formData.dist_unit}
+                        onValueChange={(val) => handleChange("dist_unit", val)}
+                      >
+                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                          <SelectItem value="m">m</SelectItem>
+                          <SelectItem value="cm">cm</SelectItem>
+                          <SelectItem value="mm">mm</SelectItem>
+                          <SelectItem value="inch">inch</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 
@@ -673,11 +762,26 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                   <div className="relative">
                     <Input
                       id="edit-elv1"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-8"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
                       value={formData.elv_1}
                       onChange={(e) => handleChange("elv_1", e.target.value)}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">m</span>
+                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                      <Select
+                        value={formData.elv_1_unit}
+                        onValueChange={(val) => handleChange("elv_1_unit", val)}
+                      >
+                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                          <SelectItem value="m">m</SelectItem>
+                          <SelectItem value="cm">cm</SelectItem>
+                          <SelectItem value="mm">mm</SelectItem>
+                          <SelectItem value="inch">inch</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
                 <div className="col-span-4 space-y-2">
@@ -685,11 +789,26 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                   <div className="relative">
                     <Input
                       id="edit-elv2"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-8"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
                       value={formData.elv_2}
                       onChange={(e) => handleChange("elv_2", e.target.value)}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">m</span>
+                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                      <Select
+                        value={formData.elv_2_unit}
+                        onValueChange={(val) => handleChange("elv_2_unit", val)}
+                      >
+                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                          <SelectItem value="m">m</SelectItem>
+                          <SelectItem value="cm">cm</SelectItem>
+                          <SelectItem value="mm">mm</SelectItem>
+                          <SelectItem value="inch">inch</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
                 <div className="col-span-4 space-y-2">
@@ -812,6 +931,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                     <div className="grid grid-cols-2 gap-x-12 gap-y-6 px-1">
                       {Object.entries(formData.additionalInfo).map(([key, value]) => {
                         if (key === 'del') return null;
+                        if (key === 'length_unit' || key === 'diameter_unit') return null;
                         let label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
                         const lowerCode = (formData.code || component?.code || "").trim().toLowerCase();
 
@@ -820,12 +940,22 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                         if (key === 'no_subsea') label = "No. Subsea Attachments";
                         if (key === 'no_topside') label = "No. Topside Attachments";
                         if (key === 'no_undattach') label = lowerCode === 'bb' ? "No. Subsea Attach." : "No Undattach";
-                        if (key === 'no_topattach') label = lowerCode === 'bb' ? "No. Topside Attach." : "No Topattach";
+                        if (key === 'no_topattach') label = lowerCode === 'bb' ? "No. Subsea Attach." : "No Topattach";
                         if (key === 'type' && lowerCode === 'an') label = "Installed Type";
-                        if (key === 'thetype' && lowerCode === 'an') label = "Anode Type";
+                        if (key === 'thetype' && lowerCode === 'an') label = "Anode Types";
+                        if (key === 'position' && lowerCode === 'an') label = "Anode Position";
+                        if (key === 'material' && lowerCode === 'an') label = "Anode Material Types";
+                        if (key === 'fitting' && lowerCode === 'an') label = "Anode Fitting Types";
                         if (key === 'termination_p' && lowerCode === 'cs') label = "Termination Depth";
                         if (key === 'injection_line' && lowerCode === 'cs') label = "Injection Line Fitted";
                         if (key === 'bumper_type') label = "Boat Bumper Types";
+                        if (key === 'nc_wall_thk') label = "node can wall thickness";
+                        if (key === 'memb_wall_thk') label = "member wall thickness";
+                        if (key === 'node_diam') label = "node diameter";
+                        if (key === 'memb_diam') label = "member diameter";
+                        if (key === 'supp_wt') label = "support wall thickness";
+                        if (key === 'memb_wt') label = "member wall thickness";
+                        if (key === 'supp_diam') label = "support diameter";
                         if (key === 'csum_typ') label = 'Caisson Type';
                         if (key === 'cais_at') label = 'Caisson Attachment Type';
                         if (key === 'corr_ctg') label = 'Corrosion Coating Type';
@@ -841,9 +971,10 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                         if (key === 'no_caissons') label = 'No. Protected Caissons';
                         if (key === 'no_conductors') label = 'No. Protected Conductor';
 
-                        if (key === 'dimen1') label = 'Dimension 1';
-                        if (key === 'dimen2') label = 'Dimension 2';
-                        if (key === 'dimen3') label = 'Dimension 3';
+                        if (key === 'easting') label = 'Easting';
+                        if (key === 'northing') label = 'Northing';
+                        if (key === 'equipment') label = 'Equipment';
+                        if (key === 'location_no') label = 'Location No.';
 
                         if (key === 'int_stiff') label = 'Internal Stiffening';
                         if (key === 'ext_stiff') label = 'External Stiffening';
@@ -881,15 +1012,23 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                         if (key === 'risb_typ') label = 'Support Beam Types';
                         if (key === 'stub_mat') label = 'Conical Stub Material';
                         if (key === 'wsup_typ') label = 'Weld-Supported Component Types';
+                        if (key === 'has_gas_seepage') label = 'Has Gas Seepage?';
+                        if (key === 'qid_member_attached') label = 'QID Member Attached To';
+                        if (key === 'boatlanding_types') label = 'Boatlanding Types';
+                        if (key === 'valve_status') label = 'Status of the Valve';
+                        if (key === 'dist_from_legs') label = 'dist. from legs';
 
                         let unit = null;
-                        if (key === 'wall_thk') unit = "mm";
-                        if (key === 'diameter') unit = lowerCode === 'bb' ? "m" : "mm";
-                        if (key === 'depth') unit = "m";
-                        if (key === 'weight' && (lowerCode === 'fd' || lowerCode === 'bb' || lowerCode === 'sg' || lowerCode === 'cu')) unit = "tonnes";
-                        if (key === 'length' && (lowerCode === 'fd' || lowerCode === 'cl' || lowerCode === 'bb' || lowerCode === 'lg')) unit = "m";
+                        if (key === 'length' && lowerCode === 'bb') unit = formData.additionalInfo.length_unit || "m";
+                        else if (key === 'diameter' && lowerCode === 'bb') unit = formData.additionalInfo.diameter_unit || "m";
+                        else if (key === 'wall_thk' || key === 'nc_wall_thk' || key === 'memb_wall_thk' || key === 'node_diam' || key === 'memb_diam' || key === 'supp_wt' || key === 'memb_wt' || key === 'supp_diam') unit = "mm";
+                        else if (key === 'diameter') unit = (lowerCode === 'bb' || lowerCode === 'gs' || lowerCode === 'ce') ? "m" : "mm";
+                        else if (key === 'depth') unit = "m";
+                        if (key === 'dist_from_legs') unit = "m";
+                        if (key === 'weight' && (lowerCode === 'fd' || lowerCode === 'bb' || lowerCode === 'sg' || lowerCode === 'cu' || lowerCode === 'bl')) unit = "tonnes";
+                        if (key === 'length' && (lowerCode === 'fd' || lowerCode === 'cl' || (lowerCode === 'bb' && !formData.additionalInfo.length_unit) || lowerCode === 'lg' || lowerCode === 'gp' || lowerCode === 'bl')) unit = "m";
                         if (key === 'length' && (lowerCode === 'sg' || lowerCode === 'cu')) unit = "mm";
-                        if (key === 'width' && (lowerCode === 'sg' || lowerCode === 'cu')) unit = "m";
+                        if (key === 'width' && (lowerCode === 'sg' || lowerCode === 'cu' || lowerCode === 'gp')) unit = "m";
                         if (key === 'life' && lowerCode === 'an') unit = "years";
                         if (key === 'termination_p' && lowerCode === 'cs') unit = "mm";
                         if (key === 'bolt_diam' && lowerCode === 'cl') unit = "mm";
@@ -924,10 +1063,51 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
 
                         if (key === 'fender_type' && lowerCode === 'fd') return renderSelect(key, "Select boat fender type", fenderTypeData);
                         if (key === 'bumper_type' && lowerCode === 'bb') return renderSelect(key, "Select boat bumper type", bumperTypeData);
+                        if (key === 'boatlanding_types' && lowerCode === 'bl') return renderSelect(key, "Select boatlanding type", fenderTypeData);
+                        if (key === 'valve_status' && lowerCode === 'fv') return (
+                          <div key={key} className="space-y-2">
+                            <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Status of the Valve</Label>
+                            <Select
+                              value={value || ""}
+                              onValueChange={(val) => handleAdditionalInfoChange(key, val)}
+                            >
+                              <SelectTrigger id={`edit-${key}`} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
+                                <SelectValue placeholder="Select valve status" />
+                              </SelectTrigger>
+                              <SelectContent className="rounded-xl">
+                                <SelectItem value="Open">Open</SelectItem>
+                                <SelectItem value="Close">Close</SelectItem>
+                                <SelectItem value="Unable to verify">Unable to verify</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                        if (key === 'valve_status' && lowerCode === 'fv') return (
+                          <div key={key} className="space-y-2">
+                            <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Status of the Valve</Label>
+                            <Select
+                              value={value || ""}
+                              onValueChange={(val) => handleAdditionalInfoChange(key, val)}
+                            >
+                              <SelectTrigger id={`edit-${key}`} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
+                                <SelectValue placeholder="Select valve status" />
+                              </SelectTrigger>
+                              <SelectContent className="rounded-xl">
+                                <SelectItem value="Open">Open</SelectItem>
+                                <SelectItem value="Close">Close</SelectItem>
+                                <SelectItem value="Unable to verify">Unable to verify</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
                         if (key === 'csum_typ' && lowerCode === 'cs') return renderSelect(key, "Select caisson type", csumTypeData);
                         if (key === 'cais_at' && lowerCode === 'cs') return renderSelect(key, "Select attachment type", caisAtData);
                         if (key === 'pile_typ' && lowerCode === 'pl') return renderSelect(key, "Select pile type", pileTypeData);
                         if (key === 'pile_mat' && lowerCode === 'pl') return renderSelect(key, "Select pile material", pileMatData);
+                        if (key === 'thetype' && lowerCode === 'an') return renderSelect(key, "Select anode type", anodeTypeData);
+                        if (key === 'position' && lowerCode === 'an') return renderSelect(key, "Select anode position", positionLib);
+                        if (key === 'material' && lowerCode === 'an') return renderSelect(key, "Select anode material type", anodeMatData);
+                        if (key === 'fitting' && lowerCode === 'an') return renderSelect(key, "Select anode fitting type", anodeFitData);
 
                         if (['pgud_typ', 'pgud_mat', 'pgud_fas'].includes(key) && lowerCode === 'pg') {
                           const dataMap: Record<string, { data: any, placeholder: string }> = {
@@ -961,12 +1141,32 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                         if (key === 'corr_ctg' && (lowerCode === 'cs' || lowerCode === 'hd' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hm' || lowerCode === 'rs')) return renderSelect(key, "Select coating type", corrCtgData);
                         if (key === 'clam_typ' && lowerCode === 'cl') return renderSelect(key, "Select clamp type", clamTypeData);
                         if (key === 'clam_mat' && lowerCode === 'cl') return renderSelect(key, "Select clamp material", clamMatData);
-                        if (key === 'liner_reqd' && lowerCode === 'cl') return renderSelect(key, "Select option", linerReqData);
                         if (key === 'coat_typ' && lowerCode === 'cd') return renderSelect(key, "Select coating type", coatTypData);
                         if (key === 'cgud_typ' && lowerCode === 'cf') return renderSelect(key, "Select guide type", cgudTypData);
                         if (key === 'fitg_typ' && lowerCode === 'cf') return renderSelect(key, "Select fitting type", fitgTypData);
                         if (key === 'sgud_typ' && lowerCode === 'sg') return renderSelect(key, "Select guard type", sgudTypData);
-                        if (key === 'memb_mat' && lowerCode === 'lg') return renderSelect(key, "Select member material", membMatData);
+                        if (key === 'memb_mat' && ['hd', 'hm', 'vd', 'vm'].includes(lowerCode)) return renderSelect(key, "Select member material", stdMembMatData);
+                        if (key === 'memb_mat' && lowerCode === 'lg') return (
+                          <div key={key} className="space-y-2">
+                            <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
+                            <Select
+                              value={value || ""}
+                              onValueChange={(val) => handleAdditionalInfoChange(key, val)}
+                              disabled={!membMatData}
+                            >
+                              <SelectTrigger id={`edit-${key}`} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
+                                <SelectValue placeholder="Select member material" />
+                              </SelectTrigger>
+                                <SelectContent className="rounded-xl">
+                                  {membMatData?.data?.map((x: any, index: number) => (
+                                    <SelectItem key={x.lib_id || x.lib_name || String(index)} value={x.lib_name}>
+                                      {x.lib_name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                            </Select>
+                          </div>
+                        );
                         if (key === 'nominal_diam' && lowerCode === 'an') return renderSelect(key, "Select diameter", nominalDiamData);
                         if (key === 'ctry_typ' && lowerCode === 'ct') return renderSelect(key, "Select tray type", ctryTypData);
                         if (key === 'ctry_pos' && lowerCode === 'ct') return renderSelect(key, "Select position", ctryPosData);
@@ -984,11 +1184,10 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                         if (key === 'pipe_rtg' && lowerCode === 'rs') return renderSelect(key, "Select rating", pipeRtgData);
                         if (key === 'risg_typ' && lowerCode === 'rg') return renderSelect(key, "Select riser guard type", risgTypData);
                         if (key === 'risb_typ' && lowerCode === 'rb') return renderSelect(key, "Select beam type", risbTypData);
-                        if (key === 'stub_mat' && lowerCode === 'sd') return renderSelect(key, "Select material", stubMatData);
                         if (key === 'wsup_typ' && lowerCode === 'wp') return renderSelect(key, "Select component type", wsupTypData);
 
                         return (
-                          <div key={key} className="space-y-2">
+                          <div key={key} className={cn("space-y-2", key === 'has_gas_seepage' && "col-span-2")}>
                             <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
                             {typeof value === 'boolean' ? (
                               <div className="flex items-center h-11">
@@ -1007,13 +1206,32 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey }: 
                                   onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
                                   className={cn(
                                     "h-11 rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-mono text-xs text-cyan-600 dark:text-cyan-400",
-                                    unit && "pr-10"
+                                    unit && (lowerCode === 'bb' && (key === 'length' || key === 'diameter') ? "pr-20" : "pr-10")
                                   )}
                                 />
                                 {unit && (
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 tracking-tighter">
-                                    {unit}
-                                  </span>
+                                  lowerCode === 'bb' && (key === 'length' || key === 'diameter') ? (
+                                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                                      <Select
+                                        value={unit}
+                                        onValueChange={(val) => handleAdditionalInfoChange(`${key}_unit`, val)}
+                                      >
+                                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl">
+                                          <SelectItem value="m">m</SelectItem>
+                                          <SelectItem value="cm">cm</SelectItem>
+                                          <SelectItem value="mm">mm</SelectItem>
+                                          <SelectItem value="inch">inch</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  ) : (
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 tracking-tighter">
+                                      {unit}
+                                    </span>
+                                  )
                                 )}
                               </div>
                             )}

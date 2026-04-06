@@ -10,11 +10,19 @@ try {
     const supabase = createClient(url, key);
 
     async function check() {
-        const { data, error } = await supabase.from('u_lib_list').select('*').limit(1);
-        if (data && data.length > 0) {
-            console.log('Columns in u_lib_list:', Object.keys(data[0]));
+        // Try to insert a dummy component to see the error message
+        const { data, error } = await supabase.from('structure_components').insert({
+            q_id: 'TEST_ID',
+            code: 'HD',
+            structure_id: 1, // Assume structure 1 exists or use a valid one
+            comp_id: 0,
+            metadata: {}
+        }).select();
+        
+        if (error) {
+            console.error('Insert Error Detail:', error);
         } else {
-            console.log('No data found in u_lib_list');
+            console.log('Insert Succeeded:', data);
         }
     }
     check();

@@ -10,12 +10,8 @@ try {
     const supabase = createClient(url, key);
 
     async function check() {
-        const { data, error } = await supabase.from('u_lib_list').select('*').limit(1);
-        if (data && data.length > 0) {
-            console.log('Columns in u_lib_list:', Object.keys(data[0]));
-        } else {
-            console.log('No data found in u_lib_list');
-        }
+        const { data, count } = await supabase.from('structure_components').select('id', { count: 'exact', head: true }).eq('comp_id', 0);
+        console.log(`Components with comp_id 0: ${count}`);
     }
     check();
 } catch (e) { console.error(e); }
