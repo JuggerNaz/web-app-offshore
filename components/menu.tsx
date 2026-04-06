@@ -145,18 +145,11 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             text="Reports"
           />
           <MenuLink
-            href="/dashboard/inspection"
+            href="/dashboard/inspection-v2"
             isCollapsed={isCollapsed}
             label="Inspection"
             icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
             text="Inspection"
-          />
-          <MenuLink
-            href="/dashboard/inspection/v2-preview"
-            isCollapsed={isCollapsed}
-            label="Inspection V2"
-            icon={<Layers2 className="h-[18px] w-[18px]" />}
-            text="Inspection V2"
           />
         </div>
 

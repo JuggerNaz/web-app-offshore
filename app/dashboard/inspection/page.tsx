@@ -56,8 +56,10 @@ export default function InspectionLanding() {
     const [openSOW, setOpenSOW] = useState(false);
     const [searchSOW, setSearchSOW] = useState("");
 
-    // Restore saved selections on mount
+    // Restore saved selections on mount and check for redirect
     useEffect(() => {
+        // Redirect to V2 as per main branch behavior
+        router.push("/dashboard/inspection-v2");
         loadJobPacks();
     }, []);
 
