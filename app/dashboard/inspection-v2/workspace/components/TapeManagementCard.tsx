@@ -21,12 +21,15 @@ interface TapeManagementCardProps {
     activeChapter: number;
     jobTapes: any[];
     handleLogEvent: (action: string) => void;
-    setTapeId: (id: number) => void;
+    setTapeId: (id: number | null) => void;
     setTapeNo: (no: string) => void;
     setActiveChapter: (ch: number) => void;
     setIsNewTapeOpen: (open: boolean) => void;
     handleOpenEditTape: () => void;
     formatTime: (seconds: number) => string;
+    handleDeleteTape?: (id: number) => void;
+    canDelete?: boolean;
+    onChapterChange?: (ch: number) => void;
     children?: React.ReactNode;
 }
 
@@ -44,6 +47,9 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
     setIsNewTapeOpen,
     handleOpenEditTape,
     formatTime,
+    handleDeleteTape,
+    canDelete,
+    onChapterChange,
     children
 }) => {
     return (

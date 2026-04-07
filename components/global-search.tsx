@@ -16,7 +16,7 @@ import {
 import { Command as CommandPrimitive } from "cmdk";
 import { useRouter } from "next/navigation";
 import { searchGlobal, SearchResult } from "@/lib/search-actions";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 export function GlobalSearch() {
@@ -75,6 +75,12 @@ export function GlobalSearch() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="overflow-hidden p-0 shadow-2xl border-none max-w-2xl bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl rounded-[2rem]">
+        <div className="sr-only">
+          <DialogTitle>Global Search</DialogTitle>
+          <DialogDescription>
+            Search for assets, field data, and anomalies across the platform.
+          </DialogDescription>
+        </div>
         <CommandPrimitive className="flex h-full w-full flex-col overflow-hidden rounded-[2rem]">
           <div className="flex items-center border-b border-slate-100 dark:border-slate-800 px-6 py-4 bg-white/50 dark:bg-slate-900/50">
             <Search className="mr-3 h-5 w-5 shrink-0 text-slate-400 opacity-50" />

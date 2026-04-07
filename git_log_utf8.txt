@@ -1,0 +1,20 @@
+﻿68f4eec | 2026-04-06 | Merge remote-tracking branch 'origin/main' into dev-jitesh
+9f27dc4 | 2026-04-05 | Merge pull request #33 from JuggerNaz/dev
+1980f9c | 2026-04-05 | fix build error
+ce3794d | 2026-04-03 | 1. Tape & Chapter Editing: Enabled manual overrides for Chapter Numbers and Tape Names via a new management dialog. 2. UI Optimization: Rearranged the Video Log layout to provide more horizontal space for tape names and relocated the New/Edit buttons to a cleaner top-line position. 3. Conflict Resolution: Provided a database migration strategy to allow duplicate chapter numbers, resolving the Unique Constraint errors you encountered during manual corrections.
+2bcbc6a | 2026-04-03 | 1. Refined User Directory: Corrected column labels ( Registered Date vs Last Active) and standardized 24-hour timestamp precision. 2. Premium User Profile Card: Implemented a stylish popup modal with a large avatar and detailed professional info. 3. Real-time Presence System: Built a tracking system using Supabase Realtime and persistent database heartbeats. 4. Sync Diagnostics & Fixes: Resolved clock-drift issues and provided a migration path for activity tracking.
+c2f7e44 | 2026-04-02 | 1. Corrected the user profiel setting update of Photo and full name details 2. Corrected the display of the status in the User Data module
+1824dbd | 2026-04-02 | 1. Inspection record QID change done 2. Rename video feed to Live stream and the setting button etc
+8673092 | 2026-04-02 | 1. Provide the option to change the saved inspection data to change the component qid or inspection task
+d92b847 | 2026-04-01 | Merge pull request #32 from JuggerNaz/dev-jitesh
+2da6d52 | 2026-04-01 | 1. Added ROV type and its list box with values 2. Rename the Detailed Field Notes to Findings for all the inspection types
+aa7aa64 | 2026-04-01 | 1. Rename the Tape management to Video Log 2. Make the video log event list as popup window for edit or delete 3. Dive movement correction - while in the log list the action was inserted as wrong
+3587974 | 2026-03-31 | 1. Added floating window for Captured Events
+a798873 | 2026-03-31 | 1. Corrected the spacing of the tape managment section. 2. Corrected the Vdieo streaming button and menu. 3. Added the fields for Anode type and Rov GVI 4. Added the library for the Anode Depletion list. 5. Added the link for the Workspace (SOW ) page from the Inspection screen 6. SOW module - added filter for the component selected list , for inspected, incompelte and pending one. 7. SOW module - Disable to untick for those have inspection data.
+53d7ad4 | 2026-03-29 | 1. Make inspection screen modularized. 2. Make it more fast 3. Change little bit of GUI on tape management 4. Make the Tape log exan and collaspe window, when reuqires expand it.
+3f9db8c | 2026-03-25 | 1.inspection screen - display fields on new and modified record corrected 2. Added the drop down list option based on the library code. 3. If statuc list can do and store in the inspection type table
+133d124 | 2026-03-24 | 1. Anomaly report template correction 2. Both report template at the reprot wizard and at inspection record 3. Module inspection type library, provide an option for the admin user to define the property sheet based on the component type can set now done for ROV inspection 4. Based on the Insepction type default properties the fields are displayed
+04644a1 | 2026-03-19 | 1. Correction of the display of the Inspection spec 2. Auto Anomaly 3. Attachment 4. Auto attachmet title 5. Defect reprot template correction 6. Show attachment icon in the event captured list 7. Can see the attachment clicking on the attach icon 8. Attachment saving and retrieving is done
+eb0ebdc | 2026-03-18 | Inspection screen changes, increase font size for the event log - Added current workscope under the historical seciotn for the selected component. - corrected the tape log actions when user swap the page and come back.
+f81b9bb | 2026-03-18 | Jobpack module, label change for Dive type to Inspection mode and remove Estimated Time field
+959415d | 2026-03-17 | Inspection screen - set validation and use defect criteria added Finding, Anomaly , Incomplete buttons

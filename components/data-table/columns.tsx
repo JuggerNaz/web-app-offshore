@@ -200,7 +200,7 @@ export const comments: ColumnDef<Comment>[] = [
       const date: string = row.getValue("created_at");
       const isDeleted = (row.original as any).is_deleted;
       return (
-        <div className={isDeleted ? "opacity-50 line-through" : ""}>
+        <div className={isDeleted ? "opacity-50" : ""}>
           {moment(date).format("MMMM Do, YYYY")}
         </div>
       );

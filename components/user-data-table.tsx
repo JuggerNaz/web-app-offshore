@@ -597,6 +597,12 @@ export function UserDataTable() {
             {/* Profile View Dialog */}
             <Dialog open={!!viewingUser} onOpenChange={(open) => !open && setViewingUser(null)}>
                 <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden border-0 bg-white dark:bg-slate-950 rounded-3xl shadow-2xl ring-1 ring-slate-200 dark:ring-slate-800">
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>User Profile</DialogTitle>
+                        <DialogDescription>
+                            Viewing detailed profile for {viewingUser ? getDisplayName(viewingUser) : 'user'}
+                        </DialogDescription>
+                    </DialogHeader>
                     {viewingUser && (
                         <UserProfileCard 
                             user={viewingUser} 
