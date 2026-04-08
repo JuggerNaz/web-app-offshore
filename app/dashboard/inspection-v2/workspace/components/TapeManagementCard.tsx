@@ -11,7 +11,7 @@ import {
     SelectValue 
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Video, Play, Pause, Square, Plus, Edit } from "lucide-react";
+import { Video, Play, Pause, Square, Plus, Edit, Trash2 } from "lucide-react";
 
 interface TapeManagementCardProps {
     vidState: "IDLE" | "RECORDING" | "PAUSED";
@@ -90,13 +90,28 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
                                             <button
                                                 onClick={handleOpenEditTape}
                                                 disabled={!tapeId}
-                                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-30"
+                                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-30 disabled:pointer-events-none"
                                             >
                                                 <Edit className="w-3 h-3" />
                                             </button>
                                         </TooltipTrigger>
                                         <TooltipContent side="top">
                                             <p className="text-[10px] font-bold">Edit Details</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                onClick={() => handleDeleteTape && tapeId && handleDeleteTape(tapeId)}
+                                                disabled={!tapeId || !canDelete}
+                                                className={`p-1 text-slate-400 rounded transition-colors ${!tapeId || !canDelete ? 'opacity-30 pointer-events-none' : 'hover:text-red-600 hover:bg-red-50'}`}
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                            <p className="text-[10px] font-bold">Delete Tape (Empty Only)</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 </div>

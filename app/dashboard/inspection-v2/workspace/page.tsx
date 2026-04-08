@@ -281,6 +281,40 @@ function V10PreviewLayout() {
     const [newTapeChapter, setNewTapeChapter] = useState("");
     const [newTapeRemarks, setNewTapeRemarks] = useState("");
 
+    // Synchronize recording duration and vidState upon changing active tape
+    useEffect(() => {
+        if (!tapeId) {
+            setVidTimer(0);
+            setVidState("IDLE");
+            return;
+        }
+
+        const tapeLogs = videoEvents.filter(evt => String(evt.tape_id) === String(tapeId) && evt.logType === 'video_log');
+        if (tapeLogs.length > 0) {
+            // videoEvents are sorted DESC by eventTime, so [0] is the latest
+            const lastLog = tapeLogs[0];
+            const stateLog = tapeLogs.find(l => ['Start Tape', 'Resume', 'Pause', 'Stop Tape'].includes(l.action));
+            
+            const currentState = stateLog ? stateLog.action : lastLog.action;
+            const isRecording = currentState === "Start Tape" || currentState === "Resume";
+            const isStopped = currentState === "Stop Tape";
+            
+            setVidState(isRecording ? "RECORDING" : (isStopped ? "IDLE" : "PAUSED"));
+            
+            let currentCounter = lastLog.tape_counter_start || 0;
+            if (isRecording) {
+                const startTime = new Date(lastLog.eventTime).getTime();
+                const now = new Date().getTime();
+                const elapsedSeconds = Math.floor((now - startTime) / 1000);
+                currentCounter += Math.max(0, elapsedSeconds);
+            }
+            setVidTimer(currentCounter);
+        } else {
+            setVidTimer(0);
+            setVidState("IDLE");
+        }
+    }, [tapeId, videoEvents]);
+
     // Auto-populate tape number when opening the new tape dialog
     useEffect(() => {
         if (isNewTapeOpen) {
@@ -589,12 +623,14 @@ function V10PreviewLayout() {
     const jpParam = searchParams.get('jpName');
     const strParam = searchParams.get('structName');
     const sowParam = searchParams.get('sowReport');
+    const jtParam = searchParams.get('jobType');
 
     // Header Data
-    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, structureType: 'platform' | 'pipeline' }>({
+    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, jobType: string, structureType: 'platform' | 'pipeline' }>({
         jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
         platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
         sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
+        jobType: jtParam || "",
         structureType: 'platform'
     });
 
@@ -758,10 +794,10 @@ function V10PreviewLayout() {
                 }
             }
 
-            setHeaderData({ jobpackName, platformName, sowReportNo, structureType: detectedStructureType });
+            setHeaderData({ jobpackName, platformName, sowReportNo, jobType: jtParam || "", structureType: detectedStructureType });
         }
         fetchHeaderInfo();
-    }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam]);
+    }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam]);
 
     useEffect(() => {
         if ((findingType === 'Anomaly' || findingType === 'Finding') && !anomalyData.referenceNo) {
@@ -846,6 +882,28 @@ function V10PreviewLayout() {
         } catch (error) {
             console.error("Failed to open captured events floating window:", error);
             toast.error("Failed to open floating window");
+        }
+    };
+
+    const handleDeleteTape = async (tapeIdToDelete: number) => {
+        // Double check no events exist
+        const hasEvents = videoEvents.some(evt => String(evt.tape_id) === String(tapeIdToDelete));
+        if (hasEvents) {
+            toast.error("Tape has video logs and cannot be deleted");
+            return;
+        }
+
+        const { error } = await supabase.from('insp_video_tapes').delete().eq('tape_id', tapeIdToDelete);
+        if (error) {
+            toast.error("Failed to delete tape: " + error.message);
+        } else {
+            toast.success("Tape deleted successfully");
+            setJobTapes(prev => prev.filter(t => t.tape_id !== tapeIdToDelete));
+            if (tapeId === tapeIdToDelete) {
+                setTapeId(null);
+                setTapeNo("");
+                setVidTimer(0);
+            }
         }
     };
 
@@ -1836,7 +1894,9 @@ function V10PreviewLayout() {
                         action: l.event_type === "NEW_LOG_START" ? "Start Tape" : l.event_type === "END" ? "Stop Tape" : l.event_type === "PAUSE" ? "Pause" : l.event_type === "RESUME" ? "Resume" : l.event_type,
                         logType: 'video_log',
                         eventTime: parseDbDate(l.event_time).toISOString(),
-                        inspectionId: l.inspection_id
+                        inspectionId: l.inspection_id,
+                        tape_id: l.tape_id,
+                        tape_counter_start: l.tape_counter_start || 0
                     })));
                 }
             }
@@ -1884,7 +1944,8 @@ function V10PreviewLayout() {
                             time: r.inspection_data?._meta_timecode || '00:00:00',
                             action: status,
                             logType: 'insp',
-                            eventTime: r.inspection_date && r.inspection_time ? format(parseDbDate(`${r.inspection_date} ${r.inspection_time}`), "yyyy-MM-dd'T'HH:mm:ss") : format(new Date(), "yyyy-MM-dd'T'HH:mm:ss")
+                            eventTime: r.inspection_date && r.inspection_time ? format(parseDbDate(`${r.inspection_date} ${r.inspection_time}`), "yyyy-MM-dd'T'HH:mm:ss") : format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"),
+                            tape_id: r.tape_id
                         });
                     }
                 });
@@ -2077,7 +2138,7 @@ function V10PreviewLayout() {
         const tcode = formatTime(currentTimer);
         const now = new Date();
         const eventTime = format(now, "yyyy-MM-dd'T'HH:mm:ss");
-        setVideoEvents([{ id: optimisticId, realId: 0, time: tcode, action, logType: 'video_log', eventTime }, ...videoEvents]);
+        setVideoEvents([{ id: optimisticId, realId: 0, time: tcode, action, logType: 'video_log', eventTime, tape_id: tapeId, tape_counter_start: currentTimer }, ...videoEvents]);
 
         // Map UI labels to valid DB constraint values
         let dbAction = action;
@@ -4146,10 +4207,12 @@ function V10PreviewLayout() {
                         setIsNewTapeOpen={setIsNewTapeOpen}
                         handleOpenEditTape={handleOpenEditTape}
                         formatTime={formatTime}
+                        handleDeleteTape={handleDeleteTape}
+                        canDelete={tapeId ? !videoEvents.some(evt => String(evt.tape_id) === String(tapeId)) : false}
                     >
                         {/* Tape Log Events (MODULAR) */}
                         <TapeLogEvents 
-                            videoEvents={videoEvents}
+                            videoEvents={videoEvents.filter(evt => String(evt.tape_id) === String(tapeId))}
                             handleDeleteEvent={handleDeleteEvent}
                             onEditEvent={setEditingEvent}
                             expanded={tapeLogExpanded}
