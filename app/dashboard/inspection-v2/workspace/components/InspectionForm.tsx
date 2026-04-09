@@ -64,6 +64,7 @@ interface InspectionFormProps {
     onChangeTaskClick?: () => void;
     onChangeComponentClick?: () => void;
     isEditing?: boolean;
+    dynamicProps?: any;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -106,11 +107,30 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     vidState,
     onChangeTaskClick,
     onChangeComponentClick,
-    isEditing = false
+    isEditing = false,
+    dynamicProps = {}
 }) => {
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
     const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
+
+    const savedTapeCount = dynamicProps?.tape_count_no;
+    const getCounterAsSeconds = (val: any) => {
+        // If we have a value (string or number), parse It
+        if (val !== undefined && val !== "" && val !== null) {
+            if (typeof val === 'number') return val;
+            const pts = String(val).split(':').map(Number);
+            if (pts.length === 3) return (pts[0] || 0) * 3600 + (pts[1] || 0) * 60 + (pts[2] || 0);
+            if (pts.length === 2) return (pts[0] || 0) * 60 + (pts[1] || 0);
+            const n = Number(val);
+            if (!isNaN(n)) return n;
+        }
+        
+        // If no value and not editing, we can use the live timer
+        // If editing, we should ideally have a value, but if not, fallback to 0 or vidTimer
+        return vidTimer;
+    };
+    const currentDisplayCount = getCounterAsSeconds(savedTapeCount);
 
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white z-10">
@@ -135,7 +155,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     )}
                 </span>
                 <div className="flex items-center gap-3">
-                    <span className="font-mono text-xs font-bold bg-black/20 px-2 py-1 rounded border border-white/10 flex items-center gap-1.5"><Video className="w-3 h-3 text-blue-200" /> {formatTime(vidTimer)}</span>
+                    <div className="flex items-center gap-2 bg-black/20 px-2 py-1 rounded border border-white/10">
+                        <Video className="w-3.5 h-3.5 text-blue-200" />
+                        <div className="flex flex-col">
+                            <span className="text-[7px] font-black uppercase text-blue-200/50 leading-none">Timer</span>
+                            <span className="font-mono text-xs font-bold leading-none mt-0.5">{formatTime(currentDisplayCount)}</span>
+                        </div>
+                    </div>
                     <button onClick={() => setCompSpecDialogOpen(true)} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications">
                         <Info className="w-4 h-4" />
                     </button>
@@ -162,7 +188,35 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                     {activeFormProps.length > 0 && (
                         <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">
-                            <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Inspection Specification</div>
+                            <div className="border-b border-slate-200 pb-2 space-y-3">
+                                <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest">Inspection Specification</div>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="space-y-1">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Insp. Date</span>
+                                        {renderInspectionField({ 
+                                            name: 'inspection_date', 
+                                            label: 'Date', 
+                                            type: 'date'
+                                        }, 'primary')}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Insp. Time</span>
+                                        {renderInspectionField({ 
+                                            name: 'inspection_time', 
+                                            label: 'Time', 
+                                            type: 'text'
+                                        }, 'primary')}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Counter Override</span>
+                                        {renderInspectionField({ 
+                                            name: 'tape_count_no', 
+                                            label: `Live: ${formatTime(vidTimer)}`, 
+                                            type: 'text'
+                                        }, 'primary')}
+                                    </div>
+                                </div>
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 {activeFormProps.map((p: any, idx: number) => {
                                     if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;

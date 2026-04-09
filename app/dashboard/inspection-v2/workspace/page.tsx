@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "react";
@@ -1179,9 +1179,9 @@ function V10PreviewLayout() {
         }
 
         if (!settings) {
-            setDataAcqError('No settings configured. Go to Settings → Data Acquisition to configure.');
+            setDataAcqError('No settings configured. Go to Settings â†’ Data Acquisition to configure.');
             setDataAcqConnecting(false);
-            toast.error('Data acquisition settings not found. Please configure in Settings → Data Acquisition.');
+            toast.error('Data acquisition settings not found. Please configure in Settings â†’ Data Acquisition.');
             return;
         }
 
@@ -1744,6 +1744,22 @@ function V10PreviewLayout() {
         const m = Math.floor((seconds % 3600) / 60);
         const s = seconds % 60;
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    };
+
+    const parseTimecode = (t: string) => {
+        if (!t) return 0;
+        if (typeof t === 'number') return t;
+        const parts = t.split(':').map(Number);
+        if (parts.length === 3) return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+        if (parts.length === 2) return (parts[0] || 0) * 60 + (parts[1] || 0);
+        return isNaN(parts[0]) ? 0 : parts[0];
+    };
+
+    const isValidTimeFormat = (t: string) => {
+        if (!t || t === '--') return false;
+        // Regex for HH:mm:ss - Allows hours beyond 24 for tape counters
+        const regex = /^(\d{1,5}):([0-5]?\d):([0-5]?\d)$/;
+        return regex.test(String(t));
     };
 
     // Auto Timer (Tape Log)
@@ -3194,12 +3210,38 @@ function V10PreviewLayout() {
                 inspection_type_id: it?.id || null,
                 inspection_type_code: it?.code || activeSpec,
                 inspection_date: (activeProps.inspection_date && activeProps.inspection_date !== '--') ? String(activeProps.inspection_date) : format(new Date(), 'yyyy-MM-dd'),
-                inspection_time: (activeProps.inspection_time && activeProps.inspection_time !== '--') ? String(activeProps.inspection_time) : format(new Date(), 'HH:mm:ss'),
+                inspection_time: (() => {
+                    const t = activeProps.inspection_time;
+                    if (t && t !== '--') {
+                        if (!isValidTimeFormat(String(t))) {
+                            toast.error("Invalid Inspection Time format. Please use HH:mm:ss");
+                            throw new Error("Invalid Time Format");
+                        }
+                        return String(t);
+                    }
+                    return format(new Date(), 'HH:mm:ss');
+                })(),
                 description: recordNotes,
                 status: findingType === 'Incomplete' ? 'INCOMPLETE' : 'COMPLETED',
                 has_anomaly: findingType === 'Anomaly' || findingType === 'Finding',
                 tape_id: tId,
-                tape_count_no: (activeProps.tape_count_no && activeProps.tape_count_no !== '--') ? activeProps.tape_count_no : vidTimer,
+                tape_count_no: (() => {
+                    const typedVal = (activeProps.tape_count_no !== undefined && activeProps.tape_count_no !== '--' && activeProps.tape_count_no !== null && activeProps.tape_count_no !== "") 
+                        ? parseTimecode(String(activeProps.tape_count_no)) 
+                        : null;
+                    
+                    if (manualOverride && typedVal === null) {
+                        toast.error("Manual Entry Mode: You must enter a valid Counter value (HH:mm:ss)");
+                        throw new Error("Missing counter value in manual mode");
+                    }
+
+                    if (activeProps.tape_count_no && activeProps.tape_count_no !== '--' && !isValidTimeFormat(String(activeProps.tape_count_no))) {
+                        toast.error("Invalid Counter format. Please use HH:mm:ss");
+                        throw new Error("Invalid Counter Format");
+                    }
+                    
+                    return typedVal !== null ? typedVal : vidTimer;
+                })(),
                 elevation: (() => {
                     const p = activeProps.elevation && activeProps.elevation !== '--' ? parseFloat(activeProps.elevation as string) : NaN;
                     if (!isNaN(p)) return p;
@@ -3208,12 +3250,51 @@ function V10PreviewLayout() {
                 fp_kp: (activeProps.fp_kp !== undefined && activeProps.fp_kp !== '--') ? String(activeProps.fp_kp) : null,
                 inspection_data: {
                     ...activeProps,
-                    _meta_timecode: formatTime(vidTimer),
+                    _meta_timecode: formatTime(Number((activeProps.tape_count_no !== undefined && activeProps.tape_count_no !== '--' && activeProps.tape_count_no !== "") ? parseTimecode(String(activeProps.tape_count_no)) : vidTimer)),
                     _meta_status: findingType,
                     incomplete_reason: findingType === 'Incomplete' ? incompleteReason : null
                 },
                 archived_data: newArchivedData
             };
+
+            // Tape Counter Validation logic
+            if (tId && payload.tape_count_no !== undefined && !manualOverride) {
+                const count = Number(payload.tape_count_no);
+                
+                // Fetch ALL events for this tape to find valid recording segments
+                const { data: tapeSessions } = await supabase.from('insp_video_logs')
+                    .select('event_type, tape_counter_start')
+                    .eq('tape_id', tId)
+                    .order('event_time', { ascending: true });
+                
+                if (tapeSessions && tapeSessions.length > 0) {
+                    let isValidRange = false;
+                    let lastStart: number | null = null;
+                    
+                    for (const s of tapeSessions) {
+                        if (s.event_type === 'NEW_LOG_START' || s.event_type === 'RESUME') {
+                            lastStart = s.tape_counter_start || 0;
+                        } else if (s.event_type === 'PAUSE' || s.event_type === 'END') {
+                            if (lastStart !== null && count >= lastStart && count <= (s.tape_counter_start || 0)) {
+                                isValidRange = true;
+                                break;
+                            }
+                            lastStart = null;
+                        }
+                    }
+                    
+                    // If currently recording (last event was start/resume), check against the current vidTimer
+                    if (!isValidRange && lastStart !== null && count >= lastStart && count <= vidTimer) {
+                        isValidRange = true;
+                    }
+                    
+                    if (!isValidRange) {
+                        toast.error(`Invalid Tape Counter: ${count} is outside the recorded segments for this tape. Choose a value between recorded START and STOP/PAUSE events.`);
+                        setIsCommitting(false);
+                        return;
+                    }
+                }
+            }
 
             // Set metadata based on operation type
             if (editingRecordId) {
@@ -3549,7 +3630,14 @@ function V10PreviewLayout() {
         setActiveSpec(fullRecord.inspection_type?.code || fullRecord.inspection_type_code || fullRecord.inspection_type?.name);
         setEditingRecordId(fullRecord.insp_id || fullRecord.id);
         setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
-        setDynamicProps(fullRecord.inspection_data || {});
+        
+        const initialProps = { ...(fullRecord.inspection_data || {}) };
+        if (fullRecord.tape_count_no !== undefined && fullRecord.tape_count_no !== null) {
+            initialProps.tape_count_no = formatTime(Number(fullRecord.tape_count_no));
+        }
+        if (fullRecord.inspection_date) initialProps.inspection_date = fullRecord.inspection_date;
+        if (fullRecord.inspection_time) initialProps.inspection_time = fullRecord.inspection_time;
+        setDynamicProps(initialProps);
         // Save Context for Re-classification feature
         setOriginalRecordContext({
             component_id: fullRecord.component_id,
@@ -3989,7 +4077,7 @@ function V10PreviewLayout() {
                                         <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50">
                                             <div className={`whitespace-nowrap text-[9px] font-bold px-2 py-1 rounded shadow-lg border ${item.ok ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
                                                 }`}>
-                                                {item.ok ? `✓ ${item.label}` : `✗ ${item.label} — ${item.hint}`}
+                                                {item.ok ? `âœ“ ${item.label}` : `âœ— ${item.label} â€” ${item.hint}`}
                                             </div>
                                         </div>
                                     </div>
@@ -4015,7 +4103,7 @@ function V10PreviewLayout() {
                                     }`}
                                 title={manualOverride ? 'Currently in Manual Entry mode (click to switch to Live)' : 'Switch to Manual Entry mode to insert missing records'}
                             >
-                                {manualOverride ? '⚡ Manual' : '🔴 Live'}
+                                {manualOverride ? 'âš¡ Manual' : 'ðŸ”´ Live'}
                             </button>
                         </div>
                     );
@@ -4036,7 +4124,7 @@ function V10PreviewLayout() {
                                 <span className="text-[12px] font-mono font-black text-white dark:text-white">{field.value}</span>
                             </div>
                         )) : (
-                            <span className="text-[10px] text-amber-300 dark:text-amber-300 italic font-semibold">No fields configured — Go to Settings → Data Acquisition</span>
+                            <span className="text-[10px] text-amber-300 dark:text-amber-300 italic font-semibold">No fields configured â€” Go to Settings â†’ Data Acquisition</span>
                         )}
                     </div>
 
@@ -4072,7 +4160,7 @@ function V10PreviewLayout() {
                         {/* Error indicator */}
                         {dataAcqError && !dataAcqConnected && (
                             <div className="relative group">
-                                <span className="text-red-400 text-sm cursor-help">⚠</span>
+                                <span className="text-red-400 text-sm cursor-help">âš </span>
                                 <div className="absolute bottom-full mb-2 right-0 hidden group-hover:block z-50">
                                     <div className="whitespace-nowrap text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-xl bg-red-900 text-red-200 border border-red-700 max-w-[300px] whitespace-normal">
                                         {dataAcqError}
@@ -4289,16 +4377,25 @@ function V10PreviewLayout() {
                                                                        isCompleted ? 'green' :
                                                                        isIncomplete ? 'amber' : 'blue';
 
-                                                    const statusLabel = hasAnomaly && !isRectified ? '⚠ Anomaly Registered' :
-                                                                       hasFinding ? '⚠ Finding Registered' :
-                                                                       isRectified ? '✓ Rectified' :
-                                                                       isCompleted ? '✓ Completed' :
-                                                                       isIncomplete ? '◐ Incomplete' : '○ Pending';
+                                                    const statusLabel = hasAnomaly && !isRectified ? 'âš  Anomaly Registered' :
+                                                                       hasFinding ? 'âš  Finding Registered' :
+                                                                       isRectified ? 'âœ“ Rectified' :
+                                                                       isCompleted ? 'âœ“ Completed' :
+                                                                       isIncomplete ? 'â— Incomplete' : 'â—‹ Pending';
                                                     
                                                     return (
                                                         <Button key={t} onClick={() => {
                                                             setActiveSpec(t);
-                                                            const newProps: Record<string, any> = {};
+                                                            const now = new Date();
+                                                            const newProps: Record<string, any> = {
+                                                                inspection_date: format(now, 'yyyy-MM-dd'),
+                                                                inspection_time: format(now, 'HH:mm:ss')
+                                                            };
+                                                            
+                                                            // Auto-insert current tape counter for LIVE entry mode
+                                                            if (!manualOverride) {
+                                                                newProps.tape_count_no = formatTime(vidTimer);
+                                                            }
 
                                                             // Auto-fill Nominal Thickness if it exists in the spec
                                                             if (selectedComp.nominalThk && selectedComp.nominalThk !== '-') {
@@ -4322,7 +4419,8 @@ function V10PreviewLayout() {
                                                                 }
                                                             }
 
-                                                            if (dataAcqConnected) {
+                                                            // Populate from ROV Data Acquisition if connected
+                                                            if (inspMethod === 'ROV' && dataAcqConnected) {
                                                                 dataAcqFields.forEach(f => {
                                                                     if (f.value && f.value !== '--' && f.targetField) {
                                                                         newProps[f.targetField] = f.value;
@@ -4497,6 +4595,8 @@ function V10PreviewLayout() {
                                         findingType={findingType}
                                         setFindingType={setFindingType}
                                         renderInspectionField={renderInspectionField}
+                                        dynamicProps={dynamicProps}
+                                        isEditing={!!editingRecordId}
                                         anomalyData={anomalyData}
                                         setAnomalyData={setAnomalyData}
                                         defectCodes={defectCodes}
@@ -4529,7 +4629,6 @@ function V10PreviewLayout() {
                                         vidState={vidState}
                                         onChangeTaskClick={() => setShowTaskSelector(true)}
                                         onChangeComponentClick={() => setShowCompSelector(true)}
-                                        isEditing={!!editingRecordId}
                                     />
                                 )}
                             </div>
@@ -4931,7 +5030,7 @@ function V10PreviewLayout() {
                                                                 <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
                                                             </div>
                                                             {(c.startNode !== '-' || c.endNode !== '-') && (
-                                                                <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
+                                                                <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} â†’ {c.endNode}</div>
                                                             )}
                                                             <div className="flex flex-wrap gap-1 mt-1.5">
                                                                 {c.taskStatuses?.length > 0 ? c.taskStatuses.map((ts: any, idx: number) => {
@@ -4986,7 +5085,7 @@ function V10PreviewLayout() {
                                                             <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
                                                         </div>
                                                         {(c.startNode !== '-' || c.endNode !== '-') && (
-                                                            <div className={`text-[9px] font-mono mt-0.5 ${selectedComp?.id === c.id ? 'text-slate-300' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
+                                                            <div className={`text-[9px] font-mono mt-0.5 ${selectedComp?.id === c.id ? 'text-slate-300' : 'text-slate-400'}`}>{c.startNode} â†’ {c.endNode}</div>
                                                         )}
                                                     </button>
                                                 ))}
@@ -5631,7 +5730,7 @@ function V10PreviewLayout() {
                             <div className="bg-slate-100 rounded-full px-4 py-2 border border-slate-200">
                                 <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{pendingAttachments.length} Selected</span>
                             </div>
-                            {pendingAttachments.length > 0 && <span className="text-[10px] font-bold text-amber-500 animate-pulse">Set titles & descriptions above ↑</span>}
+                            {pendingAttachments.length > 0 && <span className="text-[10px] font-bold text-amber-500 animate-pulse">Set titles & descriptions above â†‘</span>}
                          </div>
                         <Button 
                             className="bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-[0.15em] px-12 h-12 rounded-full shadow-2xl shadow-blue-500/30 transition-all hover:scale-[1.02] active:scale-[0.98] text-[11px]" 
@@ -5726,12 +5825,12 @@ function V10PreviewLayout() {
                                 <>
                                     {!isNewRecord && hasNewerAnomalies && (
                                         <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-[10px] text-amber-800 font-medium">
-                                            <strong className="uppercase tracking-wider">⚠ Cannot Delete:</strong> Subsequent anomalies exist after this record. The anomaly will be <strong>rectified</strong> with priority set to <strong>NONE</strong> to preserve event sequence numbering.
+                                            <strong className="uppercase tracking-wider">âš  Cannot Delete:</strong> Subsequent anomalies exist after this record. The anomaly will be <strong>rectified</strong> with priority set to <strong>NONE</strong> to preserve event sequence numbering.
                                         </div>
                                     )}
                                     {(isNewRecord || !hasNewerAnomalies) && (
                                         <div className="bg-green-50 border border-green-200 rounded-md p-3 text-[10px] text-green-800 font-medium">
-                                            <strong className="uppercase tracking-wider">✓ Safe to Remove:</strong> {isNewRecord ? 'This is a new record — the anomaly data will be cleared.' : 'This is the latest anomaly — it can be safely deleted.'}
+                                            <strong className="uppercase tracking-wider">âœ“ Safe to Remove:</strong> {isNewRecord ? 'This is a new record â€” the anomaly data will be cleared.' : 'This is the latest anomaly â€” it can be safely deleted.'}
                                         </div>
                                     )}
                                 </>
@@ -6004,3 +6103,5 @@ function V10PreviewLayout() {
         </div>
     );
 }
+
+

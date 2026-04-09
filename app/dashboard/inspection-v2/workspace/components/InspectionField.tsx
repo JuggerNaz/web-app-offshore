@@ -55,6 +55,7 @@ const InspectionField = ({
     const isAnodeType = fieldName === 'anode type' || fieldName === 'anode_type';
     const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
 
+    const isTimeField = fieldName.includes('time') || fieldName.includes('counter') || p.type === 'time' || p.name === 'tape_count_no' || p.name === 'inspection_time';
     const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code;
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
@@ -294,18 +295,58 @@ const InspectionField = ({
         );
     }
 
+    const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let val = e.target.value;
+        const digits = val.replace(/\D/g, "").slice(0, 6);
+        let formatted = digits;
+        if (digits.length > 2 && digits.length <= 4) {
+            formatted = `${digits.slice(0, 2)}:${digits.slice(2)}`;
+        } else if (digits.length > 4) {
+            formatted = `${digits.slice(0, 2)}:${digits.slice(2, 4)}:${digits.slice(4)}`;
+        }
+        handler(p.name || p.label, formatted);
+    };
+
+    const handleTimeBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+        let val = e.target.value;
+        if (!val) {
+            if (type === 'primary') setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: "" }));
+            return;
+        }
+
+        const parts = val.split(':');
+        let normalized = parts.map(p => p.slice(0, 2).padStart(2, '0'));
+        
+        // Pad to 3 parts (HH:MM:SS) if incomplete
+        while (normalized.length < 3) {
+            normalized.push("00");
+        }
+
+        // Ensure values are within range (0-23 for hours, 0-59 for min/sec)
+        if (normalized[0] && parseInt(normalized[0]) > 23) normalized[0] = "23";
+        if (normalized[1] && parseInt(normalized[1]) > 59) normalized[1] = "59";
+        if (normalized[2] && parseInt(normalized[2]) > 59) normalized[2] = "59";
+
+        const finalVal = normalized.slice(0, 3).join(':');
+        handler(p.name || p.label, finalVal);
+        if (type === 'primary') {
+            setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: finalVal }));
+        }
+    };
+
     return (
         <Input
-            type={p.type === 'number' ? 'number' : 'text'}
+            type={p.type === 'date' ? 'date' : (isTimeField ? 'text' : (p.type === 'number' ? 'number' : 'text'))}
             step={p.step}
             value={currentValue || ""}
-            onChange={(e) => handler(p.name || p.label, e.target.value)}
-            onBlur={(e) => {
+            onChange={isTimeField ? handleTimeChange : (e) => handler(p.name || p.label, e.target.value)}
+            onBlur={isTimeField ? handleTimeBlur : (e) => {
                 if (type === 'primary') {
                     setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
                 }
             }}
-            placeholder={`Enter ${p.label}`}
+            placeholder={isTimeField ? "HH:MM:SS" : `Enter ${p.label || p.name}`}
+            maxLength={isTimeField ? 8 : undefined}
             className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass}`}
         />
     );

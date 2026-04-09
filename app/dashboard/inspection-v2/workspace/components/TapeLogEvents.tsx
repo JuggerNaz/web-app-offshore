@@ -29,12 +29,11 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     setExpanded,
     isFloating = false,
 }) => {
-    // Sort video events by actual date and time descending so the latest action is always first on top
     const sortedEvents = [...videoEvents].sort((a, b) => {
         const timeA = a.eventTime ? new Date(a.eventTime).getTime() : 0;
         const timeB = b.eventTime ? new Date(b.eventTime).getTime() : 0;
         
-        // If eventTime is exactly the same or missing, fallback to insertion ID
+        // Final descending sort by event time
         if (timeA === timeB) {
             return (b.realId || b.id || 0) - (a.realId || a.id || 0);
         }
