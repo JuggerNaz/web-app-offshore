@@ -19,6 +19,7 @@ import {
     ANODE_DEPLETION_LIST,
     ANODE_DEPLETION_GROUPS 
 } from "../constants";
+import unitsData from "@/utils/types/units.json";
 
 interface InspectionFieldProps {
     p: any;
@@ -30,6 +31,7 @@ interface InspectionFieldProps {
     setOpenPopovers: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
     selectedComp: any;
     setDebouncedProps: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+    unitSystem: "METRIC" | "IMPERIAL";
 }
 
 const InspectionField = ({ 
@@ -41,7 +43,8 @@ const InspectionField = ({
     openPopovers, 
     setOpenPopovers, 
     selectedComp, 
-    setDebouncedProps 
+    setDebouncedProps,
+    unitSystem
 }: InspectionFieldProps) => {
     const [searchTerm, setSearchTerm] = useState("");
     const fieldName = String(p.label || p.name || '').toLowerCase();
@@ -59,6 +62,11 @@ const InspectionField = ({
     const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code;
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
+
+    // Unit Management
+    const categoryUnits = p.unitCategory ? (unitsData as any)[p.unitCategory] : null;
+    const unitOptions = categoryUnits ? (unitSystem === "IMPERIAL" ? categoryUnits.imperial : categoryUnits.metric) : [];
+    const defaultUnit = categoryUnits ? (unitSystem === "IMPERIAL" ? categoryUnits.defaultImperial : categoryUnits.defaultMetric) : null;
 
     if (isComboEligible) {
         let options = [...(p.options || [])];
@@ -335,21 +343,34 @@ const InspectionField = ({
     };
 
     return (
-        <Input
-            type={p.type === 'date' ? 'date' : (isTimeField ? 'text' : (p.type === 'number' ? 'number' : 'text'))}
-            step={p.step}
-            value={currentValue || ""}
-            onChange={isTimeField ? handleTimeChange : (e) => handler(p.name || p.label, e.target.value)}
-            onBlur={isTimeField ? handleTimeBlur : (e) => {
-                if (type === 'primary') {
-                    setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
-                }
-            }}
-            placeholder={isTimeField ? "HH:MM:SS" : `Enter ${p.label || p.name}`}
-            maxLength={isTimeField ? 8 : undefined}
-            className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass}`}
-        />
+        <div className="relative flex items-center gap-1">
+            <Input
+                type={p.type === 'date' ? 'date' : (isTimeField ? 'text' : (p.type === 'number' ? 'number' : 'text'))}
+                step={p.step}
+                value={currentValue || ""}
+                onChange={isTimeField ? handleTimeChange : (e) => handler(p.name || p.label, e.target.value)}
+                onBlur={isTimeField ? handleTimeBlur : (e) => {
+                    if (type === 'primary') {
+                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
+                    }
+                }}
+                placeholder={isTimeField ? "HH:MM:SS" : `Enter ${p.label || p.name}`}
+                maxLength={isTimeField ? 8 : undefined}
+                className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass} flex-1`}
+            />
+            {categoryUnits && (
+                <select
+                    className="h-7 px-1 text-[10px] font-bold border rounded bg-slate-50 text-slate-600 focus:outline-none"
+                    onChange={(e) => handler(`${p.name || p.label}_unit`, e.target.value)}
+                >
+                    {unitOptions.map((u: string) => (
+                        <option key={u} value={u} selected={u === defaultUnit}>{u}</option>
+                    ))}
+                </select>
+            )}
+        </div>
     );
 };
 
 export default InspectionField;
+

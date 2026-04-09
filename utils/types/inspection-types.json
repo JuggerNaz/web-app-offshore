@@ -1,0 +1,468 @@
+{
+    "inspectionTypes": [
+        {
+            "code": "GVI",
+            "name": "General Visual Inspection",
+            "methods": [
+                "DIVING",
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "general_condition",
+                    "label": "General Condition",
+                    "type": "select",
+                    "options": [
+                        "Good",
+                        "Fair",
+                        "Poor",
+                        "Damaged"
+                    ],
+                    "required": true
+                },
+                {
+                    "name": "marine_growth_type",
+                    "label": "Marine Growth Type",
+                    "type": "combo",
+                    "lib_code": "MGI",
+                    "required": false
+                },
+                {
+                    "name": "avg_mg_thickness",
+                    "label": "Avg MG Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                },
+                {
+                    "name": "coating_condition",
+                    "label": "Coating Condition",
+                    "type": "combo",
+                    "lib_code": "CCO",
+                    "required": false
+                },
+                {
+                    "name": "corrosion_level",
+                    "label": "Corrosion Level",
+                    "type": "select",
+                    "options": [
+                        "None",
+                        "Light",
+                        "Moderate",
+                        "Severe"
+                    ],
+                    "required": false
+                },
+                {
+                    "name": "coating_breakdown_percent",
+                    "label": "Coating Breakdown %",
+                    "type": "number",
+                    "min": 0,
+                    "max": 100,
+                    "required": false
+                },
+                {
+                    "name": "debris_observed",
+                    "label": "Debris Observed",
+                    "type": "boolean",
+                    "required": false
+                }
+            ]
+        },
+        {
+            "code": "CVI",
+            "name": "Close Visual Inspection",
+            "methods": [
+                "DIVING",
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "specific_defect_type",
+                    "label": "Defect Type",
+                    "type": "combo",
+                    "lib_code": "DFT",
+                    "required": true
+                },
+                {
+                    "name": "dimensions_l_w_d",
+                    "label": "Dimensions (LxWxD)",
+                    "type": "text",
+                    "required": true,
+                    "placeholder": "e.g., 20x10x5"
+                },
+                {
+                    "name": "cleaning_status",
+                    "label": "Cleaning Status",
+                    "type": "select",
+                    "options": [
+                        "As Found",
+                        "Cleaned to Sa2.5",
+                        "Cleaned to Sa3",
+                        "Wire Brushed"
+                    ],
+                    "required": true
+                },
+                {
+                    "name": "photographed",
+                    "label": "Photographed",
+                    "type": "boolean",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "CP",
+            "name": "Cathodic Protection",
+            "methods": [
+                "DIVING",
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "cp_reading_mv",
+                    "label": "CP Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "required": true
+                },
+                {
+                    "name": "reference_electrode",
+                    "label": "Reference Electrode",
+                    "type": "select",
+                    "options": [
+                        "Ag/AgCl",
+                        "Zn",
+                        "Unknown"
+                    ],
+                    "default": "Ag/AgCl",
+                    "required": true
+                },
+                {
+                    "name": "contact_type",
+                    "label": "Contact Type",
+                    "type": "select",
+                    "options": [
+                        "Probed",
+                        "Remote",
+                        "Stabbed"
+                    ],
+                    "required": false
+                },
+                {
+                    "name": "calibration_checked",
+                    "label": "Calibration Checked",
+                    "type": "boolean",
+                    "required": false
+                }
+            ]
+        },
+        {
+            "code": "UT",
+            "name": "Ultrasonic Thickness",
+            "methods": [
+                "DIVING",
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "avg_reading",
+                    "label": "Avg Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true
+                },
+                {
+                    "name": "min_reading",
+                    "label": "Min Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true
+                },
+                {
+                    "name": "nominal_thickness",
+                    "label": "Nominal Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                },
+                {
+                    "name": "scan_type",
+                    "label": "Scan Type",
+                    "type": "select",
+                    "options": [
+                        "Spot",
+                        "Scan",
+                        "Grid"
+                    ],
+                    "required": true
+                },
+                {
+                    "name": "surface_condition",
+                    "label": "Surface Condition",
+                    "type": "select",
+                    "options": [
+                        "Smooth",
+                        "Rough",
+                        "Pitted"
+                    ],
+                    "required": false
+                }
+            ]
+        },
+        {
+            "code": "RGVI",
+            "name": "ROV General Visual Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "cp_rdg",
+                    "label": "CP Rdg",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "required": false
+                },
+                {
+                    "name": "marine_growth",
+                    "label": "Marine Growth",
+                    "type": "combo",
+                    "lib_code": "MGI",
+                    "required": false
+                },
+                {
+                    "name": "debris",
+                    "label": "Debris",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "component_condition",
+                    "label": "Component Condition",
+                    "type": "combo",
+                    "lib_code": "CCD",
+                    "required": false
+                },
+                {
+                    "name": "coating_condition",
+                    "label": "Coating Condition",
+                    "type": "combo",
+                    "lib_code": "CCO",
+                    "required": false
+                },
+                {
+                    "name": "northing",
+                    "label": "Northing",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "easting",
+                    "label": "Easting",
+                    "type": "text",
+                    "required": false
+                }
+            ],
+            "component_overrides": [
+                {
+                    "component_types": [
+                        "AN"
+                    ],
+                    "fields": [
+                        {
+                            "name": "anode_type",
+                            "label": "Anode Type",
+                            "type": "select",
+                            "options": [
+                                "Zn - Zinc",
+                                "Al - Aluminum",
+                                "Mg - Magnesium",
+                                "Other"
+                            ]
+                        },
+                        {
+                            "name": "anode_depletion",
+                            "label": "Anode Depletion",
+                            "type": "combo",
+                            "lib_code": "ADA"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "code": "PLATGI",
+            "name": "Platform General Visual Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "cp_rdg",
+                    "label": "CP Rdg",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "required": false
+                },
+                {
+                    "name": "marine_growth",
+                    "label": "Marine Growth",
+                    "type": "combo",
+                    "lib_code": "MGI",
+                    "required": false
+                },
+                {
+                    "name": "debris",
+                    "label": "Debris",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "component_condition",
+                    "label": "Component Condition",
+                    "type": "combo",
+                    "lib_code": "CCD",
+                    "required": false
+                },
+                {
+                    "name": "coating_condition",
+                    "label": "Coating Condition",
+                    "type": "combo",
+                    "lib_code": "CCO",
+                    "required": false
+                }
+            ],
+            "component_overrides": [
+                {
+                    "component_types": [
+                        "AN"
+                    ],
+                    "fields": [
+                        {
+                            "name": "anode_type",
+                            "label": "Anode Type",
+                            "type": "select",
+                            "options": [
+                                "Zn - Zinc",
+                                "Al - Aluminum",
+                                "Mg - Magnesium",
+                                "Other"
+                            ]
+                        },
+                        {
+                            "name": "anode_depletion",
+                            "label": "Anode Depletion",
+                            "type": "combo",
+                            "lib_code": "ADA"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "code": "RFMD",
+            "name": "ROV Flooded Member Detection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "member_status",
+                    "label": "Member Status",
+                    "type": "select",
+                    "options": [
+                        "Flooded",
+                        "Dry",
+                        "Inconclusive"
+                    ],
+                    "required": true
+                },
+                {
+                    "name": "reading_value",
+                    "label": "Reading Value",
+                    "type": "number",
+                    "required": false
+                },
+                {
+                    "name": "test_point_location",
+                    "label": "Test Point Location",
+                    "type": "text",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "RUTWT",
+            "name": "ROV UT Wall Thickness",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "nominal_thickness",
+                    "label": "Nominal Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                },
+                {
+                    "name": "location",
+                    "label": "Location",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "position",
+                    "label": "Position",
+                    "type": "select",
+                    "options": [
+                        "AT 3 O'CLK",
+                        "AT 6 O'CLK",
+                        "AT 9 O'CLK",
+                        "AT 12 O'CLK"
+                    ],
+                    "required": false
+                },
+                {
+                    "name": "cp_readings",
+                    "label": "CP Additional Readings",
+                    "type": "repeater",
+                    "subFields": [
+                        {
+                            "name": "reading",
+                            "label": "CP Rdg",
+                            "type": "number",
+                            "unitCategory": "VOLTAGE",
+                            "step": "0.01"
+                        },
+                        {
+                            "name": "location",
+                            "label": "Location",
+                            "type": "text"
+                        }
+                    ]
+                },
+                {
+                    "name": "ut_readings",
+                    "label": "UT Additional Readings",
+                    "type": "repeater",
+                    "subFields": [
+                        {
+                            "name": "reading",
+                            "label": "Thickness",
+                            "type": "number",
+                            "unitCategory": "LENGTH",
+                            "step": "0.01"
+                        },
+                        {
+                            "name": "location",
+                            "label": "Location",
+                            "type": "text"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

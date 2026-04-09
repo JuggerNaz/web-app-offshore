@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "react";
@@ -134,6 +134,7 @@ import { TapeLogEvents } from "./components/TapeLogEvents";
 import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
+import inspectionRegistry from "@/utils/types/inspection-types.json";
 
 export default function WorkspaceV2Page() {
     return (
@@ -181,6 +182,23 @@ function V10PreviewLayout() {
         key: 'cr_date',
         direction: 'desc'
     });
+
+    const [unitSystem, setUnitSystem] = useState<"METRIC" | "IMPERIAL">("METRIC");
+
+    // Fetch Global Unit Preference
+    useEffect(() => {
+        async function fetchSettings() {
+            try {
+                const { data } = await supabase.from('company_settings').select('def_unit').single();
+                if (data?.def_unit) {
+                    setUnitSystem(data.def_unit as "METRIC" | "IMPERIAL");
+                }
+            } catch (e) {
+                console.error("Error fetching unit preference:", e);
+            }
+        }
+        fetchSettings();
+    }, [supabase]);
 
     // Handle sorting for Captured Events
     const handleSort = (key: string) => {
@@ -512,6 +530,7 @@ function V10PreviewLayout() {
                 setOpenPopovers={setOpenPopovers}
                 selectedComp={selectedComp}
                 setDebouncedProps={setDebouncedProps}
+                unitSystem={unitSystem}
             />
         );
     };
@@ -2695,38 +2714,26 @@ function V10PreviewLayout() {
             // Fetch Inspection Types
             const { data: typesData } = await supabase.from('inspection_type').select('*').order('name');
             if (typesData) {
-                const typeMap = new Map();
-                typesData.forEach(item => {
-                    const key = (item.code || '').trim() || (item.name || '').trim();
-                    if (!key) return; // skip entirely broken records
+                // Merge with JSON Registry
+                const registryMap = new Map();
+                if (inspectionRegistry && inspectionRegistry.inspectionTypes) {
+                    inspectionRegistry.inspectionTypes.forEach(it => {
+                        registryMap.set(it.code, it);
+                    });
+                }
 
-                    const existing = typeMap.get(key);
-                    if (!existing) {
-                        typeMap.set(key, item);
-                    } else {
-                        // Check if existing or new has any valid default_properties
-                        let existingHasProps = false;
-                        let newHasProps = false;
-
-                        try {
-                            if (typeof existing.default_properties === 'string') existingHasProps = JSON.parse(existing.default_properties).length > 0;
-                            else if (Array.isArray(existing.default_properties)) existingHasProps = existing.default_properties.length > 0;
-                            else if (existing.default_properties && typeof existing.default_properties === 'object') existingHasProps = Object.keys(existing.default_properties).length > 0;
-                        } catch (e) { }
-
-                        try {
-                            if (typeof item.default_properties === 'string') newHasProps = JSON.parse(item.default_properties).length > 0;
-                            else if (Array.isArray(item.default_properties)) newHasProps = item.default_properties.length > 0;
-                            else if (item.default_properties && typeof item.default_properties === 'object') newHasProps = Object.keys(item.default_properties).length > 0;
-                        } catch (e) { }
-
-                        // If current lacks props and the new one has props, override
-                        if (!existingHasProps && newHasProps) {
-                            typeMap.set(key, item);
-                        }
+                const mergedTypes = typesData.map(dbType => {
+                    const registryEntry = registryMap.get(dbType.code);
+                    if (registryEntry) {
+                        return {
+                            ...dbType,
+                            default_properties: registryEntry // Store the whole registry entry (including fields, overrides)
+                        };
                     }
+                    return dbType;
                 });
-                setAllInspectionTypes(Array.from(typeMap.values()));
+
+                setAllInspectionTypes(mergedTypes);
             }
 
             // Fetch Anomaly Lists from Library

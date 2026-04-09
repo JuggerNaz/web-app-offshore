@@ -19,11 +19,19 @@ import {
     Loader2,
     HardDrive,
     FolderOpen,
+    Info,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getSupabaseUrl } from "@/utils/storage";
 import Image from "next/image";
 import { fetcher } from "@/utils/utils";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 interface CompanySettingsData {
     id: number;
@@ -33,6 +41,8 @@ interface CompanySettingsData {
     logo_path: string | null;
     logo_url: string | null;
     storage_provider: string;
+    def_unit: string;
+    has_structures: boolean;
     created_at: string;
     updated_at: string;
 }
@@ -45,6 +55,7 @@ export default function SettingsPage() {
 
     const [companyName, setCompanyName] = useState("");
     const [departmentName, setDepartmentName] = useState("");
+    const [defUnit, setDefUnit] = useState("METRIC");
     const [serialNo, setSerialNo] = useState("");
     const [localStoragePath, setLocalStoragePath] = useState("");
     const [isSaving, setIsSaving] = useState(false);
@@ -57,6 +68,7 @@ export default function SettingsPage() {
         if (settingsResponse?.data) {
             setCompanyName(settingsResponse.data.company_name);
             setDepartmentName(settingsResponse.data.department_name || "");
+            setDefUnit(settingsResponse.data.def_unit || "METRIC");
             setSerialNo(settingsResponse.data.serial_no || "");
         }
     }, [settingsResponse]);
@@ -148,6 +160,7 @@ export default function SettingsPage() {
                 body: JSON.stringify({
                     company_name: companyName,
                     department_name: departmentName,
+                    def_unit: defUnit,
                 }),
             });
 
@@ -275,6 +288,42 @@ export default function SettingsPage() {
                             <p className="text-xs text-muted-foreground">
                                 This will be displayed on generated reports
                             </p>
+                        </div>
+
+                        {/* Default Unit System */}
+                        <div className="space-y-4 pt-4 border-t">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <Label htmlFor="defUnit" className="text-base">Default Unit System</Label>
+                                    <p className="text-sm text-muted-foreground">
+                                        Choose the global unit system for structures and inspections
+                                    </p>
+                                </div>
+                                <div className="w-[200px]">
+                                    <Select
+                                        value={defUnit}
+                                        onValueChange={setDefUnit}
+                                        disabled={settings?.has_structures}
+                                    >
+                                        <SelectTrigger id="defUnit">
+                                            <SelectValue placeholder="Select unit system" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="METRIC">Metric (mm, m, kg)</SelectItem>
+                                            <SelectItem value="IMPERIAL">Imperial (in, ft, lb)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            
+                            {settings?.has_structures && (
+                                <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900">
+                                    <Info className="h-4 w-4 text-blue-600" />
+                                    <AlertDescription className="text-blue-800 dark:text-blue-200 text-xs">
+                                        The unit system is <strong>locked</strong> because structures have already been created. This ensures data consistency across the platform.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
                         </div>
 
                         {/* Company Logo */}
