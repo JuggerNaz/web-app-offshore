@@ -49,13 +49,14 @@ export async function PUT(request: Request) {
         const supabase = createClient();
         const body = await request.json();
 
-        const { company_name, department_name } = body;
+        const { company_name, department_name, def_unit } = body;
 
         const { data, error } = await supabase
             .from("company_settings" as any)
             .update({
                 company_name,
                 department_name,
+                def_unit,
             })
             .eq("id", 1)
             .select()

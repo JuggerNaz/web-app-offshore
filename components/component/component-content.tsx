@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { ComponentEditDialog, EditableComponent } from "@/components/dialogs/component-edit-dialog";
 import { useAtom } from "jotai";
-import { urlId } from "@/utils/client-state";
+import { urlId, urlType } from "@/utils/client-state";
 import useSWR, { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 
@@ -40,10 +40,13 @@ type ComponentType = {
   code: string | null;
   descrip: string | null;
   is_active: boolean;
+  plat: number | null;
+  pipe: number | null;
 };
 
 export default function ComponentContent() {
   const [structureId] = useAtom(urlId);
+  const [pageType] = useAtom(urlType);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("ALL COMPONENTS");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
@@ -98,9 +101,19 @@ export default function ComponentContent() {
 
   const components = componentsData?.data || [];
 
-  // Filter components by search query
+  // Filter components by search query and type relevancy
   const filteredComponents = components.filter((comp: Component) => {
     const matchesSearch = comp.q_id.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // Filter based on component type's pipe/plat if we have the types loaded
+    if (componentTypes.length > 0 && (pageType === 'pipeline' || pageType === 'platform')) {
+      const typeDef = componentTypes.find((t) => t.code === comp.code);
+      if (typeDef) {
+        if (pageType === 'pipeline' && typeDef.pipe !== 1) return false;
+        if (pageType === 'platform' && typeDef.plat !== 1) return false;
+      }
+    }
+    
     return matchesSearch;
   });
 
@@ -192,24 +205,30 @@ export default function ComponentContent() {
                   {[1, 2, 3, 4].map(i => <div key={i} className="h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse w-full" />)}
                 </div>
               ) : (
-                componentTypes.map((type) => (
-                  <button
-                    key={type.id}
-                    onClick={() => handleTypeClick(type.name, type.code)}
-                    className={cn(
-                      "flex items-center gap-3 w-full text-left text-xs font-bold py-2.5 px-3 rounded-xl transition-all",
-                      selectedType === type.name && !viewArchived
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-                        : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                    )}
-                  >
-                    <div className={cn(
-                      "h-2 w-2 rounded-full",
-                      selectedType === type.name && !viewArchived ? "bg-white" : "bg-slate-300 dark:bg-slate-700"
-                    )} />
-                    <span className="truncate">{type.name}</span>
-                  </button>
-                ))
+                componentTypes
+                  .filter((type) => {
+                    if (pageType === 'pipeline') return type.pipe === 1;
+                    if (pageType === 'platform') return type.plat === 1;
+                    return true;
+                  })
+                  .map((type) => (
+                    <button
+                      key={type.id}
+                      onClick={() => handleTypeClick(type.name, type.code)}
+                      className={cn(
+                        "flex items-center gap-3 w-full text-left text-xs font-bold py-2.5 px-3 rounded-xl transition-all",
+                        selectedType === type.name && !viewArchived
+                          ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                          : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                      )}
+                    >
+                      <div className={cn(
+                        "h-2 w-2 rounded-full",
+                        selectedType === type.name && !viewArchived ? "bg-white" : "bg-slate-300 dark:bg-slate-700"
+                      )} />
+                      <span className="truncate">{type.name}</span>
+                    </button>
+                  ))
               )}
             </div>
           </div>
@@ -251,12 +270,12 @@ export default function ComponentContent() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
-                  <TableTh className="w-[200px]">System ID No</TableTh>
+                  <TableTh className="w-[200px]">{pageType === "pipeline" ? "ID No" : "System ID No"}</TableTh>
                   <TableTh className="w-[140px]">Q ID</TableTh>
                   <TableTh className="w-[100px]">Type</TableTh>
-                  <TableTh className="w-[180px]">Node Path (S/E)</TableTh>
-                  <TableTh className="w-[160px]">Platform Leg (S/E)</TableTh>
-                  <TableTh className="w-[160px]">Elevation (1/2)</TableTh>
+                  <TableTh className="w-[180px]">{pageType === "pipeline" ? "KP" : "Node Path (S/E)"}</TableTh>
+                  <TableTh className="w-[160px]">{pageType === "pipeline" ? "Depth" : "Platform Leg (S/E)"}</TableTh>
+                  <TableTh className="w-[160px]">{pageType === "pipeline" ? "Easting Northing" : "Elevation (1/2)"}</TableTh>
                   <TableTh className="w-[120px]">Timestamp</TableTh>
                   <TableTh className="w-[80px] text-center">Actions</TableTh>
                 </tr>
@@ -305,28 +324,48 @@ export default function ComponentContent() {
                         </span>
                       </td>
                       <td className="px-4 py-4 align-middle text-slate-500 font-medium">
-                        <div className="flex items-center gap-2">
-                          <span>{comp.metadata?.s_node || "-"}</span>
-                          <ChevronRight className="h-3 w-3 text-slate-300" />
-                          <span>{comp.metadata?.f_node || "-"}</span>
-                        </div>
+                        {pageType === "pipeline" ? (
+                          <div className="flex items-center gap-2">
+                             <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded text-[11px] font-bold">
+                               {comp.metadata?.kp || "-"} {comp.metadata?.kp_unit || "km"}
+                             </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span>{comp.metadata?.s_node || "-"}</span>
+                            <ChevronRight className="h-3 w-3 text-slate-300" />
+                            <span>{comp.metadata?.f_node || "-"}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-4 align-middle text-slate-500 font-medium whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">{comp.metadata?.s_leg || "-"}</span>
-                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">{comp.metadata?.f_leg || "-"}</span>
-                        </div>
+                        {pageType === "pipeline" ? (
+                           <div className="flex items-center gap-2">
+                             <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">
+                               {comp.metadata?.depth || "-"} {comp.metadata?.depth_unit || "m"}
+                             </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">{comp.metadata?.s_leg || "-"}</span>
+                            <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">{comp.metadata?.f_leg || "-"}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-4 align-middle text-slate-500 font-medium">
                         <div className="flex items-center gap-3">
                           <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold">Base</span>
-                            <span className="text-slate-900 dark:text-white font-black">{comp.metadata?.elv_1 || "0"}</span>
+                            <span className="text-[10px] text-slate-400 uppercase font-bold">{pageType === "pipeline" ? "Easting" : "Base"}</span>
+                            <span className="text-slate-900 dark:text-white font-black">
+                              {pageType === "pipeline" ? (comp.metadata?.easting || "0") : (comp.metadata?.elv_1 || "0")}
+                            </span>
                           </div>
                           <div className="h-6 w-px bg-slate-100 dark:bg-slate-800" />
                           <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold">Top</span>
-                            <span className="text-slate-900 dark:text-white font-black">{comp.metadata?.elv_2 || "0"}</span>
+                            <span className="text-[10px] text-slate-400 uppercase font-bold">{pageType === "pipeline" ? "Northing" : "Top"}</span>
+                            <span className="text-slate-900 dark:text-white font-black">
+                              {pageType === "pipeline" ? (comp.metadata?.northing || "0") : (comp.metadata?.elv_2 || "0")}
+                            </span>
                           </div>
                         </div>
                       </td>

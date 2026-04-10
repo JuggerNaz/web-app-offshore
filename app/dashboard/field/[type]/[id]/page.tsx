@@ -105,25 +105,39 @@ export default function DetailPage() {
             <div className="flex flex-col">
               {/* Breadcrumb Navigation */}
               <div className="flex items-center gap-2 mb-3">
-                <Link
-                  href="/dashboard/field"
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Fields
-                </Link>
-                <ChevronRight className="w-3 h-3 text-muted-foreground" />
-                {fieldId && (
+                {fieldId ? (
                   <>
                     <Link
-                      href={`/dashboard/field/structures?field=${fieldId}`}
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      href="/dashboard/field"
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors capitalize"
                     >
-                      Structures
+                      {fieldId}
+                    </Link>
+                    <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                    <Link
+                      href={`/dashboard/field/structures?field=${fieldId}`}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors capitalize"
+                    >
+                      {type === "platform" ? "Platforms" : type === "pipeline" ? "Pipelines" : "Structures"}
                     </Link>
                     <ChevronRight className="w-3 h-3 text-muted-foreground" />
                   </>
+                ) : (
+                  <>
+                    <Link
+                      href="/dashboard/field"
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Fields
+                    </Link>
+                    <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground capitalize">
+                      {type === "platform" ? "Platforms" : type === "pipeline" ? "Pipelines" : "Structures"}
+                    </span>
+                    <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                  </>
                 )}
-                <span className="text-xs font-semibold text-foreground">{title}</span>
+                <span className="text-xs font-semibold text-foreground uppercase">{title}</span>
               </div>
 
               <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 mb-1.5 px-0.5">
@@ -168,8 +182,18 @@ export default function DetailPage() {
                     "Basic Specs"
               }
             />
-            <TabTrigger value="spec2" icon={<Database className="h-4 w-4" />} label="Extended Data" disabled={isNew} />
-            <TabTrigger value="structure-image" icon={<ImageIcon className="h-4 w-4" />} label="Visuals" disabled={isNew} />
+            <TabTrigger 
+              value="spec2" 
+              icon={<Database className="h-4 w-4" />} 
+              label={type === "pipeline" ? "Geodetic Parameter" : "Extended Data"} 
+              disabled={isNew} 
+            />
+            <TabTrigger 
+              value="structure-image" 
+              icon={<ImageIcon className="h-4 w-4" />} 
+              label={type === "pipeline" ? "Photos" : "Visuals"} 
+              disabled={isNew} 
+            />
             <TabTrigger value="comments" icon={<MessageSquare className="h-4 w-4" />} label="Comments" disabled={isNew} />
             <TabTrigger value="attachments" icon={<Paperclip className="h-4 w-4" />} label="Attachments" disabled={isNew} />
             <TabTrigger value="components" icon={<Boxes className="h-4 w-4" />} label="Components" disabled={isNew} />

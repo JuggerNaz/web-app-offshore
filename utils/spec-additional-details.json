@@ -388,9 +388,6 @@
             "code": "an",
             "componentType": "an_comp_pipe",
             "additionalDataTemplate": {
-                "x_cord": "",
-                "y_cord": "",
-                "fp": "",
                 "fitting": "",
                 "inst_date": "",
                 "life": "",

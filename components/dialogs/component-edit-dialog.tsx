@@ -195,6 +195,14 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     top_und: "",
     comp_group: "",
     associated_comp_id: null as number | null,
+    kp: "",
+    kp_unit: "km",
+    easting: "",
+    easting_unit: "m",
+    northing: "",
+    northing_unit: "m",
+    depth: "",
+    depth_unit: "m",
     additionalInfo: {} as Record<string, any>,
   });
 
@@ -291,6 +299,46 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     return patchedTemplate;
   };
 
+  // Dynamic unit defaults based on platformData
+  useEffect(() => {
+    const isImp = platformData?.data?.def_unit === "IMPERIAL";
+    if (isImp && open) {
+      setFormData(prev => {
+        let changed = false;
+        const updates: any = {};
+        if (prev.dist_unit === "m" || prev.dist_unit === "cm" || prev.dist_unit === "mm") { updates.dist_unit = "inches"; changed = true; }
+        if (prev.elv_1_unit === "m" || prev.elv_1_unit === "cm" || prev.elv_1_unit === "mm") { updates.elv_1_unit = "inches"; changed = true; }
+        if (prev.elv_2_unit === "m" || prev.elv_2_unit === "cm" || prev.elv_2_unit === "mm") { updates.elv_2_unit = "inches"; changed = true; }
+        if (prev.kp_unit === "km") { updates.kp_unit = "mile"; changed = true; }
+        if (prev.depth_unit === "m" || prev.depth_unit === "cm" || prev.depth_unit === "mm") { updates.depth_unit = "inches"; changed = true; }
+        if (prev.easting_unit === "m" || prev.easting_unit === "cm" || prev.easting_unit === "mm") { updates.easting_unit = "inches"; changed = true; }
+        if (prev.northing_unit === "m" || prev.northing_unit === "cm" || prev.northing_unit === "mm") { updates.northing_unit = "inches"; changed = true; }
+        
+        if (prev.additionalInfo) {
+          const newAdd = { ...prev.additionalInfo };
+          let addChanged = false;
+          Object.keys(newAdd).forEach(k => {
+             if (k.endsWith('_unit')) {
+               if (['m', 'cm', 'mm'].includes(newAdd[k])) {
+                 newAdd[k] = "inches";
+                 addChanged = true;
+               } else if (['tonne', 'kg', 'g'].includes(newAdd[k])) {
+                 newAdd[k] = "pounds";
+                 addChanged = true;
+               }
+             }
+          });
+          if (addChanged) {
+            updates.additionalInfo = newAdd;
+            changed = true;
+          }
+        }
+        
+        return changed ? { ...prev, ...updates } : prev;
+      });
+    }
+  }, [platformData?.data?.def_unit, open]);
+
   useEffect(() => {
     if (open && component) {
       const template = getTemplate(component.code, pageType);
@@ -315,6 +363,14 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
+        kp: component.metadata?.kp ?? "",
+        kp_unit: component.metadata?.kp_unit ?? "km",
+        easting: component.metadata?.easting ?? "",
+        easting_unit: component.metadata?.easting_unit ?? "m",
+        northing: component.metadata?.northing ?? "",
+        northing_unit: component.metadata?.northing_unit ?? "m",
+        depth: component.metadata?.depth ?? "",
+        depth_unit: component.metadata?.depth_unit ?? "m",
         additionalInfo: (() => {
           const info = {
             ...template,
@@ -336,7 +392,14 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.diameter;
               delete info.id_chk;
               if (code === 'fd') delete info.thetype;
-              if (code === 'an') delete info.last_inspno;
+              if (code === 'an') {
+                delete info.last_inspno;
+                if (pageType === 'pipeline') {
+                  delete info.x_cord;
+                  delete info.y_cord;
+                  delete info.fp;
+                }
+              }
               if (code === 'cs') delete info.thetype;
             } else if (code === 'cl') {
               delete info.depth;
@@ -537,6 +600,14 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         top_und: formData.top_und,
         comp_group: formData.comp_group,
         associated_comp_id: formData.associated_comp_id,
+        kp: formData.kp,
+        kp_unit: formData.kp_unit,
+        easting: formData.easting,
+        easting_unit: formData.easting_unit,
+        northing: formData.northing,
+        northing_unit: formData.northing_unit,
+        depth: formData.depth,
+        depth_unit: formData.depth_unit,
         additionalInfo: formData.additionalInfo,
       };
 
@@ -661,9 +732,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                   />
                 </div>
 
-                {/* Row 3: Start Node, End Node */}
-                <div className="col-span-6 space-y-2">
-                  <Label htmlFor="edit-sNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Node</Label>
+                {pageType === "platform" && (
+                  <>
+                    {/* Row 3: Start Node, End Node */}
+                    <div className="col-span-6 space-y-2">
+                      <Label htmlFor="edit-sNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Node</Label>
                   <Input
                     id="edit-sNode"
                     className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
@@ -746,19 +819,23 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="cm">cm</SelectItem>
-                          <SelectItem value="mm">mm</SelectItem>
-                          <SelectItem value="tonne">tonne</SelectItem>
-                          <SelectItem value="kg">kg</SelectItem>
-                          <SelectItem value="g">g</SelectItem>
-                          <SelectItem value="bars">bars</SelectItem>
-                          <SelectItem value="C">C</SelectItem>
-                          <SelectItem value="Volts">Volts</SelectItem>
-                          <SelectItem value="mV">mV</SelectItem>
-                          <SelectItem value="Amps">Amps</SelectItem>
-                          <SelectItem value="mA">mA</SelectItem>
-                          <SelectItem value="Newton">Newton</SelectItem>
+                          {platformData?.data?.def_unit === "IMPERIAL" ? (
+                            <>
+                              <SelectItem value="inches">inches</SelectItem>
+                              <SelectItem value="feet">feet</SelectItem>
+                              <SelectItem value="m">m</SelectItem>
+                              <SelectItem value="cm">cm</SelectItem>
+                              <SelectItem value="mm">mm</SelectItem>
+                            </>
+                          ) : (
+                            <>
+                              <SelectItem value="m">m</SelectItem>
+                              <SelectItem value="cm">cm</SelectItem>
+                              <SelectItem value="mm">mm</SelectItem>
+                              <SelectItem value="inches">inches</SelectItem>
+                              <SelectItem value="feet">feet</SelectItem>
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -784,19 +861,23 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="cm">cm</SelectItem>
-                          <SelectItem value="mm">mm</SelectItem>
-                          <SelectItem value="tonne">tonne</SelectItem>
-                          <SelectItem value="kg">kg</SelectItem>
-                          <SelectItem value="g">g</SelectItem>
-                          <SelectItem value="bars">bars</SelectItem>
-                          <SelectItem value="C">C</SelectItem>
-                          <SelectItem value="Volts">Volts</SelectItem>
-                          <SelectItem value="mV">mV</SelectItem>
-                          <SelectItem value="Amps">Amps</SelectItem>
-                          <SelectItem value="mA">mA</SelectItem>
-                          <SelectItem value="Newton">Newton</SelectItem>
+                          {platformData?.data?.def_unit === "IMPERIAL" ? (
+                            <>
+                              <SelectItem value="inches">inches</SelectItem>
+                              <SelectItem value="feet">feet</SelectItem>
+                              <SelectItem value="m">m</SelectItem>
+                              <SelectItem value="cm">cm</SelectItem>
+                              <SelectItem value="mm">mm</SelectItem>
+                            </>
+                          ) : (
+                            <>
+                              <SelectItem value="m">m</SelectItem>
+                              <SelectItem value="cm">cm</SelectItem>
+                              <SelectItem value="mm">mm</SelectItem>
+                              <SelectItem value="inches">inches</SelectItem>
+                              <SelectItem value="feet">feet</SelectItem>
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -820,19 +901,23 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="cm">cm</SelectItem>
-                          <SelectItem value="mm">mm</SelectItem>
-                          <SelectItem value="tonne">tonne</SelectItem>
-                          <SelectItem value="kg">kg</SelectItem>
-                          <SelectItem value="g">g</SelectItem>
-                          <SelectItem value="bars">bars</SelectItem>
-                          <SelectItem value="C">C</SelectItem>
-                          <SelectItem value="Volts">Volts</SelectItem>
-                          <SelectItem value="mV">mV</SelectItem>
-                          <SelectItem value="Amps">Amps</SelectItem>
-                          <SelectItem value="mA">mA</SelectItem>
-                          <SelectItem value="Newton">Newton</SelectItem>
+                          {platformData?.data?.def_unit === "IMPERIAL" ? (
+                            <>
+                              <SelectItem value="inches">inches</SelectItem>
+                              <SelectItem value="feet">feet</SelectItem>
+                              <SelectItem value="m">m</SelectItem>
+                              <SelectItem value="cm">cm</SelectItem>
+                              <SelectItem value="mm">mm</SelectItem>
+                            </>
+                          ) : (
+                            <>
+                              <SelectItem value="m">m</SelectItem>
+                              <SelectItem value="cm">cm</SelectItem>
+                              <SelectItem value="mm">mm</SelectItem>
+                              <SelectItem value="inches">inches</SelectItem>
+                              <SelectItem value="feet">feet</SelectItem>
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -934,8 +1019,120 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     </SelectContent>
                   </Select>
                 </div>
+              </>
+            )}
 
-                {/* Additional Details */}
+            {pageType === "pipeline" && (
+              <>
+                <div className="col-span-6 space-y-2">
+                  <Label htmlFor="edit-kp" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">KP</Label>
+                  <div className="relative">
+                    <Input
+                      id="edit-kp"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                      value={formData.kp}
+                      onChange={(e) => handleChange("kp", e.target.value)}
+                    />
+                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                      <Select
+                        value={formData.kp_unit}
+                        onValueChange={(val) => handleChange("kp_unit", val)}
+                      >
+                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl z-[9999]">
+                          <SelectItem value="km">km</SelectItem>
+                          <SelectItem value="m">m</SelectItem>
+                          <SelectItem value="mile">mile</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-span-6 space-y-2">
+                  <Label htmlFor="edit-depth-pipe" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Depth</Label>
+                  <div className="relative">
+                    <Input
+                      id="edit-depth-pipe"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                      value={formData.depth}
+                      onChange={(e) => handleChange("depth", e.target.value)}
+                    />
+                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                      <Select
+                        value={formData.depth_unit}
+                        onValueChange={(val) => handleChange("depth_unit", val)}
+                      >
+                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl z-[9999]">
+                          <SelectItem value="m">m</SelectItem>
+                          <SelectItem value="cm">cm</SelectItem>
+                          <SelectItem value="ft">ft</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-span-6 space-y-2">
+                  <Label htmlFor="edit-easting" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Easting</Label>
+                  <div className="relative">
+                    <Input
+                      id="edit-easting"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                      value={formData.easting}
+                      onChange={(e) => handleChange("easting", e.target.value)}
+                    />
+                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                      <Select
+                        value={formData.easting_unit}
+                        onValueChange={(val) => handleChange("easting_unit", val)}
+                      >
+                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl z-[9999]">
+                          <SelectItem value="m">m</SelectItem>
+                          <SelectItem value="km">km</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-span-6 space-y-2">
+                  <Label htmlFor="edit-northing" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Northing</Label>
+                  <div className="relative">
+                    <Input
+                      id="edit-northing"
+                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                      value={formData.northing}
+                      onChange={(e) => handleChange("northing", e.target.value)}
+                    />
+                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                      <Select
+                        value={formData.northing_unit}
+                        onValueChange={(val) => handleChange("northing_unit", val)}
+                      >
+                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl z-[9999]">
+                          <SelectItem value="m">m</SelectItem>
+                          <SelectItem value="km">km</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Additional Details */}
                 {Object.keys(formData.additionalInfo).length > 0 && (
                   <div className="col-span-12 pt-8 border-t border-slate-200/60 dark:border-slate-800/60 space-y-6">
                     <div className="flex items-center gap-3">
@@ -1034,24 +1231,34 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         if (key === 'valve_status') label = 'Status of the Valve';
                         if (key === 'dist_from_legs') label = 'dist. from legs';
 
-                        let unit = null;
-                        if (key === 'length' && lowerCode === 'bb') unit = formData.additionalInfo.length_unit || "m";
-                        else if (key === 'diameter' && lowerCode === 'bb') unit = formData.additionalInfo.diameter_unit || "m";
-                        else if (key === 'wall_thk' || key === 'nc_wall_thk' || key === 'memb_wall_thk' || key === 'node_diam' || key === 'memb_diam' || key === 'supp_wt' || key === 'memb_wt' || key === 'supp_diam') unit = "mm";
-                        else if (key === 'diameter') unit = (lowerCode === 'bb' || lowerCode === 'gs' || lowerCode === 'ce') ? "m" : "mm";
-                        else if (key === 'depth') unit = "m";
-                        if (key === 'dist_from_legs') unit = "m";
-                        if (key === 'weight' && (lowerCode === 'fd' || lowerCode === 'bb' || lowerCode === 'sg' || lowerCode === 'cu' || lowerCode === 'bl')) unit = "tonnes";
-                        if (key === 'length' && (lowerCode === 'fd' || lowerCode === 'cl' || (lowerCode === 'bb' && !formData.additionalInfo.length_unit) || lowerCode === 'lg' || lowerCode === 'gp' || lowerCode === 'bl')) unit = "m";
-                        if (key === 'length' && (lowerCode === 'sg' || lowerCode === 'cu')) unit = "mm";
-                        if (key === 'width' && (lowerCode === 'sg' || lowerCode === 'cu' || lowerCode === 'gp')) unit = "m";
-                        if (key === 'life' && lowerCode === 'an') unit = "years";
-                        if (key === 'termination_p' && lowerCode === 'cs') unit = "mm";
-                        if (key === 'bolt_diam' && lowerCode === 'cl') unit = "mm";
-                        if (key === 'out_diam' && lowerCode === 'cd') unit = "mm";
-                        if (key === 'in_diam' && lowerCode === 'cd') unit = "mm";
-                        if (key === 'length' && (lowerCode === 'hd' || lowerCode === 'hm' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hs')) unit = "m";
-                        if (key === 'out_diam' && (lowerCode === 'hd' || lowerCode === 'hm' || lowerCode === 'vd' || lowerCode === 'vm')) unit = "mm";
+                        let unit: string | null = null;
+                        let unitOptions: string[] = [];
+                        const k = key.toLowerCase();
+                        const isImperial = platformData?.data?.def_unit === "IMPERIAL";
+
+                        if (k.includes('length') || k.includes('width') || k.includes('diameter') || k.includes('depth') || k.includes('dim')) {
+                          unitOptions = isImperial ? ['inches', 'feet', 'm', 'cm', 'mm'] : ['m', 'cm', 'mm', 'inches', 'feet'];
+                          unit = formData.additionalInfo[`${key}_unit`] || (isImperial ? 'inches' : (lowerCode === 'ce' || lowerCode === 'gs' ? "m" : "mm"));
+                        } else if (k.includes('weight') || k.includes('wt')) {
+                          unitOptions = isImperial ? ['pounds', 'tonne', 'kg', 'g'] : ['tonne', 'kg', 'g', 'pounds'];
+                          unit = formData.additionalInfo[`${key}_unit`] || (isImperial ? 'pounds' : "tonne");
+                        } else {
+                          if (key === 'angle' && lowerCode === 'yp') { unit = "deg."; unitOptions = ["deg."]; }
+                          else if (key === 'wall_thk' || key === 'nc_wall_thk' || key === 'memb_wall_thk' || key === 'node_diam' || key === 'memb_diam' || key === 'supp_wt' || key === 'memb_wt' || key === 'supp_diam') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
+                          else if (key === 'dist_from_legs') { unit = "m"; unitOptions = ['m', 'cm', 'mm']; }
+                          else if (key === 'life' && lowerCode === 'an') { unit = "years"; unitOptions = ['years']; }
+                          else if (key === 'termination_p' && lowerCode === 'cs') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
+                          else if (key === 'bolt_diam' && lowerCode === 'cl') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
+                          else if (key === 'out_diam' && lowerCode === 'cd') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
+                          else if (key === 'in_diam' && lowerCode === 'cd') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
+                          else if ((key === 'desg_press' || key === 'op_press') && lowerCode === 'rs') { unit = "bars"; unitOptions = ['bars']; }
+                        }
+
+                        // Override with existing unit if available
+                        if (formData.additionalInfo[`${key}_unit`]) {
+                          unit = formData.additionalInfo[`${key}_unit`];
+                          if (unit && !unitOptions.includes(unit)) unitOptions.push(unit);
+                        }
 
                         const renderSelect = (fieldKey: string, placeholder: string, data: any, extraLabel?: string) => (
                           <div key={fieldKey} className="space-y-2">
@@ -1222,11 +1429,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                                   onChange={(e) => handleAdditionalInfoChange(key, e.target.value)}
                                   className={cn(
                                     "h-11 rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-mono text-xs text-cyan-600 dark:text-cyan-400",
-                                    unit && (lowerCode === 'bb' && (key === 'length' || key === 'diameter') ? "pr-20" : "pr-10")
+                                    unit && (unitOptions.length > 0 ? "pr-20" : "pr-10")
                                   )}
                                 />
                                 {unit && (
-                                  lowerCode === 'bb' && (key === 'length' || key === 'diameter') ? (
+                                  unitOptions.length > 0 ? (
                                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                                       <Select
                                         value={unit}
@@ -1236,19 +1443,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent className="rounded-xl">
-                                          <SelectItem value="m">m</SelectItem>
-                                          <SelectItem value="cm">cm</SelectItem>
-                                          <SelectItem value="mm">mm</SelectItem>
-                                          <SelectItem value="tonne">tonne</SelectItem>
-                                          <SelectItem value="kg">kg</SelectItem>
-                                          <SelectItem value="g">g</SelectItem>
-                                          <SelectItem value="bars">bars</SelectItem>
-                                          <SelectItem value="C">C</SelectItem>
-                                          <SelectItem value="Volts">Volts</SelectItem>
-                                          <SelectItem value="mV">mV</SelectItem>
-                                          <SelectItem value="Amps">Amps</SelectItem>
-                                          <SelectItem value="mA">mA</SelectItem>
-                                          <SelectItem value="Newton">Newton</SelectItem>
+                                          {unitOptions.map((opt) => (
+                                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                          ))}
                                         </SelectContent>
                                       </Select>
                                     </div>

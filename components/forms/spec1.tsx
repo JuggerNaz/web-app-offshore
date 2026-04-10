@@ -293,7 +293,17 @@ export default function Spec1({ data }: Props) {
                 <p className="text-xs text-muted-foreground italic">
                   Defines the default measurement system for this platform and all its associated components and inspections.
                 </p>
-                <FormFieldWrap label="Unit System" name="def_unit" form={form} placeholder="e.g. SI / Metric" />
+                <FormFieldWrap 
+                  label="Unit System" 
+                  name="def_unit" 
+                  form={form} 
+                  ftype="select"
+                  options={[
+                    { label: "METRIC", value: "METRIC" },
+                    { label: "IMPERIAL", value: "IMPERIAL" }
+                  ]}
+                  placeholder="Select Unit System" 
+                />
               </CardContent>
             </Card>
           </div>
