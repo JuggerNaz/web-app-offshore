@@ -61,7 +61,7 @@ export async function PATCH(
         const { data, error } = await (supabase as any)
             .from('defect_criteria_rules')
             .update(updateData)
-            .eq('id', id)
+            .eq('id', Number(id))
             .select()
             .single();
 
@@ -93,7 +93,7 @@ export async function DELETE(
         const { error } = await (supabase as any)
             .from('defect_criteria_rules')
             .delete()
-            .eq('id', id);
+            .eq('id', Number(id));
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });

@@ -67,6 +67,36 @@
                     "type": "boolean",
                     "required": false
                 }
+            ],
+            "component_overrides": [
+                {
+                    "component_types": ["ANODE"],
+                    "fields": [
+                        {
+                            "name": "anode_depletion_percent",
+                            "label": "Anode Depletion %",
+                            "type": "number",
+                            "min": 0,
+                            "max": 100,
+                            "unitCategory": "PERCENT",
+                            "required": true
+                        },
+                        {
+                            "name": "anode_condition",
+                            "label": "Anode Condition",
+                            "type": "select",
+                            "options": ["Intact", "Wasted", "Missing", "Disconnected"],
+                            "required": true
+                        },
+                        {
+                            "name": "cp_reading_mv",
+                            "label": "Anode Potential",
+                            "type": "number",
+                            "unitCategory": "VOLTAGE",
+                            "required": false
+                        }
+                    ]
+                }
             ]
         },
         {
@@ -271,74 +301,24 @@
                     ],
                     "fields": [
                         {
-                            "name": "anode_type",
-                            "label": "Anode Type",
-                            "type": "select",
-                            "options": [
-                                "Zn - Zinc",
-                                "Al - Aluminum",
-                                "Mg - Magnesium",
-                                "Other"
-                            ]
+                            "name": "northing",
+                            "label": "Northing",
+                            "type": "text",
+                            "required": false
                         },
                         {
-                            "name": "anode_depletion",
-                            "label": "Anode Depletion",
-                            "type": "combo",
-                            "lib_code": "ADA"
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            "code": "PLATGI",
-            "name": "Platform General Visual Inspection",
-            "methods": [
-                "ROV"
-            ],
-            "fields": [
-                {
-                    "name": "cp_rdg",
-                    "label": "CP Rdg",
-                    "type": "number",
-                    "unitCategory": "VOLTAGE",
-                    "required": false
-                },
-                {
-                    "name": "marine_growth",
-                    "label": "Marine Growth",
-                    "type": "combo",
-                    "lib_code": "MGI",
-                    "required": false
-                },
-                {
-                    "name": "debris",
-                    "label": "Debris",
-                    "type": "text",
-                    "required": false
-                },
-                {
-                    "name": "component_condition",
-                    "label": "Component Condition",
-                    "type": "combo",
-                    "lib_code": "CCD",
-                    "required": false
-                },
-                {
-                    "name": "coating_condition",
-                    "label": "Coating Condition",
-                    "type": "combo",
-                    "lib_code": "CCO",
-                    "required": false
-                }
-            ],
-            "component_overrides": [
-                {
-                    "component_types": [
-                        "AN"
-                    ],
-                    "fields": [
+                            "name": "easting",
+                            "label": "Easting",
+                            "type": "text",
+                            "required": false
+                        },
+                        {
+                            "name": "cp_rdg",
+                            "label": "CP Rdg",
+                            "type": "number",
+                            "unitCategory": "VOLTAGE",
+                            "required": false
+                        },
                         {
                             "name": "anode_type",
                             "label": "Anode Type",
@@ -355,6 +335,27 @@
                             "label": "Anode Depletion",
                             "type": "combo",
                             "lib_code": "ADA"
+                        },
+                        {
+                            "name": "marine_growth",
+                            "label": "Marine Growth",
+                            "type": "combo",
+                            "lib_code": "MGI",
+                            "required": false
+                        },
+                        {
+                            "name": "debris",
+                            "label": "Debris",
+                            "type": "combo",
+                            "lib_code": "DEB_TYP",
+                            "required": false
+                        },
+                        {
+                            "name": "debris_material",
+                            "label": "Debris Material",
+                            "type": "combo",
+                            "lib_code": "DBMAT_TYP",
+                            "required": false
                         }
                     ]
                 }

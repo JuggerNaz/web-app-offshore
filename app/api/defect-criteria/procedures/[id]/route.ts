@@ -17,7 +17,7 @@ export async function GET(
         const { data: procedure, error: procedureError } = await (supabase as any)
             .from('defect_criteria_procedures')
             .select('*')
-            .eq('id', id)
+            .eq('id', Number(id))
             .single();
 
         if (procedureError) {
@@ -31,7 +31,7 @@ export async function GET(
         const { data: rules, error: rulesError } = await (supabase as any)
             .from('defect_criteria_rules')
             .select('*')
-            .eq('procedure_id', id)
+            .eq('procedure_id', Number(id))
             .order('evaluation_priority', { ascending: false })
             .order('rule_order', { ascending: true });
 
@@ -94,7 +94,7 @@ export async function PATCH(
         const { data, error } = await (supabase as any)
             .from('defect_criteria_procedures')
             .update(updates)
-            .eq('id', id)
+            .eq('id', Number(id))
             .select()
             .single();
 
@@ -146,7 +146,7 @@ export async function DELETE(
         const { data: procedure } = await (supabase as any)
             .from('defect_criteria_procedures')
             .select('status')
-            .eq('id', id)
+            .eq('id', Number(id))
             .single();
 
         if (procedure?.status !== 'draft') {
@@ -159,7 +159,7 @@ export async function DELETE(
         const { error } = await (supabase as any)
             .from('defect_criteria_procedures')
             .delete()
-            .eq('id', id);
+            .eq('id', Number(id));
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });

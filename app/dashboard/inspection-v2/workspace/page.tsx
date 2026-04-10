@@ -531,6 +531,7 @@ function V10PreviewLayout() {
                 selectedComp={selectedComp}
                 setDebouncedProps={setDebouncedProps}
                 unitSystem={unitSystem}
+                dynamicProps={dynamicProps}
             />
         );
     };
@@ -2733,7 +2734,8 @@ function V10PreviewLayout() {
                     return dbType;
                 });
 
-                setAllInspectionTypes(mergedTypes);
+                const discardedCodes = ['PLATGI', 'LOGS', 'EXSUM', 'NAVIG'];
+                setAllInspectionTypes(mergedTypes.filter(it => !discardedCodes.includes(it.code)));
             }
 
             // Fetch Anomaly Lists from Library
@@ -2768,16 +2770,28 @@ function V10PreviewLayout() {
         if (parsed) {
             const raw = selectedComp?.raw || {};
             const compTypeStr = String(raw.type || raw.code || raw.component_type || selectedComp?.type || '').toUpperCase().trim();
+            
+            // Resolve component specific overrides
             const matchingOverrides = parsed.component_overrides?.filter((ov: any) =>
                 ov.component_types && Array.isArray(ov.component_types) && ov.component_types.includes(compTypeStr)
             ) || [];
             
-            // Use the last matching override (most recent) if available
-            const lastMatch = matchingOverrides.length > 0 ? matchingOverrides[matchingOverrides.length - 1] : null;
-            props = lastMatch?.fields || parsed.fields || (Array.isArray(parsed) ? parsed : []);
+            // Priority 1: Component Override Fields (if any)
+            if (matchingOverrides.length > 0) {
+                const lastMatch = matchingOverrides[matchingOverrides.length - 1];
+                if (lastMatch.fields && Array.isArray(lastMatch.fields)) {
+                    // Logic: If override provides fields, we use them. 
+                    // To support "replace/hide", the override fields list is the source.
+                    props = [...lastMatch.fields];
+                } else {
+                    props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
+                }
+            } else {
+                props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
+            }
         }
 
-        // 1. Historical data preservation (Legacy Fields)
+        // 1. Historical data preservation (Legacy Fields) - THE UNION STRATEGY
         if (editingRecordId) {
             const recordRow = currentRecords.find(r => r.insp_id === editingRecordId);
             if (recordRow && recordRow.inspection_data) {
@@ -2787,62 +2801,60 @@ function V10PreviewLayout() {
                         : recordRow.inspection_data;
                     
                     Object.keys(recordData).forEach(key => {
-                        const exists = props.find((p: any) => p.name === key || String(p.label).toLowerCase() === key.toLowerCase());
-                        const ignoreKeys = ['has_anomaly', 'anomalydata', 'defectcode', 'defectreferenceno', 'northing', 'easting', 'elevation', 'kp', 'depth', 'fields', 'inspno', 'strid', 'str_id', 'compid', 'comp_id', 'inspid', 'insp_id', 'record_category', 'incomplete_reason', 'component_overrides'];
+                        // Check if key or label (case insensitive) exists in current props
+                        const exists = props.find((p: any) => 
+                            (p.name && p.name.toLowerCase() === key.toLowerCase()) || 
+                            (p.label && p.label.toLowerCase() === key.toLowerCase())
+                        );
+
+                        const ignoreKeys = [
+                            'has_anomaly', 'anomalydata', 'defectcode', 'defectreferenceno', 
+                            'northing', 'easting', 'elevation', 'kp', 'depth', 'fields', 
+                            'inspno', 'strid', 'str_id', 'compid', 'comp_id', 'inspid', 
+                            'insp_id', 'record_category', 'incomplete_reason', 'component_overrides',
+                            'inspection_date', 'inspection_time', 'tape_count_no'
+                        ];
                         const lowerKey = key.toLowerCase();
                         
+                        // If field has data but isn't in current spec, inject it as Legacy
                         if (!exists && 
                             !ignoreKeys.includes(lowerKey) && 
-                            !lowerKey.startsWith('_meta') && 
-                            !lowerKey.startsWith('_is') && 
-                            !lowerKey.includes('legacy') && 
+                            !lowerKey.startsWith('_') && 
+                            recordData[key] !== null && 
+                            recordData[key] !== undefined &&
+                            recordData[key] !== "" &&
+                            recordData[key] !== "--" &&
                             typeof recordData[key] !== 'object') {
+                            
                             const niceLabel = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                            props.push({ name: key, label: `${niceLabel} (Legacy)`, type: 'text' });
+                            props.push({ 
+                                name: key, 
+                                label: `${niceLabel}`, 
+                                type: 'text',
+                                isLegacy: true 
+                            });
                         }
                     });
                 } catch (e) {}
             }
         }
 
-        // 2. Add ROV specific fields (Northing, Easting) if needed
-        const isRovType = inspMethod === 'ROV' || (String(activeIt?.code || '').toUpperCase().startsWith('R') ||
-            String(activeIt?.name || '').toUpperCase().includes('ROV') ||
-            activeIt?.metadata?.rov == 1);
+        // 2. Add technical fields (Northing, Easting) for ROV automatically if not present
+        const rovKeywords = ['ROV', 'RUTWT', 'RGVI', 'RMG', 'RSCOR'];
+        const isRovType = inspMethod === 'ROV' || 
+            rovKeywords.some(kw => (activeIt?.code || '').includes(kw) || (activeIt?.name || '').toUpperCase().includes(kw)) ||
+            activeIt?.metadata?.rov == 1;
 
         if (isRovType) {
-            const extraFields = [];
             const existingNames = props.map((p: any) => String(p.name || p.label || '').toLowerCase());
-            if (!existingNames.includes('northing')) extraFields.push({ name: 'northing', label: 'Northing', type: 'text' });
-            if (!existingNames.includes('easting')) extraFields.push({ name: 'easting', label: 'Easting', type: 'text' });
-            if (extraFields.length > 0) props = [...extraFields, ...props];
-        }
-
-        // 3. CP/UT Special Handling (Repeaters)
-        const hasCpRdgField = props.some((sibling: any) => {
-            const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
-            return sLbl.includes('cp rdg') || sLbl === 'cp_rdg';
-        }) || dataAcqFields.some(f => f.targetField === 'cp_reading');
-
-        const hasCpRepeater = props.some(p => {
-            const l = String(p.label || p.name || '').toLowerCase();
-            return l.includes('cp') && l.includes('reading');
-        });
-
-        if (hasCpRdgField && !hasCpRepeater) {
-            props.push({
-                name: 'cp_readings',
-                label: 'CP Readings',
-                type: 'repeater',
-                subFields: [
-                    { name: 'location', label: 'Location', type: 'text' },
-                    { name: 'reading', label: 'Reading (mV)', type: 'number' }
-                ]
-            });
+            const extra = [];
+            if (!existingNames.includes('northing')) extra.push({ name: 'northing', label: 'Northing', type: 'text' });
+            if (!existingNames.includes('easting')) extra.push({ name: 'easting', label: 'Easting', type: 'text' });
+            if (extra.length > 0) props = [...extra, ...props];
         }
 
         return props;
-    }, [activeSpec, selectedComp, allInspectionTypes, editingRecordId, currentRecords, inspMethod, dataAcqFields]);
+    }, [activeSpec, selectedComp, allInspectionTypes, editingRecordId, currentRecords, inspMethod]);
 
     // Auto-fetch dynamic library options when inspection type or component changes
     useEffect(() => {
@@ -5915,7 +5927,10 @@ function V10PreviewLayout() {
             </Dialog>
 
             {/* TASK SELECTOR MODAL (FOR RE-CLASSIFICATION) */}
-            <Dialog open={showTaskSelector} onOpenChange={setShowTaskSelector}>
+            <Dialog open={showTaskSelector} onOpenChange={(open) => {
+                setShowTaskSelector(open);
+                if (!open && editingRecordId) resetForm();
+            }}>
                 <DialogContent className="max-w-sm bg-white p-0 overflow-hidden border-2 border-blue-100 shadow-2xl">
                     <DialogHeader className="p-4 bg-blue-600 text-white space-y-1">
                         <DialogTitle className="text-xs font-bold uppercase tracking-widest opacity-80 mb-0">Re-classify Task</DialogTitle>
@@ -5996,7 +6011,10 @@ function V10PreviewLayout() {
                         </div>
                     </div>
                     <div className="p-3 bg-white border-t border-slate-100 flex justify-end">
-                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => setShowTaskSelector(false)}>CLOSE</Button>
+                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => {
+                            setShowTaskSelector(false);
+                            if (editingRecordId) resetForm();
+                        }}>CLOSE</Button>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -6006,7 +6024,10 @@ function V10PreviewLayout() {
                 open={showCompSelector} 
                 onOpenChange={(open) => {
                     setShowCompSelector(open);
-                    if (!open) setSelectorShowAll(false);
+                    if (!open) {
+                        setSelectorShowAll(false);
+                        if (editingRecordId) resetForm();
+                    }
                 }}
             >
                 <DialogContent className="max-w-md bg-white p-0 overflow-hidden border-2 border-blue-100 shadow-2xl">
@@ -6102,7 +6123,12 @@ function V10PreviewLayout() {
                             <Info className="w-3 h-3" />
                             {selectorShowAll ? "Showing full platform library" : "Showing SOW components only"}
                         </div>
-                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => { setShowCompSelector(false); setCompSelectorSearch(""); setSelectorShowAll(false); }}>CANCEL</Button>
+                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => { 
+                            setShowCompSelector(false); 
+                            setCompSelectorSearch(""); 
+                            setSelectorShowAll(false); 
+                            if (editingRecordId) resetForm();
+                        }}>CANCEL</Button>
                     </div>
                 </DialogContent>
             </Dialog>

@@ -28,5 +28,11 @@
     "imperial": ["mV", "V"],
     "defaultMetric": "mV",
     "defaultImperial": "mV"
+  },
+  "PERCENT": {
+    "metric": ["%"],
+    "imperial": ["%"],
+    "defaultMetric": "%",
+    "defaultImperial": "%"
   }
 }

@@ -12,10 +12,10 @@ import { withAuth } from "@/utils/with-auth";
 export const GET = withAuth(
   async (
     request: NextRequest,
-    context: { params: Promise<{ structure_id: string }>; user: any }
+    { params }: { params: Promise<{ structure_id: string }>; user: any }
   ) => {
     const supabase = createClient();
-    const { structure_id } = await context.params;
+    const { structure_id } = await params;
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
     const archived = searchParams.get("archived");
@@ -103,11 +103,10 @@ export const GET = withAuth(
 export const POST = withAuth(
   async (
     request: NextRequest,
-    context: { params: Promise<{ structure_id: string }>; user: any }
+    { params, user }: { params: Promise<{ structure_id: string }>; user: any }
   ) => {
     const supabase = createClient();
-    const { structure_id } = await context.params;
-    const { user } = context;
+    const { structure_id } = await params;
     const body = await request.json();
 
     const createdAt = new Date().toISOString();

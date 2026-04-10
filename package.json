@@ -14,7 +14,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "setup-storage": "node scripts/setup-storage.js",
-    "test-storage": "node scripts/test-storage-url.js"
+    "test-storage": "node scripts/test-storage-url.js",
+    "sync-specs": "node scripts/sync-specs.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",

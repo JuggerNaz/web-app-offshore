@@ -8,7 +8,7 @@ import { User } from "@supabase/supabase-js";
  */
 type AuthenticatedHandler = (
   request: NextRequest,
-  context: { params: any; user: User }
+  context: { params: Promise<any>; user: User }
 ) => Promise<NextResponse> | NextResponse;
 
 /**
@@ -26,7 +26,7 @@ type AuthenticatedHandler = (
  * @returns Protected route handler
  */
 export function withAuth(handler: AuthenticatedHandler) {
-  return async (request: NextRequest, context: { params: any }) => {
+  return async (request: NextRequest, context: { params: Promise<any> }) => {
     try {
       const supabase = createClient();
       const {
@@ -39,7 +39,7 @@ export function withAuth(handler: AuthenticatedHandler) {
       }
 
       // Call the original handler with user context
-      return await handler(request, { params: context.params || {}, user });
+      return await handler(request, { params: context.params, user });
     } catch (error) {
       console.error("[withAuth] Error:", error);
       return apiUnauthorized("Authentication failed");
@@ -52,7 +52,7 @@ export function withAuth(handler: AuthenticatedHandler) {
  */
 type OptionalAuthHandler = (
   request: NextRequest,
-  context: { params: any; user: User | null }
+  context: { params: Promise<any>; user: User | null }
 ) => Promise<NextResponse> | NextResponse;
 
 /**
@@ -71,18 +71,18 @@ type OptionalAuthHandler = (
  * ```
  */
 export function withOptionalAuth(handler: OptionalAuthHandler) {
-  return async (request: NextRequest, context: { params: any }) => {
+  return async (request: NextRequest, context: { params: Promise<any> }) => {
     try {
       const supabase = createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      return await handler(request, { params: context.params || {}, user });
+      return await handler(request, { params: context.params, user });
     } catch (error) {
       console.error("[withOptionalAuth] Error:", error);
       // Continue with null user on error
-      return await handler(request, { params: context.params || {}, user: null });
+      return await handler(request, { params: context.params, user: null });
     }
   };
 }

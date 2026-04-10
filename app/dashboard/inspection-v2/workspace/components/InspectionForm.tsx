@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface InspectionFormProps {
     selectedComp: any;
@@ -186,8 +187,15 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         )}
                     </div>
 
-                    {activeFormProps.length > 0 && (
-                        <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">
+                    <AnimatePresence mode="wait">
+                        <motion.div 
+                            key={activeSpec}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.3 }}
+                            className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3"
+                        >
                             <div className="border-b border-slate-200 pb-2 space-y-3">
                                 <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest">Inspection Specification</div>
                                 <div className="grid grid-cols-3 gap-3">
@@ -222,15 +230,30 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
 
                                     return (
-                                        <div key={`${p.name || p.label}-${idx}`} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">{p.label || p.name}</label>
+                                        <motion.div 
+                                            layout
+                                            key={`${p.name || p.label}-${idx}`} 
+                                            className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            transition={{ delay: idx * 0.05 }}
+                                        >
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
+                                                {p.label || p.name}
+                                                {p.isLegacy && <span className="ml-2 text-amber-500 lowercase">(legacy)</span>}
+                                            </label>
                                             {renderInspectionField(p, 'primary')}
-                                        </div>
+                                        </motion.div>
                                     );
                                 })}
                             </div>
-                        </div>
-                    )}
+                            {activeFormProps.length === 0 && (
+                                <div className="py-6 text-center">
+                                    <p className="text-xs text-slate-400 italic">No additional specialized fields for this type.</p>
+                                </div>
+                            )}
+                        </motion.div>
+                    </AnimatePresence>
 
                     <div className="space-y-3 p-4 border-2 border-slate-200 rounded-lg bg-white shadow-sm animate-in fade-in slide-in-from-top-2">
                         <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">Inspection Result</label>

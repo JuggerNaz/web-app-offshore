@@ -32,6 +32,7 @@ interface InspectionFieldProps {
     selectedComp: any;
     setDebouncedProps: React.Dispatch<React.SetStateAction<Record<string, any>>>;
     unitSystem: "METRIC" | "IMPERIAL";
+    dynamicProps: Record<string, any>;
 }
 
 const InspectionField = ({ 
@@ -44,7 +45,8 @@ const InspectionField = ({
     setOpenPopovers, 
     selectedComp, 
     setDebouncedProps,
-    unitSystem
+    unitSystem,
+    dynamicProps
 }: InspectionFieldProps) => {
     const [searchTerm, setSearchTerm] = useState("");
     const fieldName = String(p.label || p.name || '').toLowerCase();
@@ -63,10 +65,28 @@ const InspectionField = ({
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
 
-    // Unit Management
+    // Unit Management - Enriched for Multi-Unit Support
     const categoryUnits = p.unitCategory ? (unitsData as any)[p.unitCategory] : null;
-    const unitOptions = categoryUnits ? (unitSystem === "IMPERIAL" ? categoryUnits.imperial : categoryUnits.metric) : [];
-    const defaultUnit = categoryUnits ? (unitSystem === "IMPERIAL" ? categoryUnits.defaultImperial : categoryUnits.defaultMetric) : null;
+    
+    // Show BOTH metric and imperial units as requested
+    const unitOptions = categoryUnits 
+        ? Array.from(new Set([...(categoryUnits.metric || []), ...(categoryUnits.imperial || [])])) 
+        : [];
+        
+    const defaultUnit = categoryUnits 
+        ? (unitSystem === "IMPERIAL" ? categoryUnits.defaultImperial : categoryUnits.defaultMetric) 
+        : null;
+
+    // Unit value management
+    const unitFieldName = `${p.name || p.label}_unit`;
+    const currentUnitValue = dynamicProps[unitFieldName] || defaultUnit;
+
+    // Initialize unit in state if not present but category exists
+    React.useEffect(() => {
+        if (categoryUnits && !dynamicProps[unitFieldName] && defaultUnit) {
+            handler(unitFieldName, defaultUnit);
+        }
+    }, [categoryUnits, unitFieldName, defaultUnit]);
 
     if (isComboEligible) {
         let options = [...(p.options || [])];
@@ -360,11 +380,17 @@ const InspectionField = ({
             />
             {categoryUnits && (
                 <select
-                    className="h-7 px-1 text-[10px] font-bold border rounded bg-slate-50 text-slate-600 focus:outline-none"
-                    onChange={(e) => handler(`${p.name || p.label}_unit`, e.target.value)}
+                    className="h-7 px-1 text-[10px] font-bold border rounded bg-slate-50 text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    value={currentUnitValue}
+                    onChange={(e) => {
+                        handler(unitFieldName, e.target.value);
+                        if (type === 'primary') {
+                            setDebouncedProps((prev: any) => ({ ...prev, [unitFieldName]: e.target.value }));
+                        }
+                    }}
                 >
-                    {unitOptions.map((u: string) => (
-                        <option key={u} value={u} selected={u === defaultUnit}>{u}</option>
+                    {unitOptions.map((u: any) => (
+                        <option key={u} value={u}>{u}</option>
                     ))}
                 </select>
             )}
