@@ -56,9 +56,35 @@ To update inspection specifications:
 3. The script will upsert the changes into the `inspection_type` table.
 4. Refresh the Workspace page—the changes will appear instantly via the database fetch.
 
-## 6. UI/UX: Spec Morphing
+## 6. Shared Fields and References ($ref)
 
-The system utilizes `framer-motion` and `AnimatePresence` to handle layout transitions. When switching between inspection types or when the spec changes during re-classification, the form fields "morph" smoothly rather than jumping abruptly, providing a premium interactive experience.
+To avoid repetition of common fields (like coordinates, CP readings, or environmental conditions), the system supports a reference system.
+
+### Configuration
+1. Define common fields in the `sharedFields` object at the top of `inspection-types.json`.
+2. Reference them in any `fields` list using `{ "$ref": "field_name" }`.
+
+```json
+{
+  "sharedFields": {
+    "northing": { "name": "northing", "label": "Northing", "type": "text" }
+  },
+  "inspectionTypes": [
+    {
+      "code": "RGVI",
+      "fields": [
+        { "$ref": "northing" },
+        { "name": "debris", "$ref": "debris", "type": "combo" } 
+      ]
+    }
+  ]
+}
+```
+
+### Overrides within Refs
+You can override specific properties of a shared field by adding them alongside the `$ref` key. The local property will take precedence over the shared definition.
+
+## 7. UI/UX: Spec Morphing
 
 ---
 **Maintained by**: AI Engineering Team

@@ -26,26 +26,54 @@ const supabase = createClient(
 async function syncSpecs() {
   const jsonPath = path.resolve(process.cwd(), 'utils/types/inspection-types.json');
   const rawJson = fs.readFileSync(jsonPath, 'utf8');
-  const { inspectionTypes } = JSON.parse(rawJson);
+    // Utility to resolve $ref fields
+    function resolveFields(fields, sharedFields) {
+      if (!fields) return [];
+      return fields.map(field => {
+        if (field && typeof field === 'object' && field.$ref) {
+          const shared = sharedFields[field.$ref];
+          if (!shared) {
+            console.warn(`    ⚠️ Warning: Shared field "${field.$ref}" NOT found.`);
+            return field;
+          }
+          const res = { ...shared, ...field };
+          delete res.$ref;
+          return res;
+        }
+        return field;
+      });
+    }
 
-  console.log(`🚀 Starting sync of ${inspectionTypes.length} inspection types...`);
+    const { sharedFields } = JSON.parse(rawJson);
+    const { inspectionTypes } = JSON.parse(rawJson);
 
-  for (const type of inspectionTypes) {
-    const { code, name, methods, fields, component_overrides } = type;
-    
-    // Prepare metadata
-    const metadata = {
-      methods: methods || [],
-      rov: methods?.includes('ROV') ? 1 : 0,
-      diving: methods?.includes('DIVING') ? 1 : 0,
-      sync_date: new Date().toISOString()
-    };
+    console.log(`🚀 Starting sync of ${inspectionTypes.length} inspection types...`);
 
-    // Prepare properties
-    const default_properties = {
-      fields: fields || [],
-      component_overrides: component_overrides || []
-    };
+    for (const type of inspectionTypes) {
+        let { code, name, methods, fields, component_overrides } = type;
+        
+        // Resolve references
+        fields = resolveFields(fields, sharedFields);
+        if (component_overrides) {
+            component_overrides = component_overrides.map(ov => ({
+                ...ov,
+                fields: resolveFields(ov.fields, sharedFields)
+            }));
+        }
+        
+        // Prepare metadata
+        const metadata = {
+            methods: methods || [],
+            rov: methods?.includes('ROV') ? 1 : 0,
+            diving: methods?.includes('DIVING') ? 1 : 0,
+            sync_date: new Date().toISOString()
+        };
+
+        // Prepare properties
+        const default_properties = {
+            fields: fields || [],
+            component_overrides: component_overrides || []
+        };
 
     console.log(`  - Checking ${code}: ${name}...`);
 

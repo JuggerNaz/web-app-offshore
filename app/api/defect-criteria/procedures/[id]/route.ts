@@ -142,16 +142,19 @@ export async function DELETE(
         const supabase = await createClient();
         const { id } = await params;
 
-        // Check if procedure is in draft status
-        const { data: procedure } = await (supabase as any)
-            .from('defect_criteria_procedures')
-            .select('status')
-            .eq('id', Number(id))
-            .single();
+        // Check if there are associated rules
+        const { count, error: countError } = await (supabase as any)
+            .from('defect_criteria_rules')
+            .select('*', { count: 'exact', head: true })
+            .eq('procedure_id', Number(id));
 
-        if (procedure?.status !== 'draft') {
+        if (countError) {
+            return NextResponse.json({ error: 'Failed to check associations' }, { status: 500 });
+        }
+
+        if (count && count > 0) {
             return NextResponse.json(
-                { error: 'Only draft procedures can be deleted' },
+                { error: 'Cannot delete procedure with existing rules. Delete all rules first.' },
                 { status: 400 }
             );
         }

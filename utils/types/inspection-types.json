@@ -1,4 +1,97 @@
 {
+    "sharedFields": {
+        "cp_rdg": {
+            "name": "cp_rdg",
+            "label": "CP Rdg",
+            "type": "number",
+            "unitCategory": "VOLTAGE",
+            "required": false
+        },
+        "marine_growth": {
+            "name": "marine_growth",
+            "label": "Marine Growth",
+            "type": "combo",
+            "lib_code": "MGI",
+            "required": false
+        },
+        "debris": {
+            "name": "debris",
+            "label": "Debris",
+            "type": "text",
+            "required": false
+        },
+        "debris_material": {
+            "name": "debris_material",
+            "label": "Debris Material",
+            "type": "combo",
+            "lib_code": "DBMAT_TYP",
+            "required": false
+        },
+        "component_condition": {
+            "name": "component_condition",
+            "label": "Component Condition",
+            "type": "combo",
+            "lib_code": "CCD",
+            "required": false
+        },
+        "coating_condition": {
+            "name": "coating_condition",
+            "label": "Coating Condition",
+            "type": "combo",
+            "lib_code": "CCO",
+            "required": false
+        },
+        "northing": {
+            "name": "northing",
+            "label": "Northing",
+            "type": "text",
+            "required": false
+        },
+        "easting": {
+            "name": "easting",
+            "label": "Easting",
+            "type": "text",
+            "required": false
+        },
+        "cp_rdg_additional": {
+            "name": "cp_rdg_additional",
+            "label": "CP Additional Readings",
+            "type": "repeater",
+            "subFields": [
+                {
+                    "name": "reading",
+                    "label": "CP Rdg",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "step": "0.01"
+                },
+                {
+                    "name": "location",
+                    "label": "Location",
+                    "type": "text"
+                }
+            ]
+        },
+        "ut_readings_additional": {
+            "name": "ut_readings_additional",
+            "label": "UT Additional Readings",
+            "type": "repeater",
+            "subFields": [
+                {
+                    "name": "reading",
+                    "label": "Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "step": "0.01"
+                },
+                {
+                    "name": "location",
+                    "label": "Location",
+                    "type": "text"
+                }
+            ]
+        }
+    },
     "inspectionTypes": [
         {
             "code": "GVI",
@@ -70,7 +163,9 @@
             ],
             "component_overrides": [
                 {
-                    "component_types": ["ANODE"],
+                    "component_types": [
+                        "ANODE"
+                    ],
                     "fields": [
                         {
                             "name": "anode_depletion_percent",
@@ -85,7 +180,12 @@
                             "name": "anode_condition",
                             "label": "Anode Condition",
                             "type": "select",
-                            "options": ["Intact", "Wasted", "Missing", "Disconnected"],
+                            "options": [
+                                "Intact",
+                                "Wasted",
+                                "Missing",
+                                "Disconnected"
+                            ],
                             "required": true
                         },
                         {
@@ -248,50 +348,31 @@
             ],
             "fields": [
                 {
-                    "name": "cp_rdg",
-                    "label": "CP Rdg",
-                    "type": "number",
-                    "unitCategory": "VOLTAGE",
-                    "required": false
+                    "$ref": "northing"
                 },
                 {
-                    "name": "marine_growth",
-                    "label": "Marine Growth",
-                    "type": "combo",
-                    "lib_code": "MGI",
-                    "required": false
+                    "$ref": "easting"
                 },
                 {
-                    "name": "debris",
-                    "label": "Debris",
-                    "type": "text",
-                    "required": false
+                    "$ref": "cp_rdg"
                 },
                 {
-                    "name": "component_condition",
-                    "label": "Component Condition",
-                    "type": "combo",
-                    "lib_code": "CCD",
-                    "required": false
+                    "$ref": "marine_growth"
                 },
                 {
-                    "name": "coating_condition",
-                    "label": "Coating Condition",
-                    "type": "combo",
-                    "lib_code": "CCO",
-                    "required": false
+                    "$ref": "debris"
                 },
                 {
-                    "name": "northing",
-                    "label": "Northing",
-                    "type": "text",
-                    "required": false
+                    "$ref": "debris_material"
                 },
                 {
-                    "name": "easting",
-                    "label": "Easting",
-                    "type": "text",
-                    "required": false
+                    "$ref": "component_condition"
+                },
+                {
+                    "$ref": "coating_condition"
+                },
+                {
+                    "$ref": "cp_rdg_additional"
                 }
             ],
             "component_overrides": [
@@ -301,23 +382,13 @@
                     ],
                     "fields": [
                         {
-                            "name": "northing",
-                            "label": "Northing",
-                            "type": "text",
-                            "required": false
+                            "$ref": "northing"
                         },
                         {
-                            "name": "easting",
-                            "label": "Easting",
-                            "type": "text",
-                            "required": false
+                            "$ref": "easting"
                         },
                         {
-                            "name": "cp_rdg",
-                            "label": "CP Rdg",
-                            "type": "number",
-                            "unitCategory": "VOLTAGE",
-                            "required": false
+                            "$ref": "cp_rdg"
                         },
                         {
                             "name": "anode_type",
@@ -337,25 +408,20 @@
                             "lib_code": "ADA"
                         },
                         {
-                            "name": "marine_growth",
-                            "label": "Marine Growth",
-                            "type": "combo",
-                            "lib_code": "MGI",
-                            "required": false
+                            "$ref": "marine_growth"
                         },
                         {
-                            "name": "debris",
-                            "label": "Debris",
+                            "$ref": "debris",
                             "type": "combo",
-                            "lib_code": "DEB_TYP",
-                            "required": false
+                            "lib_code": "DEB_TYP"
                         },
                         {
-                            "name": "debris_material",
-                            "label": "Debris Material",
+                            "$ref": "debris_material",
                             "type": "combo",
-                            "lib_code": "DBMAT_TYP",
-                            "required": false
+                            "lib_code": "DBMAT_TYP"
+                        },
+                        {
+                            "$ref": "cp_rdg_additional"
                         }
                     ]
                 }
@@ -375,6 +441,7 @@
                     "options": [
                         "Flooded",
                         "Dry",
+                        "Grouted",
                         "Inconclusive"
                     ],
                     "required": true
@@ -426,42 +493,7 @@
                     "required": false
                 },
                 {
-                    "name": "cp_readings",
-                    "label": "CP Additional Readings",
-                    "type": "repeater",
-                    "subFields": [
-                        {
-                            "name": "reading",
-                            "label": "CP Rdg",
-                            "type": "number",
-                            "unitCategory": "VOLTAGE",
-                            "step": "0.01"
-                        },
-                        {
-                            "name": "location",
-                            "label": "Location",
-                            "type": "text"
-                        }
-                    ]
-                },
-                {
-                    "name": "ut_readings",
-                    "label": "UT Additional Readings",
-                    "type": "repeater",
-                    "subFields": [
-                        {
-                            "name": "reading",
-                            "label": "Thickness",
-                            "type": "number",
-                            "unitCategory": "LENGTH",
-                            "step": "0.01"
-                        },
-                        {
-                            "name": "location",
-                            "label": "Location",
-                            "type": "text"
-                        }
-                    ]
+                    "$ref": "ut_readings_additional"
                 }
             ]
         }

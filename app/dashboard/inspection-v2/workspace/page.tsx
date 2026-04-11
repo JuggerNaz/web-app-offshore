@@ -135,6 +135,7 @@ import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
+import { resolveInspectionType } from "@/utils/inspection-schema";
 
 export default function WorkspaceV2Page() {
     return (
@@ -2717,9 +2718,11 @@ function V10PreviewLayout() {
             if (typesData) {
                 // Merge with JSON Registry
                 const registryMap = new Map();
+                const sharedFields = (inspectionRegistry as any).sharedFields || {};
                 if (inspectionRegistry && inspectionRegistry.inspectionTypes) {
                     inspectionRegistry.inspectionTypes.forEach(it => {
-                        registryMap.set(it.code, it);
+                        const resolved = resolveInspectionType(it, sharedFields);
+                        registryMap.set(resolved.code, resolved);
                     });
                 }
 
