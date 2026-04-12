@@ -17,7 +17,8 @@
         "debris": {
             "name": "debris",
             "label": "Debris",
-            "type": "text",
+            "type": "combo",
+            "lib_code": "DEB_TYP",
             "required": false
         },
         "debris_material": {
@@ -51,6 +52,41 @@
             "name": "easting",
             "label": "Easting",
             "type": "text",
+            "required": false
+        },
+        "nominal_thickness": {
+            "name": "nominal_thickness",
+            "label": "Nominal Thickness",
+            "type": "number",
+            "unitCategory": "LENGTH",
+            "required": false
+        },
+        "ut_3_o_clock": {
+            "name": "ut_3_o_clock",
+            "label": "3 O'Clock",
+            "type": "number",
+            "unitCategory": "LENGTH",
+            "required": false
+        },
+        "ut_6_o_clock": {
+            "name": "ut_6_o_clock",
+            "label": "6 O'Clock",
+            "type": "number",
+            "unitCategory": "LENGTH",
+            "required": false
+        },
+        "ut_9_o_clock": {
+            "name": "ut_9_o_clock",
+            "label": "9 O'Clock",
+            "type": "number",
+            "unitCategory": "LENGTH",
+            "required": false
+        },
+        "ut_12_o_clock": {
+            "name": "ut_12_o_clock",
+            "label": "12 O'Clock",
+            "type": "number",
+            "unitCategory": "LENGTH",
             "required": false
         },
         "cp_rdg_additional": {
@@ -428,6 +464,473 @@
             ]
         },
         {
+            "code": "RMGI",
+            "name": "ROV Marine Growth Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "mgi_thickness_at",
+                    "label": "MGI Thickness At",
+                    "type": "select",
+                    "options": [
+                        "12 O'Clock",
+                        "3 O'Clock",
+                        "6 O'Clock",
+                        "9 O'Clock"
+                    ],
+                    "required": true
+                },
+                {
+                    "name": "mgi_hard_thickness",
+                    "label": "MGI Hard Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                },
+                {
+                    "name": "mgi_soft_thickness",
+                    "label": "MGI Soft Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                },
+                {
+                    "$ref": "marine_growth"
+                }
+            ]
+        },
+        {
+            "code": "RSCOR",
+            "name": "ROV Scour Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "scour_depth",
+                    "label": "Scour Depth",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                },
+                {
+                    "name": "scour_depth_max",
+                    "label": "Scour Depth Max",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                },
+                {
+                    "name": "Burial_percent",
+                    "label": "Burial Percent",
+                    "type": "number",
+                    "unitCategory": "PERCENTAGE",
+                    "required": false
+                }
+            ]
+        },
+        {
+            "code": "RSANI",
+            "name": "ROV Selected Anode Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "name": "anode_type",
+                    "label": "Anode Type",
+                    "type": "select",
+                    "options": [
+                        "Zn - Zinc",
+                        "Al - Aluminum",
+                        "Mg - Magnesium",
+                        "Other"
+                    ]
+                },
+                {
+                    "name": "anode_depletion",
+                    "label": "Anode Depletion",
+                    "type": "combo",
+                    "lib_code": "ADA"
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                }
+            ]
+        },
+        {
+            "code": "RRISI",
+            "name": "ROV Riser Structural Integrity Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "northing"
+                },
+                {
+                    "$ref": "easting"
+                },
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "$ref": "debris"
+                },
+                {
+                    "$ref": "debris_material"
+                },
+                {
+                    "$ref": "marine_growth"
+                },
+                {
+                    "$ref": "component_condition"
+                },
+                {
+                    "$ref": "coating_condition"
+                },
+                {
+                    "name": "riser_item",
+                    "label": "Riser Part",
+                    "type": "select",
+                    "options": [
+                        "Riser",
+                        "J-Tube",
+                        "I-Tube",
+                        "Riser Bend",
+                        "J-Tube Bend",
+                        "I-Tube Bend",
+                        "Pipeline"
+                    ],
+                    "default": "Riser",
+                    "required": true
+                },
+                {
+                    "name": "distance_from_member",
+                    "label": "Distance From Member",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                },
+                {
+                    "name": "suspention_height",
+                    "label": "Suspention Height",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                }
+            ],
+            "component_overrides": [
+                {
+                    "component_types": [
+                        "CL"
+                    ],
+                    "fields": [
+                        {
+                            "$ref": "northing"
+                        },
+                        {
+                            "$ref": "easting"
+                        },
+                        {
+                            "$ref": "cp_rdg"
+                        },
+                        {
+                            "$ref": "debris"
+                        },
+                        {
+                            "$ref": "debris_material"
+                        },
+                        {
+                            "$ref": "marine_growth"
+                        },
+                        {
+                            "$ref": "component_condition"
+                        },
+                        {
+                            "$ref": "coating_condition"
+                        },
+                        {
+                            "name": "clamp_type",
+                            "label": "Clamp Type",
+                            "type": "combo",
+                            "lib_code": "CLT_TYP",
+                            "required": false
+                        },
+                        {
+                            "$ref": "cp_rdg_additional"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "code": "RSZCI",
+            "name": "ROV Splash Zone Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "northing"
+                },
+                {
+                    "$ref": "easting"
+                },
+                {
+                    "$ref": "marine_growth"
+                },
+                {
+                    "$ref": "component_condition"
+                },
+                {
+                    "$ref": "coating_condition"
+                },
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "$ref": "ut_3_o_clock"
+                },
+                {
+                    "$ref": "ut_6_o_clock"
+                },
+                {
+                    "$ref": "ut_9_o_clock"
+                },
+                {
+                    "$ref": "ut_12_o_clock"
+                },
+                {
+                    "$ref": "nominal_thickness"
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                },
+                {
+                    "$ref": "ut_readings_additional"
+                }
+            ]
+        },
+        {
+            "code": "RSEAB",
+            "name": "ROV Seabed Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "northing"
+                },
+                {
+                    "$ref": "easting"
+                },
+                {
+                    "$ref": "debris"
+                },
+                {
+                    "$ref": "debris_material"
+                },
+                {
+                    "name": "distance_from_leg",
+                    "label": "Distance From Leg",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false
+                }
+            ]
+        },
+        {
+            "code": "RSWNI",
+            "name": "ROV Selected Node Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "northing"
+                },
+                {
+                    "$ref": "easting"
+                },
+                {
+                    "$ref": "marine_growth"
+                },
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                }
+            ]
+        },
+        {
+            "code": "RCOND",
+            "name": "ROV Conductor Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "northing"
+                },
+                {
+                    "$ref": "easting"
+                },
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "$ref": "debris"
+                },
+                {
+                    "$ref": "debris_material"
+                },
+                {
+                    "$ref": "marine_growth"
+                },
+                {
+                    "$ref": "component_condition"
+                },
+                {
+                    "$ref": "coating_condition"
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                }
+            ],
+            "component_overrides": [
+                {
+                    "component_types": [
+                        "CL"
+                    ],
+                    "fields": [
+                        {
+                            "$ref": "northing"
+                        },
+                        {
+                            "$ref": "easting"
+                        },
+                        {
+                            "$ref": "cp_rdg"
+                        },
+                        {
+                            "$ref": "debris"
+                        },
+                        {
+                            "$ref": "debris_material"
+                        },
+                        {
+                            "$ref": "marine_growth"
+                        },
+                        {
+                            "$ref": "component_condition"
+                        },
+                        {
+                            "$ref": "coating_condition"
+                        },
+                        {
+                            "name": "clamp_type",
+                            "label": "Clamp Type",
+                            "type": "combo",
+                            "lib_code": "CLT_TYP",
+                            "required": false
+                        },
+                        {
+                            "$ref": "cp_rdg_additional"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "code": "RCASN",
+            "name": "ROV Caisson Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "northing"
+                },
+                {
+                    "$ref": "easting"
+                },
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "$ref": "debris"
+                },
+                {
+                    "$ref": "debris_material"
+                },
+                {
+                    "$ref": "marine_growth"
+                },
+                {
+                    "$ref": "component_condition"
+                },
+                {
+                    "$ref": "coating_condition"
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                }
+            ],
+            "component_overrides": [
+                {
+                    "component_types": [
+                        "CL"
+                    ],
+                    "fields": [
+                        {
+                            "$ref": "northing"
+                        },
+                        {
+                            "$ref": "easting"
+                        },
+                        {
+                            "$ref": "cp_rdg"
+                        },
+                        {
+                            "$ref": "debris"
+                        },
+                        {
+                            "$ref": "debris_material"
+                        },
+                        {
+                            "$ref": "marine_growth"
+                        },
+                        {
+                            "$ref": "component_condition"
+                        },
+                        {
+                            "$ref": "coating_condition"
+                        },
+                        {
+                            "name": "clamp_type",
+                            "label": "Clamp Type",
+                            "type": "combo",
+                            "lib_code": "CLT_TYP",
+                            "required": false
+                        },
+                        {
+                            "$ref": "cp_rdg_additional"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
             "code": "RFMD",
             "name": "ROV Flooded Member Detection",
             "methods": [
@@ -444,6 +947,7 @@
                         "Grouted",
                         "Inconclusive"
                     ],
+                    "default": "Dry",
                     "required": true
                 },
                 {
@@ -468,29 +972,19 @@
             ],
             "fields": [
                 {
-                    "name": "nominal_thickness",
-                    "label": "Nominal Thickness",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
-                    "required": false
+                    "$ref": "nominal_thickness"
                 },
                 {
-                    "name": "location",
-                    "label": "Location",
-                    "type": "text",
-                    "required": false
+                    "$ref": "ut_3_o_clock"
                 },
                 {
-                    "name": "position",
-                    "label": "Position",
-                    "type": "select",
-                    "options": [
-                        "AT 3 O'CLK",
-                        "AT 6 O'CLK",
-                        "AT 9 O'CLK",
-                        "AT 12 O'CLK"
-                    ],
-                    "required": false
+                    "$ref": "ut_6_o_clock"
+                },
+                {
+                    "$ref": "ut_9_o_clock"
+                },
+                {
+                    "$ref": "ut_12_o_clock"
                 },
                 {
                     "$ref": "ut_readings_additional"

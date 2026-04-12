@@ -4403,7 +4403,7 @@ function V10PreviewLayout() {
                                                                        hasFinding ? 'âš  Finding Registered' :
                                                                        isRectified ? 'âœ“ Rectified' :
                                                                        isCompleted ? 'âœ“ Completed' :
-                                                                       isIncomplete ? 'â— Incomplete' : 'â—‹ Pending';
+                                                                       isIncomplete ? 'â—  Incomplete' : 'â—‹ Pending';
                                                     
                                                     return (
                                                         <Button key={t} onClick={() => {
@@ -4414,24 +4414,33 @@ function V10PreviewLayout() {
                                                                 inspection_time: format(now, 'HH:mm:ss')
                                                             };
                                                             
-                                                            // Auto-insert current tape counter for LIVE entry mode
+                                                            // 2. Resolve field definitions (from registry or DB)
+                                                            const specProps = it?.default_properties || [];
+                                                            let propsList: any[] = [];
+                                                            if (typeof specProps === 'string') {
+                                                                try {
+                                                                    const parsed = JSON.parse(specProps);
+                                                                    propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
+                                                                } catch (e) { }
+                                                            } else {
+                                                                const parsed = specProps as any;
+                                                                propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
+                                                            }
+
+                                                            // 3. Apply JSON Defaults
+                                                            propsList.forEach((p: any) => {
+                                                                if (p.default !== undefined) {
+                                                                    newProps[p.name || p.label] = p.default;
+                                                                }
+                                                            });
+
+                                                            // 4. Auto-insert current tape counter for LIVE entry mode
                                                             if (!manualOverride) {
                                                                 newProps.tape_count_no = formatTime(vidTimer);
                                                             }
 
-                                                            // Auto-fill Nominal Thickness if it exists in the spec
+                                                            // 5. Auto-fill Nominal Thickness from Component Data
                                                             if (selectedComp.nominalThk && selectedComp.nominalThk !== '-') {
-                                                                const specProps = it?.default_properties || [];
-                                                                let propsList: any[] = [];
-                                                                if (typeof specProps === 'string') {
-                                                                    try {
-                                                                        const parsed = JSON.parse(specProps);
-                                                                        propsList = Array.isArray(parsed) ? parsed : (parsed.properties || []);
-                                                                    } catch (e) { }
-                                                                } else if (Array.isArray(specProps)) {
-                                                                    propsList = specProps;
-                                                                }
-
                                                                 const ntField = propsList.find((p: any) => 
                                                                     String(p.label || p.name || '').toLowerCase().includes('nominal thickness') ||
                                                                     String(p.label || p.name || '').toLowerCase() === 'nt'
@@ -4441,7 +4450,7 @@ function V10PreviewLayout() {
                                                                 }
                                                             }
 
-                                                            // Populate from ROV Data Acquisition if connected
+                                                            // 6. Populate from ROV Data Acquisition if connected
                                                             if (inspMethod === 'ROV' && dataAcqConnected) {
                                                                 dataAcqFields.forEach(f => {
                                                                     if (f.value && f.value !== '--' && f.targetField) {
@@ -4449,6 +4458,7 @@ function V10PreviewLayout() {
                                                                     }
                                                                 });
                                                             }
+                                                            
                                                             setDynamicProps(newProps);
                                                             setFindingType("Pass");
                                                             setRecordNotes("");
