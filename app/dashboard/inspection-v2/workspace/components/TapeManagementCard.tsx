@@ -11,7 +11,7 @@ import {
     SelectValue 
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Video, Play, Pause, Square, Plus } from "lucide-react";
+import { Video, Play, Pause, Square, Plus, Edit, Trash2 } from "lucide-react";
 
 interface TapeManagementCardProps {
     vidState: "IDLE" | "RECORDING" | "PAUSED";
@@ -21,11 +21,15 @@ interface TapeManagementCardProps {
     activeChapter: number;
     jobTapes: any[];
     handleLogEvent: (action: string) => void;
-    setTapeId: (id: number) => void;
+    setTapeId: (id: number | null) => void;
     setTapeNo: (no: string) => void;
     setActiveChapter: (ch: number) => void;
     setIsNewTapeOpen: (open: boolean) => void;
+    handleOpenEditTape: () => void;
     formatTime: (seconds: number) => string;
+    handleDeleteTape?: (id: number) => void;
+    canDelete?: boolean;
+    onChapterChange?: (ch: number) => void;
     children?: React.ReactNode;
 }
 
@@ -41,7 +45,11 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
     setTapeNo,
     setActiveChapter,
     setIsNewTapeOpen,
+    handleOpenEditTape,
     formatTime,
+    handleDeleteTape,
+    canDelete,
+    onChapterChange,
     children
 }) => {
     return (
@@ -59,57 +67,103 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
             <div className="p-2.5 space-y-2.5 min-w-0">
                 <div className="flex items-end gap-2 min-w-0">
                     <div className="flex-1 min-w-0">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Active Tape</label>
-                        <div className="flex items-center gap-1.5">
-                            <Select value={String(tapeId || '')} onValueChange={(v) => {
-                                const t = jobTapes.find(x => String(x.tape_id) === v);
-                                if (t) {
-                                    setTapeId(t.tape_id);
-                                    setTapeNo(t.tape_no);
-                                    setActiveChapter(t.chapter_no || 1);
-                                }
-                            }}>
-                                <SelectTrigger className="h-9 text-[11px] font-bold bg-slate-50 border-slate-200 focus:ring-blue-500/20 min-w-0 flex-1">
-                                    <SelectValue placeholder="Select Tape" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-white border-slate-200 shadow-xl">
-                                    {jobTapes.map((t: any) => (
-                                        <SelectItem key={t.tape_id} value={String(t.tape_id)} className="text-[12px] font-medium py-2 focus:bg-blue-50 focus:text-blue-700">
-                                            <div className="flex flex-col">
-                                                <span className="font-bold">{t.tape_no}</span>
-                                                <span className="text-[10px] text-slate-400">Chapters: {t.chapter_no || 1} • Status: {t.status}</span>
-                                            </div>
-                                        </SelectItem>
-                                    ))}
-                                    {jobTapes.length === 0 && (
-                                        <div className="px-2 py-3 text-center text-[11px] text-slate-400 italic">
-                                            No tapes yet
-                                        </div>
-                                    )}
-                                </SelectContent>
-                            </Select>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Active Tape</label>
                             <TooltipProvider>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="h-9 w-9 shrink-0 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
-                                            onClick={() => setIsNewTapeOpen(true)}
-                                        >
-                                            <Plus className="w-4 h-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top">
-                                        <p className="text-xs font-bold">Create New Tape</p>
-                                    </TooltipContent>
-                                </Tooltip>
+                                <div className="flex items-center gap-1">
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                onClick={() => setIsNewTapeOpen(true)}
+                                                className="p-1 text-blue-500 hover:bg-blue-50 rounded transition-colors"
+                                            >
+                                                <Plus className="w-3 h-3" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                            <p className="text-[10px] font-bold">New Tape</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                onClick={handleOpenEditTape}
+                                                disabled={!tapeId}
+                                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                                            >
+                                                <Edit className="w-3 h-3" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                            <p className="text-[10px] font-bold">Edit Details</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                onClick={() => handleDeleteTape && tapeId && handleDeleteTape(tapeId)}
+                                                disabled={!tapeId || !canDelete}
+                                                className={`p-1 text-slate-400 rounded transition-colors ${!tapeId || !canDelete ? 'opacity-30 pointer-events-none' : 'hover:text-red-600 hover:bg-red-50'}`}
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                            <p className="text-[10px] font-bold">Delete Tape (Empty Only)</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </div>
                             </TooltipProvider>
                         </div>
+                        <Select value={String(tapeId || '')} onValueChange={(v) => {
+                            const t = jobTapes.find(x => String(x.tape_id) === v);
+                            if (t) {
+                                setTapeId(t.tape_id);
+                                setTapeNo(t.tape_no);
+                                setActiveChapter(t.chapter_no || 1);
+                            }
+                        }}>
+                            <SelectTrigger className="h-9 text-[11px] font-bold bg-slate-50 border-slate-200 focus:ring-blue-500/20 w-full min-w-0">
+                                <SelectValue placeholder="Select Tape" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border-slate-200 shadow-xl">
+                                {jobTapes.map((t: any) => (
+                                    <SelectItem key={t.tape_id} value={String(t.tape_id)} className="text-[12px] font-medium py-2 focus:bg-blue-50 focus:text-blue-700">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold">{t.tape_no}</span>
+                                            <span className="text-[10px] text-slate-400">Chapters: {t.chapter_no || 1} • Status: {t.status}</span>
+                                        </div>
+                                    </SelectItem>
+                                ))}
+                                {jobTapes.length === 0 && (
+                                    <div className="px-2 py-3 text-center text-[11px] text-slate-400 italic">
+                                        No tapes yet
+                                    </div>
+                                )}
+                            </SelectContent>
+                        </Select>
                     </div>
-                    <div className="w-16 shrink-0">
+                    <div className="w-20 shrink-0">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Chapter</label>
-                        <div className="h-9 flex items-center justify-center font-mono font-black text-blue-700 bg-blue-50 border border-blue-100 rounded-md text-[14px] shadow-sm">{activeChapter}</div>
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button 
+                                        onClick={handleOpenEditTape}
+                                        disabled={!tapeId}
+                                        className="h-9 w-full flex items-center justify-center font-mono font-black text-blue-700 bg-blue-50 border border-blue-100 rounded-md text-[14px] shadow-sm hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
+                                    >
+                                        {activeChapter}
+                                        <Edit className="w-3 h-3 ml-1.5 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                    <p className="text-xs font-bold">Edit Chapter / Tape</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
                     </div>
                 </div>
 

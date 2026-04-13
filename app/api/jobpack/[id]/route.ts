@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/utils/supabase/server";
 
-export async function GET(request: Request, context: any) {
-  const { id } = await context.params;
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   const supabase = createClient();
   const { data, error } = await supabase.from("jobpack").select("*").eq("id", Number(id)).single();
@@ -18,8 +18,8 @@ export async function GET(request: Request, context: any) {
   return NextResponse.json({ data });
 }
 
-export async function PUT(request: Request, context: any) {
-  const { id } = await context.params;
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const body = await request.json();
   const supabase = createClient();
 
@@ -43,8 +43,8 @@ export async function PUT(request: Request, context: any) {
   return NextResponse.json({ data });
 }
 
-export async function DELETE(request: Request, context: any) {
-  const { id } = await context.params;
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabase = useAdmin ? createAdminClient() : createClient();
 

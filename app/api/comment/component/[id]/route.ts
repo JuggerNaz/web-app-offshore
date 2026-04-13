@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-export async function GET(request: Request, context: any) {
-  const { id } = await context.params;
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   const supabase = createClient();
   const { data, error } = await supabase
     .from("comment")
     .select("*")
-    .eq("component_id", id)
+    .eq("component_id", Number(id))
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -62,8 +62,8 @@ export async function GET(request: Request, context: any) {
   return NextResponse.json({ data });
 }
 
-export async function POST(request: Request, context: any) {
-  const { id } = await context.params;
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const body = await request.json();
   const supabase = createClient();
 

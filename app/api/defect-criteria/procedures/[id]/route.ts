@@ -17,7 +17,7 @@ export async function GET(
         const { data: procedure, error: procedureError } = await (supabase as any)
             .from('defect_criteria_procedures')
             .select('*')
-            .eq('id', id)
+            .eq('id', Number(id))
             .single();
 
         if (procedureError) {
@@ -31,7 +31,7 @@ export async function GET(
         const { data: rules, error: rulesError } = await (supabase as any)
             .from('defect_criteria_rules')
             .select('*')
-            .eq('procedure_id', id)
+            .eq('procedure_id', Number(id))
             .order('evaluation_priority', { ascending: false })
             .order('rule_order', { ascending: true });
 
@@ -94,7 +94,7 @@ export async function PATCH(
         const { data, error } = await (supabase as any)
             .from('defect_criteria_procedures')
             .update(updates)
-            .eq('id', id)
+            .eq('id', Number(id))
             .select()
             .single();
 
@@ -142,16 +142,19 @@ export async function DELETE(
         const supabase = await createClient();
         const { id } = await params;
 
-        // Check if procedure is in draft status
-        const { data: procedure } = await (supabase as any)
-            .from('defect_criteria_procedures')
-            .select('status')
-            .eq('id', id)
-            .single();
+        // Check if there are associated rules
+        const { count, error: countError } = await (supabase as any)
+            .from('defect_criteria_rules')
+            .select('*', { count: 'exact', head: true })
+            .eq('procedure_id', Number(id));
 
-        if (procedure?.status !== 'draft') {
+        if (countError) {
+            return NextResponse.json({ error: 'Failed to check associations' }, { status: 500 });
+        }
+
+        if (count && count > 0) {
             return NextResponse.json(
-                { error: 'Only draft procedures can be deleted' },
+                { error: 'Cannot delete procedure with existing rules. Delete all rules first.' },
                 { status: 400 }
             );
         }
@@ -159,7 +162,7 @@ export async function DELETE(
         const { error } = await (supabase as any)
             .from('defect_criteria_procedures')
             .delete()
-            .eq('id', id);
+            .eq('id', Number(id));
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });

@@ -32,7 +32,7 @@ export const COATING_CONDITION_LIST = [
 export const COMPONENT_CONDITION_LIST = [
     "Good", "Satisfactory", "None", "N/A",
     "Dent: At 3 'O Clock", "Dent: At 6 'O Clock", "Dent: At 9 'O Clock", "Dent: At 12 'O Clock",
-    "Ruptured", "Fittings", "Flooded Member (FMD)", "Other Defect"
+    "Ruptured", "Fittings", "Other Defect"
 ];
 
 export const ANODE_TYPE_LIST = [

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-export async function GET(request: Request, context: any) {
-  const { id } = await context.params;
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   const supabase = createClient();
-  const { data, error } = await supabase.from("str_level").select("*").eq("plat_id", id);
+  const { data, error } = await supabase.from("str_level").select("*").eq("plat_id", Number(id));
 
   if (error) {
     if (error.code === "PGRST116") {

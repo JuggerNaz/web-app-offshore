@@ -12,10 +12,10 @@ import { withAuth } from "@/utils/with-auth";
 export const PATCH = withAuth(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }>; user: any }
+    { params }: { params: Promise<{ id: string }>; user: any }
   ) => {
     const supabase = createClient();
-    const { id } = await context.params;
+    const { id } = await params;
     const body = (await request.json().catch(() => ({}))) as Record<string, any>;
 
     const componentId = Number(id);
@@ -48,11 +48,11 @@ export const PATCH = withAuth(
 export const DELETE = withAuth(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }>; user: any }
+    { params }: { params: Promise<{ id: string }>; user: any }
   ) => {
     const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabase = useAdmin ? createAdminClient() : createClient();
-    const { id } = await context.params;
+    const { id } = await params;
 
     const componentId = Number(id);
     if (Number.isNaN(componentId)) {

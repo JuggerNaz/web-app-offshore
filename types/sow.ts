@@ -5,6 +5,7 @@ export interface ReportNumber {
     contractor_ref?: string;
     date?: string;
     notes?: string;
+    job_type?: string;
 }
 
 export type InspectionStatus =

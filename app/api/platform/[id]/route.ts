@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-export async function GET(request: Request, context: any) {
-  const { id } = await context.params;
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   const supabase = createClient();
-  const { data, error } = await supabase.from("platform").select("*").eq("plat_id", id).single();
+  const { data, error } = await supabase.from("platform").select("*").eq("plat_id", Number(id)).single();
 
   if (error) {
     if (error.code === "PGRST116") {
@@ -18,14 +18,14 @@ export async function GET(request: Request, context: any) {
   return NextResponse.json({ data });
 }
 
-export async function PUT(request: Request, context: any) {
-  const { id } = await context.params;
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const body = await request.json();
   const supabase = createClient();
 
   console.log(id, body);
 
-  const { data, error } = await supabase.from("platform").update(body).eq("plat_id", id).single();
+  const { data, error } = await supabase.from("platform").update(body).eq("plat_id", Number(id)).single();
 
   if (error) {
     if (error.code === "PGRST116") {

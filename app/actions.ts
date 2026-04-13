@@ -117,3 +117,26 @@ export const signOutAction = async () => {
   await supabase.auth.signOut();
   return redirect("/");
 };
+
+export const updateUserProfileAction = async (formData: FormData) => {
+  const supabase = createClient();
+  
+  const fullName = formData.get("full_name")?.toString();
+  const designation = formData.get("designation")?.toString();
+  const avatarUrl = formData.get("avatar_url")?.toString();
+
+  const { error } = await supabase.auth.updateUser({
+    data: {
+      full_name: fullName,
+      designation: designation,
+      avatar_url: avatarUrl,
+    },
+  });
+
+  if (error) {
+    console.error("Profile update failed:", error.message);
+    return { error: error.message };
+  }
+
+  return { success: true };
+};

@@ -200,7 +200,12 @@ export const comments: ColumnDef<Comment>[] = [
     header: "Created At",
     cell: ({ row }) => {
       const date: string = row.getValue("created_at");
-      return <div>{moment(date).format("MMMM Do, YYYY")}</div>;
+      const isDeleted = (row.original as any).is_deleted;
+      return (
+        <div className={isDeleted ? "opacity-50" : ""}>
+          {moment(date).format("MMMM Do, YYYY")}
+        </div>
+      );
     },
   },
   {

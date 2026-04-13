@@ -1,0 +1,38 @@
+{
+  "LENGTH": {
+    "metric": ["mm", "cm", "m"],
+    "imperial": ["in", "ft"],
+    "defaultMetric": "mm",
+    "defaultImperial": "in"
+  },
+  "MASS": {
+    "metric": ["g", "kg"],
+    "imperial": ["lb"],
+    "defaultMetric": "kg",
+    "defaultImperial": "lb"
+  },
+  "TEMPERATURE": {
+    "metric": ["C"],
+    "imperial": ["F"],
+    "defaultMetric": "C",
+    "defaultImperial": "F"
+  },
+  "PRESSURE": {
+    "metric": ["bar", "MPa"],
+    "imperial": ["psi"],
+    "defaultMetric": "bar",
+    "defaultImperial": "psi"
+  },
+  "VOLTAGE": {
+    "metric": ["mV", "V"],
+    "imperial": ["mV", "V"],
+    "defaultMetric": "mV",
+    "defaultImperial": "mV"
+  },
+  "PERCENT": {
+    "metric": ["%"],
+    "imperial": ["%"],
+    "defaultMetric": "%",
+    "defaultImperial": "%"
+  }
+}

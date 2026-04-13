@@ -21,6 +21,8 @@ import {
     type VideoLog
 } from "@/lib/video-recorder/video-state";
 import AttachmentManager, { type Attachment, type PendingFile } from "../../dive/components/AttachmentManager";
+import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
+
 
 interface InspectionProperty {
     name: string;
@@ -106,6 +108,14 @@ export default function ROVInspectionRecordingDialog({
     // Metadata State
     const [inspectionProperties, setInspectionProperties] = useState<InspectionProperty[]>([]);
     const [activeTapes, setActiveTapes] = useState<any[]>([]);
+    const [sowItems, setSowItems] = useState<any[]>([]);
+    const [gridDistances, setGridDistances] = useState<number[]>([3, 6, 9, 12, 15, 18, 21]);
+
+    const inspectionCode = (sowItem?.inspection_code || currentRecord?.inspection_type_code || "").toUpperCase();
+    const isRSEAB = inspectionCode === 'RSEAB';
+
+    const legCount = platformTitle?.toLowerCase().includes('8') ? 8 : 4; // Basic heuristic or default
+
 
     // Track original state to detect removal
     const [originalHasAnomaly, setOriginalHasAnomaly] = useState(false);
@@ -115,9 +125,38 @@ export default function ROVInspectionRecordingDialog({
     const [pendingAttachments, setPendingAttachments] = useState<PendingFile[]>([]);
 
     // Fetch lists
+    // Fetch SOW items for grid distances
     useEffect(() => {
-        fetchAnomalyOptions();
-    }, []);
+        const fetchSowItems = async () => {
+            if (!rovJob?.sow_id && !sowItem?.sow_id) return;
+            const sowId = rovJob?.sow_id || sowItem?.sow_id;
+            
+            const { data, error } = await supabase
+                .from('u_sow_items')
+                .select('*')
+                .eq('sow_id', sowId)
+                .eq('component_type', 'SD');
+            
+            if (!error && data) {
+                setSowItems(data);
+                // Extract distances from metadata or component_qid
+                const distances = data
+                    .map(item => {
+                        // Try to find distance in notes or QID (e.g. SD-A1-3M)
+                        const matches = item.component_qid?.match(/(\d+)\s*M/i);
+                        return matches ? parseInt(matches[1]) : null;
+                    })
+                    .filter((d): d is number => d !== null);
+                
+                if (distances.length > 0) {
+                    setGridDistances(Array.from(new Set([...distances, 3, 21])).sort((a, b) => a - b));
+                }
+            }
+        };
+
+        if (isRSEAB) fetchSowItems();
+    }, [isRSEAB, rovJob?.sow_id, sowItem?.sow_id]);
+
 
     async function fetchAnomalyOptions() {
         // Fetch Codes (AMLY_COD)
@@ -1378,7 +1417,49 @@ export default function ROVInspectionRecordingDialog({
                                 </div>
                             ) : (
                                 <>
+                                    {isRSEAB && (
+                                        <div className="col-span-full space-y-3 mb-4">
+                                            <Label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                                Graphical Seabed Plot
+                                                <span className="text-[10px] font-normal text-muted-foreground">(Drag to persist X/Y)</span>
+                                            </Label>
+                                            <div className="w-full max-w-xl mx-auto">
+                                                <SeabedDebrisPlot
+                                                    layoutType={legCount > 4 ? 'rectangular' : 'rectangular'} // Default to rectangular as per user request
+                                                    legCount={8} // Defaulting to 8 for demo, should be fetched from structure
+                                                    gridDistances={gridDistances}
+                                                    debrisItems={formData.x && formData.y ? [{
+                                                        id: 'current',
+                                                        x: parseFloat(formData.x),
+                                                        y: parseFloat(formData.y),
+                                                        label: '1',
+                                                        isMetallic: formData.debris_material?.toLowerCase().includes('metal') || false
+                                                    }] : []}
+                                                    manualEntry={{
+                                                        leg: formData.reference_leg || formData.associated_leg || formData.leg,
+                                                        distance: formData.distance_from_leg ? parseFloat(formData.distance_from_leg) : undefined,
+                                                        face: formData.face || formData.orientation
+                                                    }}
+                                                    onDebrisMove={(id, x, y, geometry) => {
+                                                        handleInputChange('x', x.toFixed(2));
+                                                        handleInputChange('y', y.toFixed(2));
+                                                        handleInputChange('distance_from_leg', geometry.distance.toFixed(1));
+                                                        // We could also auto-select the QID here if Workflow B is active
+                                                    }}
+                                                    onAddDebris={(x, y, geometry) => {
+                                                        handleInputChange('x', x.toFixed(2));
+                                                        handleInputChange('y', y.toFixed(2));
+                                                        handleInputChange('distance_from_leg', geometry.distance.toFixed(1));
+                                                        toast.info(`Point added at ${geometry.distance.toFixed(1)}m on ${geometry.face} face`);
+                                                    }}
+                                                />
+
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Normal Fields in Grid */}
+
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         {inspectionProperties.filter(p => p.type !== 'repeater').map((prop, idx) => (
                                             <div key={idx} className="space-y-2">

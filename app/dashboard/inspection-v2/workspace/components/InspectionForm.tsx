@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
+import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
 
 interface InspectionFormProps {
     selectedComp: any;
@@ -61,6 +63,11 @@ interface InspectionFormProps {
     currentMovement: string;
     tapeId: any;
     vidState: string;
+    onChangeTaskClick?: () => void;
+    onChangeComponentClick?: () => void;
+    isEditing?: boolean;
+    dynamicProps?: any;
+    handleDynamicPropChange?: (e: any, name: string, directValue?: any) => void;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -100,25 +107,65 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     activeDep,
     currentMovement,
     tapeId,
-    vidState
+    vidState,
+    onChangeTaskClick,
+    onChangeComponentClick,
+    isEditing = false,
+    dynamicProps = {},
+    handleDynamicPropChange
 }) => {
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
     const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
+
+    const savedTapeCount = dynamicProps?.tape_count_no;
+    const getCounterAsSeconds = (val: any) => {
+        // If we have a value (string or number), parse It
+        if (val !== undefined && val !== "" && val !== null) {
+            if (typeof val === 'number') return val;
+            const pts = String(val).split(':').map(Number);
+            if (pts.length === 3) return (pts[0] || 0) * 3600 + (pts[1] || 0) * 60 + (pts[2] || 0);
+            if (pts.length === 2) return (pts[0] || 0) * 60 + (pts[1] || 0);
+            const n = Number(val);
+            if (!isNaN(n)) return n;
+        }
+        
+        // If no value and not editing, we can use the live timer
+        // If editing, we should ideally have a value, but if not, fallback to 0 or vidTimer
+        return vidTimer;
+    };
+    const currentDisplayCount = getCounterAsSeconds(savedTapeCount);
 
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white z-10">
             <div className="p-3 bg-blue-600 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700">
                 <span className="font-black tracking-wide text-sm flex items-center gap-2">
                     <FileText className="w-4 h-4 text-blue-200" />
-                    <span className="text-blue-100 opacity-60 font-medium">{selectedComp.name} /</span> Spec: {(() => {
+                    <span className="text-blue-100 opacity-90 font-bold">{selectedComp.name}</span>
+                    {onChangeComponentClick && (
+                        <button onClick={onChangeComponentClick} className="ml-1.5 px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/10">
+                            Change
+                        </button>
+                    )}
+                    <span className="text-blue-100/40 mx-1.5">/</span> Spec: {(() => {
                         const specObj = allInspectionTypes.find(t => (t.code || '').trim() === (activeSpec || '').trim()) || 
                                        allInspectionTypes.find(t => (t.name || '').trim() === (activeSpec || '').trim());
                         return specObj ? specObj.name : activeSpec;
                     })()}
+                    {onChangeTaskClick && (
+                        <button onClick={onChangeTaskClick} className="ml-1.5 px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/10">
+                            Change
+                        </button>
+                    )}
                 </span>
                 <div className="flex items-center gap-3">
-                    <span className="font-mono text-xs font-bold bg-black/20 px-2 py-1 rounded border border-white/10 flex items-center gap-1.5"><Video className="w-3 h-3 text-blue-200" /> {formatTime(vidTimer)}</span>
+                    <div className="flex items-center gap-2 bg-black/20 px-2 py-1 rounded border border-white/10">
+                        <Video className="w-3.5 h-3.5 text-blue-200" />
+                        <div className="flex flex-col">
+                            <span className="text-[7px] font-black uppercase text-blue-200/50 leading-none">Timer</span>
+                            <span className="font-mono text-xs font-bold leading-none mt-0.5">{formatTime(currentDisplayCount)}</span>
+                        </div>
+                    </div>
                     <button onClick={() => setCompSpecDialogOpen(true)} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications">
                         <Info className="w-4 h-4" />
                     </button>
@@ -143,23 +190,115 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         )}
                     </div>
 
-                    {activeFormProps.length > 0 && (
-                        <div className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3">
-                            <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Inspection Specification</div>
+                    <AnimatePresence mode="wait">
+                        <motion.div 
+                            key={activeSpec}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.3 }}
+                            className="p-4 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-3"
+                        >
+                            <div className="border-b border-slate-200 pb-2 space-y-3">
+                                <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest">Inspection Specification</div>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="space-y-1">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Insp. Date</span>
+                                        {renderInspectionField({ 
+                                            name: 'inspection_date', 
+                                            label: 'Date', 
+                                            type: 'date'
+                                        }, 'primary')}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Insp. Time</span>
+                                        {renderInspectionField({ 
+                                            name: 'inspection_time', 
+                                            label: 'Time', 
+                                            type: 'text'
+                                        }, 'primary')}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Counter Override</span>
+                                        {renderInspectionField({ 
+                                            name: 'tape_count_no', 
+                                            label: `Live: ${formatTime(vidTimer)}`, 
+                                            type: 'text'
+                                        }, 'primary')}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {activeSpec?.toUpperCase() === 'RSEAB' && (
+                                <div className="col-span-full space-y-3 mb-4">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">Graphical Seabed Plot <span className="text-[9px] font-normal text-muted-foreground ml-2">(Drag to persist X/Y)</span></label>
+                                    <div className="w-full max-w-xl mx-auto">
+                                        <SeabedDebrisPlot
+                                            layoutType={headerData?.structureName?.includes('8') ? 'rectangular' : 'rectangular'} 
+                                            legCount={headerData?.structureName?.includes('8') ? 8 : 4} 
+                                            gridDistances={[3, 6, 9, 12, 15, 18, 21]}
+                                            debrisItems={dynamicProps?.x && dynamicProps?.y ? [{
+                                                id: 'current',
+                                                x: parseFloat(dynamicProps.x),
+                                                y: parseFloat(dynamicProps.y),
+                                                label: '1',
+                                                isMetallic: dynamicProps?.debris_material?.toLowerCase().includes('metal') || false
+                                            }] : []}
+                                            manualEntry={{
+                                                leg: dynamicProps?.reference_leg || dynamicProps?.associated_leg || dynamicProps?.leg,
+                                                distance: dynamicProps?.distance_from_leg ? parseFloat(dynamicProps.distance_from_leg) : undefined,
+                                                face: dynamicProps?.face || dynamicProps?.orientation
+                                            }}
+                                            onDebrisMove={(id, x, y, geometry) => {
+                                                if (handleDynamicPropChange) {
+                                                    // Pass pseudo events or direct values if the handler supports it
+                                                    handleDynamicPropChange({target:{value: x.toFixed(2)}}, 'x');
+                                                    handleDynamicPropChange({target:{value: y.toFixed(2)}}, 'y');
+                                                    handleDynamicPropChange({target:{value: geometry.distance.toFixed(1)}}, 'distance_from_leg');
+                                                }
+                                            }}
+                                            onAddDebris={(x, y, geometry) => {
+                                                if (handleDynamicPropChange) {
+                                                    handleDynamicPropChange({target:{value: x.toFixed(2)}}, 'x');
+                                                    handleDynamicPropChange({target:{value: y.toFixed(2)}}, 'y');
+                                                    handleDynamicPropChange({target:{value: geometry.distance.toFixed(1)}}, 'distance_from_leg');
+                                                }
+                                                toast.info(`Point added at ${geometry.distance.toFixed(1)}m on ${geometry.face} face`);
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-2 gap-4">
                                 {activeFormProps.map((p: any, idx: number) => {
                                     if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
 
                                     return (
-                                        <div key={`${p.name || p.label}-${idx}`} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">{p.label || p.name}</label>
+                                        <motion.div 
+                                            layout
+                                            key={`${p.name || p.label}-${idx}`} 
+                                            className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            transition={{ delay: idx * 0.05 }}
+                                        >
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
+                                                {p.label || p.name}
+                                                {p.isLegacy && <span className="ml-2 text-amber-500 lowercase">(legacy)</span>}
+                                            </label>
                                             {renderInspectionField(p, 'primary')}
-                                        </div>
+                                        </motion.div>
                                     );
                                 })}
                             </div>
-                        </div>
-                    )}
+                            {activeFormProps.length === 0 && (
+                                <div className="py-6 text-center">
+                                    <p className="text-xs text-slate-400 italic">No additional specialized fields for this type.</p>
+                                </div>
+                            )}
+                        </motion.div>
+                    </AnimatePresence>
 
                     <div className="space-y-3 p-4 border-2 border-slate-200 rounded-lg bg-white shadow-sm animate-in fade-in slide-in-from-top-2">
                         <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">Inspection Result</label>
@@ -474,7 +613,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
                             const hasTape = !!tapeId;
                             const isRecording = vidState === 'RECORDING';
-                            const canCommit = (isDepActive && isAtWorksite && hasTape && isRecording) || isManualOverride;
+                            const canCommit = (isDepActive && isAtWorksite && hasTape && isRecording) || isManualOverride || isEditing;
 
                             const issues: string[] = [];
                             if (!isDepActive) issues.push('Deployment record not active');
@@ -484,7 +623,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                             return (
                                 <>
-                                    {!canCommit && (
+                                    {!canCommit && !isEditing && (
                                         <div className="mb-2 p-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-semibold flex items-start gap-2">
                                             <span className="text-amber-500 text-sm leading-none mt-0.5">⚠</span>
                                             <div>

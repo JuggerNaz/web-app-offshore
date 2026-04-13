@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertTriangle, Plus, Edit, Trash2, Save, X, AlertCircle, CheckCircle, ArrowLeft, Settings2, ShieldAlert, Search } from 'lucide-react';
+import { toast } from 'sonner';
 import type { DefectCriteriaProcedure, DefectCriteriaRule, RuleFormData, LibraryItem, ProcedureStatus } from '@/types/defect-criteria';
 
 export default function DefectCriteriaPage() {
@@ -257,6 +258,50 @@ export default function DefectCriteriaPage() {
         }
     };
 
+    // Delete procedure
+    const handleDeleteProcedure = async () => {
+        if (!activeProcedure) return;
+
+        // Check if there are rules
+        if (rules.length > 0) {
+            alert('Cannot delete procedure while it has criteria rules. Please delete all rules first.');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete the procedure "${activeProcedure.procedureName}"? This action cannot be undone.`)) {
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const response = await fetch(`/api/defect-criteria/procedures/${activeProcedure.id}`, {
+                method: 'DELETE',
+            });
+
+            if (response.ok) {
+                toast.success('Procedure deleted successfully');
+                const nextProcedures = procedures.filter(p => p.id !== activeProcedure.id);
+                setProcedures(nextProcedures);
+                
+                if (nextProcedures.length > 0) {
+                    setActiveProcedure(nextProcedures[0]);
+                    loadRules(nextProcedures[0].id);
+                } else {
+                    setActiveProcedure(null);
+                    setRules([]);
+                }
+            } else {
+                const errorData = await response.json();
+                alert(`Failed to delete procedure: ${errorData.error}`);
+            }
+        } catch (error) {
+            console.error('Error deleting procedure:', error);
+            alert('An unexpected error occurred while deleting the procedure.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     // Save rule
     const handleSaveRule = async () => {
         if (!activeProcedure) return;
@@ -495,10 +540,21 @@ export default function DefectCriteriaPage() {
                                                     <p className="text-sm text-muted-foreground mt-2">{activeProcedure.notes}</p>
                                                 )}
                                             </div>
-                                            <Button variant="outline" size="sm" onClick={handleEditProcedure}>
-                                                <Edit className="h-4 w-4 mr-2" />
-                                                Edit
-                                            </Button>
+                                            <div className="flex gap-2">
+                                                <Button variant="outline" size="sm" onClick={handleEditProcedure}>
+                                                    <Edit className="h-4 w-4 mr-2" />
+                                                    Edit
+                                                </Button>
+                                                <Button 
+                                                    variant="outline" 
+                                                    size="sm" 
+                                                    className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20" 
+                                                    onClick={handleDeleteProcedure}
+                                                >
+                                                    <Trash2 className="h-4 w-4 mr-2" />
+                                                    Delete
+                                                </Button>
+                                            </div>
                                         </div>
                                         <div className="text-sm mt-4">
                                             <span className="font-medium">{rules.length}</span> Rules Defined

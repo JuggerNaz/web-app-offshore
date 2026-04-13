@@ -27,6 +27,7 @@ interface SOWReport {
     sow_id: number;
     item_no: string;
     report_number: string;
+    job_type?: string;
     scope_description: string;
     inspection_method: string;
     structure_id: number;
@@ -302,10 +303,15 @@ export default function InspectionLanding() {
                     if (!reportNumbersSet.has(uniqueKey)) {
                         reportNumbersSet.add(uniqueKey);
 
+                        // Extract job_type from report_numbers mappings
+                        const reportMapping = (sow.report_numbers || []).find((r: any) => r.number === reportNum);
+                        const jobType = reportMapping?.job_type || "";
+
                         formatted.push({
                             sow_id: sow.id,
                             item_no: item.id?.toString() || reportNum,
                             report_number: reportNum,
+                            job_type: jobType,
                             scope_description: sow.structure_title || "Inspection Report",
                             inspection_method: "", // Not shown, just for compatibility
                             structure_id: sow.structure_id,
@@ -350,8 +356,9 @@ export default function InspectionLanding() {
         const jpName = selectedJobPackData?.jobpack_no || selectedJobPackData?.jobpack_title || '';
         const structName = selectedStructureData?.name || '';
         const sowReport = selectedSOWData?.report_number || '';
+        const sowJobType = selectedSOWData?.job_type || '';
 
-        router.push(`/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${selectedSOW}&mode=DIVING&jpName=${encodeURIComponent(jpName)}&structName=${encodeURIComponent(structName)}&sowReport=${encodeURIComponent(sowReport)}`);
+        router.push(`/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${selectedSOW}&mode=DIVING&jpName=${encodeURIComponent(jpName)}&structName=${encodeURIComponent(structName)}&sowReport=${encodeURIComponent(sowReport)}&jobType=${encodeURIComponent(sowJobType)}`);
     }
 
     const selectedJobPackData = jobPacks.find((jp) => jp.id.toString() === selectedJobPack);
