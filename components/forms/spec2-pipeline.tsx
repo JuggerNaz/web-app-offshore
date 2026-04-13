@@ -34,6 +34,16 @@ export default function Spec2Pipeline() {
 
   const form = useForm<z.infer<typeof PipeGeoSchema>>({
     resolver: zodResolver(PipeGeoSchema),
+    defaultValues: {
+      geo_proj_nam: "",
+      geo_units: "",
+      geo_datum: "",
+      geo_elli_sph: "",
+      geo_dir: "",
+      geo_dx: 0,
+      geo_dy: 0,
+      geo_dz: 0,
+    },
   });
 
   const onSubmit = async (values: z.infer<typeof PipeGeoSchema>) => {
@@ -106,30 +116,35 @@ export default function Spec2Pipeline() {
                 <div className="space-y-6">
                   <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600/80 mb-2">Project Identity</h3>
                   <FormFieldWrap
-                    label="Project Name"
+                    label="Projection Name"
                     name="geo_proj_nam"
                     form={form}
-                    placeholder="Enter project/survey name"
+                    placeholder="Enter projection name"
                   />
                   <FormFieldWrap
-                    label="Unit of Measurement"
+                    label="Units"
                     name="geo_units"
                     form={form}
-                    placeholder="e.g. Metric"
+                    ftype="select"
+                    options={[
+                      { label: "Meter", value: "Meter" },
+                      { label: "Feet", value: "Feet" },
+                    ]}
+                    placeholder="Select units"
                   />
                 </div>
 
                 {/* Reference System */}
                 <div className="space-y-6">
                   <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600/80 mb-2">Reference System</h3>
-                  <FormFieldWrap label="Geodetic Datum" name="geo_datum" form={form} placeholder="e.g. WGS84" />
+                  <FormFieldWrap label="Datum" name="geo_datum" form={form} placeholder="e.g. WGS84" />
                   <FormFieldWrap
                     label="Ellipsoid / Spheroid"
                     name="geo_elli_sph"
                     form={form}
                     placeholder="e.g. GRS80"
                   />
-                  <FormFieldWrap label="Datum Shift Direction" name="geo_dir" form={form} placeholder="e.g. 7-Parameter" />
+                  <FormFieldWrap label="Datum Shift" name="geo_dir" form={form} placeholder="e.g. 7-Parameter" />
                 </div>
 
                 {/* Translation Parameters */}
@@ -137,19 +152,19 @@ export default function Spec2Pipeline() {
                   <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-600/80 mb-2">Translation (m)</h3>
                   <div className="grid grid-cols-1 gap-6 bg-slate-50/50 dark:bg-slate-900/30 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
                     <FormFieldWrap
-                      label="Shift Dx"
+                      label="Dx"
                       name="geo_dx"
                       form={form}
                       placeholder="0.000"
                     />
                     <FormFieldWrap
-                      label="Shift Dy"
+                      label="Dy"
                       name="geo_dy"
                       form={form}
                       placeholder="0.000"
                     />
                     <FormFieldWrap
-                      label="Shift Dz"
+                      label="Dz"
                       name="geo_dz"
                       form={form}
                       placeholder="0.000"

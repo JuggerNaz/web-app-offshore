@@ -10,6 +10,7 @@ export interface CompanySettings {
     companyLogo: string | null;
     storageProvider: string;
     storageLocation: string;
+    def_unit: "METRIC" | "IMPERIAL";
 }
 
 /**
@@ -45,6 +46,7 @@ export const getDefaultSettings = (): CompanySettings => {
         companyLogo: null,
         storageProvider: "Supabase",
         storageLocation: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+        def_unit: "METRIC",
     };
 };
 

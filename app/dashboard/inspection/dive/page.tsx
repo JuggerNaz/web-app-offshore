@@ -141,9 +141,29 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
     }
   }, [selectedComponents]);
 
-  // Resolve effective structure ID (handle string codes in URL vs numeric ID in job)
+  // Resolve effective structure ID (prioritize URL param)
   const paramStructureId = structureId && !isNaN(Number(structureId)) ? Number(structureId) : null;
-  const effectiveStructureId = paramStructureId ?? selectedDiveJob?.structure_id ?? null;
+  const [resolvedStructureId, setResolvedStructureId] = useState<number | null>(paramStructureId);
+
+  useEffect(() => {
+    if (paramStructureId) {
+      setResolvedStructureId(paramStructureId);
+    } else if (structureId) {
+       // If structureId is a code (e.g. PLAT-B), resolve it to numeric ID
+       const resolveId = async () => {
+         const { data } = await supabase.from('structure').select('str_id').eq('str_name', structureId).maybeSingle();
+         if (data?.str_id) setResolvedStructureId(data.str_id);
+       };
+       resolveId();
+    } else {
+      setResolvedStructureId(null);
+    }
+  }, [structureId, paramStructureId, supabase]);
+
+  const effectiveStructureId = resolvedStructureId; 
+
+  // If we have a structure code but no ID in param, we should ideally resolve it, 
+  // but for now, we rely on the numeric ID passed from the landing page.
 
   // Structure Title State
   const [platformTitle, setPlatformTitle] = useState<string>("");
@@ -355,9 +375,23 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
   const [endTime, setEndTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState("00:00:00");
 
+  // Reset job selection when core URL parameters change to prevent stale data display
   useEffect(() => {
-    checkExistingDiveJob();
-  }, [jobpackId, effectiveStructureId, sowReportNumber]);
+    console.log("URL context changed, clearing job selection...", { jobpackId, effectiveStructureId, sowReportNumber });
+    setSelectedJobId(null);
+    setActiveDiveJobs([]);
+    setCompletedDiveJobs([]);
+  }, [jobpackId, structureId, sowId]);
+
+  useEffect(() => {
+    // Only fetch if we have both jobpack and structure context resolved
+    // and wait for sowReportNumber if a sowId is present in URL
+    const isSowResolving = sowId && !sowReportNumber;
+    
+    if (jobpackId && effectiveStructureId && !isSowResolving) {
+       checkExistingDiveJob();
+    }
+  }, [jobpackId, effectiveStructureId, sowReportNumber, sowId]);
 
   useEffect(() => {
     if (effectiveStructureId) {
@@ -429,6 +463,41 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
   const [selectedSowTask, setSelectedSowTask] = useState<any>(null);
   const [recordToEdit, setRecordToEdit] = useState<any>(null);
 
+  // Auto-resolve component from sowId when jobs change or component is null
+  useEffect(() => {
+    async function resolveComponentFromSowId() {
+      if (!sowId || !selectedJobId || selectedComponents[selectedJobId]) return;
+
+      try {
+        const [actualSowId, itemId] = sowId.split("-");
+        if (!actualSowId || !itemId) return;
+
+        console.log("Auto-resolving component from SOW URL:", { actualSowId, itemId });
+
+        const { data: item } = await supabase
+          .from("u_sow_items")
+          .select("*, structure_components:component_id(*)")
+          .eq("id", itemId)
+          .maybeSingle();
+
+        if (item?.structure_components) {
+          console.log("Found component for SOW item:", item.structure_components.q_id);
+          setSelectedComponents((prev) => ({
+            ...prev,
+            [selectedJobId]: {
+              ...item.structure_components,
+              isFromSOW: true,
+              component_qid: item.structure_components.q_id
+            },
+          }));
+        }
+      } catch (err) {
+        console.error("Error auto-resolving component:", err);
+      }
+    }
+    resolveComponentFromSowId();
+  }, [sowId, selectedJobId, supabase]);
+
   // Check SOW tasks when component or jobpack/structure context changes
   useEffect(() => {
     if (selectedComponent && jobpackId && effectiveStructureId) {
@@ -436,7 +505,7 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
     } else {
       setAssignedTasks([]);
     }
-  }, [selectedComponent, jobpackId, effectiveStructureId]);
+  }, [selectedComponent, jobpackId, effectiveStructureId, sowReportNumber]);
 
   // Timer Logic
   useEffect(() => {
@@ -460,35 +529,42 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
   }, [startTime, endTime]);
 
   async function checkExistingDiveJob() {
-    if (!jobpackId) return;
+    if (!jobpackId || !effectiveStructureId) {
+      console.log("Context missing for dive job check. Resetting selection.");
+      setSelectedJobId(null);
+      setActiveDiveJobs([]);
+      setCompletedDiveJobs([]);
+      return;
+    }
 
-    console.log("Checking jobs for jobpack:", jobpackId);
+    console.log("Checking jobs for context:", { jobpackId, effectiveStructureId, sowReportNumber });
 
     try {
       const queryJobPackId = isNaN(Number(jobpackId)) ? jobpackId : Number(jobpackId);
 
       let query = supabase.from("insp_dive_jobs").select("*").eq("jobpack_id", queryJobPackId);
 
-      if (effectiveStructureId) {
-        query = query.eq("structure_id", effectiveStructureId);
-      }
-
+      // STRICT FILTERING: We must have the correct structure and SOW
+      query = query.eq("structure_id", effectiveStructureId);
+      
       if (sowReportNumber) {
-        // query = query.eq("sow_report_no", sowReportNumber);
-        // Relaxing filter: Allow viewing all dives for this structure/jobpack regardless of specific SOW label
-        console.log("Skipping SOW filter to show all structure jobs");
+        query = query.eq("sow_report_no", sowReportNumber);
       }
 
       const { data, error } = await query.order("cr_date", { ascending: true });
 
       if (error) {
         console.error("Error fetching dive jobs:", error);
-        toast.error("Failed to load dive jobs");
+        setSelectedJobId(null);
+        setActiveDiveJobs([]);
+        setCompletedDiveJobs([]);
         return;
       }
 
       if (data) {
-        // Fetch structure types for these jobs separately to avoid 400 error on join
+        console.log(`Found ${data.length} jobs for current context.`);
+        
+        // Fetch structure titles for joined data
         const structureIds = Array.from(
           new Set(data.map((j: any) => j.structure_id).filter(Boolean))
         ) as number[];
@@ -503,14 +579,12 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
             const typeMap = new Map(strData.map((s: any) => [s.id, s.code]));
             (data as any[]).forEach((j: any) => {
               if (j.structure_id && typeMap.has(j.structure_id)) {
-                // Assign as 'type' to match expected u_structure interface
                 j.u_structure = { type: typeMap.get(j.structure_id) };
               }
             });
           }
         }
 
-        // Robust filtering
         const active = (data as DiveJob[]).filter(
           (j: any) => j.status?.trim().toUpperCase() === "IN_PROGRESS"
         );
@@ -521,20 +595,30 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
         setActiveDiveJobs(active);
         setCompletedDiveJobs(completed);
 
-        // Auto-select first active job if exists and no job selected
-        if (active.length > 0 && !selectedJobId) {
-          setSelectedJobId(active[0].dive_job_id);
-        } else if (active.length === 0 && completed.length > 0 && !selectedJobId) {
-          // If no active jobs but we have historical, auto-select the MOST RECENT one
-          // The query is ordered by cr_date ASC currently, but we likely want the LAST one (most recent)
-          // Wait, query order is `order("cr_date", { ascending: true })`
-          // So the LAST item is the most recent.
-          const mostRecent = completed[completed.length - 1];
-          setSelectedJobId(mostRecent.dive_job_id);
+        // Selection decision
+        const allJobs = [...active, ...completed];
+        const currentStillValid = allJobs.some(j => j.dive_job_id === selectedJobId);
+
+        if (!currentStillValid) {
+          if (active.length > 0) {
+            console.log("Auto-selecting active job:", active[0].dive_no);
+            setSelectedJobId(active[0].dive_job_id);
+          } else if (completed.length > 0) {
+            console.log("Auto-selecting last completed job:", completed[completed.length - 1].dive_no);
+            setSelectedJobId(completed[completed.length - 1].dive_job_id);
+          } else {
+            console.log("No jobs found for this specific structure/SOW. Clearing selection.");
+            setSelectedJobId(null);
+          }
         }
+      } else {
+        setSelectedJobId(null);
+        setActiveDiveJobs([]);
+        setCompletedDiveJobs([]);
       }
     } catch (error) {
-      console.log("No existing dive job found or error fetching", error);
+      console.error("Unexpected error in checkExistingDiveJob:", error);
+      setSelectedJobId(null);
     } finally {
       setLoading(false);
     }
@@ -717,13 +801,17 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
     if (!jobpackId || !effectiveStructureId || !selectedComponent) return;
 
     try {
-      // Get SOW ID
-      const { data: sow, error: sowError } = await supabase
-        .from("u_sow")
-        .select("id, report_numbers")
-        .eq("jobpack_id", jobpackId)
-        .eq("structure_id", effectiveStructureId)
-        .maybeSingle();
+      // Get SOW ID - priority to URL record ID if available
+      const [sRecordId] = (sowId || "").split("-");
+      const sowQuery = supabase.from("u_sow").select("id, report_numbers");
+      
+      if (sRecordId && !isNaN(Number(sRecordId))) {
+        sowQuery.eq("id", Number(sRecordId));
+      } else {
+        sowQuery.eq("jobpack_id", jobpackId).eq("structure_id", effectiveStructureId);
+      }
+
+      const { data: sow, error: sowError } = await sowQuery.maybeSingle();
 
       if (sowError) {
         console.error("Error fetching SOW:", sowError);
@@ -732,11 +820,8 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
       if (sow) {
         setSowRecordId(sow.id);
 
-        // Do not forcefully override sowReportNumber with the first SOW array element.
-        // Dive jobs should not inherit an arbitrary SOW just because one isn't strictly defined.
-
         // Get items for this component
-        const { data: items, error: itemsError } = await supabase
+        const itemsQuery = supabase
           .from("u_sow_items")
           .select(
             `
@@ -746,6 +831,12 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
           )
           .eq("sow_id", sow.id)
           .eq("component_id", selectedComponent.id);
+
+        if (sowReportNumber) {
+          itemsQuery.eq("report_number", sowReportNumber);
+        }
+
+        const { data: items, error: itemsError } = await itemsQuery;
 
         if (itemsError) {
           console.error("Error fetching SOW items:", itemsError);
@@ -1629,6 +1720,8 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
 
                         <DiveInspectionList
                           diveJobId={selectedDiveJob?.dive_job_id}
+                          sowReportNumber={sowReportNumber || undefined}
+                          structureId={effectiveStructureId || undefined}
                           tapeId={selectedTapeId ?? undefined}
                           // componentId={selectedComponent?.id} // Disabled to show all records for deployment
                           // No type filtering for list as requested

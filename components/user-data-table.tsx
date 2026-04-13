@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { UserData } from "@/types/user";
 import {
     Table,
     TableBody,
@@ -20,7 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow, parseISO, format } from "date-fns";
-import { Loader2, Search, User as UserIcon, Shield, Activity, Edit2, CheckSquare, Save, X } from "lucide-react";
+import { Loader2, Search, User as UserIcon, Shield, Activity, Edit2, CheckSquare, Save, X, ChevronUp, ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { usePresence } from "@/components/presence-provider";
@@ -28,16 +29,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { UserProfileCard } from "@/components/user-profile-card";
 
-// Defined locally to match the updated RPC return type
-type UserData = {
-    id: string;
-    email: string;
-    last_sign_in_at: string | null;
-    created_at: string;
-    role: string;
-    modules: string[];
-};
 
 const AVAILABLE_MODULES = [
     "Field Assets",
@@ -58,19 +51,39 @@ export function UserDataTable() {
     const { onlineUserIds } = usePresence();
     const supabase = createClient();
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [localMetadata, setLocalMetadata] = useState<{
+        full_name?: string;
+        designation?: string;
+        avatar_url?: string;
+    } | null>(null);
 
     // Editing State
     const [editingUser, setEditingUser] = useState<UserData | null>(null);
     const [editRole, setEditRole] = useState<string>("");
     const [editModules, setEditModules] = useState<string[]>([]);
     const [isSaving, setIsSaving] = useState(false);
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+    const [viewingUser, setViewingUser] = useState<UserData | null>(null);
+
+    const requestSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
 
     // Fetch user data
     const fetchUsers = async () => {
         try {
             setLoading(true);
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) setCurrentUserId(session.user.id);
+            
+            // Get current user and their local metadata (instantly available from session)
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (authUser) {
+                setCurrentUserId(authUser.id);
+                setLocalMetadata(authUser.user_metadata);
+            }
 
             const { data, error } = await supabase.rpc("get_all_users");
 
@@ -83,33 +96,99 @@ export function UserDataTable() {
             setLoading(false);
         }
     };
-
+    
     useEffect(() => {
         fetchUsers();
+
+        // Listen for profile updates to refresh the list instantly
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'USER_UPDATED' || event === 'SIGNED_IN') {
+                if (session?.user) {
+                    setCurrentUserId(session.user.id);
+                    setLocalMetadata(session.user.user_metadata);
+                }
+                fetchUsers();
+            }
+        });
+
+        return () => {
+            subscription.unsubscribe();
+        };
     }, []);
 
     const filteredUsers = users.filter((user) =>
         user.email?.toLowerCase().includes(filter.toLowerCase())
     );
 
+    const sortedUsers = [...filteredUsers].sort((a, b) => {
+        if (!sortConfig) return 0;
+        const { key, direction } = sortConfig;
+
+        let aValue: any = a[key as keyof UserData];
+        let bValue: any = b[key as keyof UserData];
+
+        // Handle special display names for current user
+        if (key === 'full_name') {
+            aValue = getDisplayName(a);
+            bValue = getDisplayName(b);
+        }
+
+        // Handle designation fallbacks
+        if (key === 'designation') {
+            aValue = (a.id === currentUserId && localMetadata?.designation) ? localMetadata.designation : (a.designation || "Offshore Staff");
+            bValue = (b.id === currentUserId && localMetadata?.designation) ? localMetadata.designation : (b.designation || "Offshore Staff");
+        }
+        
+        // Handle connection status sort
+        if (key === 'connection') {
+            aValue = isOnline(a) ? 1 : 0;
+            bValue = isOnline(b) ? 1 : 0;
+        }
+
+        if (aValue === bValue) return 0;
+        if (aValue === null || aValue === undefined) return 1;
+        if (bValue === null || bValue === undefined) return -1;
+
+        const result = aValue < bValue ? -1 : 1;
+        return direction === 'asc' ? result : -result;
+    });
+
     const currentUserData = users.find(u => u.id === currentUserId);
     const isAdmin = currentUserData?.role === 'Admin';
 
     const isOnline = (user: UserData) => {
-        // Real-time presence check
+        // 1. Check Real-time Presence set (Instant)
         if (onlineUserIds.has(user.id)) return true;
 
-        // Fallback: Show online for the last hour to be generous for demo
-        if (!user.last_sign_in_at) return false;
-        const date = parseISO(user.last_sign_in_at);
-        const now = new Date();
-        const diffInMinutes = (now.getTime() - date.getTime()) / 1000 / 60;
-        return diffInMinutes < 60;
+        // 2. Check Database Heartbeat (Fallback / Persistent)
+        if (user.last_seen_at) {
+            const lastSeenDate = new Date(user.last_seen_at);
+            const now = new Date();
+            const diffInSeconds = Math.abs(now.getTime() - lastSeenDate.getTime()) / 1000;
+            
+            // Increased threshold to 300s (5m) to account for clock drift or refresh delays
+            if (diffInSeconds < 300) return true;
+        }
+
+        return false;
     };
 
-    const getInitials = (email: string) => {
-        if (!email) return "U";
-        return email.substring(0, 2).toUpperCase();
+    const getDisplayName = (user: UserData) => {
+        const isMe = user.id === currentUserId;
+        if (isMe && localMetadata?.full_name) return localMetadata.full_name;
+        return user.full_name || user.email.split('@')[0];
+    };
+
+    const getInitials = (user: UserData) => {
+        const isMe = user.id === currentUserId;
+        const fullName = (isMe && localMetadata?.full_name) ? localMetadata.full_name : user.full_name;
+        
+        if (fullName) {
+            const parts = fullName.split(' ');
+            if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+            return fullName.substring(0, 2).toUpperCase();
+        }
+        return user.email.substring(0, 2).toUpperCase();
     };
 
     const handleEditClick = (user: UserData) => {
@@ -235,23 +314,84 @@ export function UserDataTable() {
                         <Table>
                             <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
                                 <TableRow className="hover:bg-transparent border-slate-200 dark:border-slate-800">
-                                    <TableHead className="font-semibold text-slate-600 dark:text-slate-400">User Identification</TableHead>
-                                    <TableHead className="font-semibold text-slate-600 dark:text-slate-400 w-32">Connection</TableHead>
-                                    <TableHead className="font-semibold text-slate-600 dark:text-slate-400">Access Role</TableHead>
-                                    <TableHead className="font-semibold text-slate-600 dark:text-slate-400">Account Created</TableHead>
-                                    <TableHead className="font-semibold text-slate-600 dark:text-slate-400 text-right pr-6">Last Active</TableHead>
+                                    <TableHead 
+                                        className="font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-blue-600 transition-colors group"
+                                        onClick={() => requestSort('full_name')}
+                                    >
+                                        <div className="flex items-center gap-2 uppercase tracking-tighter text-[11px]">
+                                            User Identification
+                                            {sortConfig?.key === 'full_name' ? (
+                                                sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                            ) : <ChevronUp className="h-3 w-3 opacity-0 group-hover:opacity-50" />}
+                                        </div>
+                                    </TableHead>
+                                    <TableHead 
+                                        className="font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-blue-600 transition-colors group"
+                                        onClick={() => requestSort('designation')}
+                                    >
+                                        <div className="flex items-center gap-2 uppercase tracking-tighter text-[11px]">
+                                            Designation
+                                            {sortConfig?.key === 'designation' ? (
+                                                sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                            ) : <ChevronUp className="h-3 w-3 opacity-0 group-hover:opacity-50" />}
+                                        </div>
+                                    </TableHead>
+                                    <TableHead 
+                                        className="font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-blue-600 transition-colors group"
+                                        onClick={() => requestSort('connection')}
+                                    >
+                                        <div className="flex items-center gap-2 uppercase tracking-tighter text-[11px]">
+                                            Connection
+                                            {sortConfig?.key === 'connection' ? (
+                                                sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                            ) : <ChevronUp className="h-3 w-3 opacity-0 group-hover:opacity-50" />}
+                                        </div>
+                                    </TableHead>
+                                    <TableHead 
+                                        className="font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-blue-600 transition-colors group"
+                                        onClick={() => requestSort('role')}
+                                    >
+                                        <div className="flex items-center gap-2 uppercase tracking-tighter text-[11px]">
+                                            Access Role
+                                            {sortConfig?.key === 'role' ? (
+                                                sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                            ) : <ChevronUp className="h-3 w-3 opacity-0 group-hover:opacity-50" />}
+                                        </div>
+                                    </TableHead>
+                                    <TableHead 
+                                        className="font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-blue-600 transition-colors group"
+                                        onClick={() => requestSort('created_at')}
+                                    >
+                                        <div className="flex items-center gap-2 uppercase tracking-tighter text-[11px]">
+                                            Registered / Enrolled Date
+                                            {sortConfig?.key === 'created_at' ? (
+                                                sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                            ) : <ChevronUp className="h-3 w-3 opacity-0 group-hover:opacity-50" />}
+                                        </div>
+                                    </TableHead>
+                                    <TableHead 
+                                        className="font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-blue-600 transition-colors group text-right pr-6"
+                                        onClick={() => requestSort('last_seen_at')}
+                                    >
+                                        <div className="flex items-center justify-end gap-2 uppercase tracking-tighter text-[11px]">
+                                            Last Active
+                                            {sortConfig?.key === 'last_seen_at' ? (
+                                                sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                            ) : <ChevronUp className="h-3 w-3 opacity-0 group-hover:opacity-50" />}
+                                        </div>
+                                    </TableHead>
                                     {isAdmin && <TableHead className="w-16"></TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredUsers.length === 0 ? (
+                                {sortedUsers.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={isAdmin ? 5 : 4} className="h-32 text-center text-slate-500 font-medium">
+                                        <TableCell colSpan={isAdmin ? 7 : 6} className="h-32 text-center text-slate-500 font-medium">
                                             No user accounts match your search criteria.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filteredUsers.map((user) => {
+                                    sortedUsers.map((user) => {
                                         const online = isOnline(user);
                                         const isMe = user.id === currentUserId;
                                         return (
@@ -261,21 +401,50 @@ export function UserDataTable() {
                                             >
                                                 <TableCell className="font-medium p-4">
                                                     <div className="flex items-center gap-4">
-                                                        <Avatar className="h-10 w-10 border-2 border-white dark:border-slate-900 shadow-sm">
-                                                            <AvatarImage src="" />
-                                                            <AvatarFallback className="bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-700 dark:text-slate-300 font-bold">
-                                                                {getInitials(user.email)}
-                                                            </AvatarFallback>
-                                                        </Avatar>
+                                                        <button 
+                                                            onClick={() => setViewingUser(user)}
+                                                            className="group relative focus:outline-none transition-transform active:scale-95"
+                                                            title={`View ${getDisplayName(user)}'s profile`}
+                                                        >
+                                                            <div className="absolute inset-0 rounded-full bg-blue-500/20 scale-0 group-hover:scale-110 transition-transform duration-300" />
+                                                            <Avatar className="h-14 w-14 border-2 border-white dark:border-slate-900 shadow-md ring-1 ring-slate-200 dark:ring-slate-800 transition-all group-hover:shadow-lg group-hover:ring-blue-400">
+                                                                <AvatarImage 
+                                                                    src={(user.id === currentUserId && localMetadata?.avatar_url) 
+                                                                        ? localMetadata.avatar_url 
+                                                                        : (user.avatar_url || "")} 
+                                                                    className="object-cover" 
+                                                                />
+                                                                <AvatarFallback className="bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-700 dark:text-slate-300 font-black text-lg">
+                                                                    {getInitials(user)}
+                                                                </AvatarFallback>
+                                                            </Avatar>
+                                                        </button>
                                                         <div className="flex flex-col">
                                                             <div className="flex items-center gap-2">
-                                                                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{user.email}</span>
+                                                                <button 
+                                                                    onClick={() => setViewingUser(user)}
+                                                                    className="text-sm font-black text-slate-900 dark:text-slate-100 hover:text-blue-600 transition-colors"
+                                                                >
+                                                                    {getDisplayName(user)}
+                                                                </button>
                                                                 {isMe && <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200 text-[9px] h-4 font-bold border-0 px-1.5 uppercase">You</Badge>}
                                                             </div>
-                                                            <span className="text-xs text-slate-500 font-mono mt-0.5 uppercase tracking-wider">
-                                                                ID: {user.id.substring(0, 8)}...
+                                                            <span className="text-[11px] text-slate-500 font-medium truncate max-w-[180px]">
+                                                                {user.email}
                                                             </span>
                                                         </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                            {user.id === currentUserId && localMetadata?.designation 
+                                                                ? localMetadata.designation 
+                                                                : (user.designation || "Offshore Staff")}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 uppercase tracking-tighter">
+                                                            ID: {user.id.substring(0, 8)}
+                                                        </span>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
@@ -307,20 +476,24 @@ export function UserDataTable() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-slate-600 dark:text-slate-400 font-medium text-sm">
-                                                    {user.created_at ? format(parseISO(user.created_at), "dd MMM yyyy, hh:mm a") : "-"}
+                                                    {user.created_at ? format(new Date(user.created_at), "dd MMM yyyy, HH:mm:ss") : "-"}
                                                 </TableCell>
                                                 <TableCell className="text-slate-500 dark:text-slate-400 font-medium text-sm text-right pr-6">
                                                     {online ? (
                                                         <div className="flex flex-col items-end gap-1">
                                                             <span className="text-green-600 dark:text-green-400 font-semibold">Right now</span>
-                                                            {user.last_sign_in_at && (
-                                                                <span className="text-[10px] text-slate-400">Since {format(parseISO(user.last_sign_in_at), "hh:mm a")}</span>
-                                                            )}
+                                                            <span className="text-[10px] text-slate-400">Activity detected</span>
+                                                        </div>
+                                                    ) : user.last_seen_at ? (
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <span>{format(new Date(user.last_seen_at), "dd MMM yyyy, HH:mm:ss")}</span>
+                                                            <span className="text-[10px] text-slate-400">Last activity</span>
                                                         </div>
                                                     ) : user.last_sign_in_at ? (
-                                                        <span>
-                                                            {format(parseISO(user.last_sign_in_at), "dd MMM yyyy, hh:mm a")}
-                                                        </span>
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <span>{format(new Date(user.last_sign_in_at), "dd MMM yyyy, HH:mm:ss")}</span>
+                                                            <span className="text-[10px] text-slate-400">Last sign in</span>
+                                                        </div>
                                                     ) : (
                                                         <span className="text-slate-400 italic">Never</span>
                                                     )}
@@ -418,6 +591,26 @@ export function UserDataTable() {
                             Save Configuration
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Profile View Dialog */}
+            <Dialog open={!!viewingUser} onOpenChange={(open) => !open && setViewingUser(null)}>
+                <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden border-0 bg-white dark:bg-slate-950 rounded-3xl shadow-2xl ring-1 ring-slate-200 dark:ring-slate-800">
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>User Profile</DialogTitle>
+                        <DialogDescription>
+                            Viewing detailed profile for {viewingUser ? getDisplayName(viewingUser) : 'user'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    {viewingUser && (
+                        <UserProfileCard 
+                            user={viewingUser} 
+                            isOnline={isOnline(viewingUser)} 
+                            isMe={viewingUser.id === currentUserId}
+                            currentUserMetadata={localMetadata}
+                        />
+                    )}
                 </DialogContent>
             </Dialog>
         </div>

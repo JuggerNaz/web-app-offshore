@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { Camera, Clock, AlertTriangle, Save, FileText } from "lucide-react";
+import { Camera, Clock, AlertTriangle, Save, FileText, Square, Trash2 } from "lucide-react";
 
 export function InspectionForm() {
     const { state, updateState, saveEvent, validation } = useInspection();
@@ -18,7 +18,6 @@ export function InspectionForm() {
             {/* Step 1: Context */}
             <section className="space-y-4">
                 <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">1</span>
                     Inspection Context
                 </h2>
                 <div className="grid grid-cols-2 gap-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
@@ -44,7 +43,6 @@ export function InspectionForm() {
             {/* Step 2: Component */}
             <section className="space-y-4">
                 <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
-                    <span className={cn("flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white transition-colors", validation.component ? "bg-green-600" : "bg-slate-700")}>2</span>
                     Component & Location
                 </h2>
                 <div className="rounded-lg border border-slate-800 bg-slate-900/20 p-4 space-y-4">
@@ -85,7 +83,6 @@ export function InspectionForm() {
             {/* Step 3: Observation */}
             <section className="space-y-4">
                 <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
-                    <span className={cn("flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white transition-colors", validation.observation ? "bg-green-600" : "bg-slate-700")}>3</span>
                     Observation
                 </h2>
                 <div className="rounded-lg border border-slate-800 p-5 space-y-5 bg-slate-900/20 shadow-inner">
@@ -113,6 +110,70 @@ export function InspectionForm() {
                             value={state.description}
                             onChange={(e) => updateState({ description: e.target.value })}
                         />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+                        <div className="space-y-4">
+                            <div className="space-y-4">
+                                {state.cpValues.map((val, idx) => (
+                                    <div key={idx} className="space-y-2 animate-in slide-in-from-left-2 fade-in">
+                                        <div className="flex items-center justify-between">
+                                            <Label className="text-slate-200">
+                                                CP Value {state.cpValues.length > 1 ? `#${idx + 1}` : ""}
+                                            </Label>
+                                            {idx > 0 && (
+                                                <button
+                                                    onClick={() => {
+                                                        const newCpValues = state.cpValues.filter((_, i) => i !== idx);
+                                                        updateState({ cpValues: newCpValues });
+                                                    }}
+                                                    className="text-slate-500 hover:text-red-400 transition-colors p-1"
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="relative">
+                                            <Input
+                                                type="number"
+                                                placeholder="e.g. -950"
+                                                className="bg-slate-950 border-slate-700 text-slate-100 font-mono h-[46px] focus:ring-blue-500/20 transition-all"
+                                                value={val}
+                                                onChange={(e) => {
+                                                    const newCpValues = [...state.cpValues];
+                                                    newCpValues[idx] = e.target.value;
+                                                    updateState({ cpValues: newCpValues });
+                                                }}
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">mV</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full border-dashed border-slate-800 hover:border-slate-600 hover:bg-slate-800/50 text-slate-400 transition-all text-[11px] font-medium h-9"
+                                onClick={() => updateState({ cpValues: [...state.cpValues, ""] })}
+                            >
+                                + ADDITIONAL CP
+                            </Button>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Marine Growth</Label>
+                            <Select onValueChange={(val) => updateState({ marineGrowthType: val })} value={state.marineGrowthType}>
+                                <SelectTrigger className="bg-slate-950 border-slate-700 text-slate-200 h-[46px]">
+                                    <SelectValue placeholder="Select choice..." />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-900 border-slate-800 text-slate-200">
+                                    <SelectItem value="hard_and_soft">Hard and Soft</SelectItem>
+                                    <SelectItem value="soft">Soft</SelectItem>
+                                    <SelectItem value="hard">Hard</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
 
                     <div className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-950 p-3">
@@ -146,29 +207,31 @@ export function InspectionForm() {
                 </div>
             </section>
 
-            {/* Step 4: Evidence */}
+            {/* Recent Log Section (Moved from Right) */}
             <section className="space-y-4">
                 <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
-                    <span className={cn("flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white transition-colors", validation.evidence ? "bg-green-600" : "bg-slate-700")}>4</span>
-                    Evidence
+                    Recent Log
                 </h2>
-                <div className="flex gap-4">
-                    <Button
-                        variant="outline"
-                        className={cn("flex-1 gap-2 border-slate-700 hover:bg-slate-800 hover:text-white transition-all", state.evidence.timecode && "bg-blue-600/20 border-blue-600/50 text-blue-400")}
-                        onClick={() => updateState({ evidence: { ...state.evidence, timecode: state.dateTime } })}
-                    >
-                        <Clock className="h-4 w-4" />
-                        {state.evidence.timecode ? "Timecode Captured" : "Capture Timecode"}
-                    </Button>
-                    <Button
-                        variant="outline"
-                        className={cn("flex-1 gap-2 border-slate-700 hover:bg-slate-800 hover:text-white transition-all", state.evidence.frameCaptured && "bg-blue-600/20 border-blue-600/50 text-blue-400")}
-                        onClick={() => updateState({ evidence: { ...state.evidence, frameCaptured: true } })}
-                    >
-                        <Camera className="h-4 w-4" />
-                        {state.evidence.frameCaptured ? "Frame Grabbed" : "Grab Frame"}
-                    </Button>
+                <div className="grid grid-cols-1 gap-3">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="group relative p-4 rounded-lg bg-slate-900/40 border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer shadow-sm">
+                            <div className="flex justify-between items-start mb-2">
+                                <span className="text-xs font-mono text-blue-400 font-bold tracking-tight">EVT-2024-00{i}</span>
+                                <span className="text-[10px] text-slate-500 font-medium">10:4{i}:00 AM</span>
+                            </div>
+                            <div className="text-sm text-slate-200 font-medium line-clamp-1">Minor corrosion on Leg B2 - Structural integrity verified</div>
+                            <div className="mt-2 flex items-center gap-2">
+                                <span className="text-[9px] px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded uppercase font-black tracking-widest">General</span>
+                                <span className="text-[9px] px-1.5 py-0.5 bg-blue-900/20 text-blue-400 rounded uppercase font-black tracking-widest border border-blue-900/30">Verified</span>
+                            </div>
+
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-1 group-hover:translate-x-0">
+                                <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-900/20">
+                                    →
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </section>
 

@@ -3,11 +3,11 @@ import { createClient } from "@/utils/supabase/server";
 
 export async function GET(
     request: Request,
-    context: { params: Promise<{ id: string }> }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const supabase = createClient();
-        const { id } = await context.params;
+        const { id } = await params;
         const structureId = parseInt(id);
 
         // Get structure

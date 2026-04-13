@@ -1,17 +1,10 @@
 import {
-  User as UserIcon,
-  Mail,
-  Calendar,
   Shield,
   Settings,
   Palette,
-  Key,
-  Globe,
   Bell,
   Lock,
-  Edit3,
   Camera,
-  Save,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/server";
 import { ThemeSwitcher } from "@/components/theme-switcher";
@@ -19,9 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import Image from "next/image";
 import { signOutAction } from "@/app/actions";
+import { ProfileDetails } from "./profile-details";
 
 export default async function UserPage() {
   const supabase = createClient();
@@ -32,12 +24,20 @@ export default async function UserPage() {
 
   if (!user) {
     return (
-      <div className="flex-1 w-full flex items-center justify-center">
-        <Card className="w-96">
-          <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>Please sign in to view user settings.</CardDescription>
+      <div className="flex-1 w-full flex items-center justify-center p-8 bg-slate-50/50">
+        <Card className="w-full max-w-md border-none shadow-2xl">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4">
+              <Shield className="w-8 h-8" />
+            </div>
+            <CardTitle className="text-2xl font-black text-slate-800">Access Denied</CardTitle>
+            <CardDescription className="text-slate-500 font-medium mt-2">Please sign in to view and manage your account settings.</CardDescription>
           </CardHeader>
+          <CardContent className="pt-4 pb-8">
+            <Button className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-black" asChild>
+              <a href="/sign-in">GO TO SIGN IN</a>
+            </Button>
+          </CardContent>
         </Card>
       </div>
     );
@@ -53,215 +53,132 @@ export default async function UserPage() {
     });
   };
 
-  const getInitials = (email: string) => {
-    if (!email) return "U";
-    const parts = email.split("@")[0].split(".");
-    if (parts.length >= 2) {
-      return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
-    }
-    return email.substring(0, 2).toUpperCase();
-  };
-
   return (
-    <div className="flex-1 w-full max-w-6xl mx-auto space-y-8 overflow-y-auto overflow-x-hidden custom-scrollbar p-8">
-      {/* Header */}
-      <div className="flex flex-col space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">Account Settings</h1>
-        <p className="text-muted-foreground">Manage your account settings and preferences.</p>
+    <div className="flex-1 w-full max-w-6xl mx-auto space-y-12 overflow-y-auto overflow-x-hidden custom-scrollbar p-6 lg:p-10 bg-white/30">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-10">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 mb-1">
+             <div className="w-8 h-2 bg-blue-600 rounded-full" />
+             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600">User Profile Service</span>
+          </div>
+          <h1 className="text-4xl lg:text-5xl font-black tracking-tight text-slate-900 leading-none">Account Settings</h1>
+          <p className="text-lg font-medium text-slate-500 max-w-lg">
+            Manage your personal identity, professional designation, and security preferences.
+          </p>
+        </div>
+        <form action={signOutAction} className="shrink-0">
+          <Button type="submit" variant="destructive" className="h-12 px-6 font-black shadow-lg shadow-red-100 transition-all hover:scale-105 active:scale-95 uppercase tracking-widest text-[11px]">
+            Sign Out Account
+          </Button>
+        </form>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Profile Card */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader className="text-center">
-              <div className="flex justify-center mb-4">
-                <Avatar className="h-24 w-24">
-                  <AvatarImage src="/placeholder-user.jpg" alt="Profile" />
-                  <AvatarFallback className="text-lg font-semibold bg-primary/10">
-                    {getInitials(user.email || "U")}
-                  </AvatarFallback>
-                </Avatar>
+      {/* Profile Details Component - Handles Photo, Name, Designation */}
+      <ProfileDetails user={user} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Security Settings */}
+        <Card className="border-none shadow-md bg-white">
+          <CardHeader className="border-b pb-6">
+            <CardTitle className="flex items-center gap-2.5 text-lg font-black text-slate-800">
+              <div className="p-1.5 bg-amber-50 text-amber-600 rounded-md">
+                <Lock className="w-4 h-4" />
               </div>
-              <CardTitle className="text-xl">{user.email}</CardTitle>
-              <CardDescription>
-                <Badge variant="secondary" className="mt-2">
-                  <Shield className="w-3 h-3 mr-1" />
-                  Verified User
-                </Badge>
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button className="w-full" variant="outline">
-                <Camera className="w-4 h-4 mr-2" />
-                Update Photo
+              Security & Identity
+            </CardTitle>
+            <CardDescription className="text-sm font-medium">Manage your password and security gatekeepers</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-8 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-5 border border-slate-100 rounded-xl bg-slate-50/50 gap-4 transition-all hover:border-amber-200">
+              <div className="space-y-1">
+                <p className="font-black text-slate-800 text-sm uppercase tracking-wide">Account Password</p>
+                <p className="text-[11px] font-bold text-slate-400">
+                  LAST UPDATED {formatDate(user.updated_at || user.created_at).toUpperCase()}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" className="h-10 px-5 font-black text-blue-600 bg-white border-blue-100 hover:bg-blue-50 transition-all" asChild>
+                <a href="/protected/reset-password">CHANGE PASSWORD</a>
               </Button>
-              <form action={signOutAction}>
-                <Button type="submit" variant="destructive" className="w-full">
-                  Sign Out
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
 
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-8">
-          {/* Account Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserIcon className="w-5 h-5" />
-                Account Information
-              </CardTitle>
-              <CardDescription>Your account details and authentication information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <Mail className="w-4 h-4" />
-                    Email Address
-                  </label>
-                  <p className="text-muted-foreground bg-muted px-3 py-2 rounded-md">
-                    {user.email}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <Key className="w-4 h-4" />
-                    User ID
-                  </label>
-                  <p className="text-muted-foreground bg-muted px-3 py-2 rounded-md font-mono text-xs">
-                    {user.id.substring(0, 8)}...
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    Account Created
-                  </label>
-                  <p className="text-muted-foreground bg-muted px-3 py-2 rounded-md">
-                    {formatDate(user.created_at)}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <Globe className="w-4 h-4" />
-                    Last Sign In
-                  </label>
-                  <p className="text-muted-foreground bg-muted px-3 py-2 rounded-md">
-                    {user.last_sign_in_at ? formatDate(user.last_sign_in_at) : "Never"}
-                  </p>
-                </div>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-5 border border-slate-100 rounded-xl bg-slate-50/50 gap-4 transition-all hover:border-slate-200">
+              <div className="space-y-1 flex-1">
+                <p className="font-black text-slate-800 text-sm uppercase tracking-wide">Two-Factor Auth</p>
+                <p className="text-[11px] font-bold text-slate-400">
+                  EXTRA LAYER OF ACCOUNT PROTECTION
+                </p>
               </div>
+              <Badge variant="secondary" className="h-7 px-3 font-black bg-slate-200 text-slate-600 uppercase tracking-widest text-[9px]">
+                Not Enabled
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
 
-              <Separator />
-
-              <div className="flex justify-end">
-                <Button variant="outline">
-                  <Edit3 className="w-4 h-4 mr-2" />
-                  Edit Profile
-                </Button>
+        {/* App Preferences */}
+        <Card className="border-none shadow-md bg-white">
+          <CardHeader className="border-b pb-6">
+            <CardTitle className="flex items-center gap-2.5 text-lg font-black text-slate-800">
+              <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md">
+                <Settings className="w-4 h-4" />
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Security Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="w-5 h-5" />
-                Security Settings
-              </CardTitle>
-              <CardDescription>Manage your password and security preferences</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 border rounded-lg gap-4">
-                <div className="space-y-1">
-                  <p className="font-medium">Password</p>
-                  <p className="text-sm text-muted-foreground">
-                    Last updated {formatDate(user.updated_at || user.created_at)}
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" className="w-full sm:w-auto">
-                  Change Password
-                </Button>
+              Application Environment
+            </CardTitle>
+            <CardDescription className="text-sm font-medium">Customize your visual and notification experience</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-8 space-y-8">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <label className="font-black text-slate-800 text-sm uppercase tracking-wide flex items-center gap-2">
+                  <Palette className="w-4 h-4 text-blue-500" />
+                  Interface Theme
+                </label>
+                <p className="text-[11px] font-bold text-slate-400">
+                  CHOOSE YOUR VISUAL COLOR SCHEME
+                </p>
               </div>
+              <ThemeSwitcher />
+            </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 border rounded-lg gap-4">
-                <div className="space-y-1 flex-1">
-                  <p className="font-medium">Two-Factor Authentication</p>
-                  <p className="text-sm text-muted-foreground">
-                    Add an extra layer of security to your account
-                  </p>
-                </div>
-                <Badge variant="secondary" className="w-fit">
-                  Not Enabled
-                </Badge>
+            <Separator className="opacity-40" />
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <label className="font-black text-slate-800 text-sm uppercase tracking-wide flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-blue-500" />
+                  Email Notifications
+                </label>
+                <p className="text-[11px] font-bold text-slate-400">
+                  ALERTS FOR OFFSHORE OPERATIONS
+                </p>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* App Preferences */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="w-5 h-5" />
-                App Preferences
-              </CardTitle>
-              <CardDescription>Customize your application experience</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <label className="font-medium flex items-center gap-2">
-                    <Palette className="w-4 h-4" />
-                    Theme Preference
-                  </label>
-                  <p className="text-sm text-muted-foreground">
-                    Choose your preferred color scheme
-                  </p>
-                </div>
-                <ThemeSwitcher />
-              </div>
-
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <label className="font-medium flex items-center gap-2">
-                    <Bell className="w-4 h-4" />
-                    Email Notifications
-                  </label>
-                  <p className="text-sm text-muted-foreground">
-                    Receive updates about your offshore operations
-                  </p>
-                </div>
-                <Badge variant="outline">Enabled</Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Developer Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Developer Information</CardTitle>
-              <CardDescription>Raw user data for debugging purposes</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <details className="group">
-                <summary className="cursor-pointer text-sm font-medium mb-2 hover:text-primary">
-                  View Raw User Data
-                </summary>
-                <pre className="text-xs font-mono p-4 bg-muted rounded-lg overflow-auto max-h-64 border">
-                  {JSON.stringify(user, null, 2)}
-                </pre>
-              </details>
-            </CardContent>
-          </Card>
-        </div>
+              <Badge variant="outline" className="h-7 px-3 font-black border-blue-200 text-blue-600 bg-blue-50/50 uppercase tracking-widest text-[9px]">
+                Enabled
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Admin Information */}
+      <Card className="border-none shadow-sm bg-slate-50/30">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Authentication Context</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <details className="group">
+            <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors list-none flex items-center gap-2">
+              <div className="w-1 h-1 rounded-full bg-slate-300" />
+              Developer Sandbox
+            </summary>
+            <pre className="mt-4 text-[10px] font-mono p-5 bg-slate-900 text-white rounded-xl overflow-auto max-h-64 border border-slate-800 shadow-2xl">
+              {JSON.stringify(user, null, 2)}
+            </pre>
+          </details>
+        </CardContent>
+      </Card>
     </div>
   );
 }
+

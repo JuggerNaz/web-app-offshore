@@ -14,7 +14,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "setup-storage": "node scripts/setup-storage.js",
-    "test-storage": "node scripts/test-storage-url.js"
+    "test-storage": "node scripts/test-storage-url.js",
+    "sync-specs": "node scripts/sync-specs.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",
@@ -39,6 +40,8 @@
     "@radix-ui/react-tooltip": "^1.2.7",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
+    "@tanstack/react-query": "^5.96.1",
+    "@tanstack/react-query-devtools": "^5.96.1",
     "@tanstack/react-table": "^8.20.5",
     "autoprefixer": "10.4.17",
     "class-variance-authority": "^0.7.1",
@@ -70,7 +73,8 @@
     "upgrade": "^1.1.0",
     "webm-duration-fix": "^1.0.4",
     "zod": "^3.23.8",
-    "zod-defaults": "^0.1.3"
+    "zod-defaults": "^0.1.3",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

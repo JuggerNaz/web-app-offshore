@@ -22,30 +22,46 @@ import {
     CheckCircle2,
     CheckSquare,
     ChevronDown,
+    ChevronRight,
+    ChevronUp,
     ClipboardCheck,
     ClipboardList,
     Clock,
     CloudUpload,
+    Database,
+    Download,
     Edit,
+    Edit2,
+    ExternalLink,
+    Eye,
     FileClock,
     FileSpreadsheet,
     FileText,
+    FolderOpen,
     History,
     Info,
     Layers,
     Layout,
+    LayoutDashboard,
     LineChart,
     List,
     ListTodo,
     Loader2,
+    Lock,
     MapPin,
     Maximize2,
+    Menu,
+    MessageSquare,
+    MoreVertical,
+    Monitor,
+    Package,
     Paperclip,
     Pause,
     Play,
     Plus,
     Power,
     Printer,
+    RefreshCw,
     Save,
     Search,
     Settings,
@@ -56,8 +72,10 @@ import {
     VideoOff,
     Waves,
     Wifi,
-    X
+    X,
+    ArrowUpDown
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
@@ -116,6 +134,9 @@ import { TapeLogEvents } from "./components/TapeLogEvents";
 import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
+import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
+import inspectionRegistry from "@/utils/types/inspection-types.json";
+import { resolveInspectionType } from "@/utils/inspection-schema";
 
 export default function WorkspaceV2Page() {
     return (
@@ -129,43 +150,13 @@ function V10PreviewLayout() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const supabase = createClient();
+    const queryClient = useQueryClient();
 
     const jobPackId = searchParams.get('jobpack');
     const structureId = searchParams.get('structure');
     const sowIdFull = searchParams.get('sow');
     const sowId = sowIdFull?.split('-')[0];
     const initialMode = searchParams.get('mode') as "DIVING" | "ROV" | null;
-
-    // Helper to handle prop changes and track user interaction
-    const handleDynamicPropChange = (name: string, value: any) => {
-        setDynamicProps(prev => ({ ...prev, [name]: value }));
-        setIsUserInteraction(true);
-    };
-
-    const handleRequiredPropChange = (name: string, value: any) => {
-        setRequiredProps(prev => ({ ...prev, [name]: value }));
-        setIsUserInteraction(true);
-    };
-
-    const renderInspectionField = (p: any, type: 'primary' | 'secondary') => {
-        const handler = type === 'primary' ? handleDynamicPropChange : handleRequiredPropChange;
-        const currentProps = type === 'primary' ? dynamicProps : requiredProps;
-        const currentValue = currentProps[p.name || p.label] || "";
-
-        return (
-            <InspectionField 
-                p={p} 
-                type={type} 
-                handler={handler} 
-                currentValue={currentValue}
-                libOptionsMap={libOptionsMap}
-                openPopovers={openPopovers}
-                setOpenPopovers={setOpenPopovers}
-                selectedComp={selectedComp}
-                setDebouncedProps={setDebouncedProps}
-            />
-        );
-    };
 
     // Jotai State Sync for Dialog
     const [, setGlobalUrlId] = useAtom(urlId);
@@ -180,9 +171,98 @@ function V10PreviewLayout() {
 
     // Mode
     const [inspMethod, setInspMethod] = useState<"DIVING" | "ROV">(initialMode || "DIVING");
+    const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
 
     const [deployments, setDeployments] = useState<any[]>([]);
     const [activeDep, setActiveDep] = useState<{ id: string, jobNo?: string, name: string, raw?: any } | null>(null);
+
+    // Live session records
+    const [currentRecords, setCurrentRecords] = useState<any[]>([]);
+    const [historicalRecords, setHistoricalRecords] = useState<any[]>([]);
+    const [currentCompRecords, setCurrentCompRecords] = useState<any[]>([]);
+
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+        key: 'cr_date',
+        direction: 'desc'
+    });
+
+    const [unitSystem, setUnitSystem] = useState<"METRIC" | "IMPERIAL">("METRIC");
+
+    // Fetch Global Unit Preference
+    useEffect(() => {
+        async function fetchSettings() {
+            try {
+                const { data } = await supabase.from('company_settings').select('def_unit').single();
+                if (data?.def_unit) {
+                    setUnitSystem(data.def_unit as "METRIC" | "IMPERIAL");
+                }
+            } catch (e) {
+                console.error("Error fetching unit preference:", e);
+            }
+        }
+        fetchSettings();
+    }, [supabase]);
+
+    // Handle sorting for Captured Events
+    const handleSort = (key: string) => {
+        setSortConfig(prev => {
+            if (prev.key === key) {
+                return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+            }
+            return { key, direction: 'asc' };
+        });
+    };
+
+    const sortedRecords = useMemo(() => {
+        if (!currentRecords || currentRecords.length === 0) return [];
+        
+        const sortableRecords = [...currentRecords];
+        sortableRecords.sort((a, b) => {
+            let aVal: any;
+            let bVal: any;
+
+            switch (sortConfig.key) {
+                case 'cr_date':
+                    aVal = new Date(a.cr_date || 0).getTime();
+                    bVal = new Date(b.cr_date || 0).getTime();
+                    break;
+                case 'type':
+                    aVal = (a.inspection_type?.name || '').toLowerCase();
+                    bVal = (b.inspection_type?.name || '').toLowerCase();
+                    break;
+                case 'component':
+                    aVal = (a.structure_components?.q_id || '').toLowerCase();
+                    bVal = (b.structure_components?.q_id || '').toLowerCase();
+                    break;
+                case 'elev':
+                    const aE = parseFloat(a.elevation);
+                    const bE = parseFloat(b.elevation);
+                    aVal = isNaN(aE) ? (a.fp_kp || '') : aE;
+                    bVal = isNaN(bE) ? (b.fp_kp || '') : bE;
+                    break;
+                case 'status':
+                    // Priority: Anomaly > Incomplete > Completed
+                    const getStatusWeight = (r: any) => {
+                        if (r.has_anomaly) return 3;
+                        if (r.status === 'INCOMPLETE') return 2;
+                        if (r.status === 'COMPLETED') return 1;
+                        return 0;
+                    };
+                    aVal = getStatusWeight(a);
+                    bVal = getStatusWeight(b);
+                    break;
+                default:
+                    aVal = a[sortConfig.key];
+                    bVal = b[sortConfig.key];
+            }
+
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+        
+        return sortableRecords;
+    }, [currentRecords, sortConfig]);
     const [isFetchingDeps, setIsFetchingDeps] = useState(true);
     const [isDeploymentValid, setIsDeploymentValid] = useState(true);
     const [syncLoading, setSyncLoading] = useState(false);
@@ -222,6 +302,40 @@ function V10PreviewLayout() {
     const [newTapeChapter, setNewTapeChapter] = useState("");
     const [newTapeRemarks, setNewTapeRemarks] = useState("");
 
+    // Synchronize recording duration and vidState upon changing active tape
+    useEffect(() => {
+        if (!tapeId) {
+            setVidTimer(0);
+            setVidState("IDLE");
+            return;
+        }
+
+        const tapeLogs = videoEvents.filter(evt => String(evt.tape_id) === String(tapeId) && evt.logType === 'video_log');
+        if (tapeLogs.length > 0) {
+            // videoEvents are sorted DESC by eventTime, so [0] is the latest
+            const lastLog = tapeLogs[0];
+            const stateLog = tapeLogs.find(l => ['Start Tape', 'Resume', 'Pause', 'Stop Tape'].includes(l.action));
+            
+            const currentState = stateLog ? stateLog.action : lastLog.action;
+            const isRecording = currentState === "Start Tape" || currentState === "Resume";
+            const isStopped = currentState === "Stop Tape";
+            
+            setVidState(isRecording ? "RECORDING" : (isStopped ? "IDLE" : "PAUSED"));
+            
+            let currentCounter = lastLog.tape_counter_start || 0;
+            if (isRecording) {
+                const startTime = new Date(lastLog.eventTime).getTime();
+                const now = new Date().getTime();
+                const elapsedSeconds = Math.floor((now - startTime) / 1000);
+                currentCounter += Math.max(0, elapsedSeconds);
+            }
+            setVidTimer(currentCounter);
+        } else {
+            setVidTimer(0);
+            setVidState("IDLE");
+        }
+    }, [tapeId, videoEvents]);
+
     // Auto-populate tape number when opening the new tape dialog
     useEffect(() => {
         if (isNewTapeOpen) {
@@ -243,10 +357,7 @@ function V10PreviewLayout() {
         }
     }, [isNewTapeOpen]);
 
-    // Live session records
-    const [currentRecords, setCurrentRecords] = useState<any[]>([]);
-    const [historicalRecords, setHistoricalRecords] = useState<any[]>([]);
-    const [currentCompRecords, setCurrentCompRecords] = useState<any[]>([]);
+    // Live session records (MOVED UP)
     const [streamTimer, setStreamTimer] = useState(0);
     const [isStreamRecording, setIsStreamRecording] = useState(false);
     const [isStreamPaused, setIsStreamPaused] = useState(false);
@@ -283,6 +394,7 @@ function V10PreviewLayout() {
     }>>([]);
     const [isAttachmentManagerOpen, setIsAttachmentManagerOpen] = useState(false);
     const [viewingRecordAttachments, setViewingRecordAttachments] = useState<any[] | null>(null);
+    const [selectorShowAll, setSelectorShowAll] = useState(false);
 
     // Drawing Tools state
     const [currentTool, setCurrentTool] = useState<DrawingTool>('pen');
@@ -335,6 +447,16 @@ function V10PreviewLayout() {
     const [isAddInspOpen, setIsAddInspOpen] = useState(false);
     const [photoLinked, setPhotoLinked] = useState(false);
     const [recordNotes, setRecordNotes] = useState("");
+    
+    // Reclassification States
+    const [pendingReclass, setPendingReclass] = useState<{ type: 'COMPONENT' | 'TASK', newComponent: any, newTask: string | null, componentTaskStatuses: any[], orphanedFields: string[] } | null>(null);
+    const [originalRecordContext, setOriginalRecordContext] = useState<any>(null);
+    const [archivedData, setArchivedData] = useState<Record<string, any>>({});
+    const [showTaskSelector, setShowTaskSelector] = useState(false);
+    const [showCompSelector, setShowCompSelector] = useState(false);
+    const [compSelectorSearch, setCompSelectorSearch] = useState("");
+
+    const [addTaskSearch, setAddTaskSearch] = useState("");
 
     // Edit Settings States
     const [isVideoSettingsOpen, setIsVideoSettingsOpen] = useState(false);
@@ -383,6 +505,39 @@ function V10PreviewLayout() {
     const [incompleteReason, setIncompleteReason] = useState("");
     const [openPopovers, setOpenPopovers] = useState<Record<string, boolean>>({});
     const [libOptionsMap, setLibOptionsMap] = useState<Record<string, any[]>>({});
+
+    // Helper to handle prop changes and track user interaction
+    const handleDynamicPropChange = (name: string, value: any) => {
+        setDynamicProps(prev => ({ ...prev, [name]: value }));
+        setIsUserInteraction(true);
+    };
+
+    const handleRequiredPropChange = (name: string, value: any) => {
+        setRequiredProps(prev => ({ ...prev, [name]: value }));
+        setIsUserInteraction(true);
+    };
+
+    const renderInspectionField = (p: any, type: 'primary' | 'secondary') => {
+        const handler = type === 'primary' ? handleDynamicPropChange : handleRequiredPropChange;
+        const currentProps = type === 'primary' ? dynamicProps : requiredProps;
+        const currentValue = currentProps[p.name || p.label] || "";
+
+        return (
+            <InspectionField 
+                p={p} 
+                type={type} 
+                handler={handler} 
+                currentValue={currentValue}
+                libOptionsMap={libOptionsMap}
+                openPopovers={openPopovers}
+                setOpenPopovers={setOpenPopovers}
+                selectedComp={selectedComp}
+                setDebouncedProps={setDebouncedProps}
+                unitSystem={unitSystem}
+                dynamicProps={dynamicProps}
+            />
+        );
+    };
 
     const [criteriaRules, setCriteriaRules] = useState<any[]>([]);
     const [pendingRule, setPendingRule] = useState<any>(null);
@@ -491,14 +646,141 @@ function V10PreviewLayout() {
     const jpParam = searchParams.get('jpName');
     const strParam = searchParams.get('structName');
     const sowParam = searchParams.get('sowReport');
+    const jtParam = searchParams.get('jobType');
 
     // Header Data
-    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, structureType: 'platform' | 'pipeline' }>({
+    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, jobType: string, structureType: 'platform' | 'pipeline' }>({
         jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
         platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
         sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
+        jobType: jtParam || "",
         structureType: 'platform'
     });
+
+    /**
+     * Robust SOW Status Synchronization
+     * Derived from aggregated insp_records for a specific COMPONENT + TASK
+     */
+    const syncSowStatus = useCallback(async (compId: number, taskInput: string) => {
+        if (!sowId) return;
+
+        // 1. Resolve the canonical task info FIRST
+        // This handles cases where taskInput is either a Code (RGVI) or Name (General Visual Inspection)
+        const it = allInspectionTypes.find(t => 
+            t.code === taskInput || 
+            t.name?.toLowerCase() === taskInput.toLowerCase()
+        );
+        
+        if (!it) {
+            console.warn(`[SOW Sync] Skip: Could not resolve task "${taskInput}" in inspection library.`);
+            return;
+        }
+
+        const taskCode = it.code; // Canonical code
+
+        // 2. Get all records for this component + canonical task
+        let inspsQuery = supabase.from('insp_records')
+            .select('insp_id, status, has_anomaly, inspection_data')
+            .eq('component_id', compId)
+            .eq('inspection_type_code', taskCode);
+
+        if (structureId && !isNaN(Number(structureId))) {
+            inspsQuery = inspsQuery.eq('structure_id', Number(structureId));
+        }
+        if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+            inspsQuery = inspsQuery.eq('sow_report_no', headerData.sowReportNo);
+        }
+
+        const { data: records, error: fetchError } = await inspsQuery
+            .order('inspection_date', { ascending: false })
+            .order('inspection_time', { ascending: false });
+
+        if (fetchError) {
+            console.error(`[SOW Sync] Status fetch failed for ${taskCode}:`, fetchError);
+            return;
+        }
+
+        let newStatus: 'pending' | 'completed' | 'incomplete' = 'pending';
+        
+        if (records && records.length > 0) {
+            // Check for incomplete (latest record takes precedence for 'incomplete')
+            const latest = records[0];
+            if (latest.status?.toLowerCase() === 'incomplete') {
+                newStatus = 'incomplete';
+            } else {
+                newStatus = 'completed';
+            }
+        }
+
+        // 3. Upsert into u_sow_items (Aligned with documented schema)
+        const { data: existing } = await supabase.from('u_sow_items')
+            .select('id')
+            .eq('sow_id', Number(sowId))
+            .eq('component_id', compId)
+            .eq('inspection_code', taskCode) // Canonical lookup
+            .maybeSingle();
+
+        const userRes = await supabase.auth.getUser();
+        const user = userRes.data.user;
+        const userName = user?.user_metadata?.full_name || user?.email || user?.id || 'system';
+
+        if (existing) {
+            // Update: Set status and metadata
+            const { error: updateErr } = await supabase.from('u_sow_items')
+                .update({ 
+                    status: newStatus,
+                    updated_at: new Date().toISOString(),
+                    updated_by: userName
+                })
+                .eq('id', existing.id);
+            
+            if (updateErr) console.error("[SOW Sync] Update error:", updateErr);
+        } else if (newStatus !== 'pending') {
+            // Auto-add to SOW if we have records but no SOW entry
+            const compObj = allComps.find(c => c.id === compId);
+            
+            console.log(`[Status Sync] -> AUTO-ADDING to SOW: ${compObj?.name || compId} with task ${taskCode}`);
+            
+            const { error: insertError } = await supabase.from('u_sow_items').insert({
+                sow_id: Number(sowId),
+                component_id: compId,
+                component_qid: compObj?.name || compObj?.q_id || `COMP-${compId}`,
+                component_type: compObj?.raw?.type || null,
+                inspection_type_id: it.id,
+                inspection_code: taskCode,
+                inspection_name: it.name,
+                status: newStatus,
+                report_number: headerData.sowReportNo,
+                elevation_required: false,
+                created_by: userName,
+                updated_by: userName
+            });
+
+            if (!insertError) {
+                toast.success(`Component ${compObj?.name || compId} added to SOW.`);
+                
+                // Keep totals synchronized
+                const { data: sowData } = await supabase.from('u_sow')
+                    .select('total_items, pending_items')
+                    .eq('id', Number(sowId))
+                    .maybeSingle();
+
+                if (sowData) {
+                    await supabase.from('u_sow').update({
+                        total_items: (sowData.total_items || 0) + 1,
+                        updated_by: userName,
+                        updated_at: new Date().toISOString()
+                    }).eq('id', Number(sowId));
+                }
+            } else {
+                console.error("[SOW Sync] Auto-add SOW failed:", insertError);
+                toast.error(`Database error adding ${compObj?.name || 'component'}: ${insertError.message}`);
+            }
+        }
+
+        // 4. Invalidate query to refresh UI (including sidebar)
+        queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+    }, [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData, structureId]);
 
     useEffect(() => {
         async function fetchHeaderInfo() {
@@ -544,10 +826,10 @@ function V10PreviewLayout() {
                 }
             }
 
-            setHeaderData({ jobpackName, platformName, sowReportNo, structureType: detectedStructureType });
+            setHeaderData({ jobpackName, platformName, sowReportNo, jobType: jtParam || "", structureType: detectedStructureType });
         }
         fetchHeaderInfo();
-    }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam]);
+    }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam]);
 
     useEffect(() => {
         if ((findingType === 'Anomaly' || findingType === 'Finding') && !anomalyData.referenceNo) {
@@ -635,6 +917,28 @@ function V10PreviewLayout() {
         }
     };
 
+    const handleDeleteTape = async (tapeIdToDelete: number) => {
+        // Double check no events exist
+        const hasEvents = videoEvents.some(evt => String(evt.tape_id) === String(tapeIdToDelete));
+        if (hasEvents) {
+            toast.error("Tape has video logs and cannot be deleted");
+            return;
+        }
+
+        const { error } = await supabase.from('insp_video_tapes').delete().eq('tape_id', tapeIdToDelete);
+        if (error) {
+            toast.error("Failed to delete tape: " + error.message);
+        } else {
+            toast.success("Tape deleted successfully");
+            setJobTapes(prev => prev.filter(t => t.tape_id !== tapeIdToDelete));
+            if (tapeId === tapeIdToDelete) {
+                setTapeId(null);
+                setTapeNo("");
+                setVidTimer(0);
+            }
+        }
+    };
+
     const handleDeleteRecord = async (id: number) => {
         // Fetch record to check for latest anomaly/finding rule
         const { data: record } = await supabase.from('insp_records')
@@ -691,62 +995,18 @@ function V10PreviewLayout() {
                 return;
             }
 
-            if (record) {
-                // Fetch ALL remaining records... (rest of the logic from 825-871)
-                const { data: allRemaining } = await supabase
-                    .from('insp_records')
-                    .select('insp_id, status, has_anomaly, inspection_date')
-                    .eq('jobpack_id', record.jobpack_id)
-                    .eq('component_id', record.component_id)
-                    .eq('inspection_type_id', record.inspection_type_id)
-                    .eq('sow_report_no', record.sow_report_no);
-
-                let bestStatus = 'pending';
-                if (allRemaining && allRemaining.length > 0) {
-                    const hasAnom = allRemaining.some(r => r.has_anomaly);
-                    const isIncomplete = allRemaining.some(r => r.status === 'INCOMPLETE');
-                    const isCompleted = allRemaining.some(r => r.status === 'COMPLETED');
-                    
-                    if (hasAnom) bestStatus = 'anomaly';
-                    else if (isIncomplete) bestStatus = 'incomplete';
-                    else if (isCompleted) bestStatus = 'completed';
-                }
-
-                await supabase.from('u_sow_items')
-                    .update({ 
-                        status: bestStatus === 'anomaly' ? 'completed' : bestStatus, 
-                        last_inspection_date: allRemaining?.length ? allRemaining[0].inspection_date : null 
-                    })
-                    .eq('sow_id', sowId)
-                    .eq('component_id', record.component_id)
-                    .filter('inspection_type_id', record.inspection_type_id ? 'eq' : 'is', record.inspection_type_id || null);
-
-                // Optimistically update the UI Component List status
-                setComponentsSow(prev => prev.map(comp => {
-                    if (comp.id === record.component_id) {
-                        return {
-                            ...comp,
-                            taskStatuses: comp.taskStatuses.map((ts: any) => {
-                                if (ts.code === record.inspection_type_code) {
-                                    return { ...ts, status: bestStatus === 'anomaly' ? 'completed' : bestStatus };
-                                }
-                                return ts;
-                            })
-                        };
-                    }
-                    return comp;
-                }));
+            if (record && record.component_id && record.inspection_type_code) {
+                await syncSowStatus(record.component_id, record.inspection_type_code);
             }
 
-            toast.success("Record and associated media deleted successfully");
-            setCurrentRecords(prev => prev.filter(r => r.insp_id !== id));
-            setVideoEvents(prev => prev.filter(ev => ev.inspectionId !== id));
+            toast.success("Record deleted");
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+            queryClient.invalidateQueries({ queryKey: ['inspection-records'] });
             
             if (editingRecordId !== null && Number(id) === Number(editingRecordId)) {
                 resetForm();
             }
             
-            fetchHistory();
             syncDeploymentState();
         } catch (error) {
             console.error("Error deleting record:", error);
@@ -783,6 +1043,148 @@ function V10PreviewLayout() {
         setPendingAttachments([]);
     };
 
+    // Re-classification Logic
+    const diffSpecifications = (newComp: any, newTaskCode: string) => {
+        const newIt = allInspectionTypes.find(t => t.code === newTaskCode || t.name === newTaskCode);
+        const specProps = newIt?.default_properties || [];
+        let newPropsList: any[] = [];
+        if (typeof specProps === 'string') {
+             try {
+                 const parsed = JSON.parse(specProps);
+                 newPropsList = Array.isArray(parsed) ? parsed : (parsed.properties || []);
+             } catch (e) { }
+        } else if (Array.isArray(specProps)) {
+             newPropsList = [...specProps];
+        }
+
+        if (newComp?.type?.toUpperCase() === 'ANODE') {
+            newPropsList = newPropsList.filter(p => !['length', 'width', 'height', 'diameter', 'coating', 'weld_number'].includes(p.name));
+            newPropsList.unshift(
+                { name: 'anode_type', label: 'Anode Type', type: 'select', options: ['Stand-off', 'Flush', 'Bracelet', 'Sled'] },
+                { name: 'depletion', label: 'Depletion (%)', type: 'number', validation: { min: 0, max: 100 } }
+            );
+        } else if (newComp?.type?.toUpperCase() === 'PIPELINE') {
+            newPropsList.unshift({ name: 'kp', label: 'Kilometer Post (KP)', type: 'text' });
+        }
+        
+        const newFieldNames = new Set(newPropsList.map(p => p.name));
+        const orphaned: string[] = [];
+        
+        Object.keys(dynamicProps).forEach(key => {
+            if (key.startsWith('_')) return; // ignore metadata
+            if (!newFieldNames.has(key)) {
+                orphaned.push(key);
+            }
+        });
+        
+        return orphaned;
+    };
+
+    const handleComponentSelection = (c: any) => {
+        if (editingRecordId && selectedComp && c.id !== selectedComp.id) {
+            const orphaned = diffSpecifications(c, activeSpec || '');
+            setPendingReclass({
+                type: 'COMPONENT',
+                newComponent: c,
+                newTask: activeSpec,
+                componentTaskStatuses: c.taskStatuses || [],
+                orphanedFields: orphaned
+            });
+        } else {
+            setSelectedComp(c);
+            resetForm();
+        }
+    };
+
+    const confirmReclassification = async () => {
+        if (!pendingReclass || !editingRecordId) return;
+        const { newComponent, newTask, orphanedFields } = pendingReclass;
+        
+        try {
+            setIsCommitting(true);
+            const userRes = await supabase.auth.getUser();
+            const user = userRes.data.user;
+            
+            // 1. Prepare updated record data
+            const updatedData = { ...dynamicProps };
+            const updatedArchive = { ...archivedData };
+            
+            // Archive orphaned fields
+            if (orphanedFields && orphanedFields.length > 0) {
+                orphanedFields.forEach(f => {
+                    if (updatedData[f] !== undefined) {
+                        updatedArchive[f] = updatedData[f];
+                        delete updatedData[f];
+                    }
+                });
+            }
+
+            // 2. Perform Database Update
+            const payload: any = {
+                component_id: newComponent?.id,
+                inspection_type_id: allInspectionTypes.find(t => t.code === newTask)?.id,
+                inspection_type_code: newTask,
+                inspection_data: updatedData,
+                archived_data: updatedArchive,
+                md_user: user?.id || 'system'
+            };
+
+            const { error: updateErr } = await supabase.from('insp_records')
+                .update(payload)
+                .eq('insp_id', editingRecordId);
+
+            if (updateErr) throw updateErr;
+
+            // 3. SOW Status Synchronization (Rollback Old & Commit New)
+            if (sowId && originalRecordContext) {
+                // Rollback original component/task
+                await syncSowStatus(originalRecordContext.component_id, originalRecordContext.inspection_type_code);
+                
+                // Commit new component/task
+                if (newComponent && newTask) {
+                    await syncSowStatus(newComponent.id, newTask);
+                }
+            }
+
+            // 4. Update local state and cleanup
+            if (newComponent) setSelectedComp(newComponent);
+            if (newTask) setActiveSpec(newTask);
+            setDynamicProps(updatedData);
+            setArchivedData(updatedArchive);
+            setPendingReclass(null);
+            
+            // Invalidate queries
+            queryClient.invalidateQueries({ queryKey: ['inspection-records'] });
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+            
+            toast.success("Record re-classified successfully");
+            syncDeploymentState(); // Refresh history/events
+        } catch (err: any) {
+            console.error("Re-classification failed:", err);
+            toast.error(`Failed to move record: ${err.message}`);
+        } finally {
+            setIsCommitting(false);
+        }
+    };
+
+    const handleTaskChange = (newTask: string) => {
+        if (!selectedComp || !editingRecordId) {
+            setActiveSpec(newTask);
+            setShowTaskSelector(false);
+            return;
+        }
+        
+        const orphaned = diffSpecifications(selectedComp, newTask);
+        setPendingReclass({
+            type: 'TASK',
+            newComponent: selectedComp,
+            newTask: newTask,
+            componentTaskStatuses: selectedComp.taskStatuses || [],
+            orphanedFields: orphaned
+        });
+        setShowTaskSelector(false);
+    };
+
     const [dataAcqFields, setDataAcqFields] = useState<Array<{ label: string, targetField: string, value: string }>>([]);
     const [dataAcqConnected, setDataAcqConnected] = useState(false);
     const [dataAcqConnecting, setDataAcqConnecting] = useState(false);
@@ -809,9 +1211,9 @@ function V10PreviewLayout() {
         }
 
         if (!settings) {
-            setDataAcqError('No settings configured. Go to Settings → Data Acquisition to configure.');
+            setDataAcqError('No settings configured. Go to Settings â†’ Data Acquisition to configure.');
             setDataAcqConnecting(false);
-            toast.error('Data acquisition settings not found. Please configure in Settings → Data Acquisition.');
+            toast.error('Data acquisition settings not found. Please configure in Settings â†’ Data Acquisition.');
             return;
         }
 
@@ -1376,6 +1778,22 @@ function V10PreviewLayout() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
 
+    const parseTimecode = (t: string) => {
+        if (!t) return 0;
+        if (typeof t === 'number') return t;
+        const parts = t.split(':').map(Number);
+        if (parts.length === 3) return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+        if (parts.length === 2) return (parts[0] || 0) * 60 + (parts[1] || 0);
+        return isNaN(parts[0]) ? 0 : parts[0];
+    };
+
+    const isValidTimeFormat = (t: string) => {
+        if (!t || t === '--') return false;
+        // Regex for HH:mm:ss - Allows hours beyond 24 for tape counters
+        const regex = /^(\d{1,5}):([0-5]?\d):([0-5]?\d)$/;
+        return regex.test(String(t));
+    };
+
     // Auto Timer (Tape Log)
     useEffect(() => {
         let interval: NodeJS.Timeout;
@@ -1445,10 +1863,19 @@ function V10PreviewLayout() {
             // FALLBACK: If no tapes found in insp_video_tapes, check if there are any used in insp_records
             if (!tapes || tapes.length === 0) {
                 console.log("[Sync] No tapes found in insp_video_tapes table. Checking insp_records for associated tapes...");
-                const { data: recTapes } = await supabase.from('insp_records')
+                let recTapesQuery = supabase.from('insp_records')
                     .select('tape_id')
                     .eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', depId)
                     .not('tape_id', 'is', null);
+
+                if (structureId && !isNaN(Number(structureId))) {
+                   recTapesQuery = recTapesQuery.eq('structure_id', Number(structureId));
+                }
+                if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                   recTapesQuery = recTapesQuery.eq('sow_report_no', headerData.sowReportNo);
+                }
+
+                const { data: recTapes } = await recTapesQuery;
 
                 if (recTapes && recTapes.length > 0) {
                     const uniqueTapeIds = Array.from(new Set(recTapes.map(r => r.tape_id)));
@@ -1524,18 +1951,29 @@ function V10PreviewLayout() {
                         action: l.event_type === "NEW_LOG_START" ? "Start Tape" : l.event_type === "END" ? "Stop Tape" : l.event_type === "PAUSE" ? "Pause" : l.event_type === "RESUME" ? "Resume" : l.event_type,
                         logType: 'video_log',
                         eventTime: parseDbDate(l.event_time).toISOString(),
-                        inspectionId: l.inspection_id
+                        inspectionId: l.inspection_id,
+                        tape_id: l.tape_id,
+                        tape_counter_start: l.tape_counter_start || 0
                     })));
                 }
             }
 
             // 4. Fetch Inspection Records
             const inspCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
-            const { data: insps, error: inspErr } = await supabase.from('insp_records').select(`
+            let inspsQuery = supabase.from('insp_records').select(`
                 *,
                 inspection_type:inspection_type_id!left(id, code, name),
                 structure_components:component_id!left (q_id, code)
             `).eq(inspCol, depId);
+
+            if (structureId && !isNaN(Number(structureId))) {
+               inspsQuery = inspsQuery.eq('structure_id', Number(structureId));
+            }
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+               inspsQuery = inspsQuery.eq('sow_report_no', headerData.sowReportNo);
+            }
+
+            const { data: insps, error: inspErr } = await inspsQuery;
 
             if (inspErr) {
                 console.error("[Sync] Inspection fetch error:", inspErr);
@@ -1572,7 +2010,8 @@ function V10PreviewLayout() {
                             time: r.inspection_data?._meta_timecode || '00:00:00',
                             action: status,
                             logType: 'insp',
-                            eventTime: r.inspection_date && r.inspection_time ? format(parseDbDate(`${r.inspection_date} ${r.inspection_time}`), "yyyy-MM-dd'T'HH:mm:ss") : format(new Date(), "yyyy-MM-dd'T'HH:mm:ss")
+                            eventTime: r.inspection_date && r.inspection_time ? format(parseDbDate(`${r.inspection_date} ${r.inspection_time}`), "yyyy-MM-dd'T'HH:mm:ss") : format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"),
+                            tape_id: r.tape_id
                         });
                     }
                 });
@@ -1587,7 +2026,7 @@ function V10PreviewLayout() {
         } finally {
             setSyncLoading(false);
         }
-    }, [activeDep, inspMethod, supabase, parseDbDate]);
+    }, [activeDep, inspMethod, supabase, parseDbDate, structureId, headerData.sowReportNo]);
 
 
     // Active deployment effect: sync tape, movements, records
@@ -1598,11 +2037,16 @@ function V10PreviewLayout() {
     const fetchHistory = useCallback(async () => {
         if (!selectedComp || !structureId) return;
         
-        // Fetch all records for this component (no FK joins - they are unreliable)
-        const { data, error } = await supabase.from('insp_records')
+        let query = supabase.from('insp_records')
             .select('*')
             .eq('component_id', selectedComp.id)
-            .order('cr_date', { ascending: false });
+            .eq('structure_id', Number(structureId));
+
+        if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+            query = query.eq('sow_report_no', headerData.sowReportNo);
+        }
+
+        const { data, error } = await query.order('cr_date', { ascending: false });
 
         if (error || !data) {
             console.error("Error fetching component history:", error);
@@ -1765,7 +2209,7 @@ function V10PreviewLayout() {
         const tcode = formatTime(currentTimer);
         const now = new Date();
         const eventTime = format(now, "yyyy-MM-dd'T'HH:mm:ss");
-        setVideoEvents([{ id: optimisticId, realId: 0, time: tcode, action, logType: 'video_log', eventTime }, ...videoEvents]);
+        setVideoEvents([{ id: optimisticId, realId: 0, time: tcode, action, logType: 'video_log', eventTime, tape_id: tapeId, tape_counter_start: currentTimer }, ...videoEvents]);
 
         // Map UI labels to valid DB constraint values
         let dbAction = action;
@@ -1970,6 +2414,57 @@ function V10PreviewLayout() {
         }
     };
 
+    const handleOpenEditTape = () => {
+        const tape = jobTapes.find(t => t.tape_id === tapeId);
+        if (tape) {
+            setEditTapeNo(tape.tape_no || "");
+            setEditTapeChapter(String(tape.chapter_no || ""));
+            setEditTapeRemarks(tape.remarks || "");
+            setEditTapeStatus(tape.status || "ACTIVE");
+            setIsEditTapeOpen(true);
+        }
+    };
+
+    const handleSaveTapeEdit = async () => {
+        if (!tapeId) return;
+        setIsCommitting(true);
+        try {
+            const { error } = await supabase.from('insp_video_tapes')
+                .update({
+                    tape_no: editTapeNo,
+                    chapter_no: parseInt(editTapeChapter) || 1,
+                    remarks: editTapeRemarks,
+                    status: editTapeStatus
+                })
+                .eq('tape_id', tapeId);
+
+            if (error) throw error;
+
+            // Update local state
+            setJobTapes(prev => prev.map(t => t.tape_id === tapeId ? {
+                ...t,
+                tape_no: editTapeNo,
+                chapter_no: parseInt(editTapeChapter) || 1,
+                remarks: editTapeRemarks,
+                status: editTapeStatus
+            } : t));
+            
+            setTapeNo(editTapeNo);
+            setActiveChapter(parseInt(editTapeChapter) || 1);
+            
+            setIsEditTapeOpen(false);
+            toast.success("Tape details updated successfully");
+            
+            // Refresh history to ensure tape numbers in table are updated
+            fetchHistory();
+        } catch (err: any) {
+            console.error("Failed to update tape:", err);
+            toast.error(`Update failed: ${err.message}`);
+        } finally {
+            setIsCommitting(false);
+        }
+    };
+
     // Calibration Required Spec Fetching
     useEffect(() => {
         if (!activeSpec || !activeDep?.id) {
@@ -2007,10 +2502,19 @@ function V10PreviewLayout() {
 
             // Fetch existing calibration record for current dive/rov job
             const jobCol = inspMethod === 'DIVING' ? 'dive_job_id' : 'rov_job_id';
-            const { data, error } = await supabase.from('insp_records')
+            let calibQuery = supabase.from('insp_records')
                 .select('*')
                 .eq(jobCol, activeDep.id)
-                .eq('inspection_type_code', reqCode)
+                .eq('inspection_type_code', reqCode);
+
+            if (structureId && !isNaN(Number(structureId))) {
+               calibQuery = calibQuery.eq('structure_id', Number(structureId));
+            }
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+               calibQuery = calibQuery.eq('sow_report_no', headerData.sowReportNo);
+            }
+
+            const { data, error } = await calibQuery
                 .order('insp_id', { ascending: false })
                 .limit(1)
                 .maybeSingle();
@@ -2024,7 +2528,7 @@ function V10PreviewLayout() {
             }
         };
         runCheck();
-    }, [activeSpec, activeDep?.id, allInspectionTypes, inspMethod]);
+    }, [activeSpec, activeDep?.id, allInspectionTypes, inspMethod, structureId, headerData.sowReportNo]);
 
     // Handle method switch overriding deps
     useEffect(() => {
@@ -2066,31 +2570,38 @@ function V10PreviewLayout() {
                 query = query.eq('structure_id', Number(structureId));
             }
 
+            // ADD SOW FILTERING
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                query = query.eq('sow_report_no', headerData.sowReportNo);
+            }
+
             const { data, error } = await query;
             let results = data || [];
             if (error) {
-                console.warn("[fetchDeps] Primary fetch error (will try fallback):", error.message);
+                console.warn("[fetchDeps] Primary fetch error:", error.message);
                 results = [];
             }
 
-            if (results.length === 0) {
-                console.log(`[fetchDeps] No records with strict filters. Trying fallback (jobpack only)...`);
-                const { data: fallbackData, error: fbErr } = await supabase.from(table).select('*').eq('jobpack_id', queryJobPackId).order(idCol, { ascending: false }).limit(10);
-                if (!fbErr && fallbackData) results = fallbackData;
-            }
+            // REMOVED BAD FALLBACK (that was cross-pollinating jobs)
 
-            // DEEP FALLBACK: If still empty, check if any inspection records exist for this jobpack/structure
+            // DEEP FALLBACK: If still empty, check if any inspection records exist for this jobpack/structure/sow
             // This happens if the job records were deleted but the inspection records remain.
             if (results.length === 0) {
                 console.log(`[fetchDeps] No job records found in ${table}. Checking insp_records...`);
                 const targetColumn = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
 
-                const { data: recJobs } = await supabase.from('insp_records')
+                let recQuery = supabase.from('insp_records')
                     .select(targetColumn)
                     .eq('jobpack_id', queryJobPackId)
                     .eq('structure_id', Number(structureId))
                     .not(targetColumn, 'is', null)
                     .limit(10);
+                
+                if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                    recQuery = recQuery.eq('sow_report_no', headerData.sowReportNo);
+                }
+
+                const { data: recJobs } = await recQuery;
 
                 if (recJobs && recJobs.length > 0) {
                     const uniqueJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]).filter(id => id !== null)));
@@ -2137,42 +2648,56 @@ function V10PreviewLayout() {
             setIsFetchingDeps(false);
         }
         fetchDeps();
-    }, [inspMethod, jobPackId, structureId, supabase]);
+    }, [inspMethod, jobPackId, structureId, headerData.sowReportNo, supabase]);
 
-    useEffect(() => {
-        async function fetchComps() {
-            if (!sowId || !structureId) return;
 
-            // First, get ALL components of the structure
-            const { data: allCompsData, error: compErr } = await supabase.from('structure_components')
+    // Replacement: useQuery for SOW and Component Data
+    const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
+        queryKey: ['sow-data', structureId, sowId, headerData.sowReportNo, inspMethod],
+        queryFn: async () => {
+            if (!sowId || !structureId) return { assigned: [], unassigned: [], all: [] };
+
+            // 1. Fetch ALL components
+            const { data: allCompsData } = await supabase.from('structure_components')
                 .select('*')
                 .eq('structure_id', parseInt(structureId));
 
-            if (allCompsData) setAllComps(allCompsData);
-            if (!allCompsData || allCompsData.length === 0) {
-                setComponentsSow([]);
-                setComponentsNonSow([]);
-                return;
+            if (!allCompsData) return { assigned: [], unassigned: [], all: [] };
+
+            // 2. Fetch SOW items
+            const { data: sowItems } = await supabase.from('u_sow_items')
+                .select('*, inspection_type:inspection_type_id!left(id, code, name, metadata)')
+                .eq('sow_id', sowId);
+
+            // 2.5 Fetch actual records for true dynamic status correction
+            let recsQuery = supabase.from('insp_records')
+                .select('component_id, inspection_type_code, status, cr_date')
+                .eq('structure_id', Number(structureId));
+            
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                recsQuery = recsQuery.eq('sow_report_no', headerData.sowReportNo);
             }
 
-            // Then fetch SOW items for the selected `sow_id`
-            const { data: sowItems } = await supabase.from('u_sow_items')
-                .select('*, inspection_type:inspection_type_id!left(id, code, name)')
-                .eq('sow_id', sowId);
+            const { data: actualRecords } = await recsQuery.order('cr_date', { ascending: false });
+
+            // Create truth-mask for component + task
+            const trueStatusMap = new Map<string, string>();
+            if (actualRecords) {
+                actualRecords.forEach((r: any) => {
+                    if (!r.component_id || !r.inspection_type_code) return;
+                    const key = `${r.component_id}_${r.inspection_type_code}`;
+                    // Array is newest first, so first encouter sets the final state
+                    if (!trueStatusMap.has(key)) {
+                        trueStatusMap.set(key, r.status?.toLowerCase() === 'incomplete' ? 'incomplete' : 'completed');
+                    }
+                });
+            }
 
             const assignedCompsMap = new Map<number, { code: string; status: string }[]>();
 
             if (sowItems) {
-                // Fetch full inspection types to get their metadata since it's not joined completely
-                const { data: allTypesData } = await supabase.from('inspection_type').select('*');
-                const typesMap = new Map();
-                if (allTypesData) {
-                    allTypesData.forEach(t => typesMap.set(t.id, t));
-                }
-
                 sowItems.forEach(item => {
-                    const fullTypeData = typesMap.get(item.inspection_type?.id);
-                    const md = fullTypeData?.metadata || {};
+                    const md = item.inspection_type?.metadata || {};
                     const isRov = md.rov === 1 || md.rov === "1" || md.rov === true || md.job_type?.includes('ROV');
                     const isDiving = md.diving === 1 || md.diving === "1" || md.diving === true || md.job_type?.includes('DIVING');
 
@@ -2180,9 +2705,8 @@ function V10PreviewLayout() {
                     if (inspMethod === 'DIVING') isCompatible = isDiving;
                     if (inspMethod === 'ROV') isCompatible = isRov;
 
-                    if (!isCompatible) return; // Skip item if it doesn't match the current mode
+                    if (!isCompatible) return;
 
-                    // match by q_id or component_id or type
                     const matchingComp = (allCompsData || []).find((c: any) =>
                         (item.component_qid && c.q_id === item.component_qid) ||
                         (item.component_id && c.id === item.component_id) ||
@@ -2195,7 +2719,10 @@ function V10PreviewLayout() {
                         }
                         const taskToLog = item.inspection_code || item.inspection_name;
                         if (taskToLog) {
-                            assignedCompsMap.get(matchingComp.id)?.push({ code: taskToLog, status: item.status || 'pending' });
+                            const dynKey1 = `${matchingComp.id}_${item.inspection_code}`;
+                            const dynKey2 = `${matchingComp.id}_${item.inspection_name}`;
+                            const realStatus = trueStatusMap.get(dynKey1) || trueStatusMap.get(dynKey2) || 'pending';
+                            assignedCompsMap.get(matchingComp.id)?.push({ code: taskToLog, status: realStatus });
                         }
                     }
                 });
@@ -2212,10 +2739,8 @@ function V10PreviewLayout() {
                 const startElev = md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || '-';
                 const endElev = md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || '-';
                 const nominalThk = md.nominal_thickness || md.NominalThickness || md.nominal_thk || comp.nominal_thickness || '-';
-
                 const taskItems = assignedCompsMap.get(comp.id) || [];
 
-                // Calculate display elevation: use the lower of elv_1 / elv_2
                 const elv1Num = parseFloat(String(startElev).replace(/[^\d.-]/g, ''));
                 const elv2Num = parseFloat(String(endElev).replace(/[^\d.-]/g, ''));
                 const hasElv1 = !isNaN(elv1Num);
@@ -2223,7 +2748,6 @@ function V10PreviewLayout() {
                 let displayDepth = comp.water_depth || '-0.0m';
                 let lowestElev = '-';
                 if (hasElv1 && hasElv2) {
-                    // if both positive -> lowest (min); if one neg one pos -> neg (min); if both neg -> lowest (min)
                     lowestElev = String(Math.min(elv1Num, elv2Num));
                     displayDepth = `${lowestElev}m`;
                 } else if (hasElv1) {
@@ -2245,56 +2769,53 @@ function V10PreviewLayout() {
                     taskStatuses: Array.from(new Map(taskItems.map(item => [item.code, item])).values())
                 };
 
-                if (isAssigned) {
-                    assigned.push(obj);
-                } else {
-                    unassigned.push(obj);
-                }
+                if (isAssigned) assigned.push(obj);
+                else unassigned.push(obj);
             });
 
-            setComponentsSow(assigned);
-            setComponentsNonSow(unassigned);
+            const combined = [...assigned, ...unassigned];
+            return { assigned, unassigned, all: combined };
+        },
+        staleTime: 30000, // 30 seconds
+    });
+
+    // Populate local states whenever query data resolves
+    useEffect(() => {
+        if (sowAndComps) {
+            setComponentsSow(sowAndComps.assigned);
+            setComponentsNonSow(sowAndComps.unassigned);
+            setAllComps(sowAndComps.all);
         }
-        fetchComps();
-    }, [sowId, structureId, inspMethod, supabase]);
+    }, [sowAndComps]);
 
     useEffect(() => {
         async function fetchInitialLists() {
             // Fetch Inspection Types
             const { data: typesData } = await supabase.from('inspection_type').select('*').order('name');
             if (typesData) {
-                const typeMap = new Map();
-                typesData.forEach(item => {
-                    const key = (item.code || '').trim() || (item.name || '').trim();
-                    if (!key) return; // skip entirely broken records
+                // Merge with JSON Registry
+                const registryMap = new Map();
+                const sharedFields = (inspectionRegistry as any).sharedFields || {};
+                if (inspectionRegistry && inspectionRegistry.inspectionTypes) {
+                    inspectionRegistry.inspectionTypes.forEach(it => {
+                        const resolved = resolveInspectionType(it, sharedFields);
+                        registryMap.set(resolved.code, resolved);
+                    });
+                }
 
-                    const existing = typeMap.get(key);
-                    if (!existing) {
-                        typeMap.set(key, item);
-                    } else {
-                        // Check if existing or new has any valid default_properties
-                        let existingHasProps = false;
-                        let newHasProps = false;
-
-                        try {
-                            if (typeof existing.default_properties === 'string') existingHasProps = JSON.parse(existing.default_properties).length > 0;
-                            else if (Array.isArray(existing.default_properties)) existingHasProps = existing.default_properties.length > 0;
-                            else if (existing.default_properties && typeof existing.default_properties === 'object') existingHasProps = Object.keys(existing.default_properties).length > 0;
-                        } catch (e) { }
-
-                        try {
-                            if (typeof item.default_properties === 'string') newHasProps = JSON.parse(item.default_properties).length > 0;
-                            else if (Array.isArray(item.default_properties)) newHasProps = item.default_properties.length > 0;
-                            else if (item.default_properties && typeof item.default_properties === 'object') newHasProps = Object.keys(item.default_properties).length > 0;
-                        } catch (e) { }
-
-                        // If current lacks props and the new one has props, override
-                        if (!existingHasProps && newHasProps) {
-                            typeMap.set(key, item);
-                        }
+                const mergedTypes = typesData.map(dbType => {
+                    const registryEntry = registryMap.get(dbType.code);
+                    if (registryEntry) {
+                        return {
+                            ...dbType,
+                            default_properties: registryEntry // Store the whole registry entry (including fields, overrides)
+                        };
                     }
+                    return dbType;
                 });
-                setAllInspectionTypes(Array.from(typeMap.values()));
+
+                const discardedCodes = ['PLATGI', 'LOGS', 'EXSUM', 'NAVIG'];
+                setAllInspectionTypes(mergedTypes.filter(it => !discardedCodes.includes(it.code)));
             }
 
             // Fetch Anomaly Lists from Library
@@ -2329,16 +2850,28 @@ function V10PreviewLayout() {
         if (parsed) {
             const raw = selectedComp?.raw || {};
             const compTypeStr = String(raw.type || raw.code || raw.component_type || selectedComp?.type || '').toUpperCase().trim();
+            
+            // Resolve component specific overrides
             const matchingOverrides = parsed.component_overrides?.filter((ov: any) =>
                 ov.component_types && Array.isArray(ov.component_types) && ov.component_types.includes(compTypeStr)
             ) || [];
             
-            // Use the last matching override (most recent) if available
-            const lastMatch = matchingOverrides.length > 0 ? matchingOverrides[matchingOverrides.length - 1] : null;
-            props = lastMatch?.fields || parsed.fields || (Array.isArray(parsed) ? parsed : []);
+            // Priority 1: Component Override Fields (if any)
+            if (matchingOverrides.length > 0) {
+                const lastMatch = matchingOverrides[matchingOverrides.length - 1];
+                if (lastMatch.fields && Array.isArray(lastMatch.fields)) {
+                    // Logic: If override provides fields, we use them. 
+                    // To support "replace/hide", the override fields list is the source.
+                    props = [...lastMatch.fields];
+                } else {
+                    props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
+                }
+            } else {
+                props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
+            }
         }
 
-        // 1. Historical data preservation (Legacy Fields)
+        // 1. Historical data preservation (Legacy Fields) - THE UNION STRATEGY
         if (editingRecordId) {
             const recordRow = currentRecords.find(r => r.insp_id === editingRecordId);
             if (recordRow && recordRow.inspection_data) {
@@ -2348,62 +2881,60 @@ function V10PreviewLayout() {
                         : recordRow.inspection_data;
                     
                     Object.keys(recordData).forEach(key => {
-                        const exists = props.find((p: any) => p.name === key || String(p.label).toLowerCase() === key.toLowerCase());
-                        const ignoreKeys = ['has_anomaly', 'anomalydata', 'defectcode', 'defectreferenceno', 'northing', 'easting', 'elevation', 'kp', 'depth', 'fields', 'inspno', 'strid', 'str_id', 'compid', 'comp_id', 'inspid', 'insp_id', 'record_category', 'incomplete_reason', 'component_overrides'];
+                        // Check if key or label (case insensitive) exists in current props
+                        const exists = props.find((p: any) => 
+                            (p.name && p.name.toLowerCase() === key.toLowerCase()) || 
+                            (p.label && p.label.toLowerCase() === key.toLowerCase())
+                        );
+
+                        const ignoreKeys = [
+                            'has_anomaly', 'anomalydata', 'defectcode', 'defectreferenceno', 
+                            'northing', 'easting', 'elevation', 'kp', 'depth', 'fields', 
+                            'inspno', 'strid', 'str_id', 'compid', 'comp_id', 'inspid', 
+                            'insp_id', 'record_category', 'incomplete_reason', 'component_overrides',
+                            'inspection_date', 'inspection_time', 'tape_count_no'
+                        ];
                         const lowerKey = key.toLowerCase();
                         
+                        // If field has data but isn't in current spec, inject it as Legacy
                         if (!exists && 
                             !ignoreKeys.includes(lowerKey) && 
-                            !lowerKey.startsWith('_meta') && 
-                            !lowerKey.startsWith('_is') && 
-                            !lowerKey.includes('legacy') && 
+                            !lowerKey.startsWith('_') && 
+                            recordData[key] !== null && 
+                            recordData[key] !== undefined &&
+                            recordData[key] !== "" &&
+                            recordData[key] !== "--" &&
                             typeof recordData[key] !== 'object') {
+                            
                             const niceLabel = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                            props.push({ name: key, label: `${niceLabel} (Legacy)`, type: 'text' });
+                            props.push({ 
+                                name: key, 
+                                label: `${niceLabel}`, 
+                                type: 'text',
+                                isLegacy: true 
+                            });
                         }
                     });
                 } catch (e) {}
             }
         }
 
-        // 2. Add ROV specific fields (Northing, Easting) if needed
-        const isRovType = inspMethod === 'ROV' || (String(activeIt?.code || '').toUpperCase().startsWith('R') ||
-            String(activeIt?.name || '').toUpperCase().includes('ROV') ||
-            activeIt?.metadata?.rov == 1);
+        // 2. Add technical fields (Northing, Easting) for ROV automatically if not present
+        const rovKeywords = ['ROV', 'RUTWT', 'RGVI', 'RMG', 'RSCOR'];
+        const isRovType = inspMethod === 'ROV' || 
+            rovKeywords.some(kw => (activeIt?.code || '').includes(kw) || (activeIt?.name || '').toUpperCase().includes(kw)) ||
+            activeIt?.metadata?.rov == 1;
 
         if (isRovType) {
-            const extraFields = [];
             const existingNames = props.map((p: any) => String(p.name || p.label || '').toLowerCase());
-            if (!existingNames.includes('northing')) extraFields.push({ name: 'northing', label: 'Northing', type: 'text' });
-            if (!existingNames.includes('easting')) extraFields.push({ name: 'easting', label: 'Easting', type: 'text' });
-            if (extraFields.length > 0) props = [...extraFields, ...props];
-        }
-
-        // 3. CP/UT Special Handling (Repeaters)
-        const hasCpRdgField = props.some((sibling: any) => {
-            const sLbl = String(sibling.label || sibling.name || '').toLowerCase();
-            return sLbl.includes('cp rdg') || sLbl === 'cp_rdg';
-        }) || dataAcqFields.some(f => f.targetField === 'cp_reading');
-
-        const hasCpRepeater = props.some(p => {
-            const l = String(p.label || p.name || '').toLowerCase();
-            return l.includes('cp') && l.includes('reading');
-        });
-
-        if (hasCpRdgField && !hasCpRepeater) {
-            props.push({
-                name: 'cp_readings',
-                label: 'CP Readings',
-                type: 'repeater',
-                subFields: [
-                    { name: 'location', label: 'Location', type: 'text' },
-                    { name: 'reading', label: 'Reading (mV)', type: 'number' }
-                ]
-            });
+            const extra = [];
+            if (!existingNames.includes('northing')) extra.push({ name: 'northing', label: 'Northing', type: 'text' });
+            if (!existingNames.includes('easting')) extra.push({ name: 'easting', label: 'Easting', type: 'text' });
+            if (extra.length > 0) props = [...extra, ...props];
         }
 
         return props;
-    }, [activeSpec, selectedComp, allInspectionTypes, editingRecordId, currentRecords, inspMethod, dataAcqFields]);
+    }, [activeSpec, selectedComp, allInspectionTypes, editingRecordId, currentRecords, inspMethod]);
 
     // Auto-fetch dynamic library options when inspection type or component changes
     useEffect(() => {
@@ -2743,6 +3274,31 @@ function V10PreviewLayout() {
 
             const activeProps = { ...dynamicProps, ...currentDataAcq };
 
+            // Process Archived Data during Re-classification
+            const newArchivedData = { ...archivedData };
+            const currentFieldNames = new Set(activeFormProps.map((p: any) => p.name));
+
+            if (activeFormProps.length > 0) {
+                // 1. Move orphaned activeProps to archived pool
+                Object.keys(activeProps).forEach(key => {
+                    if (key.startsWith('_')) return; // Ignore metadata
+                    if (!currentFieldNames.has(key)) {
+                        newArchivedData[key] = activeProps[key];
+                        delete activeProps[key];
+                    }
+                });
+
+                // 2. Restore any previously archived fields if they are now back in scope
+                currentFieldNames.forEach((name: string) => {
+                    if (newArchivedData[name] !== undefined) {
+                        if (activeProps[name] === undefined || activeProps[name] === '') {
+                             activeProps[name] = newArchivedData[name];
+                        }
+                        delete newArchivedData[name];
+                    }
+                });
+            }
+
             const payload: any = {
                 [inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id']: activeDep.id,
                 structure_id: parseInt(structureId || "0"),
@@ -2753,12 +3309,38 @@ function V10PreviewLayout() {
                 inspection_type_id: it?.id || null,
                 inspection_type_code: it?.code || activeSpec,
                 inspection_date: (activeProps.inspection_date && activeProps.inspection_date !== '--') ? String(activeProps.inspection_date) : format(new Date(), 'yyyy-MM-dd'),
-                inspection_time: (activeProps.inspection_time && activeProps.inspection_time !== '--') ? String(activeProps.inspection_time) : format(new Date(), 'HH:mm:ss'),
+                inspection_time: (() => {
+                    const t = activeProps.inspection_time;
+                    if (t && t !== '--') {
+                        if (!isValidTimeFormat(String(t))) {
+                            toast.error("Invalid Inspection Time format. Please use HH:mm:ss");
+                            throw new Error("Invalid Time Format");
+                        }
+                        return String(t);
+                    }
+                    return format(new Date(), 'HH:mm:ss');
+                })(),
                 description: recordNotes,
                 status: findingType === 'Incomplete' ? 'INCOMPLETE' : 'COMPLETED',
                 has_anomaly: findingType === 'Anomaly' || findingType === 'Finding',
                 tape_id: tId,
-                tape_count_no: (activeProps.tape_count_no && activeProps.tape_count_no !== '--') ? activeProps.tape_count_no : vidTimer,
+                tape_count_no: (() => {
+                    const typedVal = (activeProps.tape_count_no !== undefined && activeProps.tape_count_no !== '--' && activeProps.tape_count_no !== null && activeProps.tape_count_no !== "") 
+                        ? parseTimecode(String(activeProps.tape_count_no)) 
+                        : null;
+                    
+                    if (manualOverride && typedVal === null) {
+                        toast.error("Manual Entry Mode: You must enter a valid Counter value (HH:mm:ss)");
+                        throw new Error("Missing counter value in manual mode");
+                    }
+
+                    if (activeProps.tape_count_no && activeProps.tape_count_no !== '--' && !isValidTimeFormat(String(activeProps.tape_count_no))) {
+                        toast.error("Invalid Counter format. Please use HH:mm:ss");
+                        throw new Error("Invalid Counter Format");
+                    }
+                    
+                    return typedVal !== null ? typedVal : vidTimer;
+                })(),
                 elevation: (() => {
                     const p = activeProps.elevation && activeProps.elevation !== '--' ? parseFloat(activeProps.elevation as string) : NaN;
                     if (!isNaN(p)) return p;
@@ -2767,15 +3349,60 @@ function V10PreviewLayout() {
                 fp_kp: (activeProps.fp_kp !== undefined && activeProps.fp_kp !== '--') ? String(activeProps.fp_kp) : null,
                 inspection_data: {
                     ...activeProps,
-                    _meta_timecode: formatTime(vidTimer),
+                    _meta_timecode: formatTime(Number((activeProps.tape_count_no !== undefined && activeProps.tape_count_no !== '--' && activeProps.tape_count_no !== "") ? parseTimecode(String(activeProps.tape_count_no)) : vidTimer)),
                     _meta_status: findingType,
                     incomplete_reason: findingType === 'Incomplete' ? incompleteReason : null
                 },
-                cr_user: user?.id || 'system'
+                archived_data: newArchivedData
             };
 
+            // Tape Counter Validation logic
+            if (tId && payload.tape_count_no !== undefined && !manualOverride) {
+                const count = Number(payload.tape_count_no);
+                
+                // Fetch ALL events for this tape to find valid recording segments
+                const { data: tapeSessions } = await supabase.from('insp_video_logs')
+                    .select('event_type, tape_counter_start')
+                    .eq('tape_id', tId)
+                    .order('event_time', { ascending: true });
+                
+                if (tapeSessions && tapeSessions.length > 0) {
+                    let isValidRange = false;
+                    let lastStart: number | null = null;
+                    
+                    for (const s of tapeSessions) {
+                        if (s.event_type === 'NEW_LOG_START' || s.event_type === 'RESUME') {
+                            lastStart = s.tape_counter_start || 0;
+                        } else if (s.event_type === 'PAUSE' || s.event_type === 'END') {
+                            if (lastStart !== null && count >= lastStart && count <= (s.tape_counter_start || 0)) {
+                                isValidRange = true;
+                                break;
+                            }
+                            lastStart = null;
+                        }
+                    }
+                    
+                    // If currently recording (last event was start/resume), check against the current vidTimer
+                    if (!isValidRange && lastStart !== null && count >= lastStart && count <= vidTimer) {
+                        isValidRange = true;
+                    }
+                    
+                    if (!isValidRange) {
+                        toast.error(`Invalid Tape Counter: ${count} is outside the recorded segments for this tape. Choose a value between recorded START and STOP/PAUSE events.`);
+                        setIsCommitting(false);
+                        return;
+                    }
+                }
+            }
+
+            // Set metadata based on operation type
             if (editingRecordId) {
                 payload.insp_id = editingRecordId;
+                payload.md_user = user?.id || 'system';
+                // payload.md_date is auto-set by DB trigger
+            } else {
+                payload.cr_user = user?.id || 'system';
+                // payload.cr_date is auto-set by DB default
             }
 
             // Commit Calibration/Required Record if needed
@@ -2801,13 +3428,14 @@ function V10PreviewLayout() {
                         ...requiredProps,
                         _meta_timecode: formatTime(vidTimer),
                         _is_calibration: true
-                    },
-                    cr_user: user?.id || 'system'
+                    }
                 };
 
                 if (requiredRecordId) {
+                    reqPayload.md_user = user?.id || 'system';
                     await supabase.from('insp_records').update(reqPayload).eq('insp_id', requiredRecordId);
                 } else {
+                    reqPayload.cr_user = user?.id || 'system';
                     const { data: newReqData } = await supabase.from('insp_records').insert(reqPayload).select('insp_id').single();
                     if (newReqData) setRequiredRecordId(newReqData.insp_id);
                 }
@@ -2823,11 +3451,22 @@ function V10PreviewLayout() {
             if (opError) throw opError;
 
             const newStatus = findingType === 'Incomplete' ? 'incomplete' : 'completed';
-            await supabase.from('u_sow_items')
-                .update({ status: newStatus })
-                .eq('sow_id', sowId)
-                .eq('component_id', selectedComp.id)
-                .filter('inspection_type_id', it?.id ? 'eq' : 'is', it?.id || null);
+            
+            // Robust SOW Status Synchronization
+            if (sowId) {
+                // 1. Sync the CURRENT component/task
+                await syncSowStatus(selectedComp.id, it?.code || activeSpec);
+
+                // 2. Sync the ORIGINAL component/task if it was changed (Rollback)
+                if (editingRecordId && originalRecordContext) {
+                    const compChanged = originalRecordContext.component_id !== selectedComp.id;
+                    const taskChanged = originalRecordContext.inspection_type_code !== (it?.code || activeSpec);
+                    
+                    if (compChanged || taskChanged) {
+                        await syncSowStatus(originalRecordContext.component_id, originalRecordContext.inspection_type_code);
+                    }
+                }
+            }
 
             if (findingType === 'Anomaly' || findingType === 'Finding') {
                 const isAnomaly = findingType === 'Anomaly';
@@ -2913,6 +3552,10 @@ function V10PreviewLayout() {
                     toast.error(`Warning: Inspection saved, but failed to link ${category}! (${anomalyErr.message || 'Check DB schema'})`, { duration: 6000 });
                 } else {
                     toast.success(`Record and ${category} saved successfully!`);
+
+            // Invalidate React Query cache for SOW and Events
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+            queryClient.invalidateQueries({ queryKey: ['inspection-events'] });
                 }
             } else {
                 // If it was an anomaly/finding but now changed to Pass/Incomplete, remove the record
@@ -3086,7 +3729,22 @@ function V10PreviewLayout() {
         setActiveSpec(fullRecord.inspection_type?.code || fullRecord.inspection_type_code || fullRecord.inspection_type?.name);
         setEditingRecordId(fullRecord.insp_id || fullRecord.id);
         setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
-        setDynamicProps(fullRecord.inspection_data || {});
+        
+        const initialProps = { ...(fullRecord.inspection_data || {}) };
+        if (fullRecord.tape_count_no !== undefined && fullRecord.tape_count_no !== null) {
+            initialProps.tape_count_no = formatTime(Number(fullRecord.tape_count_no));
+        }
+        if (fullRecord.inspection_date) initialProps.inspection_date = fullRecord.inspection_date;
+        if (fullRecord.inspection_time) initialProps.inspection_time = fullRecord.inspection_time;
+        setDynamicProps(initialProps);
+        // Save Context for Re-classification feature
+        setOriginalRecordContext({
+            component_id: fullRecord.component_id,
+            inspection_type_id: fullRecord.inspection_type_id,
+            inspection_type_code: fullRecord.inspection_type?.code || fullRecord.inspection_type_code,
+            sow_report_no: fullRecord.sow_report_no
+        });
+        setArchivedData(fullRecord.archived_data || {});
         // Do not set debounced props immediately to avoid triggering validation without user interaction
         setDebouncedProps(fullRecord.inspection_data || {});
         setIsUserInteraction(false); 
@@ -3518,7 +4176,7 @@ function V10PreviewLayout() {
                                         <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50">
                                             <div className={`whitespace-nowrap text-[9px] font-bold px-2 py-1 rounded shadow-lg border ${item.ok ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
                                                 }`}>
-                                                {item.ok ? `✓ ${item.label}` : `✗ ${item.label} — ${item.hint}`}
+                                                {item.ok ? `âœ“ ${item.label}` : `âœ— ${item.label} â€” ${item.hint}`}
                                             </div>
                                         </div>
                                     </div>
@@ -3544,11 +4202,26 @@ function V10PreviewLayout() {
                                     }`}
                                 title={manualOverride ? 'Currently in Manual Entry mode (click to switch to Live)' : 'Switch to Manual Entry mode to insert missing records'}
                             >
-                                {manualOverride ? '⚡ Manual' : '🔴 Live'}
+                                {manualOverride 
+                                    ? <span className="flex items-center gap-1.5"><span className="text-[10px]">&#9889;</span> MANUAL</span> 
+                                    : <span className="flex items-center gap-1.5"><span className="text-red-500 text-[8px]">&#11044;</span> LIVE</span>
+                                }
                             </button>
                         </div>
                     );
                 })()}
+
+                {/* INSERT SEABED SURVEY MAP BUTTON */}
+                {activeDep && (
+                    <Button
+                        variant="default" 
+                        size="sm" 
+                        className="ml-auto bg-blue-600 hover:bg-blue-700 text-white h-7 px-3 shadow-blue-500/20 shadow-lg text-[10px] font-black uppercase tracking-wider"
+                        onClick={() => setIsSeabedGuiOpen(true)}
+                    >
+                        <MapPin className="w-3.5 h-3.5 mr-1.5" /> Seabed Map
+                    </Button>
+                )}
             </div>
 
             {/* ROV Data String Bar (Dynamic based on Data Acquisition settings) */}
@@ -3565,7 +4238,7 @@ function V10PreviewLayout() {
                                 <span className="text-[12px] font-mono font-black text-white dark:text-white">{field.value}</span>
                             </div>
                         )) : (
-                            <span className="text-[10px] text-amber-300 dark:text-amber-300 italic font-semibold">No fields configured — Go to Settings → Data Acquisition</span>
+                            <span className="text-[10px] text-amber-300 dark:text-amber-300 italic font-semibold">No fields configured â€” Go to Settings â†’ Data Acquisition</span>
                         )}
                     </div>
 
@@ -3601,7 +4274,7 @@ function V10PreviewLayout() {
                         {/* Error indicator */}
                         {dataAcqError && !dataAcqConnected && (
                             <div className="relative group">
-                                <span className="text-red-400 text-sm cursor-help">⚠</span>
+                                <span className="text-red-400 text-sm cursor-help">âš </span>
                                 <div className="absolute bottom-full mb-2 right-0 hidden group-hover:block z-50">
                                     <div className="whitespace-nowrap text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-xl bg-red-900 text-red-200 border border-red-700 max-w-[300px] whitespace-normal">
                                         {dataAcqError}
@@ -3734,11 +4407,14 @@ function V10PreviewLayout() {
                         setTapeNo={setTapeNo}
                         setActiveChapter={setActiveChapter}
                         setIsNewTapeOpen={setIsNewTapeOpen}
+                        handleOpenEditTape={handleOpenEditTape}
                         formatTime={formatTime}
+                        handleDeleteTape={handleDeleteTape}
+                        canDelete={tapeId ? !videoEvents.some(evt => String(evt.tape_id) === String(tapeId)) : false}
                     >
                         {/* Tape Log Events (MODULAR) */}
                         <TapeLogEvents 
-                            videoEvents={videoEvents}
+                            videoEvents={videoEvents.filter(evt => String(evt.tape_id) === String(tapeId))}
                             handleDeleteEvent={handleDeleteEvent}
                             onEditEvent={setEditingEvent}
                             expanded={tapeLogExpanded}
@@ -3795,27 +4471,68 @@ function V10PreviewLayout() {
                                                     const status = taskStatus?.status || 'pending';
                                                     const isCompleted = status === 'completed';
                                                     const isIncomplete = status === 'incomplete';
-                                                    const hasAnomaly = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id);
-                                                    const isRectified = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === t || r.inspection_type_code === t) && r.component_id === selectedComp.id && r.insp_anomalies?.[0]?.status === 'CLOSED');
+                                                    
+                                                    // Records for this specific task
+                                                    const taskRecords = currentRecords.filter((r: any) => 
+                                                        (r.inspection_type?.code === t || r.inspection_type_code === t) && 
+                                                        r.component_id === selectedComp.id
+                                                    );
+
+                                                    const hasAnomaly = taskRecords.some((r: any) => r.has_anomaly && r.inspection_data?._meta_status !== 'Finding');
+                                                    const hasFinding = taskRecords.some((r: any) => r.has_anomaly && r.inspection_data?._meta_status === 'Finding');
+                                                    
+                                                    const isRectified = taskRecords.some((r: any) => r.has_anomaly && r.insp_anomalies?.[0]?.status === 'CLOSED');
                                                     const it = allInspectionTypes.find(type => type.code === t || type.name === t);
+                                                    
+                                                    // Determine color based on priority: Anomaly (Red) > Finding (Orange) > Pass (Green)
+                                                    const statusColor = hasAnomaly && !isRectified ? 'red' :
+                                                                       hasFinding ? 'orange' :
+                                                                       isRectified ? 'teal' :
+                                                                       isCompleted ? 'green' :
+                                                                       isIncomplete ? 'amber' : 'blue';
+
+                                                    const statusLabel = hasAnomaly && !isRectified ? 'Anomaly Registered' :
+                                                                       hasFinding ? 'Finding Registered' :
+                                                                       isRectified ? 'Rectified' :
+                                                                       isCompleted ? 'Completed' :
+                                                                       isIncomplete ? 'Incomplete' : 'Pending';
+                                                    
                                                     return (
                                                         <Button key={t} onClick={() => {
                                                             setActiveSpec(t);
-                                                            const newProps: Record<string, any> = {};
+                                                            const now = new Date();
+                                                            const newProps: Record<string, any> = {
+                                                                inspection_date: format(now, 'yyyy-MM-dd'),
+                                                                inspection_time: format(now, 'HH:mm:ss')
+                                                            };
+                                                            
+                                                            // 2. Resolve field definitions (from registry or DB)
+                                                            const specProps = it?.default_properties || [];
+                                                            let propsList: any[] = [];
+                                                            if (typeof specProps === 'string') {
+                                                                try {
+                                                                    const parsed = JSON.parse(specProps);
+                                                                    propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
+                                                                } catch (e) { }
+                                                            } else {
+                                                                const parsed = specProps as any;
+                                                                propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
+                                                            }
 
-                                                            // Auto-fill Nominal Thickness if it exists in the spec
-                                                            if (selectedComp.nominalThk && selectedComp.nominalThk !== '-') {
-                                                                const specProps = it?.default_properties || [];
-                                                                let propsList: any[] = [];
-                                                                if (typeof specProps === 'string') {
-                                                                    try {
-                                                                        const parsed = JSON.parse(specProps);
-                                                                        propsList = Array.isArray(parsed) ? parsed : (parsed.properties || []);
-                                                                    } catch (e) { }
-                                                                } else if (Array.isArray(specProps)) {
-                                                                    propsList = specProps;
+                                                            // 3. Apply JSON Defaults
+                                                            propsList.forEach((p: any) => {
+                                                                if (p.default !== undefined) {
+                                                                    newProps[p.name || p.label] = p.default;
                                                                 }
+                                                            });
 
+                                                            // 4. Auto-insert current tape counter for LIVE entry mode
+                                                            if (!manualOverride) {
+                                                                newProps.tape_count_no = formatTime(vidTimer);
+                                                            }
+
+                                                            // 5. Auto-fill Nominal Thickness from Component Data
+                                                            if (selectedComp.nominalThk && selectedComp.nominalThk !== '-') {
                                                                 const ntField = propsList.find((p: any) => 
                                                                     String(p.label || p.name || '').toLowerCase().includes('nominal thickness') ||
                                                                     String(p.label || p.name || '').toLowerCase() === 'nt'
@@ -3825,13 +4542,15 @@ function V10PreviewLayout() {
                                                                 }
                                                             }
 
-                                                            if (dataAcqConnected) {
+                                                            // 6. Populate from ROV Data Acquisition if connected
+                                                            if (inspMethod === 'ROV' && dataAcqConnected) {
                                                                 dataAcqFields.forEach(f => {
                                                                     if (f.value && f.value !== '--' && f.targetField) {
                                                                         newProps[f.targetField] = f.value;
                                                                     }
                                                                 });
                                                             }
+                                                            
                                                             setDynamicProps(newProps);
                                                             setFindingType("Pass");
                                                             setRecordNotes("");
@@ -3839,61 +4558,69 @@ function V10PreviewLayout() {
                                                                 rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
                                                             setIsManualOverride(false);
                                                             setIsUserInteraction(false);
-                                                        }} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${isCompleted && !hasAnomaly ? 'border-green-200 hover:bg-green-50/50' :
-                                                            hasAnomaly && !isRectified ? 'border-red-200 hover:bg-red-50/30' :
-                                                                hasAnomaly && isRectified ? 'border-teal-200 hover:bg-teal-50/30' :
-                                                                    isIncomplete ? 'border-amber-200 hover:bg-amber-50/30' :
-                                                                        'border-blue-200 hover:bg-blue-50'
-                                                            }`}>
+                                                        }} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${
+                                                            statusColor === 'green' ? 'border-green-200 hover:bg-green-50/50' :
+                                                            statusColor === 'red' ? 'border-red-200 hover:bg-red-50/30' :
+                                                            statusColor === 'orange' ? 'border-orange-200 hover:bg-orange-50/30' :
+                                                            statusColor === 'teal' ? 'border-teal-200 hover:bg-teal-50/30' :
+                                                            statusColor === 'amber' ? 'border-amber-200 hover:bg-amber-50/30' :
+                                                            'border-blue-200 hover:bg-blue-50'
+                                                        }`}>
                                                             <div className="flex items-center gap-2.5">
                                                                 {/* Status indicator dot */}
-                                                                <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${isCompleted && !hasAnomaly ? 'bg-green-500' :
-                                                                    hasAnomaly && !isRectified ? 'bg-red-500 animate-pulse' :
-                                                                        hasAnomaly && isRectified ? 'bg-teal-500' :
-                                                                            isIncomplete ? 'bg-amber-500' :
-                                                                                'bg-slate-300'
-                                                                    }`}>
-                                                                    {isCompleted && !hasAnomaly && <Check className="w-2 h-2 text-white" />}
-                                                                    {hasAnomaly && !isRectified && <AlertTriangle className="w-2 h-2 text-white" />}
+                                                                <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${
+                                                                    statusColor === 'green' ? 'bg-green-500' :
+                                                                    statusColor === 'red' ? 'bg-red-500 animate-pulse' :
+                                                                    statusColor === 'orange' ? 'bg-orange-500' :
+                                                                    statusColor === 'teal' ? 'bg-teal-500' :
+                                                                    statusColor === 'amber' ? 'bg-amber-500' :
+                                                                    'bg-slate-300'
+                                                                }`}>
+                                                                    {statusColor === 'green' && <Check className="w-2 h-2 text-white" />}
+                                                                    {(statusColor === 'red' || statusColor === 'orange') && <AlertTriangle className="w-2 h-2 text-white" />}
                                                                 </div>
                                                                 <div className="flex flex-col items-start overflow-hidden flex-1 max-w-[170px]">
                                                                     <div className="flex items-baseline gap-1.5 w-full text-left truncate">
-                                                                        <span className={`text-sm font-bold truncate ${isCompleted && !hasAnomaly ? 'text-green-700' :
-                                                                            hasAnomaly && !isRectified ? 'text-red-700' :
-                                                                                hasAnomaly && isRectified ? 'text-teal-700' :
-                                                                                    isIncomplete ? 'text-amber-700' :
-                                                                                        'text-blue-700'
-                                                                            }`} title={it?.name || t}>
+                                                                        <span className={`text-sm font-bold truncate ${
+                                                                            statusColor === 'green' ? 'text-green-700' :
+                                                                            statusColor === 'red' ? 'text-red-700' :
+                                                                            statusColor === 'orange' ? 'text-orange-700' :
+                                                                            statusColor === 'teal' ? 'text-teal-700' :
+                                                                            statusColor === 'amber' ? 'text-amber-700' :
+                                                                            'text-blue-700'
+                                                                        }`} title={it?.name || t}>
                                                                             {it?.name || t}
                                                                         </span>
-                                                                        <span className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${isCompleted && !hasAnomaly ? 'bg-green-50 border-green-200 text-green-700' :
-                                                                            hasAnomaly && !isRectified ? 'bg-red-50 border-red-200 text-red-700' :
-                                                                                hasAnomaly && isRectified ? 'bg-teal-50 border-teal-200 text-teal-700' :
-                                                                                    isIncomplete ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                                                                                        'bg-blue-50 border-blue-200 text-blue-700'
-                                                                            }`}>
+                                                                        <span className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${
+                                                                            statusColor === 'green' ? 'bg-green-50 border-green-200 text-green-700' :
+                                                                            statusColor === 'red' ? 'bg-red-50 border-red-200 text-red-700' :
+                                                                            statusColor === 'orange' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                                                                            statusColor === 'teal' ? 'bg-teal-50 border-teal-200 text-teal-700' :
+                                                                            statusColor === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                                                            'bg-blue-50 border-blue-200 text-blue-700'
+                                                                        }`}>
                                                                             {it?.code || t}
                                                                         </span>
                                                                     </div>
-                                                                    <span className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${isCompleted && !hasAnomaly ? 'text-green-500' :
-                                                                        hasAnomaly && !isRectified ? 'text-red-500' :
-                                                                            hasAnomaly && isRectified ? 'text-teal-500' :
-                                                                                isIncomplete ? 'text-amber-500' :
-                                                                                    'text-slate-400'
-                                                                        }`}>
-                                                                        {isCompleted && !hasAnomaly ? '✓ Completed' :
-                                                                            hasAnomaly && !isRectified ? '⚠ Anomaly Registered' :
-                                                                                hasAnomaly && isRectified ? '✓ Rectified' :
-                                                                                    isIncomplete ? '◐ Incomplete' :
-                                                                                        '○ Pending'}
+                                                                    <span className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${
+                                                                        statusColor === 'green' ? 'text-green-500' :
+                                                                        statusColor === 'red' ? 'text-red-500' :
+                                                                        statusColor === 'orange' ? 'text-orange-500' :
+                                                                        statusColor === 'teal' ? 'text-teal-500' :
+                                                                        statusColor === 'amber' ? 'text-amber-500' :
+                                                                        'text-slate-400'
+                                                                    }`}>
+                                                                        {statusLabel}
                                                                     </span>
                                                                 </div>
                                                             </div>
-                                                            <ArrowRight className={`w-4 h-4 ${isCompleted && !hasAnomaly ? 'text-green-300' :
-                                                                hasAnomaly ? 'text-red-300' :
-                                                                    isIncomplete ? 'text-amber-300' :
-                                                                        'text-blue-300'
-                                                                }`} />
+                                                            <ArrowRight className={`w-4 h-4 ${
+                                                                statusColor === 'green' ? 'text-green-300' :
+                                                                statusColor === 'red' ? 'text-red-300' :
+                                                                statusColor === 'orange' ? 'text-orange-300' :
+                                                                statusColor === 'amber' ? 'text-amber-300' :
+                                                                'text-blue-300'
+                                                            }`} />
                                                         </Button>
                                                     );
                                                 })}
@@ -3992,6 +4719,9 @@ function V10PreviewLayout() {
                                         findingType={findingType}
                                         setFindingType={setFindingType}
                                         renderInspectionField={renderInspectionField}
+                                        dynamicProps={dynamicProps}
+                                        handleDynamicPropChange={handleDynamicPropChange}
+                                        isEditing={!!editingRecordId}
                                         anomalyData={anomalyData}
                                         setAnomalyData={setAnomalyData}
                                         defectCodes={defectCodes}
@@ -4022,6 +4752,8 @@ function V10PreviewLayout() {
                                         currentMovement={currentMovement}
                                         tapeId={tapeId}
                                         vidState={vidState}
+                                        onChangeTaskClick={() => setShowTaskSelector(true)}
+                                        onChangeComponentClick={() => setShowCompSelector(true)}
                                     />
                                 )}
                             </div>
@@ -4051,35 +4783,55 @@ function V10PreviewLayout() {
                             <ScrollArea className="flex-1 w-full relative">
                                 <table className="w-full text-left text-xs whitespace-nowrap">
                                     <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
-                                    <tr>
-                                        <th className="px-3 py-3 w-20">Date <History className="w-3.5 h-3.5 ml-1 inline opacity-60" /></th>
-                                        <th className="px-3 py-3">Type</th>
-                                        <th className="px-3 py-3">Component</th>
-                                        <th className="px-3 py-3 text-center">Elev/KP</th>
-                                        <th className="px-3 py-3 text-center">Status</th>
-                                        <th className="px-3 py-3 text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {currentRecords.map((r: any) => {
-                                        const formatCounter = (val: any) => {
-                                            if (!val) return null;
-                                            if (typeof val === 'string' && val.includes(':')) return val;
-                                            const sec = Number(val);
-                                            if (!isNaN(sec)) {
-                                                const h = Math.floor(sec / 3600).toString().padStart(2, '0');
-                                                const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
-                                                const s = Math.floor(sec % 60).toString().padStart(2, '0');
-                                                return `${h}:${m}:${s}`;
-                                            }
-                                            return val;
-                                        };
-                                        return (
-                                            <tr key={r.insp_id} className="hover:bg-slate-50 group">
-                                                <td className="px-3 py-3 text-slate-600 align-top">
-                                                    <div className="text-sm font-medium">{r.inspection_date ? format(new Date(r.inspection_date), 'dd MMM') : '-'}</div>
-                                                    <div className="text-[10px] opacity-70 mt-0.5">{r.inspection_time?.slice(0, 5)}</div>
-                                                </td>
+                                        <tr>
+                                            <th className="px-3 py-3 w-20 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('cr_date')}>
+                                                <div className="flex items-center gap-1.5">
+                                                    Date {sortConfig.key === 'cr_date' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('type')}>
+                                                <div className="flex items-center gap-1.5">
+                                                    Type {sortConfig.key === 'type' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('component')}>
+                                                <div className="flex items-center gap-1.5">
+                                                    Component {sortConfig.key === 'component' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('elev')}>
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    Elev/KP {sortConfig.key === 'elev' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('status')}>
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    Status {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {sortedRecords.map((r: any) => {
+                                            const formatCounter = (val: any) => {
+                                                if (!val) return null;
+                                                if (typeof val === 'string' && val.includes(':')) return val;
+                                                const sec = Number(val);
+                                                if (!isNaN(sec)) {
+                                                    const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+                                                    const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+                                                    const s = Math.floor(sec % 60).toString().padStart(2, '0');
+                                                    return `${h}:${m}:${s}`;
+                                                }
+                                                return val;
+                                            };
+                                            return (
+                                                <tr key={r.insp_id} className="hover:bg-slate-50 group">
+                                                    <td className="px-3 py-3 text-slate-600 align-top">
+                                                        <div className="text-sm font-medium">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
+                                                        <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), 'HH:mm') : '-'}</div>
+                                                    </td>
                                                 <td className="px-3 py-3 font-bold text-slate-800 align-top">
                                                     <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
                                                     <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
@@ -4385,10 +5137,10 @@ function V10PreviewLayout() {
                                         <div>
                                             <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
                                             <div className="space-y-1">
-                                                {componentsSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
+                                                {componentsSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
                                                     const isSelected = selectedComp?.id === c.id;
                                                     return (
-                                                        <button key={c.id} onClick={() => { setSelectedComp(c); resetForm(); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
+                                                        <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                             <div className="flex justify-between font-bold">
                                                                 <div className="flex items-center gap-2">
                                                                     <span>{c.name}</span>
@@ -4403,7 +5155,7 @@ function V10PreviewLayout() {
                                                                 <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
                                                             </div>
                                                             {(c.startNode !== '-' || c.endNode !== '-') && (
-                                                                <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
+                                                                <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} â†’ {c.endNode}</div>
                                                             )}
                                                             <div className="flex flex-wrap gap-1 mt-1.5">
                                                                 {c.taskStatuses?.length > 0 ? c.taskStatuses.map((ts: any, idx: number) => {
@@ -4442,8 +5194,8 @@ function V10PreviewLayout() {
                                         <div>
                                             <div className="text-[9px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200">Non-SOW</div>
                                             <div className="space-y-1">
-                                                {componentsNonSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
-                                                    <button key={c.id} onClick={() => { setSelectedComp(c); resetForm(); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
+                                                {componentsNonSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
+                                                    <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                         <div className="flex justify-between font-bold">
                                                             <div className="flex items-center gap-2">
                                                                 <span>{c.name}</span>
@@ -4458,7 +5210,7 @@ function V10PreviewLayout() {
                                                             <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
                                                         </div>
                                                         {(c.startNode !== '-' || c.endNode !== '-') && (
-                                                            <div className={`text-[9px] font-mono mt-0.5 ${selectedComp?.id === c.id ? 'text-slate-300' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
+                                                            <div className={`text-[9px] font-mono mt-0.5 ${selectedComp?.id === c.id ? 'text-slate-300' : 'text-slate-400'}`}>{c.startNode} â†’ {c.endNode}</div>
                                                         )}
                                                     </button>
                                                 ))}
@@ -4672,6 +5424,84 @@ function V10PreviewLayout() {
                     </div>
                 </div>
             )}
+            {/* Edit Tape Dialog */}
+            <Dialog open={isEditTapeOpen} onOpenChange={setIsEditTapeOpen}>
+                <DialogContent className="max-w-md bg-white border-2 border-blue-100 shadow-2xl p-0 overflow-hidden">
+                    <DialogHeader className="p-4 bg-slate-900 text-white space-y-1">
+                        <DialogTitle className="text-xs font-bold uppercase tracking-widest opacity-80 mb-0">Tape Management</DialogTitle>
+                        <DialogDescription className="text-sm font-black text-white/90">Edit Tape Details</DialogDescription>
+                    </DialogHeader>
+                    <div className="p-5 space-y-5 bg-white">
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Video Tape Number / Name</Label>
+                                <Input 
+                                    value={editTapeNo} 
+                                    onChange={(e) => setEditTapeNo(e.target.value.toUpperCase())}
+                                    placeholder="Enter tape reference..."
+                                    className="h-11 text-sm font-bold bg-slate-50 border-slate-200 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Chapter No.</Label>
+                                    <Input 
+                                        type="number"
+                                        value={editTapeChapter} 
+                                        onChange={(e) => setEditTapeChapter(e.target.value)}
+                                        className="h-11 text-sm font-bold bg-slate-50 border-slate-200 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all"
+                                    />
+                                    <p className="text-[9px] text-amber-600 font-bold italic mt-1 leading-tight">
+                                        Note: Adjust this if you want to maintain a previous numbering sequence.
+                                    </p>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Status</Label>
+                                    <Select value={editTapeStatus} onValueChange={setEditTapeStatus}>
+                                        <SelectTrigger className="h-11 text-sm font-bold bg-slate-50 border-slate-200">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ACTIVE" className="font-bold text-xs">ACTIVE</SelectItem>
+                                            <SelectItem value="COMPLETED" className="font-bold text-xs">COMPLETED</SelectItem>
+                                            <SelectItem value="ARCHIVED" className="font-bold text-xs">ARCHIVED</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Tape Remarks</Label>
+                                <Input 
+                                    value={editTapeRemarks} 
+                                    onChange={(e) => setEditTapeRemarks(e.target.value)}
+                                    placeholder="Optional notes..."
+                                    className="h-11 text-sm font-bold bg-slate-50 border-slate-200 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <Button
+                                variant="outline"
+                                className="flex-1 h-11 text-[11px] font-black uppercase tracking-widest border-slate-200 hover:bg-slate-50 text-slate-500"
+                                onClick={() => setIsEditTapeOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                className="flex-1 h-11 text-[11px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20"
+                                onClick={handleSaveTapeEdit}
+                                disabled={isCommitting || !editTapeNo}
+                            >
+                                {isCommitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Changes"}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* New Tape Creation Dialog */}
             <Dialog open={isNewTapeOpen} onOpenChange={setIsNewTapeOpen}>
                 <DialogContent className="sm:max-w-[425px]">
@@ -5025,7 +5855,7 @@ function V10PreviewLayout() {
                             <div className="bg-slate-100 rounded-full px-4 py-2 border border-slate-200">
                                 <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{pendingAttachments.length} Selected</span>
                             </div>
-                            {pendingAttachments.length > 0 && <span className="text-[10px] font-bold text-amber-500 animate-pulse">Set titles & descriptions above ↑</span>}
+                            {pendingAttachments.length > 0 && <span className="text-[10px] font-bold text-amber-500 animate-pulse">Set titles & descriptions above â†‘</span>}
                          </div>
                         <Button 
                             className="bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-[0.15em] px-12 h-12 rounded-full shadow-2xl shadow-blue-500/30 transition-all hover:scale-[1.02] active:scale-[0.98] text-[11px]" 
@@ -5092,15 +5922,15 @@ function V10PreviewLayout() {
             {/* Anomaly Removal Confirmation Dialog */}
             <Dialog open={showRemovalConfirm} onOpenChange={setShowRemovalConfirm}>
                 <DialogContent className="sm:max-w-[440px] p-0 overflow-hidden border-none shadow-2xl">
-                    <div className="bg-amber-500 p-4 flex items-center gap-3">
-                        <div className="bg-white/20 p-2 rounded-lg">
+                    <DialogHeader className="bg-amber-500 p-4 flex-row items-center gap-3 space-y-0">
+                        <div className="bg-white/20 p-2 rounded-lg shrink-0">
                             <AlertTriangle className="w-5 h-5 text-white" />
                         </div>
-                        <div>
-                            <h3 className="text-white font-bold text-sm">Value No Longer Meets Criteria</h3>
-                            <p className="text-white/80 text-[10px] uppercase tracking-wider font-medium">Anomaly / Finding Review Required</p>
+                        <div className="text-left">
+                            <DialogTitle className="text-white font-bold text-sm">Value No Longer Meets Criteria</DialogTitle>
+                            <DialogDescription className="text-white/80 text-[10px] uppercase tracking-wider font-medium">Anomaly / Finding Review Required</DialogDescription>
                         </div>
-                    </div>
+                    </DialogHeader>
                     <div className="p-5 space-y-4 bg-white">
                         <p className="text-xs text-slate-600 leading-relaxed font-medium">
                             The entered value has been corrected and no longer triggers the defect criteria. What would you like to do with the registered {findingType === 'Finding' ? 'finding' : 'anomaly'}?
@@ -5120,12 +5950,12 @@ function V10PreviewLayout() {
                                 <>
                                     {!isNewRecord && hasNewerAnomalies && (
                                         <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-[10px] text-amber-800 font-medium">
-                                            <strong className="uppercase tracking-wider">⚠ Cannot Delete:</strong> Subsequent anomalies exist after this record. The anomaly will be <strong>rectified</strong> with priority set to <strong>NONE</strong> to preserve event sequence numbering.
+                                            <strong className="uppercase tracking-wider">âš  Cannot Delete:</strong> Subsequent anomalies exist after this record. The anomaly will be <strong>rectified</strong> with priority set to <strong>NONE</strong> to preserve event sequence numbering.
                                         </div>
                                     )}
                                     {(isNewRecord || !hasNewerAnomalies) && (
                                         <div className="bg-green-50 border border-green-200 rounded-md p-3 text-[10px] text-green-800 font-medium">
-                                            <strong className="uppercase tracking-wider">✓ Safe to Remove:</strong> {isNewRecord ? 'This is a new record — the anomaly data will be cleared.' : 'This is the latest anomaly — it can be safely deleted.'}
+                                            <strong className="uppercase tracking-wider">âœ“ Safe to Remove:</strong> {isNewRecord ? 'This is a new record â€” the anomaly data will be cleared.' : 'This is the latest anomaly â€” it can be safely deleted.'}
                                         </div>
                                     )}
                                 </>
@@ -5162,6 +5992,281 @@ function V10PreviewLayout() {
                 </DialogContent>
             </Dialog>
 
+            {/* RE-CLASSIFICATION WARNING MODAL */}
+            <Dialog open={!!pendingReclass} onOpenChange={() => setPendingReclass(null)}>
+                <DialogContent className="max-w-md bg-white border-2 border-amber-200">
+                    <DialogHeader>
+                        <div className="flex items-center gap-2 text-amber-600 mb-2">
+                            <AlertTriangle className="w-6 h-6" />
+                            <DialogTitle className="text-lg font-bold uppercase tracking-tight">Warning: Data Impact</DialogTitle>
+                        </div>
+                        <DialogDescription className="text-slate-600 font-medium">
+                            Changing the {pendingReclass?.type === 'COMPONENT' ? 'Component' : 'Task Type'} while editing an existing record will hide fields not present in the new specification.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {pendingReclass?.orphanedFields && pendingReclass.orphanedFields.length > 0 && (
+                        <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-100">
+                            <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-2">Impacted Fields (Will be archived):</p>
+                            <div className="flex flex-wrap gap-2">
+                                {pendingReclass.orphanedFields.map(f => (
+                                    <span key={f} className="px-2 py-1 bg-white border border-amber-200 text-amber-800 text-[10px] font-bold rounded shadow-sm">
+                                        {f.replace(/_/g, ' ').toUpperCase()}
+                                    </span>
+                                ))}
+                            </div>
+                            <p className="mt-3 text-[10px] text-amber-600 leading-relaxed italic">
+                                Note: These fields are not lost. They are moved to an archive column and will be restored automatically if you switch back to the original specification.
+                            </p>
+                        </div>
+                    )}
+
+                    <div className="mt-6 flex gap-3">
+                        <Button variant="outline" className="flex-1 font-bold text-slate-500 border-slate-200" onClick={() => setPendingReclass(null)}>
+                            CANCEL
+                        </Button>
+                        <Button className="flex-1 font-bold bg-amber-600 hover:bg-amber-700 text-white" onClick={confirmReclassification}>
+                            CONFIRM CHANGE
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* TASK SELECTOR MODAL (FOR RE-CLASSIFICATION) */}
+            <Dialog open={showTaskSelector} onOpenChange={(open) => {
+                setShowTaskSelector(open);
+                if (!open && editingRecordId) resetForm();
+            }}>
+                <DialogContent className="max-w-sm bg-white p-0 overflow-hidden border-2 border-blue-100 shadow-2xl">
+                    <DialogHeader className="p-4 bg-blue-600 text-white space-y-1">
+                        <DialogTitle className="text-xs font-bold uppercase tracking-widest opacity-80 mb-0">Re-classify Task</DialogTitle>
+                        <DialogDescription className="text-sm font-black text-white/90">Change Specification for {selectedComp?.name}</DialogDescription>
+                    </DialogHeader>
+                    <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto bg-slate-50">
+                        {/* SOW TASKS */}
+                        <div>
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">SOW Tasks</h3>
+                            <div className="space-y-1.5">
+                                {selectedComp?.taskStatuses
+                                    ?.filter((ts: any) => {
+                                        const it = allInspectionTypes.find(type => type.code === ts.code);
+                                        if (!it) return true; // fallback
+                                        if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
+                                        if (inspMethod === 'ROV') return it.metadata?.rov === 1;
+                                        return true;
+                                    })
+                                    .map((ts: any) => (
+                                        <button 
+                                            key={ts.code} 
+                                            onClick={() => handleTaskChange(ts.code)}
+                                            className={`w-full text-left p-3 rounded-lg border flex justify-between items-center transition-all ${
+                                                activeSpec === ts.code 
+                                                ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm' 
+                                                : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300 hover:bg-blue-50/30'
+                                            }`}
+                                        >
+                                            <span className="font-bold text-xs uppercase tracking-wide">{ts.code}</span>
+                                            {activeSpec === ts.code && <Check className="w-4 h-4" />}
+                                        </button>
+                                    ))}
+                            </div>
+                        </div>
+
+                        {/* OTHER LIBRARY TASKS */}
+                        <div className="pt-2 border-t border-slate-200">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Add Selection from Library</h3>
+                            <div className="relative mb-2">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                                <Input 
+                                    placeholder="Search library..." 
+                                    className="pl-8 h-8 text-[11px] font-bold bg-white border-slate-200"
+                                    value={addTaskSearch}
+                                    onChange={(e) => setAddTaskSearch(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                {allInspectionTypes
+                                    .filter(it => {
+                                        const isInSow = selectedComp?.tasks?.includes(it.code);
+                                        if (isInSow) return false;
+                                        const matchesSearch = it.name.toLowerCase().includes(addTaskSearch.toLowerCase()) || 
+                                                            it.code.toLowerCase().includes(addTaskSearch.toLowerCase());
+                                        if (!matchesSearch) return false;
+                                        if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
+                                        if (inspMethod === 'ROV') return it.metadata?.rov === 1;
+                                        return true;
+                                    })
+                                    .slice(0, 10) // Limit to 10 for performance
+                                    .map((it: any) => (
+                                        <button 
+                                            key={it.id} 
+                                            onClick={() => {
+                                                handleTaskChange(it.code);
+                                                setAddTaskSearch("");
+                                            }}
+                                            className="w-full text-left p-2.5 rounded border border-dashed border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-200 text-slate-500 hover:text-blue-600 transition-all group"
+                                        >
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-bold text-[11px] uppercase tracking-wide">{it.name}</span>
+                                                <Plus className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            </div>
+                                            <p className="text-[9px] font-medium text-slate-400 uppercase tracking-tighter leading-none mt-0.5">{it.code}</p>
+                                        </button>
+                                    ))}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-3 bg-white border-t border-slate-100 flex justify-end">
+                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => {
+                            setShowTaskSelector(false);
+                            if (editingRecordId) resetForm();
+                        }}>CLOSE</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* COMPONENT SELECTOR MODAL (FOR RE-CLASSIFICATION) */}
+            <Dialog 
+                open={showCompSelector} 
+                onOpenChange={(open) => {
+                    setShowCompSelector(open);
+                    if (!open) {
+                        setSelectorShowAll(false);
+                        if (editingRecordId) resetForm();
+                    }
+                }}
+            >
+                <DialogContent className="max-w-md bg-white p-0 overflow-hidden border-2 border-blue-100 shadow-2xl">
+                    <DialogHeader className="p-4 bg-blue-600 text-white space-y-1">
+                        <DialogTitle className="text-xs font-bold uppercase tracking-widest opacity-80">Re-classify Component</DialogTitle>
+                        <DialogDescription className="text-sm font-black text-white p-0 m-0">Transfer Record to Another Component</DialogDescription>
+                    </DialogHeader>
+                    <div className="p-3 bg-slate-50 border-b border-slate-200">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input 
+                                placeholder="Search Component Name..." 
+                                className="pl-9 h-10 bg-white border-slate-200 text-sm font-bold focus-visible:ring-blue-500"
+                                value={compSelectorSearch}
+                                onChange={(e) => setCompSelectorSearch(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="p-2 space-y-1 max-h-[50vh] overflow-y-auto bg-white">
+                        {/* SOW COMPONENTS GROUP */}
+                        <div className="px-2 py-1 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 mb-1 rounded">SOW Items</div>
+                        {componentsSow
+                            .filter(c => JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase()))
+                            .map((c: any) => (
+                                <button 
+                                    key={c.id} 
+                                    onClick={() => {
+                                        handleComponentSelection(c);
+                                        setShowCompSelector(false);
+                                        setCompSelectorSearch("");
+                                    }}
+                                    className={`w-full text-left px-4 py-3 rounded-md flex justify-between items-center transition-all ${
+                                        selectedComp?.id === c.id 
+                                        ? 'bg-blue-50 border border-blue-200 text-blue-700' 
+                                        : 'hover:bg-slate-50 text-slate-600'
+                                    }`}
+                                >
+                                    <div>
+                                        <p className="font-black text-xs uppercase tracking-wide">{c.name}</p>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase leading-tight mt-0.5">{c.type || 'Structure Item'}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-[8px] h-3.5 px-1 bg-blue-50 text-blue-600 border-blue-100 font-bold">SOW</Badge>
+                                        {selectedComp?.id === c.id ? <Check className="w-4 h-4" /> : <ChevronRight className="w-4 h-4 text-slate-300" />}
+                                    </div>
+                                </button>
+                            ))}
+
+                        {/* OTHER LIBRARY COMPONENTS (CONDITIONAL) */}
+                        {selectorShowAll ? (
+                            <>
+                                <div className="mt-4 px-2 py-1 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 mb-1 rounded">Platform Library (Non-SOW)</div>
+                                {allComps
+                                    .filter(c => {
+                                        const isInSow = componentsSow.some(sc => sc.id === c.id);
+                                        return !isInSow && JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
+                                    })
+                                    .map((c: any) => (
+                                        <button 
+                                            key={c.id} 
+                                            onClick={() => {
+                                                handleComponentSelection(c);
+                                                setShowCompSelector(false);
+                                                setCompSelectorSearch("");
+                                            }}
+                                            className="w-full text-left px-4 py-3 rounded-md flex justify-between items-center hover:bg-slate-50 text-slate-600 transition-all"
+                                        >
+                                            <div>
+                                                <p className="font-black text-xs uppercase tracking-wide">{c.name}</p>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase leading-tight mt-0.5">{c.type || 'Structure Item'}</p>
+                                            </div>
+                                            <ChevronRight className="w-4 h-4 text-slate-300" />
+                                        </button>
+                                    ))}
+                            </>
+                        ) : (
+                            <div className="mt-4 p-4 text-center">
+                                <p className="text-[11px] text-slate-400 font-bold mb-2">Cant find the QID? Show all platform components.</p>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="h-8 text-[10px] font-black border-dashed border-slate-300 text-slate-500 hover:text-blue-600 hover:border-blue-300"
+                                    onClick={() => setSelectorShowAll(true)}
+                                >
+                                    <Layers className="w-3.5 h-3.5 mr-1.5" /> SHOW ALL COMPONENTS
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                    <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+                        <div className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
+                            <Info className="w-3 h-3" />
+                            {selectorShowAll ? "Showing full platform library" : "Showing SOW components only"}
+                        </div>
+                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => { 
+                            setShowCompSelector(false); 
+                            setCompSelectorSearch(""); 
+                            setSelectorShowAll(false); 
+                            if (editingRecordId) resetForm();
+                        }}>CANCEL</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* SEABED GUI INLINE POPUP */}
+            {isSeabedGuiOpen && (
+                <div className="fixed inset-0 z-[100] bg-black/60 p-6 flex flex-col items-center justify-center backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="w-full max-w-[1400px] h-full max-h-[92vh] flex flex-col bg-slate-50 shadow-2xl rounded-xl overflow-hidden ring-1 ring-slate-900/10 relative">
+                        <Button 
+                            variant="destructive" 
+                            size="icon" 
+                            className="absolute top-2 right-2 z-[110] rounded-full w-8 h-8 shadow-md"
+                            onClick={() => setIsSeabedGuiOpen(false)}
+                        >
+                            &times;
+                        </Button>
+                        <SeabedSurveyGuiInline 
+                            open={isSeabedGuiOpen}
+                            onClose={() => setIsSeabedGuiOpen(false)}
+                            jobpackId={jobPackId || "0"}
+                            structureId={structureId || "0"}
+                            sowRecordId={sowId ? Number(sowId) : null}
+                            sowReportNo={headerData?.sowReportNo}
+                            rovJob={activeDep || undefined}
+                            tapeId={tapeId?.toString()}
+                            tapeCounter={vidTimer?.toString()} 
+                        />
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 }
+
+

@@ -19,6 +19,7 @@ import {
     ANODE_DEPLETION_LIST,
     ANODE_DEPLETION_GROUPS 
 } from "../constants";
+import unitsData from "@/utils/types/units.json";
 
 interface InspectionFieldProps {
     p: any;
@@ -30,6 +31,8 @@ interface InspectionFieldProps {
     setOpenPopovers: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
     selectedComp: any;
     setDebouncedProps: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+    unitSystem: "METRIC" | "IMPERIAL";
+    dynamicProps: Record<string, any>;
 }
 
 const InspectionField = ({ 
@@ -41,7 +44,9 @@ const InspectionField = ({
     openPopovers, 
     setOpenPopovers, 
     selectedComp, 
-    setDebouncedProps 
+    setDebouncedProps,
+    unitSystem,
+    dynamicProps
 }: InspectionFieldProps) => {
     const [searchTerm, setSearchTerm] = useState("");
     const fieldName = String(p.label || p.name || '').toLowerCase();
@@ -55,9 +60,33 @@ const InspectionField = ({
     const isAnodeType = fieldName === 'anode type' || fieldName === 'anode_type';
     const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
 
+    const isTimeField = fieldName.includes('time') || fieldName.includes('counter') || p.type === 'time' || p.name === 'tape_count_no' || p.name === 'inspection_time';
     const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code;
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
+
+    // Unit Management - Enriched for Multi-Unit Support
+    const categoryUnits = p.unitCategory ? (unitsData as any)[p.unitCategory] : null;
+    
+    // Show BOTH metric and imperial units as requested
+    const unitOptions = categoryUnits 
+        ? Array.from(new Set([...(categoryUnits.metric || []), ...(categoryUnits.imperial || [])])) 
+        : [];
+        
+    const defaultUnit = categoryUnits 
+        ? (unitSystem === "IMPERIAL" ? categoryUnits.defaultImperial : categoryUnits.defaultMetric) 
+        : null;
+
+    // Unit value management
+    const unitFieldName = `${p.name || p.label}_unit`;
+    const currentUnitValue = dynamicProps[unitFieldName] || defaultUnit;
+
+    // Initialize unit in state if not present but category exists
+    React.useEffect(() => {
+        if (categoryUnits && !dynamicProps[unitFieldName] && defaultUnit) {
+            handler(unitFieldName, defaultUnit);
+        }
+    }, [categoryUnits, unitFieldName, defaultUnit]);
 
     if (isComboEligible) {
         let options = [...(p.options || [])];
@@ -238,45 +267,92 @@ const InspectionField = ({
     if (p.type === 'repeater') {
         const rows = Array.isArray(currentValue) ? currentValue : [];
         return (
-            <div className="space-y-2">
+            <div className="space-y-3">
                 {rows.map((row: any, idx: number) => (
-                    <div key={idx} className="p-2 border rounded-md bg-slate-50/50 space-y-2 relative group-row">
+                    <div key={idx} className="p-3 border-2 border-slate-100 rounded-lg bg-white shadow-sm space-y-3 relative group-row transition-all hover:border-slate-200">
                         <Button
-                            variant="ghost"
+                            variant="secondary"
                             size="icon"
-                            className="absolute -right-1 -top-1 h-6 w-6 text-red-400 hover:text-red-600 opacity-0 group-row-hover:opacity-100 transition-opacity"
+                            className="absolute -right-2 -top-2 h-7 w-7 rounded-full text-red-500 hover:text-red-700 hover:bg-red-50 border border-slate-200 shadow-sm z-10"
                             onClick={() => {
+                                const hasData = Object.values(row).some(v => v !== undefined && v !== null && v !== "");
+                                if (hasData) {
+                                    if (!window.confirm("This additional record contains data. Are you sure you want to delete it?")) return;
+                                }
                                 const newRows = [...rows];
                                 newRows.splice(idx, 1);
                                 handler(p.name || p.label, newRows);
+                                if (type === 'primary') {
+                                    setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: newRows }));
+                                }
                             }}
                         >
                             <Trash2 className="w-3.5 h-3.5" />
                         </Button>
-                        <div className="grid grid-cols-2 gap-2">
-                            {(p.subFields || []).map((sf: any) => (
-                                <div key={sf.name} className="space-y-1">
-                                    <label className="text-[10px] uppercase text-slate-400 font-bold">{sf.label}</label>
-                                    <Input
-                                        type={sf.type === 'number' ? 'number' : 'text'}
-                                        step={sf.step}
-                                        value={row[sf.name] || ''}
-                                        onChange={(e) => {
-                                            const newRows = [...rows];
-                                            newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
-                                            handler(p.name || p.label, newRows);
-                                        }}
-                                        onBlur={(e) => {
-                                            if (type === 'primary') {
-                                                const newRows = [...rows];
-                                                newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
-                                                setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: newRows }));
-                                            }
-                                        }}
-                                        className="h-8 text-xs"
-                                    />
-                                </div>
-                            ))}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {(p.subFields || []).map((sf: any) => {
+                                const sfCategoryUnits = sf.unitCategory ? (unitsData as any)[sf.unitCategory] : null;
+                                const sfUnitFieldName = `${sf.name}_unit`;
+                                const sfDefaultUnit = sfCategoryUnits 
+                                    ? (unitSystem === "IMPERIAL" ? sfCategoryUnits.defaultImperial : sfCategoryUnits.defaultMetric) 
+                                    : null;
+                                const sfCurrentUnit = row[sfUnitFieldName] || sfDefaultUnit;
+                                
+                                const sfUnitOptions = sfCategoryUnits 
+                                    ? Array.from(new Set([...(sfCategoryUnits.metric || []), ...(sfCategoryUnits.imperial || [])])) 
+                                    : [];
+
+                                return (
+                                    <div key={sf.name} className="space-y-1">
+                                        <label className="text-[10px] uppercase text-slate-400 font-black tracking-wider">{sf.label}</label>
+                                        <div className="flex items-center gap-1">
+                                            <Input
+                                                type={sf.type === 'number' ? 'number' : 'text'}
+                                                step={sf.step}
+                                                value={row[sf.name] || ''}
+                                                onChange={(e) => {
+                                                    const newRows = [...rows];
+                                                    newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
+                                                    // Auto-init unit if missing
+                                                    if (sfDefaultUnit && !newRows[idx][sfUnitFieldName]) {
+                                                        newRows[idx][sfUnitFieldName] = sfDefaultUnit;
+                                                    }
+                                                    handler(p.name || p.label, newRows);
+                                                }}
+                                                onBlur={(e) => {
+                                                    if (type === 'primary') {
+                                                        const newRows = [...rows];
+                                                        newRows[idx] = { ...newRows[idx], [sf.name]: e.target.value };
+                                                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: newRows }));
+                                                    }
+                                                }}
+                                                className="h-9 text-sm font-medium border-slate-200 focus-visible:ring-slate-400 flex-1"
+                                            />
+                                            {sfCategoryUnits && (
+                                                <div className="relative flex items-center h-9 px-2 border border-slate-200 rounded-md bg-slate-50 min-w-[60px] hover:border-slate-300 transition-colors">
+                                                    <select
+                                                        className="w-full bg-transparent border-none text-[10px] font-bold text-slate-500 focus:ring-0 cursor-pointer appearance-none pr-4"
+                                                        value={sfCurrentUnit}
+                                                        onChange={(e) => {
+                                                            const newRows = [...rows];
+                                                            newRows[idx] = { ...newRows[idx], [sfUnitFieldName]: e.target.value };
+                                                            handler(p.name || p.label, newRows);
+                                                            if (type === 'primary') {
+                                                                setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: newRows }));
+                                                            }
+                                                        }}
+                                                    >
+                                                        {Array.from(new Set([...(sfCategoryUnits.metric || []), ...(sfCategoryUnits.imperial || [])])).map((unit: string) => (
+                                                            <option key={unit} value={unit}>{unit}</option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 pointer-events-none" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 ))}
@@ -285,7 +361,16 @@ const InspectionField = ({
                     size="sm"
                     className="w-full h-8 border-dashed border-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
                     onClick={() => {
-                        handler(p.name || p.label, [...rows, {}]);
+                        const newRow: any = {};
+                        (p.subFields || []).forEach((sf: any) => {
+                            if (sf.unitCategory) {
+                                const sfCategoryUnits = (unitsData as any)[sf.unitCategory];
+                                if (sfCategoryUnits) {
+                                    newRow[`${sf.name}_unit`] = unitSystem === "IMPERIAL" ? sfCategoryUnits.defaultImperial : sfCategoryUnits.defaultMetric;
+                                }
+                            }
+                        });
+                        handler(p.name || p.label, [...rows, newRow]);
                     }}
                 >
                     <Plus className="w-3.5 h-3.5 mr-1" /> Add Reading
@@ -294,21 +379,80 @@ const InspectionField = ({
         );
     }
 
+    const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let val = e.target.value;
+        const digits = val.replace(/\D/g, "").slice(0, 6);
+        let formatted = digits;
+        if (digits.length > 2 && digits.length <= 4) {
+            formatted = `${digits.slice(0, 2)}:${digits.slice(2)}`;
+        } else if (digits.length > 4) {
+            formatted = `${digits.slice(0, 2)}:${digits.slice(2, 4)}:${digits.slice(4)}`;
+        }
+        handler(p.name || p.label, formatted);
+    };
+
+    const handleTimeBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+        let val = e.target.value;
+        if (!val) {
+            if (type === 'primary') setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: "" }));
+            return;
+        }
+
+        const parts = val.split(':');
+        let normalized = parts.map(p => p.slice(0, 2).padStart(2, '0'));
+        
+        // Pad to 3 parts (HH:MM:SS) if incomplete
+        while (normalized.length < 3) {
+            normalized.push("00");
+        }
+
+        // Ensure values are within range (0-23 for hours, 0-59 for min/sec)
+        if (normalized[0] && parseInt(normalized[0]) > 23) normalized[0] = "23";
+        if (normalized[1] && parseInt(normalized[1]) > 59) normalized[1] = "59";
+        if (normalized[2] && parseInt(normalized[2]) > 59) normalized[2] = "59";
+
+        const finalVal = normalized.slice(0, 3).join(':');
+        handler(p.name || p.label, finalVal);
+        if (type === 'primary') {
+            setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: finalVal }));
+        }
+    };
+
     return (
-        <Input
-            type={p.type === 'number' ? 'number' : 'text'}
-            step={p.step}
-            value={currentValue || ""}
-            onChange={(e) => handler(p.name || p.label, e.target.value)}
-            onBlur={(e) => {
-                if (type === 'primary') {
-                    setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
-                }
-            }}
-            placeholder={`Enter ${p.label}`}
-            className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass}`}
-        />
+        <div className="relative flex items-center gap-1">
+            <Input
+                type={p.type === 'date' ? 'date' : (isTimeField ? 'text' : (p.type === 'number' ? 'number' : 'text'))}
+                step={p.step}
+                value={currentValue || ""}
+                onChange={isTimeField ? handleTimeChange : (e) => handler(p.name || p.label, e.target.value)}
+                onBlur={isTimeField ? handleTimeBlur : (e) => {
+                    if (type === 'primary') {
+                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
+                    }
+                }}
+                placeholder={isTimeField ? "HH:MM:SS" : `Enter ${p.label || p.name}`}
+                maxLength={isTimeField ? 8 : undefined}
+                className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass} flex-1`}
+            />
+            {categoryUnits && (
+                <select
+                    className="h-7 px-1 text-[10px] font-bold border rounded bg-slate-50 text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    value={currentUnitValue}
+                    onChange={(e) => {
+                        handler(unitFieldName, e.target.value);
+                        if (type === 'primary') {
+                            setDebouncedProps((prev: any) => ({ ...prev, [unitFieldName]: e.target.value }));
+                        }
+                    }}
+                >
+                    {unitOptions.map((u: any) => (
+                        <option key={u} value={u}>{u}</option>
+                    ))}
+                </select>
+            )}
+        </div>
     );
 };
 
 export default InspectionField;
+

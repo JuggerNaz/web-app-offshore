@@ -55,13 +55,15 @@ export const extractFilename = (pathOrUrl: string): string => {
 /**
  * Process attachment data to get the correct file URL and filename
  * @param attachment - The attachment object from the database
- * @returns Object containing the processed fileUrl and fileName
+ * @returns Object containing the processed fileUrl, fileName, isImage, and fileType
  */
 export const processAttachmentUrl = (
   attachment: any
-): { fileUrl: string | null; fileName: string } => {
+): { fileUrl: string | null; fileName: string; isImage: boolean; fileType: string } => {
   let fileUrl = attachment.path;
   let fileName = attachment.name || "File";
+  let fileType = "FILE";
+  let isImage = false;
 
   // If meta exists, try to get URL and original filename from there
   if (attachment.meta && typeof attachment.meta === "object") {
@@ -72,14 +74,31 @@ export const processAttachmentUrl = (
     if (meta.original_file_name) {
       fileName = meta.original_file_name;
     }
+    if (meta.file_type) {
+      fileType = meta.file_type;
+      if (fileType.startsWith("image/")) {
+        isImage = true;
+      }
+    }
+  }
+
+  // Fallback check for image extension
+  if (!isImage && fileName) {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext || '')) {
+      isImage = true;
+      fileType = `image/${ext}`;
+    }
   }
 
   // If path looks like a filename (no http/https), construct the proper URL
   if (fileUrl && !isCompleteUrl(fileUrl)) {
+    // If it starts with 'uploads/', it might be in 'attachments' bucket
+    // or if it is just a filename
     fileUrl = getStoragePublicUrl("attachments", fileUrl);
   }
 
-  return { fileUrl, fileName };
+  return { fileUrl, fileName, isImage, fileType };
 };
 
 /**
@@ -92,3 +111,21 @@ export const truncateText = (text: string, maxLength: number): string => {
   if (!text || text.length <= maxLength) return text;
   return `${text.substring(0, maxLength)}...`;
 };
+
+/**
+ * Format bytes to human readable string
+ * @param bytes - Number of bytes
+ * @param decimals - Number of decimal places
+ * @returns Formatted string (e.g., "1.5 MB")
+ */
+export const formatBytes = (bytes: number, decimals = 2): string => {
+  if (!+bytes) return '0 Bytes';
+
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}

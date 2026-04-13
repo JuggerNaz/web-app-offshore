@@ -115,6 +115,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const { data: inspectionTypes } = useSWR("/api/inspection-type?pageSize=1000", fetcher);
   const { data: contractors } = useSWR("/api/library/CONTR_NAM", fetcher);
   const { data: compTypesLib } = useSWR("/api/components", fetcher);
+  const { data: activeStructureSOW } = useSWR(id && activeStructKey ? `/api/sow?jobpack_id=${id}&structure_id=${activeStructKey.split('-')[1]}` : null, fetcher);
 
 
   // Consolidation Logic
@@ -1066,27 +1067,21 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                             </div>
                             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium ml-8">Select required inspections for this location</p>
 
-                            {/* Job Type Selector (Per Structure) */}
+                            {/* SOW Reports & Job Types */}
                             <div className="mt-4 mb-2">
-                              <Label className="text-[10px] font-black uppercase text-slate-400 mb-2 block">Job Type</Label>
-                              <div className="flex flex-wrap gap-2">
-                                {["Major", "Partial", "Pipeline", "Special"].map((jt) => {
-                                  const isSelected = jobTypeByStruct[activeStructKey] === jt;
-                                  const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
-                                  return (
-                                    <Badge
-                                      key={jt}
-                                      variant={isSelected ? "default" : "outline"}
-                                      className={cn("select-none transition-colors px-3 py-1",
-                                        isLocked ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer",
-                                        isSelected ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800")}
-                                      onClick={() => !isLocked && setJobTypeByStruct({ ...jobTypeByStruct, [activeStructKey]: jt })}
-                                    >
-                                      {jt}
+                              <Label className="text-[10px] font-black uppercase text-slate-400 mb-2 block">SOW Reports & Job Types</Label>
+                              {activeStructureSOW?.data?.report_numbers?.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {activeStructureSOW.data.report_numbers.map((r: any) => (
+                                    <Badge key={r.number} variant="outline" className="flex items-center gap-1.5 px-2.5 py-1 bg-white dark:bg-slate-900 border-slate-200 shadow-sm pointer-events-none select-none">
+                                      <span className="font-black text-slate-700 dark:text-slate-200">{r.number}</span>
+                                      <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded text-center min-w-[50px]">{r.job_type || 'Unassigned'}</span>
                                     </Badge>
-                                  )
-                                })}
-                              </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-slate-400 font-bold italic">No SOW reports assigned yet. Configure in SOW Dialog.</p>
+                              )}
                             </div>
 
                             {/* Component Type Selector (Conditional) */}

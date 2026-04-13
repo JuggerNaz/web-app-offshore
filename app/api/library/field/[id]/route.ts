@@ -8,9 +8,9 @@ import { withAuth } from "@/utils/with-auth";
  * GET /api/library/field/[id]
  * Fetch a single field by ID
  */
-export const GET = withAuth(async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {
+export const GET = withAuth(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
     const supabase = createClient();
-    const { id: fieldId } = await context.params;
+    const { id: fieldId } = await params;
 
     const { data, error } = await supabase
         .from("u_lib_list")
