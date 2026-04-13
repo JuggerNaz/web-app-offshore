@@ -90,19 +90,16 @@ export default function Spec1Pipeline({ data }: Props) {
       >
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column - Main Info */}
-          <div className="lg:col-span-8 space-y-6">
+          <div className="lg:col-span-10 space-y-6">
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
                 <Info className="h-5 w-5 text-blue-500" />
                 <CardTitle className="text-lg">General Information</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 pt-2">
-                <div className="md:col-span-2">
-                  <FormFieldWrap label="Title" name="title" form={form} placeholder="Enter pipeline title" />
-                </div>
-                <div className="md:col-span-2">
-                  <FormFieldWrap label="Description" name="pdesc" form={form} placeholder="Detailed pipeline description" />
-                </div>
+                <FormFieldWrap label="Pipeline" name="title" form={form} placeholder="Enter pipeline title" />
+                <FormFieldWrap label="Description" name="pdesc" form={form} placeholder="Detailed pipeline description" />
+                
                 <FormFieldWrap
                   label="Oil Field"
                   name="pfield"
@@ -112,12 +109,86 @@ export default function Spec1Pipeline({ data }: Props) {
                   form={form}
                   ftype="select"
                 />
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="Depth" name="depth" form={form} type="number" />
+                  </div>
+                  <span className="mb-2 text-sm text-cyan-600">m</span>
+                </div>
+
+                <FormFieldWrap label="Medium" name="ptype" form={form} placeholder="Medium" />
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="Design Life" name="desg_life" form={form} type="number" />
+                  </div>
+                  <span className="mb-2 text-sm text-cyan-600">year</span>
+                </div>
+
                 <FormFieldWrap
                   label="Inst. Date"
                   name="inst_date"
                   form={form}
                   type="date"
                 />
+                <FormFieldWrap label="Process" name="process" form={form} placeholder="Process" />
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
+                <MapPin className="h-5 w-5 text-red-500" />
+                <CardTitle className="text-lg">Location & Path Coordinates</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6 pt-2">
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Starts At</h4>
+                  <div className="grid grid-cols-4 gap-3">
+                    <FormFieldWrap label="Location" name="st_loc" form={form} />
+                    <div className="flex items-end gap-1">
+                      <div className="flex-1">
+                        <FormFieldWrap label="KP" name="st_fp" form={form} type="number" />
+                      </div>
+                      <span className="mb-2 text-xs text-cyan-600">km</span>
+                    </div>
+                    <div className="flex items-end gap-1">
+                      <div className="flex-1">
+                        <FormFieldWrap label="Easting" name="st_x" form={form} />
+                      </div>
+                      <span className="mb-2 text-xs text-cyan-600">m</span>
+                    </div>
+                    <div className="flex items-end gap-1">
+                      <div className="flex-1">
+                        <FormFieldWrap label="Northing" name="st_y" form={form} />
+                      </div>
+                      <span className="mb-2 text-xs text-cyan-600">m</span>
+                    </div>
+                  </div>
+                </div>
+                <Separator />
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ends At</h4>
+                  <div className="grid grid-cols-4 gap-3">
+                    <FormFieldWrap label="Location" name="end_loc" form={form} />
+                    <div className="flex items-end gap-1">
+                      <div className="flex-1">
+                        <FormFieldWrap label="KP" name="end_fp" form={form} type="number" />
+                      </div>
+                      <span className="mb-2 text-xs text-cyan-600">km</span>
+                    </div>
+                    <div className="flex items-end gap-1">
+                      <div className="flex-1">
+                        <FormFieldWrap label="Easting" name="end_x" form={form} />
+                      </div>
+                      <span className="mb-2 text-xs text-cyan-600">m</span>
+                    </div>
+                    <div className="flex items-end gap-1">
+                      <div className="flex-1">
+                        <FormFieldWrap label="Northing" name="end_y" form={form} />
+                      </div>
+                      <span className="mb-2 text-xs text-cyan-600">m</span>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -126,85 +197,112 @@ export default function Spec1Pipeline({ data }: Props) {
                 <Ruler className="h-5 w-5 text-emerald-500" />
                 <CardTitle className="text-lg">Technical Parameters</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 pt-2">
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <FormFieldWrap label="Outer Diameter" name="outer_diam" form={form} type="number" />
+              <CardContent className="space-y-6 pt-2">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-x-6 gap-y-4">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <FormFieldWrap label="Length" name="plength" form={form} type="number" />
+                    </div>
+                    <span className="mb-2 text-sm text-cyan-600">km</span>
                   </div>
-                  <span className="mb-2 text-sm text-muted-foreground">mm</span>
-                </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <FormFieldWrap label="Wall Thickness" name="wall_thk" form={form} type="number" />
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <FormFieldWrap label="Diameter" name="line_diam" form={form} type="number" />
+                    </div>
+                    <span className="mb-2 text-sm text-cyan-600">mm</span>
                   </div>
-                  <span className="mb-2 text-sm text-muted-foreground">mm</span>
-                </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <FormFieldWrap label="Total Length" name="pipe_len" form={form} type="number" />
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <FormFieldWrap label="Wall Thkns." name="wall_thk" form={form} type="number" />
+                    </div>
+                    <span className="mb-2 text-sm text-cyan-600">mm</span>
                   </div>
-                  <span className="mb-2 text-sm text-muted-foreground">km</span>
+                  <FormFieldWrap label="Material" name="material" form={form} placeholder="e.g. API 5L G X65" />
                 </div>
-                <FormFieldWrap label="Material Type" name="material" form={form} placeholder="e.g. Carbon Steel" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
+                  <FormFieldWrap label="Cp System" name="cp_system" form={form} placeholder="e.g. SACRIFICIAL" />
+                  <FormFieldWrap label="Corrosion Coating" name="corr_ctg" form={form} placeholder="e.g. ASPHALT+3CPP" />
+                  <div className="flex items-end gap-2">
+                    <div className="flex-[2]">
+                      <FormFieldWrap label="Concrete Coating" name="conc_ctg" form={form} placeholder="e.g. 3044KG/M3" />
+                    </div>
+                    <div className="flex-1 flex items-end gap-1">
+                      <FormFieldWrap label="%" name="conc_ctg_per" form={form} type="number" />
+                      <span className="mb-2 text-sm text-white">%</span>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
-                <Settings className="h-5 w-5 text-orange-500" />
-                <CardTitle className="text-lg">Burial & Protection</CardTitle>
+                <Activity className="h-5 w-5 text-orange-500" />
+                <CardTitle className="text-lg">Operational Parameters</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6 pt-2">
-                <FormFieldWrap
-                  label="Burial Status"
-                  name="burial_stat"
-                  form={form}
-                  ftype="slider"
-                  min={0}
-                  max={2}
-                  step={0.1}
-                />
-                <FormFieldWrap label="Protection Method" name="protect_method" form={form} placeholder="e.g. Concrete Coating" />
+              <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 pt-2">
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="Design Pressure" name="desg_press" form={form} type="number" />
+                  </div>
+                  <span className="mb-2 text-sm text-cyan-600">bars</span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="Operating Pressure" name="oper_press" form={form} type="number" />
+                  </div>
+                  <span className="mb-2 text-sm text-cyan-600">bars</span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="Line Burried" name="burial" form={form} type="number" />
+                  </div>
+                  <span className="mb-2 text-sm text-white">%</span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="Constructional Span" name="span_cons" form={form} type="number" />
+                  </div>
+                  <span className="mb-2 text-sm text-cyan-600">m</span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormFieldWrap label="Operational Span" name="span_oper" form={form} type="number" />
+                  </div>
+                  <span className="mb-2 text-sm text-cyan-600">m</span>
+                </div>
+                <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="N/A" />
               </CardContent>
             </Card>
+
           </div>
 
-          {/* Right Column - Location */}
-          <div className="lg:col-span-4 space-y-6">
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
-                <MapPin className="h-5 w-5 text-red-500" />
-                <CardTitle className="text-lg">Location & Path Coordinates</CardTitle>
+          {/* Right Column - Misc & Unit */}
+          <div className="lg:col-span-2 space-y-6">
+
+            <Card className="shadow-sm border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
+              <CardHeader className="flex flex-row items-center gap-1 space-y-0 py-2 px-3">
+                <Globe className="h-3.5 w-3.5 text-blue-600" />
+                <CardTitle className="text-[10px] uppercase font-bold tracking-tight">Units</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6 pt-2">
-                <div className="space-y-4">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Start Point</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormFieldWrap label="Northing" name="st_north" form={form} type="number" />
-                    <FormFieldWrap label="Easting" name="st_east" form={form} type="number" />
-                  </div>
-                </div>
-                <Separator />
-                <div className="space-y-4">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">End Point</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormFieldWrap label="Northing" name="end_north" form={form} type="number" />
-                    <FormFieldWrap label="Easting" name="end_east" form={form} type="number" />
-                  </div>
-                </div>
+              <CardContent className="space-y-2 pt-0 px-3 pb-3">
+                <p className="text-[9px] leading-tight text-muted-foreground">
+                  Default measurement system.
+                </p>
+                <FormFieldWrap label="" name="def_unit" form={form} placeholder="METRIC" />
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
-              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
-                <Globe className="h-5 w-5 text-blue-600" />
-                <CardTitle className="text-lg">System Units</CardTitle>
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center gap-1 space-y-0 py-2 px-3">
+                <Layers className="h-3.5 w-3.5 text-indigo-500" />
+                <CardTitle className="text-[10px] uppercase font-bold tracking-tight">Finalize</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 pt-2">
-                <p className="text-xs text-muted-foreground italic">
-                  Primary unit system for length, weight, and pressure calculations.
-                </p>
-                <FormFieldWrap label="Unit System" name="def_unit" form={form} placeholder="Metric (SI)" />
+              <CardContent className="pt-0 px-3 pb-3">
+                <Button type="submit" className="w-full h-9 text-xs font-bold px-2">
+                  <Save className="mr-1.5 h-3.5 w-3.5" />
+                  Save
+                </Button>
               </CardContent>
             </Card>
           </div>

@@ -136,6 +136,7 @@ export function FormItemNormal({
         <Input
           placeholder={placeholder ?? "N/A"}
           {...field}
+          value={field.value ?? ""}
           type={type}
           maxLength={maxLength}
           disabled={disabled}
@@ -176,6 +177,7 @@ export function FormItemVertical({
           <Input
             placeholder={placeholder ?? "N/A"}
             {...field}
+            value={field.value ?? ""}
             type={type}
             maxLength={maxLength}
             disabled={disabled}
@@ -212,6 +214,7 @@ export function FormItemSmall({
         <Input
           placeholder={placeholder ?? "N/A"}
           {...field}
+          value={field.value ?? ""}
           type={type}
           maxLength={maxLength}
           disabled={disabled}

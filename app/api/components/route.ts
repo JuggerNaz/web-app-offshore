@@ -15,6 +15,7 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
     .from("components")
     .select("id, name, code, descrip, is_active, plat, pipe")
     .eq("is_active", true)
+    .neq("code", "WD")
     .order("name");
 
   if (error) {
