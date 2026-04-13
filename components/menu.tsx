@@ -138,21 +138,21 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             actionHref="/dashboard/planning/form"
           />
           <MenuLink
-            href="/dashboard/inspection-v2"
-            isCollapsed={isCollapsed}
-            label="Inspection"
-            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
-            text="Inspection"
-          />
-          <MenuLink
             href="/dashboard/reports"
             isCollapsed={isCollapsed}
             label="Reports"
             icon={<FileText className="h-[18px] w-[18px]" />}
             text="Reports"
           />
-
+          <MenuLink
+            href="/dashboard/inspection-v2"
+            isCollapsed={isCollapsed}
+            label="Inspection"
+            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+            text="Inspection"
+          />
         </div>
+
 
         {/* UTILITIES */}
         <div className="space-y-1">
@@ -174,6 +174,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             label="Inspection Type"
             icon={<FileText className="h-[18px] w-[18px]" />}
             text="Inspection Type"
+          />
+          <MenuLink
+            href="/dashboard/utilities/attachments"
+            isCollapsed={isCollapsed}
+            label="Attachments"
+            icon={<FileText className="h-[18px] w-[18px]" />}
+            text="Attachments"
           />
         </div>
 

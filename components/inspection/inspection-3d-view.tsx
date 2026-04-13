@@ -2,9 +2,12 @@
 
 import { useInspection } from "@/components/inspection/inspection-context";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Camera, Square } from "lucide-react";
+import { toast } from "sonner";
 
 export function Inspection3DView() {
-    const { state } = useInspection();
+    const { state, updateState } = useInspection();
 
     return (
         <div className="space-y-6">
@@ -48,23 +51,64 @@ export function Inspection3DView() {
             </div>
 
             <div className="rounded-md border border-slate-800 bg-slate-900/50 p-4">
-                <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Recent Log</h3>
-                <div className="space-y-3">
-                    {[1, 2, 3].map(i => (
-                        <div key={i} className="group relative p-3 rounded-md bg-slate-950/50 border border-slate-800/50 hover:border-slate-700 transition-colors cursor-pointer">
-                            <div className="flex justify-between items-start mb-1">
-                                <span className="text-xs font-mono text-slate-400">EVT-2024-00{i}</span>
-                                <span className="text-[10px] text-slate-600">10:4{i}:00</span>
-                            </div>
-                            <div className="text-xs text-slate-300 font-medium truncate">Minor corrosion on Leg B2</div>
-
-                            <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <div className="h-6 w-6 rounded bg-slate-800 flex items-center justify-center text-slate-400">
-                                    →
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+                <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Video</h3>
+                <div className="flex flex-col gap-3">
+                    <div className="flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                                "flex-1 gap-2 border-slate-700 hover:bg-slate-800 hover:text-white transition-all text-[10px] h-9",
+                                state.evidence.isRecording && "bg-red-600/20 border-red-600/50 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]"
+                            )}
+                            onClick={() => updateState({ evidence: { ...state.evidence, isRecording: true } })}
+                            disabled={state.evidence.isRecording}
+                        >
+                            <div className={cn("h-1.5 w-1.5 rounded-full bg-red-500", state.evidence.isRecording && "animate-pulse")} />
+                            START
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                                "flex-1 gap-2 border-slate-700 hover:bg-slate-800 hover:text-white transition-all text-[10px] h-9",
+                                state.evidence.videoCaptured && !state.evidence.isRecording && "bg-blue-600/20 border-blue-600/50 text-blue-400"
+                            )}
+                            onClick={() => updateState({ evidence: { ...state.evidence, isRecording: false, videoCaptured: true } })}
+                            disabled={!state.evidence.isRecording}
+                        >
+                            <Square className="h-3 w-3 fill-current" />
+                            STOP
+                        </Button>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                            "w-full gap-2 border-slate-700 hover:bg-slate-800 hover:text-white transition-all text-[10px] h-9",
+                            state.evidence.frameCount > 0 && "bg-blue-600/20 border-blue-600/50 text-blue-400"
+                        )}
+                        onClick={() => {
+                            updateState({
+                                evidence: {
+                                    ...state.evidence,
+                                    frameCount: (state.evidence.frameCount || 0) + 1
+                                }
+                            });
+                            toast.success(`Frame #${(state.evidence.frameCount || 0) + 1} captured`, {
+                                description: "Added to event evidence",
+                                duration: 2000,
+                            });
+                        }}
+                    >
+                        <Camera className="h-3 w-3" />
+                        GRAB FRAME
+                        {state.evidence.frameCount > 0 && (
+                            <span className="ml-auto bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">
+                                {state.evidence.frameCount}
+                            </span>
+                        )}
+                    </Button>
                 </div>
             </div>
         </div>

@@ -10,11 +10,11 @@ try {
     const supabase = createClient(url, key);
 
     async function check() {
-        const { data: listData } = await supabase.from('u_lib_list').select('*').limit(1);
-        if (listData && listData.length > 0) {
-            console.log("List Columns:", Object.keys(listData[0]));
+        const { data, error } = await supabase.from('u_lib_list').select('*').limit(1);
+        if (data && data.length > 0) {
+            console.log('Columns in u_lib_list:', Object.keys(data[0]));
         } else {
-            console.log("List table empty");
+            console.log('No data found in u_lib_list');
         }
     }
     check();

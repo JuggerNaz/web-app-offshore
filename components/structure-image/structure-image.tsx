@@ -221,7 +221,9 @@ export default function StructureImage() {
       {/* Header Info */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-l-4 border-blue-600 pl-6 py-2">
         <div>
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Visual Documentation</h3>
+          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">
+            {pageType === "pipeline" ? "Photo Documentation" : "Visual Documentation"}
+          </h3>
           <p className="text-xl font-black tracking-tight text-slate-900 dark:text-white">Engineering Library</p>
         </div>
         <div className="flex gap-3">
@@ -357,7 +359,9 @@ export default function StructureImage() {
       ) : (
         <div className="w-full aspect-[21/9] bg-slate-50 dark:bg-slate-900/30 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center gap-4 text-slate-400">
           <ImageIcon className="h-12 w-12 opacity-20" />
-          <p className="text-xs font-black uppercase tracking-widest">No Visual Records Found</p>
+          <p className="text-xs font-black uppercase tracking-widest">
+            {pageType === "pipeline" ? "No Photo Records Found" : "No Visual Records Found"}
+          </p>
         </div>
       )}
 
@@ -420,8 +424,8 @@ export default function StructureImage() {
         onOpenChange={(open) => !open && setDeleteId(null)}
         onConfirm={deleteImage}
         loading={deleteLoading}
-        title="Delete Visual"
-        description="Are you sure you want to permanently remove this visual record from the structure? This cannot be undone."
+        title={pageType === "pipeline" ? "Delete Photo" : "Delete Visual"}
+        description={pageType === "pipeline" ? "Are you sure you want to permanently remove this photo record from the structure? This cannot be undone." : "Are you sure you want to permanently remove this visual record from the structure? This cannot be undone."}
       />
     </div >
   );

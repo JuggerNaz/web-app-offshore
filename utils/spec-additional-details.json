@@ -4,12 +4,9 @@
             "code": "cf",
             "componentType": "cf_comp",
             "additionalDataTemplate": {
-                "thetype": "",
+                "cgud_typ": "",
+                "fitg_typ": "",
                 "no_slots": "",
-                "attach_method": "",
-                "top_und": "",
-                "id_chk": "",
-                "comp_group": "",
                 "del": false
             }
         },
@@ -17,16 +14,16 @@
             "code": "cl",
             "componentType": "cl_comp",
             "additionalDataTemplate": {
-                "thetype": "",
+                "clam_typ": "",
+                "clam_mat": "",
                 "no_bolts": "",
-                "liner_reqd": "",
+                "liner_reqd": false,
                 "diameter": "",
-                "material": "",
                 "length": "",
                 "bolt_diam": "",
                 "stub_length": "",
                 "flange_gap": "",
-                "id_chk": "",
+                "wall_thk": "",
                 "del": false
             }
         },
@@ -38,8 +35,7 @@
                 "in_diam": "",
                 "wall_thk": "",
                 "production": "",
-                "coating": "",
-                "id_chk": "",
+                "coat_typ": "",
                 "del": false
             }
         },
@@ -47,13 +43,14 @@
             "code": "cs",
             "componentType": "cs_comp",
             "additionalDataTemplate": {
-                "thetype": "",
+                "csum_typ": "",
+                "cais_at": "",
+                "corr_ctg": "",
                 "attachments": "",
                 "diameter": "",
                 "termination_p": "",
                 "injection_line": "",
                 "suction_device": "",
-                "id_chk": "",
                 "coating": "",
                 "del": false
             }
@@ -62,13 +59,13 @@
             "code": "bb",
             "componentType": "bb_comp",
             "additionalDataTemplate": {
-                "thetype": "",
                 "no_undattach": "",
                 "no_topattach": "",
                 "length": "",
+                "length_unit": "m",
                 "diameter": "",
+                "diameter_unit": "m",
                 "weight": "",
-                "id_chk": "",
                 "del": false
             }
         },
@@ -76,8 +73,15 @@
             "code": "fa",
             "componentType": "fa_comp",
             "additionalDataTemplate": {
-                "position": "",
-                "id_chk": "",
+                "face_pos": "",
+                "del": false
+            }
+        },
+        {
+            "code": "fv",
+            "componentType": "fv_comp",
+            "additionalDataTemplate": {
+                "valve_status": "",
                 "del": false
             }
         },
@@ -85,14 +89,27 @@
             "code": "fd",
             "componentType": "fd_comp",
             "additionalDataTemplate": {
-                "thetype": "",
+                "fender_type": "",
                 "no_subsea": "",
                 "no_topside": "",
                 "no_landings": "",
                 "length": "",
+                "weight": "",
+                "del": false
+            }
+        },
+        {
+            "code": "bb",
+            "componentType": "bb_comp",
+            "additionalDataTemplate": {
+                "bumper_type": "",
+                "no_subsea": "",
+                "no_topside": "",
+                "no_landings": "",
+                "length": "",
+                "length_unit": "m",
                 "width": "",
                 "weight": "",
-                "id_chk": "",
                 "del": false
             }
         },
@@ -100,14 +117,12 @@
             "code": "bl",
             "componentType": "bl_comp",
             "additionalDataTemplate": {
-                "thetype": "",
+                "boatlanding_types": "",
                 "no_subsea": "",
                 "no_topside": "",
                 "no_landings": "",
                 "length": "",
-                "width": "",
                 "weight": "",
-                "id_chk": "",
                 "del": false
             }
         },
@@ -116,27 +131,13 @@
             "componentType": "hm_comp",
             "additionalDataTemplate": {
                 "thetype": "",
-                "material": "",
+                "memb_mat": "",
+                "corr_ctg": "",
                 "length": "",
-                "designation": "",
-                "beam_desig": "",
-                "vertical_ch_desig": "",
-                "angle_desig": "",
                 "nominal_diam": "",
-                "channel_desg": "",
-                "horiz_chan_desg": "",
-                "wall_thk": "",
-                "flange_thk": "",
-                "flange_avg_thk": "",
                 "out_diam": "",
-                "flange_width": "",
-                "web_thk": "",
-                "stem_thk": "",
-                "web_depth": "",
+                "wall_thk": "",
                 "stiffening": "",
-                "nominal_size": "",
-                "id_chk": "",
-                "coating": "",
                 "del": false
             }
         },
@@ -144,17 +145,28 @@
             "code": "hs",
             "componentType": "hs_comp",
             "additionalDataTemplate": {
-                "hose_type": "",
-                "diameter": "",
+                "hose_typ": "",
+                "hose_man": "",
+                "flan_cls": "",
+                "hose_cnt": "",
                 "length": "",
                 "serial_no": "",
-                "manufacturer": "",
                 "purch_date": "",
-                "hose_contents": "",
                 "flange_rating": "",
-                "electrically_cont": "",
-                "id_chk": "",
-                "assoc_str": "",
+                "electrically_cont": false,
+                "del": false
+            }
+        },
+        {
+            "code": "lg",
+            "componentType": "lg_comp",
+            "additionalDataTemplate": {
+                "memb_mat": "",
+                "wall_thk": "",
+                "diameter": "",
+                "length": "",
+                "int_stiff": false,
+                "ext_stiff": false,
                 "del": false
             }
         },
@@ -162,38 +174,35 @@
             "code": "pg",
             "componentType": "pg_comp",
             "additionalDataTemplate": {
-                "thetype": "",
-                "material": "",
-                "attach_method": "",
+                "pile_present": "",
                 "diameter": "",
-                "pile": "",
-                "id_chk": "",
-                "del": false
+                "del": false,
+                "pgud_typ": "",
+                "pgud_mat": "",
+                "pgud_fas": ""
             }
         },
         {
             "code": "pl",
             "componentType": "pl_comp",
             "additionalDataTemplate": {
-                "thetype": "",
-                "material": "",
                 "wall_thk": "",
                 "diameter": "",
                 "depth": "",
-                "id_chk": "",
-                "del": false
+                "del": false,
+                "pile_typ": "",
+                "pile_mat": ""
             }
         },
         {
             "code": "rb",
             "componentType": "rb_comp",
             "additionalDataTemplate": {
-                "thetype": "",
+                "risb_typ": "",
                 "length": "",
                 "width": "",
                 "no_riserslots": "",
                 "no_suppbackets": "",
-                "id_chk": "",
                 "del": false
             }
         },
@@ -201,14 +210,13 @@
             "code": "rg",
             "componentType": "rg_comp",
             "additionalDataTemplate": {
-                "thetype": "",
                 "no_subsea": "",
                 "no_topside": "",
                 "no_risers": "",
-                "riser_wt": "",
+                "risg_typ": "",
                 "width": "",
                 "length": "",
-                "id_chk": "",
+                "depth": "",
                 "del": false
             }
         },
@@ -216,17 +224,15 @@
             "code": "rs",
             "componentType": "rs_comp",
             "additionalDataTemplate": {
-                "thetype": "",
-                "material": "",
                 "diameter": "",
                 "wall_thk": "",
                 "desg_press": "",
                 "op_press": "",
-                "coating": "",
                 "no_clamps": "",
-                "flange_rating": "",
-                "id_chk": "",
-                "assoc_str": "",
+                "risr_typ": "",
+                "risr_mat": "",
+                "corr_ctg": "",
+                "pipe_rtg": "",
                 "del": false
             }
         },
@@ -235,27 +241,13 @@
             "componentType": "vd_comp",
             "additionalDataTemplate": {
                 "thetype": "",
-                "material": "",
+                "memb_mat": "",
+                "corr_ctg": "",
                 "length": "",
-                "designation": "",
-                "beam_desig": "",
-                "vertical_ch_desig": "",
-                "angle_desig": "",
                 "nominal_diam": "",
-                "nominal_size": "",
-                "channel_desg": "",
-                "horiz_chan_desg": "",
-                "wall_thk": "",
-                "flange_thk": "",
-                "flange_avg_thk": "",
                 "out_diam": "",
-                "flange_width": "",
-                "web_thk": "",
-                "stem_thk": "",
-                "web_depth": "",
+                "wall_thk": "",
                 "stiffening": "",
-                "id_chk": "",
-                "coating": "",
                 "del": false
             }
         },
@@ -264,27 +256,13 @@
             "componentType": "vm_comp",
             "additionalDataTemplate": {
                 "thetype": "",
-                "material": "",
+                "memb_mat": "",
+                "corr_ctg": "",
                 "length": "",
-                "designation": "",
-                "beam_desig": "",
-                "vertical_ch_desig": "",
-                "angle_desig": "",
                 "nominal_diam": "",
-                "nominal_size": "",
-                "channel_desg": "",
-                "horiz_chan_desg": "",
-                "wall_thk": "",
-                "flange_thk": "",
-                "flange_avg_thk": "",
                 "out_diam": "",
-                "flange_width": "",
-                "web_thk": "",
-                "stem_thk": "",
-                "web_depth": "",
+                "wall_thk": "",
                 "stiffening": "",
-                "id_chk": "",
-                "coating": "",
                 "del": false
             }
         },
@@ -296,11 +274,10 @@
                 "memb_wall_thk": "",
                 "node_diam": "",
                 "memb_diam": "",
-                "weld_confg": "",
-                "weld_type": "",
-                "desg_code": "",
-                "material": "",
-                "id_chk": "",
+                "weld_typ": "",
+                "weld_des": "",
+                "weld_mat": "",
+                "weld_cfg": "",
                 "del": false
             }
         },
@@ -312,12 +289,11 @@
                 "memb_wt": "",
                 "supp_diam": "",
                 "memb_diam": "",
-                "weld_confg": "",
-                "weld_type": "",
-                "thetype": "",
-                "desg_code": "",
-                "material": "",
-                "id_chk": "",
+                "wsup_typ": "",
+                "weld_typ": "",
+                "weld_des": "",
+                "weld_mat": "",
+                "weld_cfg": "",
                 "del": false
             }
         },
@@ -326,27 +302,13 @@
             "componentType": "hd_comp",
             "additionalDataTemplate": {
                 "thetype": "",
-                "material": "",
+                "memb_mat": "",
+                "corr_ctg": "",
                 "length": "",
-                "designation": "",
-                "beam_desig": "",
-                "vertical_ch_desig": "",
-                "angle_desig": "",
                 "nominal_diam": "",
-                "nominal_size": "",
-                "channel_desg": "",
-                "horiz_chan_desg": "",
-                "wall_thk": "",
-                "flange_thk": "",
-                "flange_avg_thk": "",
                 "out_diam": "",
-                "flange_width": "",
-                "web_thk": "",
-                "stem_thk": "",
-                "web_depth": "",
+                "wall_thk": "",
                 "stiffening": "",
-                "id_chk": "",
-                "coating": "",
                 "del": false
             }
         },
@@ -368,8 +330,7 @@
             "code": "sd",
             "componentType": "sd_comp",
             "additionalDataTemplate": {
-                "dist_leg": "",
-                "id_chk": "",
+                "dist_from_legs": "",
                 "del": false
             }
         },
@@ -380,11 +341,10 @@
                 "thetype": "",
                 "no_subsea": "",
                 "no_topside": "",
-                "no_risers": "",
-                "riser_wt": "",
+                "no_conductors": "",
+                "weight": "",
                 "width": "",
                 "length": "",
-                "id_chk": "",
                 "del": false
             }
         },
@@ -395,11 +355,10 @@
                 "thetype": "",
                 "no_subsea": "",
                 "no_topside": "",
-                "no_risers": "",
-                "riser_wt": "",
+                "no_caissons": "",
+                "weight": "",
                 "width": "",
                 "length": "",
-                "id_chk": "",
                 "del": false
             }
         },
@@ -407,15 +366,21 @@
             "code": "it",
             "componentType": "it_comp",
             "additionalDataTemplate": {
-                "depth": "",
-                "x_cord": "",
-                "y_cord": "",
-                "fp": "",
-                "dimen1": "",
-                "dimen2": "",
-                "dimen3": "",
-                "angle": "",
-                "coment": "",
+                "easting": "",
+                "northing": "",
+                "equipment": "",
+                "location_no": "",
+                "del": false
+            }
+        },
+        {
+            "code": "ct",
+            "componentType": "ct_comp",
+            "additionalDataTemplate": {
+                "ctry_typ": "",
+                "ctry_pos": "",
+                "ctry_mat": "",
+                "ctry_fas": "",
                 "del": false
             }
         },
@@ -423,10 +388,6 @@
             "code": "an",
             "componentType": "an_comp_pipe",
             "additionalDataTemplate": {
-                "depth": "",
-                "x_cord": "",
-                "y_cord": "",
-                "fp": "",
                 "fitting": "",
                 "inst_date": "",
                 "life": "",
@@ -434,7 +395,6 @@
                 "thetype": "",
                 "position": "",
                 "type": "",
-                "last_inspno": "",
                 "del": false
             }
         },
@@ -448,15 +408,89 @@
                 "material": "",
                 "thetype": "",
                 "position": "",
-                "id_chk": "",
                 "type": "",
-                "last_inspno": "",
                 "del": false
             }
         },
         {
             "componentType": "",
             "additionalDataTemplate": {}
+        },
+        {
+            "code": "vd",
+            "componentType": "vd_comp",
+            "additionalDataTemplate": {
+                "thetype": "",
+                "memb_mat": "",
+                "corr_ctg": "",
+                "length": "",
+                "nominal_diam": "",
+                "out_diam": "",
+                "wall_thk": "",
+                "stiffening": "",
+                "del": false
+            }
+        },
+        {
+            "code": "vm",
+            "componentType": "vm_comp",
+            "additionalDataTemplate": {
+                "thetype": "",
+                "memb_mat": "",
+                "corr_ctg": "",
+                "length": "",
+                "nominal_diam": "",
+                "out_diam": "",
+                "wall_thk": "",
+                "stiffening": "",
+                "del": false
+            }
+        },
+        {
+            "code": "gp",
+            "componentType": "gp_comp",
+            "additionalDataTemplate": {
+                "length": "",
+                "width": "",
+                "mgp_no": "",
+                "del": false
+            }
+        },
+        {
+            "code": "gs",
+            "componentType": "gs_comp",
+            "additionalDataTemplate": {
+                "diameter": "",
+                "depth": "",
+                "easting": "",
+                "northing": "",
+                "has_gas_seepage": false,
+                "del": false
+            }
+        },
+        {
+            "code": "ce",
+            "componentType": "ce_comp",
+            "additionalDataTemplate": {
+                "diameter": "",
+                "depth": "",
+                "easting": "",
+                "northing": "",
+                "has_gas_seepage": false,
+                "del": false
+            }
+        },
+        {
+            "code": "yp",
+            "componentType": "yp_comp",
+            "additionalDataTemplate": {
+                "dimension_1": "",
+                "dimension_2": "",
+                "dimension_3": "",
+                "angle": "",
+                "comments": "",
+                "del": false
+            }
         }
     ]
 }

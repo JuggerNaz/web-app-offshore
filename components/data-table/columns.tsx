@@ -19,12 +19,13 @@ import Link from "next/link";
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
-import { Trash2, Edit2, Plus, Calendar, CheckCircle, FileText, Printer, EyeOff } from "lucide-react";
+import { Trash2, Edit2, Plus, Calendar, CheckCircle, FileText, Printer } from "lucide-react";
 import { JobPackSummaryPreviewDialog } from "@/components/dialogs/jobpack-summary-preview-dialog";
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
 import { DeleteConfirmDialog } from "@/components/dialogs/delete-confirm-dialog";
-import { EditCommentDialog } from "@/components/dialogs/edit-comment-dialog";
+import Image from "next/image";
+import { ImageIcon } from "lucide-react";
 
 export type Platform = Database["public"]["Tables"]["platform"]["Row"];
 export type Comment = Database["public"]["Tables"]["comment"]["Row"];
@@ -40,6 +41,7 @@ export type StructureSelect = {
   str_type: string;
 };
 export type Attachment = Database["public"]["Tables"]["attachment"]["Row"];
+export type ExtendedAttachment = Attachment & { source_name?: string };
 export type Component = {
   comp_id: string;
   description: string;
@@ -198,148 +200,57 @@ export const comments: ColumnDef<Comment>[] = [
     header: "Created At",
     cell: ({ row }) => {
       const date: string = row.getValue("created_at");
-      const isDeleted = (row.original as any).is_deleted;
-      return (
-        <div className={isDeleted ? "opacity-50 line-through" : ""}>
-          {moment(date).format("MMMM Do, YYYY")}
-        </div>
-      );
+      return <div>{moment(date).format("MMMM Do, YYYY")}</div>;
     },
   },
   {
     accessorKey: "text",
-    header: "Text",
-    cell: ({ row }) => {
-      const text: string = row.getValue("text") || "";
-      const isDeleted = (row.original as any).is_deleted;
-      return (
-        <div className={isDeleted ? "opacity-50 italic" : ""}>
-          {text}
-          {isDeleted && (
-            <span className="ml-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
-              Excluded
-            </span>
-          )}
-        </div>
-      );
-    },
+    header: "Comment",
   },
   {
     accessorKey: "user_name",
     header: "User",
-    cell: ({ row }) => {
-      const userName: string = row.getValue("user_name") || "";
-      const isDeleted = (row.original as any).is_deleted;
-      return <div className={isDeleted ? "opacity-50" : ""}>{userName}</div>;
-    },
   },
   {
     id: "actions",
-    cell: ({ row }) => <CommentActions row={row} />,
+    cell: ({ row }) => {
+      const item = row.original;
+
+      return (
+        <div className="text-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              {/* <DropdownMenuItem
+                  onClick={() => navigator.clipboard.writeText(payment.id)}
+                >
+                Copy payment ID
+                </DropdownMenuItem> */}
+              <DropdownMenuSeparator />
+              {/* TODO: search for better way to make dropdown item menu cursor pointer */}
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  console.log(item);
+                }}
+              >
+                {/* <Link href={`/dashboard/structure/platform/${item.struc}`}>
+                  View Detail
+                  </Link> */}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      );
+    },
   },
 ];
-
-function CommentActions({ row }: { row: any }) {
-  const item = row.original;
-  const isDeleted = item.is_deleted;
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const toggleExclude = async () => {
-    try {
-      const res = await fetch(`/api/comment/${item.structure_type}/${item.structure_id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, is_deleted: !isDeleted }),
-      });
-      if (res.ok) {
-        toast.success(isDeleted ? "Comment included in report" : "Comment excluded from report");
-        mutate(`/api/comment/${item.structure_type}/${item.structure_id}`);
-      } else {
-        toast.error("Failed to update comment");
-      }
-    } catch (e) {
-      toast.error("Failed to update comment");
-    }
-  };
-
-  const onPermanentDelete = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`/api/comment/${item.structure_type}/${item.structure_id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id }),
-      });
-      if (res.ok) {
-        toast.success("Comment permanently deleted");
-        mutate(`/api/comment/${item.structure_type}/${item.structure_id}`);
-        setDeleteOpen(false);
-      } else {
-        toast.error("Failed to delete comment");
-      }
-    } catch (e) {
-      toast.error("Failed to delete comment");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="text-center">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="h-8 w-8 p-0">
-            <span className="sr-only">Open menu</span>
-            <MoreVertical className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="cursor-pointer text-blue-600 focus:text-blue-700"
-            onClick={() => setEditOpen(true)}
-          >
-            <Edit2 size={16} className="mr-2" /> Edit Comment
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={`cursor-pointer ${isDeleted ? "text-blue-600 focus:text-blue-600" : "text-orange-600 focus:text-orange-600"}`}
-            onClick={toggleExclude}
-          >
-            {isDeleted ? (
-              <><CheckCircle size={16} className="mr-2" /> Include in Report</>
-            ) : (
-              <><EyeOff size={16} className="mr-2" /> Exclude from Report</>
-            )}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="cursor-pointer text-red-600 focus:text-red-600"
-            onClick={() => setDeleteOpen(true)}
-          >
-            <Trash2 size={16} className="mr-2" /> Delete Permanently
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <EditCommentDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        commentItem={item}
-      />
-
-      <DeleteConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onConfirm={onPermanentDelete}
-        loading={loading}
-        title="Delete Comment"
-        description="Are you sure you want to permanently delete this comment? This action cannot be undone."
-      />
-    </div>
-  );
-}
 
 export const components: ColumnDef<Component>[] = [
   {
@@ -924,30 +835,52 @@ export const attachments: ColumnDef<Attachment>[] = [
     header: "Url",
     cell: ({ row }) => {
       const attachment: Attachment = row.original;
-      const { fileUrl, fileName } = processAttachmentUrl(attachment);
+      return <AttachmentUrlCell attachment={attachment} />
+    },
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => <AttachmentActions row={row} />,
+  },
+];
 
-      // Ensure we have a valid URL
-      if (!fileUrl) {
-        return <span className="text-gray-500">No file URL</span>;
-      }
-
-      // Truncate filename for display
-      const displayText = truncateText(fileName, 30);
-
+export const globalAttachments: ColumnDef<ExtendedAttachment>[] = [
+  {
+    accessorKey: "created_at",
+    header: "Created At",
+    cell: ({ row }) => {
+      const date: string = row.getValue("created_at");
+      return <div>{moment(date).format("MMMM Do, YYYY")}</div>;
+    },
+  },
+  {
+    accessorKey: "source_name",
+    header: "Source (Platform)",
+    cell: ({ row }) => {
+      const name = row.original.source_name || "Unknown";
+      const type = row.original.source_type || "N/A";
       return (
-        <div className="flex items-center gap-2">
-          <a
-            href={fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 max-w-[200px]"
-            title={fileUrl}
-          >
-            <span className="truncate">{displayText}</span>
-            <ExternalLink className="h-3 w-3 flex-shrink-0" />
-          </a>
+        <div className="flex flex-col">
+          <span className="font-bold text-xs">{name}</span>
+          <span className="text-[10px] text-slate-500 uppercase">{type}</span>
         </div>
       );
+    },
+  },
+  {
+    accessorKey: "name",
+    header: "Name",
+  },
+  {
+    accessorKey: "user_name",
+    header: "User",
+  },
+  {
+    accessorKey: "path",
+    header: "Url",
+    cell: ({ row }) => {
+      const attachment: Attachment = row.original;
+      return <AttachmentUrlCell attachment={attachment} />
     },
   },
   {
@@ -1005,6 +938,65 @@ function AttachmentActions({ row }: { row: any }) {
         title="Delete Attachment"
         description="Are you sure you want to permanently delete this attachment? This action cannot be undone."
       />
+    </div>
+  );
+}
+
+function AttachmentUrlCell({ attachment }: { attachment: Attachment }) {
+  const [showPreview, setShowPreview] = useState(false);
+  const { fileUrl, fileName } = processAttachmentUrl(attachment);
+
+  if (!fileUrl) {
+    return <span className="text-gray-500 text-xs">No file URL</span>;
+  }
+
+  const displayText = truncateText(fileName, 30);
+
+  // Check if file is likely an image based on common extensions
+  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        <a
+          href={fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 max-w-[200px] text-xs font-medium transition-colors"
+          title={fileUrl}
+        >
+          <span className="truncate">{displayText}</span>
+          <ExternalLink className="h-3 w-3 flex-shrink-0 opacity-70" />
+        </a>
+
+        {isImage && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowPreview(!showPreview)}
+            className={`h-7 px-2 text-[10px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 transition-all
+              ${showPreview
+                ? "bg-slate-800 text-white border-slate-800 hover:bg-slate-700 hover:text-white dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-slate-300"
+                : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800"
+              }`}
+          >
+            <ImageIcon className="h-3 w-3" />
+            {showPreview ? "Hide" : "Preview"}
+          </Button>
+        )}
+      </div>
+
+      {showPreview && isImage && (
+        <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-50 dark:bg-slate-900/50 relative group">
+          <div className="p-1 items-center justify-center flex max-h-[250px] overflow-hidden">
+            <img
+              src={fileUrl}
+              alt={fileName}
+              className="object-contain max-h-[240px] w-auto h-auto rounded-lg shadow-sm"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
