@@ -73,7 +73,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                 <div>
                                     <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
                                     <div className="space-y-1">
-                                        {componentsSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
+                                        {componentsSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
                                             const isSelected = selectedComp?.id === c.id;
                                             return (
                                                 <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
@@ -110,7 +110,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                 <div>
                                     <div className="text-[9px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200">Non-SOW</div>
                                     <div className="space-y-1">
-                                        {componentsNonSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
+                                        {componentsNonSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
                                             <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                 <div className="flex justify-between font-bold">
                                                     <span>{c.name}</span>

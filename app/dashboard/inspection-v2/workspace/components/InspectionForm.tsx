@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
 
 interface InspectionFormProps {
     selectedComp: any;
@@ -66,6 +67,7 @@ interface InspectionFormProps {
     onChangeComponentClick?: () => void;
     isEditing?: boolean;
     dynamicProps?: any;
+    handleDynamicPropChange?: (e: any, name: string, directValue?: any) => void;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -109,7 +111,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     onChangeTaskClick,
     onChangeComponentClick,
     isEditing = false,
-    dynamicProps = {}
+    dynamicProps = {},
+    handleDynamicPropChange
 }) => {
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
@@ -225,6 +228,48 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     </div>
                                 </div>
                             </div>
+                            
+                            {activeSpec?.toUpperCase() === 'RSEAB' && (
+                                <div className="col-span-full space-y-3 mb-4">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">Graphical Seabed Plot <span className="text-[9px] font-normal text-muted-foreground ml-2">(Drag to persist X/Y)</span></label>
+                                    <div className="w-full max-w-xl mx-auto">
+                                        <SeabedDebrisPlot
+                                            layoutType={headerData?.structureName?.includes('8') ? 'rectangular' : 'rectangular'} 
+                                            legCount={headerData?.structureName?.includes('8') ? 8 : 4} 
+                                            gridDistances={[3, 6, 9, 12, 15, 18, 21]}
+                                            debrisItems={dynamicProps?.x && dynamicProps?.y ? [{
+                                                id: 'current',
+                                                x: parseFloat(dynamicProps.x),
+                                                y: parseFloat(dynamicProps.y),
+                                                label: '1',
+                                                isMetallic: dynamicProps?.debris_material?.toLowerCase().includes('metal') || false
+                                            }] : []}
+                                            manualEntry={{
+                                                leg: dynamicProps?.reference_leg || dynamicProps?.associated_leg || dynamicProps?.leg,
+                                                distance: dynamicProps?.distance_from_leg ? parseFloat(dynamicProps.distance_from_leg) : undefined,
+                                                face: dynamicProps?.face || dynamicProps?.orientation
+                                            }}
+                                            onDebrisMove={(id, x, y, geometry) => {
+                                                if (handleDynamicPropChange) {
+                                                    // Pass pseudo events or direct values if the handler supports it
+                                                    handleDynamicPropChange({target:{value: x.toFixed(2)}}, 'x');
+                                                    handleDynamicPropChange({target:{value: y.toFixed(2)}}, 'y');
+                                                    handleDynamicPropChange({target:{value: geometry.distance.toFixed(1)}}, 'distance_from_leg');
+                                                }
+                                            }}
+                                            onAddDebris={(x, y, geometry) => {
+                                                if (handleDynamicPropChange) {
+                                                    handleDynamicPropChange({target:{value: x.toFixed(2)}}, 'x');
+                                                    handleDynamicPropChange({target:{value: y.toFixed(2)}}, 'y');
+                                                    handleDynamicPropChange({target:{value: geometry.distance.toFixed(1)}}, 'distance_from_leg');
+                                                }
+                                                toast.info(`Point added at ${geometry.distance.toFixed(1)}m on ${geometry.face} face`);
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-2 gap-4">
                                 {activeFormProps.map((p: any, idx: number) => {
                                     if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;

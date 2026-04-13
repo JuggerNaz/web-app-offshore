@@ -1435,6 +1435,11 @@ export default function ROVInspectionRecordingDialog({
                                                         label: '1',
                                                         isMetallic: formData.debris_material?.toLowerCase().includes('metal') || false
                                                     }] : []}
+                                                    manualEntry={{
+                                                        leg: formData.reference_leg || formData.associated_leg || formData.leg,
+                                                        distance: formData.distance_from_leg ? parseFloat(formData.distance_from_leg) : undefined,
+                                                        face: formData.face || formData.orientation
+                                                    }}
                                                     onDebrisMove={(id, x, y, geometry) => {
                                                         handleInputChange('x', x.toFixed(2));
                                                         handleInputChange('y', y.toFixed(2));

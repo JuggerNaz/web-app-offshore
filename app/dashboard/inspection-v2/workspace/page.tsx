@@ -134,6 +134,7 @@ import { TapeLogEvents } from "./components/TapeLogEvents";
 import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
+import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { resolveInspectionType } from "@/utils/inspection-schema";
 
@@ -170,6 +171,7 @@ function V10PreviewLayout() {
 
     // Mode
     const [inspMethod, setInspMethod] = useState<"DIVING" | "ROV">(initialMode || "DIVING");
+    const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
 
     const [deployments, setDeployments] = useState<any[]>([]);
     const [activeDep, setActiveDep] = useState<{ id: string, jobNo?: string, name: string, raw?: any } | null>(null);
@@ -4208,6 +4210,18 @@ function V10PreviewLayout() {
                         </div>
                     );
                 })()}
+
+                {/* INSERT SEABED SURVEY MAP BUTTON */}
+                {activeDep && (
+                    <Button
+                        variant="default" 
+                        size="sm" 
+                        className="ml-auto bg-blue-600 hover:bg-blue-700 text-white h-7 px-3 shadow-blue-500/20 shadow-lg text-[10px] font-black uppercase tracking-wider"
+                        onClick={() => setIsSeabedGuiOpen(true)}
+                    >
+                        <MapPin className="w-3.5 h-3.5 mr-1.5" /> Seabed Map
+                    </Button>
+                )}
             </div>
 
             {/* ROV Data String Bar (Dynamic based on Data Acquisition settings) */}
@@ -4706,6 +4720,7 @@ function V10PreviewLayout() {
                                         setFindingType={setFindingType}
                                         renderInspectionField={renderInspectionField}
                                         dynamicProps={dynamicProps}
+                                        handleDynamicPropChange={handleDynamicPropChange}
                                         isEditing={!!editingRecordId}
                                         anomalyData={anomalyData}
                                         setAnomalyData={setAnomalyData}
@@ -5122,7 +5137,7 @@ function V10PreviewLayout() {
                                         <div>
                                             <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
                                             <div className="space-y-1">
-                                                {componentsSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
+                                                {componentsSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
                                                     const isSelected = selectedComp?.id === c.id;
                                                     return (
                                                         <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
@@ -5179,7 +5194,7 @@ function V10PreviewLayout() {
                                         <div>
                                             <div className="text-[9px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200">Non-SOW</div>
                                             <div className="space-y-1">
-                                                {componentsNonSow.filter((c: any) => c.name?.toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
+                                                {componentsNonSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
                                                     <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                         <div className="flex justify-between font-bold">
                                                             <div className="flex items-center gap-2">
@@ -6141,7 +6156,7 @@ function V10PreviewLayout() {
                         {/* SOW COMPONENTS GROUP */}
                         <div className="px-2 py-1 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 mb-1 rounded">SOW Items</div>
                         {componentsSow
-                            .filter(c => (c.name || '').toLowerCase().includes(compSelectorSearch.toLowerCase()))
+                            .filter(c => JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase()))
                             .map((c: any) => (
                                 <button 
                                     key={c.id} 
@@ -6174,8 +6189,7 @@ function V10PreviewLayout() {
                                 {allComps
                                     .filter(c => {
                                         const isInSow = componentsSow.some(sc => sc.id === c.id);
-                                        const cName = c.name || '';
-                                        return !isInSow && cName.toLowerCase().includes(compSelectorSearch.toLowerCase());
+                                        return !isInSow && JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
                                     })
                                     .map((c: any) => (
                                         <button 
@@ -6223,6 +6237,33 @@ function V10PreviewLayout() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* SEABED GUI INLINE POPUP */}
+            {isSeabedGuiOpen && (
+                <div className="fixed inset-0 z-[100] bg-black/60 p-6 flex flex-col items-center justify-center backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="w-full max-w-[1400px] h-full max-h-[92vh] flex flex-col bg-slate-50 shadow-2xl rounded-xl overflow-hidden ring-1 ring-slate-900/10 relative">
+                        <Button 
+                            variant="destructive" 
+                            size="icon" 
+                            className="absolute top-2 right-2 z-[110] rounded-full w-8 h-8 shadow-md"
+                            onClick={() => setIsSeabedGuiOpen(false)}
+                        >
+                            &times;
+                        </Button>
+                        <SeabedSurveyGuiInline 
+                            open={isSeabedGuiOpen}
+                            onClose={() => setIsSeabedGuiOpen(false)}
+                            jobpackId={jobPackId || "0"}
+                            structureId={structureId || "0"}
+                            sowRecordId={sowId ? Number(sowId) : null}
+                            sowReportNo={headerData?.sowReportNo}
+                            rovJob={activeDep || undefined}
+                            tapeId={tapeId?.toString()}
+                            tapeCounter={vidTimer?.toString()} 
+                        />
+                    </div>
+                </div>
+            )}
 
         </div>
     );

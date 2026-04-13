@@ -55,6 +55,8 @@ interface WorkspaceMainProps {
     // State Handlers
     setActiveSpec: (spec: string | null) => void;
     setDynamicProps: (props: any) => void;
+    handleDynamicPropChange: (e: any, name: string) => void;
+    dynamicProps: any;
     setFindingType: (type: "Pass" | "Anomaly" | "Finding" | "Incomplete") => void;
     setRecordNotes: (notes: string) => void;
     setAnomalyData: (data: any) => void;
@@ -116,7 +118,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
     const {
         selectedComp, activeSpec, allInspectionTypes, currentRecords,
         headerData, inspMethod, vidState, vidTimer, tapeId, jobTapes,
-        setActiveSpec, setDynamicProps, setFindingType, setRecordNotes,
+        setActiveSpec, setDynamicProps, handleDynamicPropChange, setFindingType, setRecordNotes,
         setAnomalyData, setIsManualOverride, setIsUserInteraction,
         handleAddNewInspectionSpec, handleCommitRecord, resetForm,
         handleGrabPhoto, isCommitting, formatTime, setCompSpecDialogOpen,
@@ -349,6 +351,8 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 findingType={findingType}
                                 setFindingType={setFindingType}
                                 renderInspectionField={renderInspectionField}
+                                dynamicProps={props.dynamicProps}
+                                handleDynamicPropChange={handleDynamicPropChange}
                                 anomalyData={anomalyData}
                                 setAnomalyData={setAnomalyData}
                                 defectCodes={defectCodes}

@@ -62,6 +62,7 @@ import ROVVideoDialog from "./components/ROVVideoDialog";
 import DiveVideoRecorder from "@/components/dive-video-recorder";
 import ROVInspectionRecordingDialog from "./components/ROVInspectionRecordingDialog";
 import ROVMovementDialog from "./components/ROVMovementDialog";
+import { SeabedSurveyGuiInline } from "./components/SeabedSurveyGuiDialog";
 import ROVInspectionTypeCard from "./components/ROVInspectionTypeCard";
 import ROVInspectionList from "./components/ROVInspectionList";
 import ComponentTreeDialog from "../rov/components/ComponentTreeDialog";
@@ -378,6 +379,7 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
   const [startTime, setStartTime] = useState<number | null>(null);
   const [endTime, setEndTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState("00:00:00");
+  const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
 
   // Reset job selection when core URL parameters change to prevent stale data display
   useEffect(() => {
@@ -1097,7 +1099,7 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
                           inspection_name: 'Seabed Survey Plotter',
                           component_type: 'SD'
                       });
-                      setInspectionDialogOpen(true);
+                      setIsSeabedGuiOpen(true);
                   }}
               >
                   <MapPin className="h-4 w-4" />
@@ -1716,8 +1718,11 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
                 </ScrollArea>
               </div>
 
-              {/* Middle Column: Inspection & Movement Logs */}
-              <div
+              {/* Conditional Rendering: Either the normal Middle/Right Columns, or the Seabed GUI */}
+              {!isSeabedGuiOpen ? (
+                  <>
+                      {/* Middle Column: Inspection & Movement Logs */}
+                      <div
                 className={`col-span-12 flex flex-col h-full transition-all duration-300 min-w-0 min-h-0 ${videoMode === "embedded"
                   ? "lg:col-span-5 xl:col-span-5"
                   : "lg:col-span-7 xl:col-span-8"
@@ -1861,12 +1866,26 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
                   )}
                 </Card>
               </div>
+            </>
+          ) : (
+            <div className={`col-span-12 flex flex-col h-full transition-all duration-300 min-w-0 min-h-0 ${videoMode === "embedded" ? "lg:col-span-9 xl:col-span-10" : "lg:col-span-9 xl:col-span-10"}`}>
+                <SeabedSurveyGuiInline
+                    open={isSeabedGuiOpen}
+                    onClose={() => setIsSeabedGuiOpen(false)}
+                    jobpackId={jobpackId!}
+                    structureId={effectiveStructureId!}
+                    sowRecordId={sowRecordId}
+                    rovJob={selectedROVJob}
+                    tapeId={selectedTapeId?.toString()}
+                    tapeCounter={undefined}
+                />
             </div>
+          )}
           </div>
-        )
-        }
+        </div>
+      )}
 
-        {/* Dialogs */}
+      {/* Dialogs */}
         <ROVJobSetupDialog
           open={setupDialogOpen}
           onOpenChange={setSetupDialogOpen}
