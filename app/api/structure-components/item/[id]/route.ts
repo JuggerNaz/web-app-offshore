@@ -3,6 +3,10 @@ import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
+import type { Database } from "@/supabase/schema";
+
+type StructureComponentUpdate =
+  Database["public"]["Tables"]["structure_components"]["Update"];
 
 /**
  * PATCH /api/structure-components/item/[id]
@@ -16,7 +20,8 @@ export const PATCH = withAuth(
   ) => {
     const supabase = createClient();
     const { id } = await params;
-    const body = (await request.json().catch(() => ({}))) as Record<string, any>;
+    const body =
+      (await request.json().catch(() => ({}))) as StructureComponentUpdate;
 
     const componentId = Number(id);
     if (Number.isNaN(componentId)) {
