@@ -173,11 +173,11 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                                                isCompleted ? 'green' :
                                                                isIncomplete ? 'amber' : 'blue';
 
-                                            const statusLabel = hasAnomaly && !isRectified ? '⚠ Anomaly Registered' :
-                                                               hasFinding ? '⚠ Finding Registered' :
-                                                               isRectified ? '✔ Rectified' :
-                                                               isCompleted ? '✔ Completed' :
-                                                               isIncomplete ? '⏹ Incomplete' : '⏩ Pending';
+                                            const statusLabel = hasAnomaly && !isRectified ? 'Anomaly Registered' :
+                                                               hasFinding ? 'Finding Registered' :
+                                                               isRectified ? 'Rectified' :
+                                                               isCompleted ? 'Completed' :
+                                                               isIncomplete ? 'Incomplete' : 'Pending';
                                             
                                             return (
                                                 <Button key={t} onClick={() => {

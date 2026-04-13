@@ -745,8 +745,21 @@
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "required": false
+                },
+                {
+                    "name": "x",
+                    "label": "X Coordinate (%)",
+                    "type": "number",
+                    "required": false
+                },
+                {
+                    "name": "y",
+                    "label": "Y Coordinate (%)",
+                    "type": "number",
+                    "required": false
                 }
             ]
+
         },
         {
             "code": "RSWNI",

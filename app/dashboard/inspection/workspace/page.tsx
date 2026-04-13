@@ -25,7 +25,24 @@ function WorkspaceContent() {
 
     // Structure Title State
     const [platformTitle, setPlatformTitle] = useState<string>("");
-    const effectiveStructureId = structureId && !isNaN(Number(structureId)) ? Number(structureId) : null;
+    const paramStructureId = structureId && !isNaN(Number(structureId)) ? Number(structureId) : null;
+    const [resolvedStructureId, setResolvedStructureId] = useState<number | null>(paramStructureId);
+
+    useEffect(() => {
+        if (paramStructureId) {
+            setResolvedStructureId(paramStructureId);
+        } else if (structureId) {
+            const resolveId = async () => {
+                const { data } = await supabase.from('structure').select('str_id').eq('str_name', structureId).maybeSingle();
+                if (data?.str_id) setResolvedStructureId(data.str_id);
+            };
+            resolveId();
+        } else {
+            setResolvedStructureId(null);
+        }
+    }, [structureId, paramStructureId]);
+
+    const effectiveStructureId = resolvedStructureId;
 
     useEffect(() => {
         async function fetchPlatformTitle() {

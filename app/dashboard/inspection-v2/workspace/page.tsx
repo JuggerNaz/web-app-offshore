@@ -677,10 +677,19 @@ function V10PreviewLayout() {
         const taskCode = it.code; // Canonical code
 
         // 2. Get all records for this component + canonical task
-        const { data: records, error: fetchError } = await supabase.from('insp_records')
+        let inspsQuery = supabase.from('insp_records')
             .select('insp_id, status, has_anomaly, inspection_data')
             .eq('component_id', compId)
-            .eq('inspection_type_code', taskCode)
+            .eq('inspection_type_code', taskCode);
+
+        if (structureId && !isNaN(Number(structureId))) {
+            inspsQuery = inspsQuery.eq('structure_id', Number(structureId));
+        }
+        if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+            inspsQuery = inspsQuery.eq('sow_report_no', headerData.sowReportNo);
+        }
+
+        const { data: records, error: fetchError } = await inspsQuery
             .order('inspection_date', { ascending: false })
             .order('inspection_time', { ascending: false });
 
@@ -769,7 +778,7 @@ function V10PreviewLayout() {
 
         // 4. Invalidate query to refresh UI (including sidebar)
         queryClient.invalidateQueries({ queryKey: ['sow-data'] });
-    }, [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData]);
+    }, [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData, structureId]);
 
     useEffect(() => {
         async function fetchHeaderInfo() {
@@ -1852,10 +1861,19 @@ function V10PreviewLayout() {
             // FALLBACK: If no tapes found in insp_video_tapes, check if there are any used in insp_records
             if (!tapes || tapes.length === 0) {
                 console.log("[Sync] No tapes found in insp_video_tapes table. Checking insp_records for associated tapes...");
-                const { data: recTapes } = await supabase.from('insp_records')
+                let recTapesQuery = supabase.from('insp_records')
                     .select('tape_id')
                     .eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', depId)
                     .not('tape_id', 'is', null);
+
+                if (structureId && !isNaN(Number(structureId))) {
+                   recTapesQuery = recTapesQuery.eq('structure_id', Number(structureId));
+                }
+                if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                   recTapesQuery = recTapesQuery.eq('sow_report_no', headerData.sowReportNo);
+                }
+
+                const { data: recTapes } = await recTapesQuery;
 
                 if (recTapes && recTapes.length > 0) {
                     const uniqueTapeIds = Array.from(new Set(recTapes.map(r => r.tape_id)));
@@ -1940,11 +1958,20 @@ function V10PreviewLayout() {
 
             // 4. Fetch Inspection Records
             const inspCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
-            const { data: insps, error: inspErr } = await supabase.from('insp_records').select(`
+            let inspsQuery = supabase.from('insp_records').select(`
                 *,
                 inspection_type:inspection_type_id!left(id, code, name),
                 structure_components:component_id!left (q_id, code)
             `).eq(inspCol, depId);
+
+            if (structureId && !isNaN(Number(structureId))) {
+               inspsQuery = inspsQuery.eq('structure_id', Number(structureId));
+            }
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+               inspsQuery = inspsQuery.eq('sow_report_no', headerData.sowReportNo);
+            }
+
+            const { data: insps, error: inspErr } = await inspsQuery;
 
             if (inspErr) {
                 console.error("[Sync] Inspection fetch error:", inspErr);
@@ -1997,7 +2024,7 @@ function V10PreviewLayout() {
         } finally {
             setSyncLoading(false);
         }
-    }, [activeDep, inspMethod, supabase, parseDbDate]);
+    }, [activeDep, inspMethod, supabase, parseDbDate, structureId, headerData.sowReportNo]);
 
 
     // Active deployment effect: sync tape, movements, records
@@ -2008,11 +2035,16 @@ function V10PreviewLayout() {
     const fetchHistory = useCallback(async () => {
         if (!selectedComp || !structureId) return;
         
-        // Fetch all records for this component (no FK joins - they are unreliable)
-        const { data, error } = await supabase.from('insp_records')
+        let query = supabase.from('insp_records')
             .select('*')
             .eq('component_id', selectedComp.id)
-            .order('cr_date', { ascending: false });
+            .eq('structure_id', Number(structureId));
+
+        if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+            query = query.eq('sow_report_no', headerData.sowReportNo);
+        }
+
+        const { data, error } = await query.order('cr_date', { ascending: false });
 
         if (error || !data) {
             console.error("Error fetching component history:", error);
@@ -2468,10 +2500,19 @@ function V10PreviewLayout() {
 
             // Fetch existing calibration record for current dive/rov job
             const jobCol = inspMethod === 'DIVING' ? 'dive_job_id' : 'rov_job_id';
-            const { data, error } = await supabase.from('insp_records')
+            let calibQuery = supabase.from('insp_records')
                 .select('*')
                 .eq(jobCol, activeDep.id)
-                .eq('inspection_type_code', reqCode)
+                .eq('inspection_type_code', reqCode);
+
+            if (structureId && !isNaN(Number(structureId))) {
+               calibQuery = calibQuery.eq('structure_id', Number(structureId));
+            }
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+               calibQuery = calibQuery.eq('sow_report_no', headerData.sowReportNo);
+            }
+
+            const { data, error } = await calibQuery
                 .order('insp_id', { ascending: false })
                 .limit(1)
                 .maybeSingle();
@@ -2485,7 +2526,7 @@ function V10PreviewLayout() {
             }
         };
         runCheck();
-    }, [activeSpec, activeDep?.id, allInspectionTypes, inspMethod]);
+    }, [activeSpec, activeDep?.id, allInspectionTypes, inspMethod, structureId, headerData.sowReportNo]);
 
     // Handle method switch overriding deps
     useEffect(() => {
@@ -2527,31 +2568,38 @@ function V10PreviewLayout() {
                 query = query.eq('structure_id', Number(structureId));
             }
 
+            // ADD SOW FILTERING
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                query = query.eq('sow_report_no', headerData.sowReportNo);
+            }
+
             const { data, error } = await query;
             let results = data || [];
             if (error) {
-                console.warn("[fetchDeps] Primary fetch error (will try fallback):", error.message);
+                console.warn("[fetchDeps] Primary fetch error:", error.message);
                 results = [];
             }
 
-            if (results.length === 0) {
-                console.log(`[fetchDeps] No records with strict filters. Trying fallback (jobpack only)...`);
-                const { data: fallbackData, error: fbErr } = await supabase.from(table).select('*').eq('jobpack_id', queryJobPackId).order(idCol, { ascending: false }).limit(10);
-                if (!fbErr && fallbackData) results = fallbackData;
-            }
+            // REMOVED BAD FALLBACK (that was cross-pollinating jobs)
 
-            // DEEP FALLBACK: If still empty, check if any inspection records exist for this jobpack/structure
+            // DEEP FALLBACK: If still empty, check if any inspection records exist for this jobpack/structure/sow
             // This happens if the job records were deleted but the inspection records remain.
             if (results.length === 0) {
                 console.log(`[fetchDeps] No job records found in ${table}. Checking insp_records...`);
                 const targetColumn = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
 
-                const { data: recJobs } = await supabase.from('insp_records')
+                let recQuery = supabase.from('insp_records')
                     .select(targetColumn)
                     .eq('jobpack_id', queryJobPackId)
                     .eq('structure_id', Number(structureId))
                     .not(targetColumn, 'is', null)
                     .limit(10);
+                
+                if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                    recQuery = recQuery.eq('sow_report_no', headerData.sowReportNo);
+                }
+
+                const { data: recJobs } = await recQuery;
 
                 if (recJobs && recJobs.length > 0) {
                     const uniqueJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]).filter(id => id !== null)));
@@ -2598,12 +2646,12 @@ function V10PreviewLayout() {
             setIsFetchingDeps(false);
         }
         fetchDeps();
-    }, [inspMethod, jobPackId, structureId, supabase]);
+    }, [inspMethod, jobPackId, structureId, headerData.sowReportNo, supabase]);
 
 
     // Replacement: useQuery for SOW and Component Data
     const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
-        queryKey: ['sow-data', structureId, sowId, inspMethod],
+        queryKey: ['sow-data', structureId, sowId, headerData.sowReportNo, inspMethod],
         queryFn: async () => {
             if (!sowId || !structureId) return { assigned: [], unassigned: [], all: [] };
 
@@ -2618,6 +2666,30 @@ function V10PreviewLayout() {
             const { data: sowItems } = await supabase.from('u_sow_items')
                 .select('*, inspection_type:inspection_type_id!left(id, code, name, metadata)')
                 .eq('sow_id', sowId);
+
+            // 2.5 Fetch actual records for true dynamic status correction
+            let recsQuery = supabase.from('insp_records')
+                .select('component_id, inspection_type_code, status, cr_date')
+                .eq('structure_id', Number(structureId));
+            
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                recsQuery = recsQuery.eq('sow_report_no', headerData.sowReportNo);
+            }
+
+            const { data: actualRecords } = await recsQuery.order('cr_date', { ascending: false });
+
+            // Create truth-mask for component + task
+            const trueStatusMap = new Map<string, string>();
+            if (actualRecords) {
+                actualRecords.forEach((r: any) => {
+                    if (!r.component_id || !r.inspection_type_code) return;
+                    const key = `${r.component_id}_${r.inspection_type_code}`;
+                    // Array is newest first, so first encouter sets the final state
+                    if (!trueStatusMap.has(key)) {
+                        trueStatusMap.set(key, r.status?.toLowerCase() === 'incomplete' ? 'incomplete' : 'completed');
+                    }
+                });
+            }
 
             const assignedCompsMap = new Map<number, { code: string; status: string }[]>();
 
@@ -2645,7 +2717,10 @@ function V10PreviewLayout() {
                         }
                         const taskToLog = item.inspection_code || item.inspection_name;
                         if (taskToLog) {
-                            assignedCompsMap.get(matchingComp.id)?.push({ code: taskToLog, status: item.status || 'pending' });
+                            const dynKey1 = `${matchingComp.id}_${item.inspection_code}`;
+                            const dynKey2 = `${matchingComp.id}_${item.inspection_name}`;
+                            const realStatus = trueStatusMap.get(dynKey1) || trueStatusMap.get(dynKey2) || 'pending';
+                            assignedCompsMap.get(matchingComp.id)?.push({ code: taskToLog, status: realStatus });
                         }
                     }
                 });
@@ -4125,7 +4200,10 @@ function V10PreviewLayout() {
                                     }`}
                                 title={manualOverride ? 'Currently in Manual Entry mode (click to switch to Live)' : 'Switch to Manual Entry mode to insert missing records'}
                             >
-                                {manualOverride ? 'âš¡ Manual' : 'ðŸ”´ Live'}
+                                {manualOverride 
+                                    ? <span className="flex items-center gap-1.5"><span className="text-[10px]">&#9889;</span> MANUAL</span> 
+                                    : <span className="flex items-center gap-1.5"><span className="text-red-500 text-[8px]">&#11044;</span> LIVE</span>
+                                }
                             </button>
                         </div>
                     );
@@ -4399,11 +4477,11 @@ function V10PreviewLayout() {
                                                                        isCompleted ? 'green' :
                                                                        isIncomplete ? 'amber' : 'blue';
 
-                                                    const statusLabel = hasAnomaly && !isRectified ? 'âš  Anomaly Registered' :
-                                                                       hasFinding ? 'âš  Finding Registered' :
-                                                                       isRectified ? 'âœ“ Rectified' :
-                                                                       isCompleted ? 'âœ“ Completed' :
-                                                                       isIncomplete ? 'â—  Incomplete' : 'â—‹ Pending';
+                                                    const statusLabel = hasAnomaly && !isRectified ? 'Anomaly Registered' :
+                                                                       hasFinding ? 'Finding Registered' :
+                                                                       isRectified ? 'Rectified' :
+                                                                       isCompleted ? 'Completed' :
+                                                                       isIncomplete ? 'Incomplete' : 'Pending';
                                                     
                                                     return (
                                                         <Button key={t} onClick={() => {

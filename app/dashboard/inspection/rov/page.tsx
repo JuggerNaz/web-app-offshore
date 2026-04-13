@@ -143,9 +143,29 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
     }
   }, [selectedComponents]);
 
-  // Resolve effective structure ID (handle string codes in URL vs numeric ID in job)
+  // Resolve effective structure ID (prioritize URL param)
   const paramStructureId = structureId && !isNaN(Number(structureId)) ? Number(structureId) : null;
-  const effectiveStructureId = paramStructureId ?? selectedROVJob?.structure_id ?? null;
+  const [resolvedStructureId, setResolvedStructureId] = useState<number | null>(paramStructureId);
+
+  useEffect(() => {
+    if (paramStructureId) {
+      setResolvedStructureId(paramStructureId);
+    } else if (structureId) {
+       // If structureId is a code (e.g. PLAT-B), resolve it to numeric ID
+       const resolveId = async () => {
+         const { data } = await supabase.from('structure').select('str_id').eq('str_name', structureId).maybeSingle();
+         if (data?.str_id) setResolvedStructureId(data.str_id);
+       };
+       resolveId();
+    } else {
+      setResolvedStructureId(null);
+    }
+  }, [structureId, paramStructureId, supabase]);
+
+  const effectiveStructureId = resolvedStructureId; 
+
+  // If we have a structure code but no ID in param, we should ideally resolve it, 
+  // but for now, we rely on the numeric ID passed from the landing page.
 
   // Structure Title State
   const [platformTitle, setPlatformTitle] = useState<string>("");
@@ -359,9 +379,23 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
   const [endTime, setEndTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState("00:00:00");
 
+  // Reset job selection when core URL parameters change to prevent stale data display
   useEffect(() => {
-    checkExistingROVJob();
-  }, [jobpackId, effectiveStructureId, sowReportNumber]);
+    console.log("ROV: URL context changed, clearing job selection...", { jobpackId, effectiveStructureId, sowReportNumber });
+    setSelectedJobId(null);
+    setActiveROVJobs([]);
+    setCompletedROVJobs([]);
+  }, [jobpackId, structureId, sowId]);
+
+  useEffect(() => {
+    // Only fetch if we have both jobpack and structure context resolved
+    // and wait for sowReportNumber if a sowId is present in URL
+    const isSowResolving = sowId && !sowReportNumber;
+
+    if (jobpackId && effectiveStructureId && !isSowResolving) {
+      checkExistingROVJob();
+    }
+  }, [jobpackId, effectiveStructureId, sowReportNumber, sowId]);
 
   useEffect(() => {
     if (effectiveStructureId) {
@@ -433,6 +467,41 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
   const [selectedSowTask, setSelectedSowTask] = useState<any>(null);
   const [recordToEdit, setRecordToEdit] = useState<any>(null);
 
+  // Auto-resolve component from sowId when jobs change or component is null
+  useEffect(() => {
+    async function resolveComponentFromSowId() {
+      if (!sowId || !selectedJobId || selectedComponents[selectedJobId]) return;
+
+      try {
+        const [actualSowId, itemId] = sowId.split("-");
+        if (!actualSowId || !itemId) return;
+
+        console.log("ROV: Auto-resolving component from SOW URL:", { actualSowId, itemId });
+
+        const { data: item } = await supabase
+          .from("u_sow_items")
+          .select("*, structure_components:component_id(*)")
+          .eq("id", itemId)
+          .maybeSingle();
+
+        if (item?.structure_components) {
+          console.log("ROV: Found component for SOW item:", item.structure_components.q_id);
+          setSelectedComponents((prev) => ({
+            ...prev,
+            [selectedJobId]: {
+              ...item.structure_components,
+              isFromSOW: true,
+              component_qid: item.structure_components.q_id
+            },
+          }));
+        }
+      } catch (err) {
+        console.error("ROV: Error auto-resolving component:", err);
+      }
+    }
+    resolveComponentFromSowId();
+  }, [sowId, selectedJobId, supabase]);
+
   // Check SOW tasks when component or jobpack/structure context changes
   useEffect(() => {
     if (selectedComponent && jobpackId && effectiveStructureId) {
@@ -440,7 +509,7 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
     } else {
       setAssignedTasks([]);
     }
-  }, [selectedComponent, jobpackId, effectiveStructureId]);
+  }, [selectedComponent, jobpackId, effectiveStructureId, sowReportNumber]);
 
   // Timer Logic
   useEffect(() => {
@@ -464,35 +533,42 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
   }, [startTime, endTime]);
 
   async function checkExistingROVJob() {
-    if (!jobpackId) return;
+    if (!jobpackId || !effectiveStructureId) {
+      console.log("ROV: Context missing for check. Resetting.");
+      setSelectedJobId(null);
+      setActiveROVJobs([]);
+      setCompletedROVJobs([]);
+      return;
+    }
 
-    console.log("Checking jobs for jobpack:", jobpackId);
+    console.log("ROV: Checking jobs for context:", { jobpackId, effectiveStructureId, sowReportNumber });
 
     try {
       const queryJobPackId = isNaN(Number(jobpackId)) ? jobpackId : Number(jobpackId);
 
       let query = supabase.from("insp_rov_jobs").select("*").eq("jobpack_id", queryJobPackId);
 
-      if (effectiveStructureId) {
-        query = query.eq("structure_id", effectiveStructureId);
-      }
+      // STRICT FILTERING
+      query = query.eq("structure_id", effectiveStructureId);
 
       if (sowReportNumber) {
-        // query = query.eq("sow_report_no", sowReportNumber);
-        // Relaxing filter: Allow viewing all dives for this structure/jobpack regardless of specific SOW label
-        console.log("Skipping SOW filter to show all structure jobs");
+        query = query.eq("sow_report_no", sowReportNumber);
       }
 
       const { data, error } = await query.order("cr_date", { ascending: true });
 
       if (error) {
-        console.error("Error fetching rov jobs:", error);
-        toast.error("Failed to load rov jobs");
+        console.error("Error fetching ROV jobs:", error);
+        setSelectedJobId(null);
+        setActiveROVJobs([]);
+        setCompletedROVJobs([]);
         return;
       }
 
       if (data) {
-        // Fetch structure types for these jobs separately to avoid 400 error on join
+        console.log(`ROV: Found ${data.length} jobs.`);
+        
+        // Fetch structure titles
         const structureIds = Array.from(
           new Set(data.map((j: any) => j.structure_id).filter(Boolean))
         ) as number[];
@@ -507,14 +583,12 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
             const typeMap = new Map(strData.map((s: any) => [s.id, s.code]));
             (data as any[]).forEach((j: any) => {
               if (j.structure_id && typeMap.has(j.structure_id)) {
-                // Assign as 'type' to match expected u_structure interface
                 j.u_structure = { type: typeMap.get(j.structure_id) };
               }
             });
           }
         }
 
-        // Robust filtering
         const active = (data as ROVJob[]).filter(
           (j: any) => j.status?.trim().toUpperCase() === "IN_PROGRESS"
         );
@@ -525,20 +599,29 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
         setActiveROVJobs(active);
         setCompletedROVJobs(completed);
 
-        // Auto-select first active job if exists and no job selected
-        if (active.length > 0 && !selectedJobId) {
-          setSelectedJobId(active[0].rov_job_id);
-        } else if (active.length === 0 && completed.length > 0 && !selectedJobId) {
-          // If no active jobs but we have historical, auto-select the MOST RECENT one
-          // The query is ordered by cr_date ASC currently, but we likely want the LAST one (most recent)
-          // Wait, query order is `order("cr_date", { ascending: true })`
-          // So the LAST item is the most recent.
-          const mostRecent = completed[completed.length - 1];
-          setSelectedJobId(mostRecent.rov_job_id);
+        const allJobs = [...active, ...completed];
+        const currentStillValid = allJobs.some(j => j.rov_job_id === selectedJobId);
+
+        if (!currentStillValid) {
+          if (active.length > 0) {
+            console.log("ROV: Auto-selecting active:", active[0].deployment_no);
+            setSelectedJobId(active[0].rov_job_id);
+          } else if (completed.length > 0) {
+            console.log("ROV: Auto-selecting last completed:", completed[completed.length - 1].deployment_no);
+            setSelectedJobId(completed[completed.length - 1].rov_job_id);
+          } else {
+            console.log("ROV: No match. Clearing.");
+            setSelectedJobId(null);
+          }
         }
+      } else {
+        setSelectedJobId(null);
+        setActiveROVJobs([]);
+        setCompletedROVJobs([]);
       }
     } catch (error) {
-      console.log("No existing rov job found or error fetching", error);
+      console.error("Unexpected error in checkExistingROVJob:", error);
+      setSelectedJobId(null);
     } finally {
       setLoading(false);
     }
@@ -721,13 +804,17 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
     if (!jobpackId || !effectiveStructureId || !selectedComponent) return;
 
     try {
-      // Get SOW ID
-      const { data: sow, error: sowError } = await supabase
-        .from("u_sow")
-        .select("id, report_numbers")
-        .eq("jobpack_id", jobpackId)
-        .eq("structure_id", effectiveStructureId)
-        .maybeSingle();
+      // Get SOW ID - priority to URL record ID if available
+      const [sRecordId] = (sowId || "").split("-");
+      const sowQuery = supabase.from("u_sow").select("id, report_numbers");
+      
+      if (sRecordId && !isNaN(Number(sRecordId))) {
+        sowQuery.eq("id", Number(sRecordId));
+      } else {
+        sowQuery.eq("jobpack_id", jobpackId).eq("structure_id", effectiveStructureId);
+      }
+
+      const { data: sow, error: sowError } = await sowQuery.maybeSingle();
 
       if (sowError) {
         console.error("Error fetching SOW:", sowError);
@@ -740,7 +827,7 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
         // ROV jobs should not inherit an arbitrary SOW just because one isn't strictly defined.
 
         // Get items for this component
-        const { data: items, error: itemsError } = await supabase
+        const itemsQuery = supabase
           .from("u_sow_items")
           .select(
             `
@@ -750,6 +837,12 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
           )
           .eq("sow_id", sow.id)
           .eq("component_id", selectedComponent.id);
+
+        if (sowReportNumber) {
+          itemsQuery.eq("report_number", sowReportNumber);
+        }
+
+        const { data: items, error: itemsError } = await itemsQuery;
 
         if (itemsError) {
           console.error("Error fetching SOW items:", itemsError);
@@ -994,14 +1087,46 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
                 </div>
               </div>
             </div>
-            <Link href="/dashboard/inspection">
-              <Button variant="outline" className="gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Back to Selection
+            <div className="flex items-center gap-2">
+              <Button
+                  variant="default"
+                  className="bg-blue-600 hover:bg-blue-700 gap-2 shadow-lg shadow-blue-500/20 animate-pulse-subtle border-b-2 border-blue-800"
+                  onClick={() => {
+                      setSelectedSowTask({
+                          inspection_code: 'RSEAB',
+                          inspection_name: 'Seabed Survey Plotter',
+                          component_type: 'SD'
+                      });
+                      setInspectionDialogOpen(true);
+                  }}
+              >
+                  <MapPin className="h-4 w-4" />
+                  <span className="hidden sm:inline">Seabed Survey Map</span>
               </Button>
-            </Link>
+              
+              <Link href="/dashboard/inspection">
+                <Button variant="outline" className="gap-2">
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to Selection
+                </Button>
+              </Link>
+            </div>
           </div>
         )}
+
+
+        {/* Global Action Bar */}
+        <div className="flex items-center gap-2 mb-4 bg-white/50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
+            <Badge variant="outline" className="text-[10px] uppercase font-bold py-1 px-2 border-blue-200 text-blue-700 bg-blue-50/50">
+                Inspection Live Tools
+            </Badge>
+            <Separator orientation="vertical" className="h-4 mx-1" />
+            <div className="text-[11px] text-muted-foreground italic">
+                Use the <span className="font-bold text-blue-600">Seabed Map</span> above to plot debris locations directly on the grid.
+            </div>
+        </div>
+
+
 
         {/* Deployment Selection Tabs */}
         <div className="mb-3 shrink-0">
@@ -1660,10 +1785,9 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
 
                         <ROVInspectionList
                           rovJobId={selectedROVJob?.rov_job_id}
+                          sowReportNumber={sowReportNumber || undefined}
+                          structureId={effectiveStructureId || undefined}
                           tapeId={selectedTapeId ?? undefined}
-                          // componentId={selectedComponent?.id} // Disabled to show all records for deployment
-                          // No type filtering for list as requested
-                          selectedType={null}
                           onEdit={(record) => {
                             setRecordToEdit(record);
                             setInspectionDialogOpen(true);
