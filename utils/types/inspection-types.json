@@ -759,7 +759,6 @@
                     "required": false
                 }
             ]
-
         },
         {
             "code": "RSWNI",
@@ -964,9 +963,10 @@
                     "required": true
                 },
                 {
-                    "name": "reading_value",
-                    "label": "Reading Value",
+                    "name": "density_value",
+                    "label": "Density Value",
                     "type": "number",
+                    "unitCategory": "DENSITY",
                     "required": false
                 },
                 {
