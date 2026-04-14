@@ -279,7 +279,7 @@ export async function GET(
                     "Pipeline Title": pipeline.title || "N/A",
                     "Oil Field": pipeline.pfield || "N/A",
                     "Pipeline Type": pipeline.ptype || "N/A",
-                    "Diameter": pipeline.outer_diam ? `${pipeline.outer_diam} inches` : "N/A",
+                    "Diameter": pipeline.outer_diam ? `${pipeline.outer_diam} in` : "N/A",
                     "Length": pipeline.pipe_len ? `${pipeline.pipe_len} m` : "N/A",
                     "Material": pipeline.material || "N/A",
                     "Coating": pipeline.corr_ctg || "N/A",

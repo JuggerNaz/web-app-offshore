@@ -1160,8 +1160,8 @@ export function ComponentSpecDialog({
                         <SelectContent className="rounded-xl">
                           {platformData?.data?.def_unit === "IMPERIAL" ? (
                             <>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
+                              <SelectItem value="inches">in</SelectItem>
+                              <SelectItem value="feet">ft</SelectItem>
                               <SelectItem value="m">m</SelectItem>
                               <SelectItem value="cm">cm</SelectItem>
                               <SelectItem value="mm">mm</SelectItem>
@@ -1171,8 +1171,8 @@ export function ComponentSpecDialog({
                               <SelectItem value="m">m</SelectItem>
                               <SelectItem value="cm">cm</SelectItem>
                               <SelectItem value="mm">mm</SelectItem>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
+                              <SelectItem value="inches">in</SelectItem>
+                              <SelectItem value="feet">ft</SelectItem>
                             </>
                           )}
                         </SelectContent>
@@ -1204,8 +1204,8 @@ export function ComponentSpecDialog({
                         <SelectContent className="rounded-xl">
                           {platformData?.data?.def_unit === "IMPERIAL" ? (
                             <>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
+                              <SelectItem value="inches">in</SelectItem>
+                              <SelectItem value="feet">ft</SelectItem>
                               <SelectItem value="m">m</SelectItem>
                               <SelectItem value="cm">cm</SelectItem>
                               <SelectItem value="mm">mm</SelectItem>
@@ -1215,8 +1215,8 @@ export function ComponentSpecDialog({
                               <SelectItem value="m">m</SelectItem>
                               <SelectItem value="cm">cm</SelectItem>
                               <SelectItem value="mm">mm</SelectItem>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
+                              <SelectItem value="inches">in</SelectItem>
+                              <SelectItem value="feet">ft</SelectItem>
                             </>
                           )}
                         </SelectContent>
@@ -1246,8 +1246,8 @@ export function ComponentSpecDialog({
                         <SelectContent className="rounded-xl">
                           {platformData?.data?.def_unit === "IMPERIAL" ? (
                             <>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
+                              <SelectItem value="inches">in</SelectItem>
+                              <SelectItem value="feet">ft</SelectItem>
                               <SelectItem value="m">m</SelectItem>
                               <SelectItem value="cm">cm</SelectItem>
                               <SelectItem value="mm">mm</SelectItem>
@@ -1257,8 +1257,8 @@ export function ComponentSpecDialog({
                               <SelectItem value="m">m</SelectItem>
                               <SelectItem value="cm">cm</SelectItem>
                               <SelectItem value="mm">mm</SelectItem>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
+                              <SelectItem value="inches">in</SelectItem>
+                              <SelectItem value="feet">ft</SelectItem>
                             </>
                           )}
                         </SelectContent>
@@ -1814,7 +1814,9 @@ export function ComponentSpecDialog({
                                       </SelectTrigger>
                                       <SelectContent className="rounded-xl">
                                         {unitOptions.map((opt) => (
-                                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                          <SelectItem key={opt} value={opt}>
+                                            {opt === "inches" ? "in" : opt === "feet" ? "ft" : opt}
+                                          </SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
