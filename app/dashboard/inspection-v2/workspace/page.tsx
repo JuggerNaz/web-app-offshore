@@ -50,6 +50,7 @@ import {
     Lock,
     MapPin,
     Maximize2,
+    Minimize2,
     Menu,
     MessageSquare,
     MoreVertical,
@@ -4959,22 +4960,62 @@ function V10PreviewLayout() {
                                     <span>CAPTURED EVENTS (FLOATING)</span>
                                     <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
                                 </div>
-                                <button onClick={() => capturedEventsPipWindow.close()} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"><X className="w-4 h-4" /></button>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => {
+                                        if (capturedEventsPipWindow) {
+                                            const s = capturedEventsPipWindow.screen;
+                                            capturedEventsPipWindow.moveTo(s.availLeft || 0, s.availTop || 0);
+                                            capturedEventsPipWindow.resizeTo(s.availWidth, s.availHeight);
+                                        }
+                                    }} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Maximize">
+                                        <Maximize2 className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => {
+                                        if (capturedEventsPipWindow) {
+                                            const s = capturedEventsPipWindow.screen;
+                                            capturedEventsPipWindow.resizeTo(1000, 600);
+                                            capturedEventsPipWindow.moveTo((s.availLeft || 0) + (s.availWidth - 1000) / 2, (s.availTop || 0) + (s.availHeight - 600) / 2);
+                                        }
+                                    }} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Restore Size">
+                                        <Minimize2 className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => capturedEventsPipWindow.close()} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Close"><X className="w-4 h-4" /></button>
+                                </div>
                             </div>
                             <ScrollArea className="flex-1 w-full relative">
                                 <table className="w-full text-left text-xs whitespace-nowrap">
                                     <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
                                         <tr>
-                                            <th className="px-3 py-3 w-20">Date <History className="w-3.5 h-3.5 ml-1 inline opacity-60" /></th>
-                                            <th className="px-3 py-3">Type</th>
-                                            <th className="px-3 py-3">Component</th>
-                                            <th className="px-3 py-3 text-center">Elev/KP</th>
-                                            <th className="px-3 py-3 text-center">Status</th>
+                                            <th className="px-3 py-3 w-20 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('cr_date')}>
+                                                <div className="flex items-center gap-1.5">
+                                                    Date {sortConfig.key === 'cr_date' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('type')}>
+                                                <div className="flex items-center gap-1.5">
+                                                    Type {sortConfig.key === 'type' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('component')}>
+                                                <div className="flex items-center gap-1.5">
+                                                    Component {sortConfig.key === 'component' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('elev')}>
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    Elev/KP {sortConfig.key === 'elev' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('status')}>
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    Status {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
                                             <th className="px-3 py-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {currentRecords.map((r: any) => {
+                                        {sortedRecords.map((r: any) => {
                                             const formatCounter = (val: any) => {
                                                 if (!val) return null;
                                                 if (typeof val === 'string' && val.includes(':')) return val;

@@ -16,6 +16,9 @@ interface DebrisItem {
     isMetallic: boolean;
     face?: string;
     distance?: number;
+    type?: string;
+    description?: string;
+    qid?: string;
 }
 
 interface SeabedDebrisPlotProps {
@@ -35,6 +38,7 @@ interface SeabedDebrisPlotProps {
         face?: string;
         distance?: number;
     };
+    distanceOffset?: number;
 }
 
 const VIEW_SIZE = 600;
@@ -53,6 +57,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
     readOnly = false,
     activeDebrisId = null,
     manualEntry,
+    distanceOffset = 0,
 }) => {
     const isDraggingRef = React.useRef(false);
 
@@ -116,8 +121,9 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
         const availableX = (VIEW_SIZE - (bounds.maxX - bounds.minX)) / 2 - 20;
         const availableY = (VIEW_SIZE - (bounds.maxY - bounds.minY)) / 2 - 20;
         const minAvailable = Math.min(availableX, availableY);
-        return minAvailable / maxDistValue;
-    }, [bounds, maxDistValue]);
+        const maxVisualDist = Math.max(maxDistValue - distanceOffset, 1);
+        return minAvailable / maxVisualDist;
+    }, [bounds, maxDistValue, distanceOffset]);
 
     // 3. Coordinate mapping logic
     const calculateGeometry = (x: number, y: number) => {
@@ -132,7 +138,8 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
         if (screenY < bounds.minY) dyBorder = bounds.minY - screenY;
         else if (screenY > bounds.maxY) dyBorder = screenY - bounds.maxY;
 
-        const logicalDist = Math.max(dxBorder, dyBorder) / pxPerMeter;
+        const visualDist = Math.max(dxBorder, dyBorder) / pxPerMeter;
+        const logicalDist = visualDist + distanceOffset;
 
         const dxCenter = screenX - CENTER;
         const dyCenter = screenY - CENTER;
@@ -180,7 +187,8 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
             
             const leg = legPositions.find(p => p.name.toUpperCase() === manualEntry.leg?.toUpperCase());
             if (leg) {
-                const offsetPx = manualEntry.distance * pxPerMeter;
+                const visualDist = Math.max(0, manualEntry.distance - distanceOffset);
+                const offsetPx = visualDist * pxPerMeter;
                 let dx = 0; let dy = 0;
                 
                 const f = manualEntry.face.toUpperCase();
@@ -206,7 +214,8 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
     // 4. Render Distance Markers
     const renderGridLines = () => {
         return gridDistances.map((dist, i) => {
-            const offsetPx = dist * pxPerMeter;
+            const renderDist = Math.max(0, dist - distanceOffset);
+            const offsetPx = renderDist * pxPerMeter;
             
             if (layoutType === 'rectangular') {
                 return (
@@ -294,24 +303,40 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                 {/* Grid Lines */}
                 <g>{renderGridLines()}</g>
 
-                {/* Grid Labels */}
+                {/* Grid Labels (corners) AND Sector QIDs in each box */}
                 <g className="text-[9px] fill-slate-500 font-bold pointer-events-none">
                     {gridDistances.map((dist, i) => {
-                        const offsetPx = dist * pxPerMeter;
+                        const renderDist = Math.max(0, dist - distanceOffset);
+                        const offsetPx = renderDist * pxPerMeter;
+                        const topY = bounds.minY - offsetPx;
+                        const bottomY = bounds.maxY + offsetPx;
+                        const leftX = bounds.minX - offsetPx;
+                        const rightX = bounds.maxX + offsetPx;
+
                         return (
-                            <text key={`lbl-${i}`} x={bounds.maxX + offsetPx + 4} y={CENTER - 4}>
-                                {dist}m
-                            </text>
+                            <React.Fragment key={`lbl-${i}`}>
+                                {/* Corners (Distances) */}
+                                <text x={leftX - 4} y={topY - 4} textAnchor="end">{dist}m</text>
+                                <text x={rightX + 4} y={topY - 4} textAnchor="start">{dist}m</text>
+                                <text x={leftX - 4} y={bottomY + 10} textAnchor="end">{dist}m</text>
+                                <text x={rightX + 4} y={bottomY + 10} textAnchor="start">{dist}m</text>
+
+                                {/* Box Sector QIDs (Light color in 4 faces) */}
+                                <text x={CENTER} y={topY + 12} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
+                                    S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'})-{dist}M
+                                </text>
+                                <text x={CENTER} y={bottomY - 4} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
+                                    S/BED({legPositions.find(p => p.name === 'B1')?.name || 'B1'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
+                                </text>
+                                <text x={rightX - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${rightX - 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
+                                    S/BED({legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
+                                </text>
+                                <text x={leftX + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${leftX + 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
+                                    S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === 'B1')?.name || 'B1'})-{dist}M
+                                </text>
+                            </React.Fragment>
                         );
                     })}
-                </g>
-
-                {/* Sector QID Labels */}
-                <g className="pointer-events-none opacity-10 select-none">
-                    <text x={CENTER} y={bounds.minY - 25} textAnchor="middle" className="text-[14px] font-mono fill-slate-500 uppercase">S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'})</text>
-                    <text x={bounds.maxX + 45} y={CENTER} textAnchor="middle" transform={`rotate(90, ${bounds.maxX + 45}, ${CENTER})`} className="text-[14px] font-mono fill-slate-500 uppercase">S/BED({legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})</text>
-                    <text x={CENTER} y={bounds.maxY + 45} textAnchor="middle" className="text-[14px] font-mono fill-slate-500 uppercase">S/BED({legPositions.find(p => p.name === 'B1')?.name || 'B1'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})</text>
-                    <text x={bounds.minX - 45} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${bounds.minX - 45}, ${CENTER})`} className="text-[14px] font-mono fill-slate-500 uppercase">S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === 'B1')?.name || 'B1'})</text>
                 </g>
 
                 {/* Platform Legs */}
@@ -392,20 +417,20 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
 
                         className={activeDebrisId === item.id ? 'z-10' : 'z-0'}
                     >
-                        <title>{(item as any).qid || item.label}</title>
+                        <title>{`${item.type || 'Debris'}${item.description ? ` - ${item.description}` : ''}\nQID: ${item.qid || item.label}`}</title>
                         {/* Circle Shadow/Glow */}
                         <circle
                             cx={CENTER}
                             cy={CENTER}
                             r="12"
-                            className={item.isMetallic ? 'fill-blue-500/20' : 'fill-amber-500/20'}
+                            className={item.type === 'Gas Seepage' ? 'fill-green-500/20' : item.type === 'Crater' ? 'fill-slate-500/20' : 'fill-amber-500/20'}
                         />
                         {/* Circle Border */}
                         <circle
                             cx={CENTER}
                             cy={CENTER}
                             r="10"
-                            className={`stroke-2 ${item.isMetallic ? 'fill-blue-600 stroke-blue-200' : 'fill-amber-600 stroke-amber-200'} ${activeDebrisId === item.id ? 'stroke-[3px]' : ''}`}
+                            className={`stroke-2 ${item.type === 'Gas Seepage' ? 'fill-green-600 stroke-green-200' : item.type === 'Crater' ? 'fill-slate-600 stroke-slate-200' : 'fill-amber-600 stroke-amber-200'} ${activeDebrisId === item.id ? 'stroke-[3px]' : ''}`}
                         />
                         {/* Number */}
                         <text

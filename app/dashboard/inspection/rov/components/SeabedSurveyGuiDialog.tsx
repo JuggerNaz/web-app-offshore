@@ -34,10 +34,13 @@ export function SeabedSurveyGuiInline({
     const [activeId, setActiveId] = useState<string | number | null>(null);
     const [mousePos, setMousePos] = useState<{ x: number, y: number } | null>(null);
     const [formData, setFormData] = useState({
-        type: '',
+        category: 'Debris',
+        description: '',
         material: 'Non-Metallic',
         size: '',
     });
+    const [editFormData, setEditFormData] = useState<any>(null);
+    const [currentPage, setCurrentPage] = useState(0);
 
     const generateQid = (geometry: any) => {
         if (!geometry || !geometry.startLeg || !geometry.endLeg) return '';
@@ -78,16 +81,35 @@ export function SeabedSurveyGuiInline({
             qid: r.structure_components?.q_id || r.insp_id,
             isMetallic: r.inspection_data.debris_material?.toLowerCase().includes('metal') || false,
             face: r.inspection_data.face || '',
-            distance: r.inspection_data.distance_from_leg || 0
+            distance: r.inspection_data.distance_from_leg || 0,
+            type: r.inspection_data.type || (r.description?.includes('Debris') ? 'Debris' : r.description?.includes('Gas Seepage') ? 'Gas Seepage' : r.description?.includes('Crater') ? 'Crater' : 'Debris'),
+            description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || '',
+            size: r.inspection_data.dimension_1 || '',
+            material: r.inspection_data.debris_material || 'Unknown'
         })).filter(r => !isNaN(r.x) && !isNaN(r.y));
         
         setExistingDebris(mapped);
     };
 
+    useEffect(() => {
+        if (activeId) {
+            const item = existingDebris.find(d => d.id === activeId);
+            if (item) {
+                setEditFormData({
+                    category: item.type,
+                    description: item.description,
+                    material: item.material,
+                    size: item.size
+                });
+            }
+        }
+    }, [activeId, existingDebris]);
+
     const handleAddClick = (x: number, y: number, geometry: any) => {
         setNewPoint({ x, y, geometry });
         setIsAdding(true);
-        setFormData({ type: '', material: 'Non-Metallic', size: '' });
+        setActiveId(null);
+        setFormData({ category: 'Debris', description: '', material: 'Non-Metallic', size: '' });
     };
 
     const handleSaveNewDebris = async () => {
@@ -156,6 +178,7 @@ export function SeabedSurveyGuiInline({
                 face: newPoint.geometry.face,
                 x: newPoint.x.toFixed(2),
                 y: newPoint.y.toFixed(2),
+                type: formData.category,
                 debris_material: formData.material,
                 dimension_1: formData.size,
                 finding_type: "Anomaly",
@@ -172,7 +195,7 @@ export function SeabedSurveyGuiInline({
                 inspection_type_code: 'RSEAB',
                 inspection_type_id: inspTypeId,
                 sow_report_no: sowReportNo || rovJob?.raw?.sow_report_no || 'Unknown',
-                description: `Seabed Debris: ${formData.type}`,
+                description: formData.description ? `${formData.category}: ${formData.description}` : formData.category,
                 inspection_data: inspectionData,
                 status: 'COMPLETED',
                 tape_id: tapeId ? parseInt(tapeId as string, 10) : null,
@@ -199,7 +222,42 @@ export function SeabedSurveyGuiInline({
 
     const handleMoveDebris = async (id: string | number, x: number, y: number, geometry: any) => {
         try {
+            const generatedQid = generateQid(geometry);
+            const currentRec = existingDebris.find(d => d.id === id);
+            let componentId = undefined;
+
+            if (currentRec && currentRec.qid !== generatedQid) {
+                // Find or insert the new component since QID changed!
+                const { data: existingComp } = await supabase.from('structure_components')
+                    .select('id').eq('structure_id', structureId).eq('q_id', generatedQid).maybeSingle();
+                
+                if (existingComp) {
+                    componentId = existingComp.id;
+                } else {
+                    const componentTs = Math.floor(Date.now() / 1000);
+                    const { data: newComp } = await supabase.from('structure_components').insert({
+                        structure_id: structureId,
+                        q_id: generatedQid,
+                        id_no: `SD/${componentTs}`,
+                        code: 'SD',
+                        comp_id: componentTs,
+                        metadata: {
+                            description: `Seabed Survey ${geometry.startLeg}-${geometry.endLeg} ${geometry.nearestDistance}M`,
+                            f_leg: geometry.startLeg,
+                            s_leg: geometry.endLeg,
+                            dist: geometry.nearestDistance.toString(),
+                            face: geometry.face,
+                            lvl: 'Seabed'
+                        }
+                    }).select('id').single();
+                    if (newComp) componentId = newComp.id;
+                }
+            }
+
+            const { data: currentDbData } = await supabase.from('insp_records').select('inspection_data, description').eq('insp_id', id).single();
+
             const inspectionData = {
+                ...(currentDbData?.inspection_data || {}),
                 distance_from_leg: geometry.distance.toFixed(1),
                 face: geometry.face,
                 x: x.toFixed(2),
@@ -207,17 +265,44 @@ export function SeabedSurveyGuiInline({
                 finding_type: "Anomaly",
             };
 
+            const updatePayload: any = { 
+                inspection_data: inspectionData,
+            };
+            if (componentId) updatePayload.component_id = componentId;
+
             const { error } = await supabase.from('insp_records')
-                .update({ 
-                    inspection_data: inspectionData,
-                    description: `Moved Debris: ${geometry.face} @ ${geometry.distance.toFixed(1)}m` 
-                })
+                .update(updatePayload)
                 .eq('insp_id', id);
 
             if (error) throw error;
+            toast.success("Updated coordinates successfully");
             fetchExistingDebris();
         } catch (err: any) {
             toast.error("Failed to move debris: " + err.message);
+        }
+    };
+
+    const handleSaveEdit = async () => {
+        if (!activeId || !editFormData) return;
+        try {
+            const { data } = await supabase.from('insp_records').select('inspection_data').eq('insp_id', activeId).single();
+            const newData = {
+                ...(data?.inspection_data || {}),
+                type: editFormData.category,
+                debris_material: editFormData.material,
+                dimension_1: editFormData.size,
+            };
+            const { error } = await supabase.from('insp_records')
+                .update({ 
+                    inspection_data: newData,
+                    description: editFormData.description ? `${editFormData.category}: ${editFormData.description}` : editFormData.category
+                })
+                .eq('insp_id', activeId);
+            if (error) throw error;
+            toast.success("Details updated successfully");
+            fetchExistingDebris();
+        } catch(e: any) {
+            toast.error(e.message);
         }
     };
 
@@ -239,6 +324,9 @@ export function SeabedSurveyGuiInline({
         }
     };
 
+    const minDistance = currentPage * 21;
+    const maxDistance = (currentPage + 1) * 21;
+    const itemsForCurrentPage = existingDebris.filter(d => d.distance > minDistance && d.distance <= maxDistance);
     const activeItem = existingDebris.find(d => d.id === activeId);
 
     if (!open) return null;
@@ -247,11 +335,51 @@ export function SeabedSurveyGuiInline({
         <Card className="h-full w-full flex flex-col p-0 overflow-hidden shadow-lg border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-900 animate-in slide-in-from-right-8 duration-300">
             <div className="px-6 py-4 border-b bg-white dark:bg-slate-950 flex items-center justify-between">
                 <h2 className="text-xl font-bold">Seabed Survey Multi-Drop GUI</h2>
-                <Button variant="outline" size="sm" onClick={onClose}>Close Planner</Button>
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center rounded-md border border-slate-200 bg-slate-50 text-sm">
+                        <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}>Prev Range</Button>
+                        <div className="px-3 font-bold text-slate-600 border-x border-slate-200">
+                            Page {currentPage + 1}
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => p + 1)}>Next Range</Button>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={onClose}>Close Planner</Button>
+                </div>
             </div>
             <div className="flex-1 flex overflow-hidden">
+                {/* Items List Sidebar (Left) */}
+                <div className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col z-10 shadow-[2px_0_10px_rgba(0,0,0,0.05)]">
+                    <div className="px-4 py-3 border-b border-slate-200 bg-white font-bold text-sm text-slate-800 flex justify-between items-center">
+                        <span>Items Registered</span>
+                        <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full text-xs">{itemsForCurrentPage.length}</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                        {itemsForCurrentPage.length === 0 ? (
+                            <div className="text-center p-4 text-xs text-slate-500 bg-white rounded border border-slate-200 border-dashed">No items plotted</div>
+                        ) : (
+                            itemsForCurrentPage.map(item => (
+                                <div key={item.id} 
+                                     onClick={() => { setActiveId(item.id); setIsAdding(false); }}
+                                     className={`p-3 rounded border text-xs cursor-pointer transition-all ${activeId === item.id ? 'bg-blue-50 border-blue-300 shadow-sm ring-1 ring-blue-200' : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'}`}>
+                                    <div className="flex items-center gap-2 font-bold text-slate-700 mb-1">
+                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white shadow-sm ${item.type === 'Gas Seepage' ? 'bg-green-600' : item.type === 'Crater' ? 'bg-slate-600' : 'bg-amber-600'}`}>
+                                            {item.label}
+                                        </div>
+                                        <span className="truncate">{item.type || 'Debris'}</span>
+                                    </div>
+                                    <div className="text-slate-500 mb-2 truncate text-[10px] font-mono select-all bg-slate-100 rounded px-1 py-0.5">{item.qid}</div>
+                                    <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+                                        <span className="text-[10px] font-medium opacity-70 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-400 block"></span> {item.face}</span>
+                                        <span className="text-[10px] font-medium opacity-70 bg-slate-100 px-1 rounded">{item.distance}m</span>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
                 {/* Plotter Area */}
-                <div className="flex-1 bg-slate-100 p-6 flex flex-col items-center justify-center relative shadow-inner"
+                <div className="flex-1 bg-slate-200/50 p-6 flex flex-col items-center justify-center relative shadow-inner"
                      onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
                      onMouseLeave={() => { setMousePos(null); setHoverInfo(null); }}
                 >
@@ -259,7 +387,9 @@ export function SeabedSurveyGuiInline({
                             <SeabedDebrisPlot
                                 layoutType={structureName.includes('8') ? 'rectangular' : 'rectangular'}
                                 legCount={structureName.includes('8') ? 8 : 4}
-                                debrisItems={existingDebris}
+                                gridDistances={[...Array(7)].map((_, i) => (currentPage * 7 + i + 1) * 3)}
+                                distanceOffset={currentPage * 21}
+                                debrisItems={itemsForCurrentPage}
                                 onAddDebris={handleAddClick}
                                 onDebrisMove={handleMoveDebris}
                                 onSelectDebris={(id) => { setActiveId(id); setIsAdding(false); }}
@@ -295,11 +425,23 @@ export function SeabedSurveyGuiInline({
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label>Debris Type / Description</Label>
+                                    <Label>Item Category</Label>
+                                    <Select value={formData.category} onValueChange={v => setFormData(p => ({...p, category: v}))}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Debris">Debris</SelectItem>
+                                            <SelectItem value="Gas Seepage">Gas Seepage</SelectItem>
+                                            <SelectItem value="Crater">Crater</SelectItem>
+                                            <SelectItem value="Other">Other</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Description / Details</Label>
                                     <Input 
                                         placeholder="e.g. Scaffolding pipe" 
-                                        value={formData.type}
-                                        onChange={e => setFormData(p => ({...p, type: e.target.value}))}
+                                        value={formData.description}
+                                        onChange={e => setFormData(p => ({...p, description: e.target.value}))}
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -350,13 +492,59 @@ export function SeabedSurveyGuiInline({
                                     </div>
                                 </div>
 
-                                <div className="p-3 bg-amber-50 border border-amber-100 rounded text-[10px] text-amber-800 leading-normal">
-                                    <span className="font-bold uppercase block mb-1">Draggable Marker</span>
-                                    You can drag this # {activeItem.label} marker directly on the map to update its coordinates in the registry.
+                                 <div className="p-3 bg-amber-50 border border-amber-100 rounded text-[10px] text-amber-800 leading-normal">
+                                    <span className="font-bold uppercase block mb-1 flex items-center gap-1">Drag Marker to update</span>
+                                    You can drag this # {activeItem.label} marker directly on the map to automatically update its coordinates and QID.
                                 </div>
                             </div>
 
-                            <div className="flex flex-col gap-2 pt-4">
+                            {editFormData && (
+                                <div className="space-y-4 pt-4 border-t border-slate-100">
+                                    <h4 className="text-sm font-bold text-slate-700">Edit Details</h4>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs">Item Category</Label>
+                                        <Select value={editFormData.category} onValueChange={v => setEditFormData((p: any) => ({...p, category: v}))}>
+                                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Debris">Debris</SelectItem>
+                                                <SelectItem value="Gas Seepage">Gas Seepage</SelectItem>
+                                                <SelectItem value="Crater">Crater</SelectItem>
+                                                <SelectItem value="Other">Other</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs">Description</Label>
+                                        <Input 
+                                            className="h-8 text-xs"
+                                            value={editFormData.description}
+                                            onChange={e => setEditFormData((p: any) => ({...p, description: e.target.value}))}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs">Material</Label>
+                                        <Select value={editFormData.material} onValueChange={v => setEditFormData((p: any) => ({...p, material: v}))}>
+                                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Metallic">Metallic</SelectItem>
+                                                    <SelectItem value="Non-Metallic">Non-Metallic</SelectItem>
+                                                    <SelectItem value="Unknown">Unknown</SelectItem>
+                                                </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs">Size / Dimensions</Label>
+                                        <Input 
+                                            className="h-8 text-xs"
+                                            value={editFormData.size}
+                                            onChange={e => setEditFormData((p: any) => ({...p, size: e.target.value}))}
+                                        />
+                                    </div>
+                                    <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700" onClick={handleSaveEdit}>Save Edits</Button>
+                                </div>
+                            )}
+
+                            <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
                                 <Button className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700" variant="outline" onClick={handleDeleteDebris}>
                                     Delete This Record
                                 </Button>
