@@ -94,6 +94,14 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                     <div className="flex items-center gap-1.5 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700">
                         <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">SOW Report:</span>
                         <span className="font-mono font-black text-cyan-400">{headerData.sowReportNo}</span>
+                        {headerData.jobType && (
+                            <>
+                                <span className="text-slate-600 font-bold px-1">/</span>
+                                <Badge variant="outline" className="h-5 px-1.5 bg-blue-500/10 text-cyan-300 border-blue-500/30 text-[9px] font-black uppercase tracking-widest leading-none flex items-center justify-center">
+                                    {headerData.jobType}
+                                </Badge>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

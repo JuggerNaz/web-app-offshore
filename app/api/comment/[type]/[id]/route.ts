@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-export async function GET(request: Request, context: any) {
-  const { id, type } = await context.params;
+export async function GET(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
+  const { id, type } = await params;
 
   const supabase = createClient();
   const { data, error } = await supabase
     .from("comment")
     .select("*")
-    .eq("structure_id", id)
+    .eq("structure_id", Number(id))
     .eq("structure_type", type);
 
   if (error) {
@@ -62,8 +62,8 @@ export async function GET(request: Request, context: any) {
   return NextResponse.json({ data });
 }
 
-export async function POST(request: Request, context: any) {
-  const { id } = await context.params;
+export async function POST(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
+  const { id } = await params;
   const body = await request.json();
   const supabase = createClient();
 
@@ -84,8 +84,8 @@ export async function POST(request: Request, context: any) {
   return NextResponse.json({ data });
 }
 
-export async function PUT(request: Request, context: any) {
-  const { id } = await context.params;
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
+  const { id } = await params;
   const body = await request.json();
   const supabase = createClient();
 
@@ -105,7 +105,7 @@ export async function PUT(request: Request, context: any) {
     .from("comment")
     .update(updateData)
     .eq("id", commentId)
-    .eq("structure_id", id)
+    .eq("structure_id", Number(id))
     .select()
     .single();
 
@@ -124,8 +124,8 @@ export async function PUT(request: Request, context: any) {
   return NextResponse.json({ data });
 }
 
-export async function DELETE(request: Request, context: any) {
-  const { id } = await context.params;
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
+  const { id } = await params;
   const body = await request.json();
   const supabase = createClient();
 
@@ -141,7 +141,7 @@ export async function DELETE(request: Request, context: any) {
     .from("comment")
     .delete()
     .eq("id", commentId)
-    .eq("structure_id", id);
+    .eq("structure_id", Number(id));
 
   if (error) {
     console.error("Error deleting comment:", error);

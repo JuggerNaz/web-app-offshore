@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, LayoutPanelLeft, Compass, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, LayoutPanelLeft, Compass, Settings, Search, Command } from "lucide-react";
 import { DashboardMenu } from "./menu";
 import { DashboardFooter } from "./footer";
 import { Button } from "./ui/button";
@@ -115,7 +115,27 @@ export function CollapsibleSidebar() {
         </Link>
       </div>
 
-      {/* Global Action / Search Placeholder could go here */}
+      {/* Global Action / Search */}
+      <div className="px-4 py-2">
+        <button
+          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
+          className={cn(
+            "flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-bold transition-all bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 group",
+            isCollapsed ? "justify-center px-0" : "justify-start"
+          )}
+        >
+          <Search className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
+          {!isCollapsed && (
+            <div className="flex items-center justify-between flex-1">
+              <span className="text-slate-600 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 uppercase tracking-wider text-[10px]">Omnisearch</span>
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[8px] text-slate-400">
+                <Command className="h-2 w-2" />
+                <span>K</span>
+              </div>
+            </div>
+          )}
+        </button>
+      </div>
 
       {/* Navigation Menu */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pt-2">

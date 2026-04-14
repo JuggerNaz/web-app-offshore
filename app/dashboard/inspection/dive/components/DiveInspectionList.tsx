@@ -24,6 +24,8 @@ interface DiveInspectionListProps {
     tapeId?: number;
     diveNo?: string;
     jobpackId?: string | number;
+    sowReportNumber?: string;
+    structureId?: number;
     selectedType?: string | null;
     onEdit: (record: any) => void;
     onDelete?: () => void;
@@ -36,6 +38,8 @@ export default function DiveInspectionList({
     tapeId,
     diveNo,
     jobpackId,
+    sowReportNumber,
+    structureId,
     selectedType,
     onEdit,
     onDelete,
@@ -75,12 +79,12 @@ export default function DiveInspectionList({
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [diveJobId, componentId, tapeId, diveNo, jobpackId, selectedType, timestamp, supabase]);
+    }, [diveJobId, componentId, tapeId, diveNo, jobpackId, sowReportNumber, structureId, selectedType, timestamp, supabase]);
 
     async function fetchRecords() {
         setLoading(true);
         try {
-            console.log("Fetching inspection records...", { diveJobId, componentId, timestamp });
+            console.log("Fetching inspection records...", { diveJobId, componentId, sowReportNumber, timestamp });
 
             let query = supabase
                 .from('insp_records')
@@ -98,6 +102,14 @@ export default function DiveInspectionList({
                 query = query.eq('dive_job_id', diveJobId);
             } else if (componentId) {
                 query = query.eq('component_id', componentId);
+            }
+
+            if (sowReportNumber) {
+                query = query.eq('sow_report_no', sowReportNumber);
+            }
+
+            if (structureId) {
+                query = query.eq('structure_id', structureId);
             }
 
             // Filter by tape if provided

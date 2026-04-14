@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { 
     Camera, 
     Maximize2, 
@@ -70,6 +71,12 @@ export const VideoInterface = ({
     showDrawingTools,
     setShowDrawingTools
 }: VideoInterfaceProps) => {
+    const router = useRouter();
+
+    const handleOpenSettings = () => {
+        router.push('/dashboard/settings/video-capture');
+    };
+
     return (
         <Card className="overflow-hidden border-slate-200 shadow-xl bg-slate-900 flex flex-col h-full relative group">
             <div className="flex-1 relative min-h-0 bg-black flex items-center justify-center overflow-hidden">
@@ -79,16 +86,27 @@ export const VideoInterface = ({
                             <VideoOff className="h-10 w-10 text-slate-600" />
                         </div>
                         <div className="text-center">
-                            <h3 className="text-slate-400 font-bold uppercase tracking-widest text-xs">Video Feed Offline</h3>
+                            <h3 className="text-slate-400 font-bold uppercase tracking-widest text-xs">Live Stream Offline</h3>
                             <p className="text-slate-600 text-[10px] mt-1">Check media device permissions</p>
                         </div>
-                        <Button 
-                            variant="outline" 
-                            className="bg-white/5 border-white/10 text-white hover:bg-white/10"
-                            onClick={() => setStreamActive(true)}
-                        >
-                            Retry Connection
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button 
+                                variant="outline" 
+                                className="bg-white/5 border-white/10 text-white hover:bg-white/10"
+                                onClick={() => setStreamActive(true)}
+                            >
+                                Retry Connection
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                size="icon"
+                                className="bg-white/5 border-white/10 text-white hover:bg-white/10"
+                                onClick={handleOpenSettings}
+                                title="Live Stream Settings"
+                            >
+                                <Settings className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
                 )}
 
@@ -168,6 +186,15 @@ export const VideoInterface = ({
                                 title={pipActive ? "Close Floating Window" : "Pop Out Stream"}
                             >
                                 <Maximize2 className="h-5 w-5" />
+                            </Button>
+                            <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 text-white"
+                                onClick={handleOpenSettings}
+                                title="Live Stream Settings"
+                            >
+                                <Settings className="h-5 w-5" />
                             </Button>
                             <Button 
                                 size="icon" 

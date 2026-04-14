@@ -19,6 +19,13 @@ export async function GET() {
             );
         }
 
+        // Check if any structures exist
+        const { count, error: countError } = await supabase
+            .from("structure")
+            .select("*", { count: "exact", head: true });
+
+        const hasStructures = !countError && (count || 0) > 0;
+
         // If logo_path exists, get the public URL
         let logoUrl = null;
         if (settings.logo_path) {
@@ -33,6 +40,8 @@ export async function GET() {
             data: {
                 ...settings,
                 logo_url: logoUrl,
+                has_structures: hasStructures,
+                def_unit: settings.def_unit || "METRIC"
             },
         });
     } catch (error) {
