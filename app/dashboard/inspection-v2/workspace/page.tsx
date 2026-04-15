@@ -2777,7 +2777,8 @@ function V10PreviewLayout() {
             const combined = [...assigned, ...unassigned];
             return { assigned, unassigned, all: combined };
         },
-        staleTime: 30000, // 30 seconds
+        staleTime: 10 * 60 * 1000, // 10 minutes cache to avoid huge page loads
+        refetchOnWindowFocus: false,
     });
 
     // Populate local states whenever query data resolves
@@ -4218,7 +4219,24 @@ function V10PreviewLayout() {
                         variant="default" 
                         size="sm" 
                         className="ml-auto bg-blue-600 hover:bg-blue-700 text-white h-7 px-3 shadow-blue-500/20 shadow-lg text-[10px] font-black uppercase tracking-wider"
-                        onClick={() => setIsSeabedGuiOpen(true)}
+                        onClick={async () => {
+                            if (vidState === "IDLE") {
+                                toast.error("Video recording must be actively started to open the Seabed Map.");
+                                return;
+                            }
+                            if (!tapeId) {
+                                toast.error("No active tape available. Please configure a tape first.");
+                                return;
+                            }
+
+                            // Pre-fetch check for Inspection Type (optional, fallbacks exist)
+                            const { data, error } = await supabase.from('inspection_type').select('id').eq('code', 'RSEAB').maybeSingle();
+                            if (error || !data?.id) {
+                                console.warn("Seabed Inspection Type (RSEAB) is missing from the database. Falling back to active deployment inspection type.");
+                            }
+
+                            setIsSeabedGuiOpen(true);
+                        }}
                     >
                         <MapPin className="w-3.5 h-3.5 mr-1.5" /> Seabed Map
                     </Button>

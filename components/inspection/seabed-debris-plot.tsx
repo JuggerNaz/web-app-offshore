@@ -391,7 +391,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                             e.stopPropagation();
                             onSelectDebris?.(item.id);
                         }}
-                        drag={!readOnly}
+                        drag={!readOnly && activeDebrisId === item.id}
                         dragMomentum={false}
                         onDragStart={() => { isDraggingRef.current = true; }}
                         onDragEnd={(e: any, info) => {
@@ -422,15 +422,15 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                         <circle
                             cx={CENTER}
                             cy={CENTER}
-                            r="12"
-                            className={item.type === 'Gas Seepage' ? 'fill-green-500/20' : item.type === 'Crater' ? 'fill-slate-500/20' : 'fill-amber-500/20'}
+                            r={activeDebrisId === item.id ? "18" : "12"}
+                            className={activeDebrisId === item.id ? 'fill-blue-500/40 animate-pulse' : item.type === 'Gas Seepage' ? 'fill-green-500/20' : item.type === 'Crater' ? 'fill-slate-500/20' : 'fill-amber-500/20'}
                         />
                         {/* Circle Border */}
                         <circle
                             cx={CENTER}
                             cy={CENTER}
-                            r="10"
-                            className={`stroke-2 ${item.type === 'Gas Seepage' ? 'fill-green-600 stroke-green-200' : item.type === 'Crater' ? 'fill-slate-600 stroke-slate-200' : 'fill-amber-600 stroke-amber-200'} ${activeDebrisId === item.id ? 'stroke-[3px]' : ''}`}
+                            r={activeDebrisId === item.id ? "12" : "10"}
+                            className={`stroke-2 ${activeDebrisId === item.id ? 'fill-blue-600 stroke-[3px] stroke-cyan-300' : item.type === 'Gas Seepage' ? 'fill-green-600 stroke-green-200' : item.type === 'Crater' ? 'fill-slate-600 stroke-slate-200' : 'fill-amber-600 stroke-amber-200'}`}
                         />
                         {/* Number */}
                         <text
@@ -448,7 +448,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
             {/* Hint Overlay */}
             {!readOnly && (
                 <div className="absolute top-2 left-2 bg-slate-800/80 backdrop-blur px-2 py-1 rounded text-[10px] text-slate-300 border border-slate-700 pointer-events-none">
-                    Click to add marker • Drag to reposition
+                    Click grid to drop flag • Click a flag to select it • Drag to reposition
                 </div>
             )}
         </div>

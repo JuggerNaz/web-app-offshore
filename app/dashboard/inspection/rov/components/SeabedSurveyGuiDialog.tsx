@@ -63,12 +63,10 @@ export function SeabedSurveyGuiInline({
         if (!rovJob) return;
         const { data, error } = await supabase.from('insp_records')
             .select(`
-                insp_id, inspection_data, structure_components:component_id ( q_id )
+                insp_id, inspection_data, description, status, tape_count_no, tape_id, cr_user, structure_components:component_id ( q_id )
             `)
             .eq('structure_id', Number(structureId))
             .eq('inspection_type_code', 'RSEAB')
-            // Filter by RSEAB maybe? The JSON contains distance_from_leg, x, y
-            .not('inspection_data->x', 'is', null)
             .order('insp_id', { ascending: true });
 
         if (error || !data) return;
@@ -84,8 +82,8 @@ export function SeabedSurveyGuiInline({
             distance: r.inspection_data.distance_from_leg || 0,
             type: r.inspection_data.type || (r.description?.includes('Debris') ? 'Debris' : r.description?.includes('Gas Seepage') ? 'Gas Seepage' : r.description?.includes('Crater') ? 'Crater' : 'Debris'),
             description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || '',
-            size: r.inspection_data.dimension_1 || '',
-            material: r.inspection_data.debris_material || 'Unknown'
+            size: r.inspection_data?.dimension_1 || '',
+            material: r.inspection_data?.debris_material || 'Unknown'
         })).filter(r => !isNaN(r.x) && !isNaN(r.y));
         
         setExistingDebris(mapped);
@@ -149,8 +147,25 @@ export function SeabedSurveyGuiInline({
             // 2. Add to SOW if sowRecordId exists and not already mapped
             let sowItemId = null;
             let inspTypeId = null;
-            const { data: inspType } = await supabase.from('inspection_types').select('id').eq('code', 'RSEAB').single();
-            if (inspType) inspTypeId = inspType.id;
+            
+            // Strictly get or create RSEAB inspection type
+            const { data: inspType } = await supabase.from('inspection_type').select('id').eq('code', 'RSEAB').maybeSingle();
+            if (inspType?.id) {
+                inspTypeId = inspType.id;
+            } else {
+                // Auto-create to prevent null insertion
+                const { data: newType } = await supabase.from('inspection_type').insert({
+                    code: 'RSEAB',
+                    name: 'ROV Seabed Inspection'
+                }).select('id').single();
+                if (newType?.id) inspTypeId = newType.id;
+            }
+
+            // Ultimate fallback if insert fails
+            if (!inspTypeId && typeof rovJob !== 'undefined') {
+                if (rovJob?.raw?.inspection_type_id) inspTypeId = rovJob.raw.inspection_type_id;
+                else if (rovJob?.inspection_type_id) inspTypeId = rovJob.inspection_type_id;
+            }
 
             if (sowRecordId && componentId) {
                 const { data: existingSow } = await supabase.from('u_sow_items')
@@ -187,7 +202,7 @@ export function SeabedSurveyGuiInline({
             const { data: authData } = await supabase.auth.getUser();
             const now = new Date();
             const { error: recErr } = await supabase.from('insp_records').insert({
-                rov_job_id: rovJob.raw?.rov_job_id || rovJob.id,
+                rov_job_id: rovJob?.raw?.rov_job_id || rovJob?.id || null,
                 structure_id: Number(structureId),
                 jobpack_id: Number(jobpackId),
                 component_id: componentId,
@@ -198,7 +213,7 @@ export function SeabedSurveyGuiInline({
                 description: formData.description ? `${formData.category}: ${formData.description}` : formData.category,
                 inspection_data: inspectionData,
                 status: 'COMPLETED',
-                tape_id: tapeId ? parseInt(tapeId as string, 10) : null,
+                tape_id: typeof tapeId === 'string' && tapeId !== 'undefined' ? (parseInt(tapeId, 10) || null) : (typeof tapeId === 'number' ? tapeId : null),
                 tape_count_no: tapeCounter,
                 inspection_date: now.toISOString().split('T')[0],
                 inspection_time: now.toTimeString().split(' ')[0],
@@ -265,10 +280,23 @@ export function SeabedSurveyGuiInline({
                 finding_type: "Anomaly",
             };
 
+            const { data: authData } = await supabase.auth.getUser();
             const updatePayload: any = { 
                 inspection_data: inspectionData,
+                inspection_type_code: 'RSEAB',
+                md_user: authData?.user?.id || null,
+                md_date: new Date().toISOString()
             };
             if (componentId) updatePayload.component_id = componentId;
+
+            // Also ensure inspection_type_id is set if it was missing 
+            const { data: inspType } = await supabase.from('inspection_type').select('id').eq('code', 'RSEAB').maybeSingle();
+            if (inspType?.id) {
+                updatePayload.inspection_type_id = inspType.id;
+            } else if (typeof rovJob !== 'undefined') {
+                if (rovJob?.raw?.inspection_type_id) updatePayload.inspection_type_id = rovJob.raw.inspection_type_id;
+                else if (rovJob?.inspection_type_id) updatePayload.inspection_type_id = rovJob.inspection_type_id;
+            }
 
             const { error } = await supabase.from('insp_records')
                 .update(updatePayload)
@@ -292,10 +320,13 @@ export function SeabedSurveyGuiInline({
                 debris_material: editFormData.material,
                 dimension_1: editFormData.size,
             };
+            const { data: authData } = await supabase.auth.getUser();
             const { error } = await supabase.from('insp_records')
                 .update({ 
                     inspection_data: newData,
-                    description: editFormData.description ? `${editFormData.category}: ${editFormData.description}` : editFormData.category
+                    description: editFormData.description ? `${editFormData.category}: ${editFormData.description}` : editFormData.category,
+                    md_user: authData?.user?.id || null,
+                    md_date: new Date().toISOString()
                 })
                 .eq('insp_id', activeId);
             if (error) throw error;
@@ -348,29 +379,39 @@ export function SeabedSurveyGuiInline({
             </div>
             <div className="flex-1 flex overflow-hidden">
                 {/* Items List Sidebar (Left) */}
-                <div className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col z-10 shadow-[2px_0_10px_rgba(0,0,0,0.05)]">
+                <div className="w-72 bg-slate-50 border-r border-slate-200 flex flex-col z-10 shadow-[2px_0_10px_rgba(0,0,0,0.05)]">
                     <div className="px-4 py-3 border-b border-slate-200 bg-white font-bold text-sm text-slate-800 flex justify-between items-center">
                         <span>Items Registered</span>
                         <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full text-xs">{itemsForCurrentPage.length}</span>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
                         {itemsForCurrentPage.length === 0 ? (
                             <div className="text-center p-4 text-xs text-slate-500 bg-white rounded border border-slate-200 border-dashed">No items plotted</div>
                         ) : (
                             itemsForCurrentPage.map(item => (
                                 <div key={item.id} 
                                      onClick={() => { setActiveId(item.id); setIsAdding(false); }}
-                                     className={`p-3 rounded border text-xs cursor-pointer transition-all ${activeId === item.id ? 'bg-blue-50 border-blue-300 shadow-sm ring-1 ring-blue-200' : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'}`}>
-                                    <div className="flex items-center gap-2 font-bold text-slate-700 mb-1">
-                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white shadow-sm ${item.type === 'Gas Seepage' ? 'bg-green-600' : item.type === 'Crater' ? 'bg-slate-600' : 'bg-amber-600'}`}>
+                                     className={`p-2 rounded border text-xs cursor-pointer transition-all hover:-translate-y-[1px] ${activeId === item.id ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-300' : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'}`}>
+                                    <div className="flex items-center gap-1.5 font-bold text-slate-700 mb-1">
+                                        <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm shrink-0 ${item.type === 'Gas Seepage' ? 'bg-green-600' : item.type === 'Crater' ? 'bg-slate-600' : 'bg-amber-600'}`}>
                                             {item.label}
                                         </div>
                                         <span className="truncate">{item.type || 'Debris'}</span>
+                                        <span className="ml-auto text-[9px] font-bold font-mono bg-slate-200/60 text-slate-600 px-1 rounded border border-slate-200">{item.distance}m</span>
                                     </div>
-                                    <div className="text-slate-500 mb-2 truncate text-[10px] font-mono select-all bg-slate-100 rounded px-1 py-0.5">{item.qid}</div>
-                                    <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-                                        <span className="text-[10px] font-medium opacity-70 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-400 block"></span> {item.face}</span>
-                                        <span className="text-[10px] font-medium opacity-70 bg-slate-100 px-1 rounded">{item.distance}m</span>
+                                    
+                                    {item.description && (
+                                        <div className="text-slate-600 text-[10px] leading-tight mb-1.5 line-clamp-2 px-0.5">
+                                            {item.description}
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-between items-center pt-1 mt-0.5 border-t border-slate-100">
+                                        <span className="text-[9px] font-mono text-slate-400 truncate pr-2" title={item.qid}>{item.qid}</span>
+                                        <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 shrink-0">
+                                            <span className="w-1 h-1 rounded-full bg-slate-400 block"></span> 
+                                            {item.face}
+                                        </span>
                                     </div>
                                 </div>
                             ))
