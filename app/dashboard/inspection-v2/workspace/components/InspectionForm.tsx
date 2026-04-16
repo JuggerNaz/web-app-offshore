@@ -68,6 +68,7 @@ interface InspectionFormProps {
     isEditing?: boolean;
     dynamicProps?: any;
     handleDynamicPropChange?: (e: any, name: string, directValue?: any) => void;
+    activeMGIProfile?: any;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -112,7 +113,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     onChangeComponentClick,
     isEditing = false,
     dynamicProps = {},
-    handleDynamicPropChange
+    handleDynamicPropChange,
+    activeMGIProfile
 }) => {
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
@@ -135,6 +137,87 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         return vidTimer;
     };
     const currentDisplayCount = getCounterAsSeconds(savedTapeCount);
+
+    // MGI Threshold Validation Logic
+    const [lastFlaggedThreshold, setLastFlaggedThreshold] = React.useState<number | null>(null);
+
+    React.useEffect(() => {
+        if (!activeMGIProfile || !activeMGIProfile.thresholds || activeMGIProfile.thresholds.length === 0) return;
+        if (!activeSpec || (activeSpec.toUpperCase() !== 'MGI' && activeSpec.toUpperCase() !== 'RMGI')) return;
+
+        // 1. Get current verification depth (fallback to component depth if not set)
+        const vDepthRaw = dynamicProps?.verification_depth || selectedComp.lowestElev || selectedComp.depth || "0";
+        // Clean string: remove 'm' and other non-numeric chars except . and -
+        const vDepthStr = String(vDepthRaw).replace(/[^\d.-]/g, '');
+        const currentDepth = Math.abs(parseFloat(vDepthStr) || 0);
+        const waterDepth = Math.abs(headerData.waterDepth || 0);
+
+        // 2. Resolve thresholds to absolute depths
+        const resolvedThresholds = activeMGIProfile.thresholds.map((t: any) => {
+            let thresholdDepth = 0;
+            const from = String(t.from_elevation).toUpperCase().trim();
+            
+            if (from === 'MSL') {
+                thresholdDepth = 0;
+            } else if (from === 'MUDLINE') {
+                thresholdDepth = waterDepth;
+            } else if (from.includes('WD')) {
+                // Handle fractions like "1/2 WD", "2/3 WD", "1/4 WD" etc.
+                const match = from.match(/(\d+)\/(\d+)\s*WD/i);
+                if (match) {
+                    const num = parseInt(match[1]);
+                    const den = parseInt(match[2]);
+                    if (den !== 0) {
+                        thresholdDepth = (num / den) * waterDepth;
+                    }
+                } else if (from === 'WD') {
+                    thresholdDepth = waterDepth;
+                }
+            } else {
+                // Proper depth value
+                thresholdDepth = Math.abs(parseFloat(from) || 0);
+            }
+            
+            return { depth: thresholdDepth, max: t.max_thickness };
+        }).sort((a: any, b: any) => a.depth - b.depth);
+
+        // 3. Find the applicable threshold for the current depth
+        // We look for the deepest threshold that is SHALLOWER or equal to current depth
+        let applicableMax: number | null = null;
+        for (const t of resolvedThresholds) {
+            if (currentDepth >= t.depth) {
+                applicableMax = t.max;
+            }
+        }
+
+        if (applicableMax === null) return;
+
+        // 4. Check thickness values
+        const hardT = parseFloat(dynamicProps?.mgi_hard_thickness) || 0;
+        const softT = parseFloat(dynamicProps?.mgi_soft_thickness) || 0;
+        const currentMaxT = Math.max(hardT, softT);
+
+        if (currentMaxT > applicableMax) {
+            // Threshold breached!
+            if (lastFlaggedThreshold !== applicableMax && findingType !== 'Anomaly') {
+                setFindingType('Anomaly');
+                setLastFlaggedThreshold(applicableMax);
+                setAnomalyData((prev: any) => ({
+                    ...prev,
+                    defectCode: 'Marine Growth',
+                    description: `MGI Thickness threshold breached. Depth: ${currentDepth}m. Threshold: ${applicableMax}mm. Measured: ${currentMaxT}mm.`,
+                    priority: 'Anomalous'
+                }));
+                toast.warning(`MGI Threshold Breached (${applicableMax}mm)! Switch to Anomaly detected.`, {
+                    description: `Measured ${currentMaxT}mm at ${currentDepth}m depth.`
+                });
+            }
+        } else if (lastFlaggedThreshold === applicableMax && findingType === 'Anomaly' && anomalyData.defectCode === 'Marine Growth') {
+            // If it was corrected back, we reset our tracker to allow future triggers
+            setLastFlaggedThreshold(null);
+        }
+
+    }, [dynamicProps?.mgi_hard_thickness, dynamicProps?.mgi_soft_thickness, dynamicProps?.verification_depth, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev]);
 
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white z-10">
@@ -178,7 +261,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     <div className="grid grid-cols-2 gap-5">
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><MapPinIcon className="w-3 h-3" /> Verification Depth</label>
-                            <Input defaultValue={selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? `${selectedComp.lowestElev}m` : selectedComp.depth} className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500" />
+                            <Input 
+                                value={dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? `${selectedComp.lowestElev}m` : selectedComp.depth)} 
+                                onChange={(e) => handleDynamicPropChange?.(e, 'verification_depth')}
+                                className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500" 
+                            />
                         </div>
                         {(selectedComp.startElev !== '-' || selectedComp.endElev !== '-') && (
                             <div className="space-y-1">

@@ -173,7 +173,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
         let nearestDistance = gridDistances[0];
         if (gridDistances.length > 0) {
             // Find the smallest grid distance that is greater than or equal to logicalDist
-            const candidates = gridDistances.filter(d => d >= (logicalDist + distanceOffset));
+            const candidates = gridDistances.filter(d => d >= logicalDist);
             if (candidates.length > 0) {
                 nearestDistance = Math.min(...candidates);
             } else {
@@ -181,7 +181,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
             }
         }
 
-        return { distance: logicalDist + distanceOffset, angle, face, startLeg, endLeg, nearestDistance };
+        return { distance: logicalDist, angle, face, startLeg, endLeg, nearestDistance };
     };
 
     // Auto-calculate position from manual text fields

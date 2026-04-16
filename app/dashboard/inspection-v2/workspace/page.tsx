@@ -548,8 +548,53 @@ function V10PreviewLayout() {
     const [showRemovalConfirm, setShowRemovalConfirm] = useState(false);
     const [lastAutoMatchedRuleId, setLastAutoMatchedRuleId] = useState<string | null>(null);
     const [isManualOverride, setIsManualOverride] = useState(false);
+    const [activeMGIProfile, setActiveMGIProfile] = useState<any>(null);
 
-    // Auto-update pending attachment titles for Anomaly/Finding
+    // Fetch Active MGI Profile
+    useEffect(() => {
+        async function fetchMGIProfile() {
+            if (!jobPackId) return;
+
+            // 1. Try to fetch profile linked to jobpack
+            const { data: jobData } = await supabase
+                .from('jobpack')
+                .select('mgi_profile_id')
+                .eq('id', Number(jobPackId))
+                .single();
+
+            let profileId = jobData?.mgi_profile_id;
+
+            // 2. If no job-specific profile, fetch the global active profile
+            if (!profileId) {
+                const { data: globalProfile } = await supabase
+                    .from('mgi_profiles')
+                    .select('*')
+                    .eq('is_active', true)
+                    .eq('is_job_specific', false)
+                    .eq('is_archived', false)
+                    .maybeSingle();
+                
+                if (globalProfile) {
+                    setActiveMGIProfile(globalProfile);
+                    return;
+                }
+            } else {
+                const { data: specificProfile } = await supabase
+                    .from('mgi_profiles')
+                    .select('*')
+                    .eq('id', profileId)
+                    .single();
+                
+                if (specificProfile) {
+                    setActiveMGIProfile(specificProfile);
+                    return;
+                }
+            }
+        }
+        fetchMGIProfile();
+    }, [jobPackId, supabase]);
+
+    // Anomaly Library Statesuto-update pending attachment titles for Anomaly/Finding
     useEffect(() => {
         if (findingType === 'Anomaly' || findingType === 'Finding') {
             const label = findingType === 'Anomaly' ? 'Anomaly' : 'Finding';
@@ -652,23 +697,23 @@ function V10PreviewLayout() {
     const jtParam = searchParams.get('jobType');
 
     // Header Data
-    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, jobType: string, structureType: 'platform' | 'pipeline' }>({
+    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, jobType: string, structureType: 'platform' | 'pipeline', waterDepth: number }>({
         jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
         platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
         sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
         jobType: jtParam || "",
-        structureType: 'platform'
+        structureType: 'platform',
+        waterDepth: 0
     });
 
     /**
      * Robust SOW Status Synchronization
      * Derived from aggregated insp_records for a specific COMPONENT + TASK
      */
-    const syncSowStatus = useCallback(async (compId: number, taskInput: string) => {
+    const syncSowStatus = useCallback(async (compId: number, taskInput: string, currentElevation?: number, currentStatus?: string) => {
         if (!sowId) return;
 
         // 1. Resolve the canonical task info FIRST
-        // This handles cases where taskInput is either a Code (RGVI) or Name (General Visual Inspection)
         const it = allInspectionTypes.find(t => 
             t.code === taskInput || 
             t.name?.toLowerCase() === taskInput.toLowerCase()
@@ -681,67 +726,81 @@ function V10PreviewLayout() {
 
         const taskCode = it.code; // Canonical code
 
-        // 2. Get all records for this component + canonical task
-        let inspsQuery = supabase.from('insp_records')
-            .select('insp_id, status, has_anomaly, inspection_data')
-            .eq('component_id', compId)
-            .eq('inspection_type_code', taskCode);
-
-        if (structureId && !isNaN(Number(structureId))) {
-            inspsQuery = inspsQuery.eq('structure_id', Number(structureId));
-        }
-        if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-            inspsQuery = inspsQuery.eq('sow_report_no', headerData.sowReportNo);
-        }
-
-        const { data: records, error: fetchError } = await inspsQuery
-            .order('inspection_date', { ascending: false })
-            .order('inspection_time', { ascending: false });
-
-        if (fetchError) {
-            console.error(`[SOW Sync] Status fetch failed for ${taskCode}:`, fetchError);
-            return;
-        }
-
-        let newStatus: 'pending' | 'completed' | 'incomplete' = 'pending';
-        
-        if (records && records.length > 0) {
-            // Check for incomplete (latest record takes precedence for 'incomplete')
-            const latest = records[0];
-            if (latest.status?.toLowerCase() === 'incomplete') {
-                newStatus = 'incomplete';
-            } else {
-                newStatus = 'completed';
-            }
-        }
-
-        // 3. Upsert into u_sow_items (Aligned with documented schema)
-        const { data: existing } = await supabase.from('u_sow_items')
-            .select('id')
+        // 2. Get the SOW item for this component + canonical task
+        const { data: existing, error: fetchSowErr } = await supabase.from('u_sow_items')
+            .select('*')
             .eq('sow_id', Number(sowId))
             .eq('component_id', compId)
-            .eq('inspection_code', taskCode) // Canonical lookup
+            .eq('inspection_code', taskCode)
             .maybeSingle();
+
+        if (fetchSowErr) {
+            console.error(`[SOW Sync] Fetch failed for ${taskCode}:`, fetchSowErr);
+            return;
+        }
 
         const userRes = await supabase.auth.getUser();
         const user = userRes.data.user;
         const userName = user?.user_metadata?.full_name || user?.email || user?.id || 'system';
 
         if (existing) {
-            // Update: Set status and metadata
+            let updatedFields: any = {
+                updated_at: new Date().toISOString(),
+                updated_by: userName
+            };
+
+            // 3a. Handle Elevation-bound SOW Item
+            if (existing.elevation_required && existing.elevation_data && Array.isArray(existing.elevation_data) && currentElevation !== undefined) {
+                const elevStatus = currentStatus?.toLowerCase() || 'completed';
+                
+                const updatedElevationData = existing.elevation_data.map((elev: any) => {
+                    const start = parseFloat(elev.start);
+                    const end = parseFloat(elev.end);
+                    // Check if currentElevation falls within this range
+                    if (!isNaN(start) && !isNaN(end) && currentElevation >= Math.min(start, end) && currentElevation <= Math.max(start, end)) {
+                        return { ...elev, status: elevStatus };
+                    }
+                    return elev;
+                });
+
+                updatedFields.elevation_data = updatedElevationData;
+                
+                // Recalculate overall status: If any is 'pending', overall is 'incomplete'? 
+                // Or if all are 'completed', overall is 'completed'.
+                const allDone = updatedElevationData.every((e: any) => e.status === 'completed');
+                const anyIncomplete = updatedElevationData.some((e: any) => e.status === 'incomplete');
+                
+                if (allDone) {
+                    updatedFields.status = 'completed';
+                } else if (anyIncomplete) {
+                    updatedFields.status = 'incomplete';
+                } else {
+                    // If some are done but not all, it's still 'incomplete' or 'pending'?
+                    // Usually "In Progress" isn't a status here, so we keep 'incomplete' as "partially done"
+                    updatedFields.status = 'incomplete';
+                }
+            } else {
+                // 3b. Handle Standard SOW Item
+                let newStatus: 'pending' | 'completed' | 'incomplete' = 'completed';
+                if (currentStatus?.toUpperCase() === 'INCOMPLETE') {
+                    newStatus = 'incomplete';
+                }
+                updatedFields.status = newStatus;
+            }
+
             const { error: updateErr } = await supabase.from('u_sow_items')
-                .update({ 
-                    status: newStatus,
-                    updated_at: new Date().toISOString(),
-                    updated_by: userName
-                })
+                .update(updatedFields)
                 .eq('id', existing.id);
             
             if (updateErr) console.error("[SOW Sync] Update error:", updateErr);
-        } else if (newStatus !== 'pending') {
-            // Auto-add to SOW if we have records but no SOW entry
+        } else {
+            // 4. Auto-add to SOW if we have records but no SOW entry (Standard fallback)
+            let newStatus: 'pending' | 'completed' | 'incomplete' = 'completed';
+            if (currentStatus?.toUpperCase() === 'INCOMPLETE') {
+                newStatus = 'incomplete';
+            }
+
             const compObj = allComps.find(c => c.id === compId);
-            
             console.log(`[Status Sync] -> AUTO-ADDING to SOW: ${compObj?.name || compId} with task ${taskCode}`);
             
             const { error: insertError } = await supabase.from('u_sow_items').insert({
@@ -777,13 +836,12 @@ function V10PreviewLayout() {
                 }
             } else {
                 console.error("[SOW Sync] Auto-add SOW failed:", insertError);
-                toast.error(`Database error adding ${compObj?.name || 'component'}: ${insertError.message}`);
             }
         }
 
-        // 4. Invalidate query to refresh UI (including sidebar)
+        // 5. Invalidate query to refresh UI (including sidebar)
         queryClient.invalidateQueries({ queryKey: ['sow-data'] });
-    }, [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData, structureId]);
+    }, [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData]);
 
     useEffect(() => {
         async function fetchHeaderInfo() {
@@ -799,10 +857,15 @@ function V10PreviewLayout() {
                 if (jpData?.name) jobpackName = jpData.name;
             }
 
-            // Fetch Structure Name
+            // Fetch Structure Name & Depth
+            let waterDepth = 0;
             if (!strParam) {
-                const { data: structData } = await supabase.from('structure').select('str_name').eq('str_id', Number(structureId)).single();
+                const { data: structData } = await supabase.from('structure').select('str_name, depth').eq('str_id', Number(structureId)).single();
                 if (structData?.str_name) platformName = structData.str_name;
+                if (structData?.depth) waterDepth = Number(structData.depth);
+            } else {
+                const { data: structData } = await supabase.from('structure').select('depth').eq('str_id', Number(structureId)).single();
+                if (structData?.depth) waterDepth = Number(structData.depth);
             }
 
             // Fetch Structure Type for data acquisition
@@ -829,7 +892,7 @@ function V10PreviewLayout() {
                 }
             }
 
-            setHeaderData({ jobpackName, platformName, sowReportNo, jobType: jtParam || "", structureType: detectedStructureType });
+            setHeaderData({ jobpackName, platformName, sowReportNo, jobType: jtParam || "", structureType: detectedStructureType, waterDepth });
         }
         fetchHeaderInfo();
     }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam]);
@@ -3337,8 +3400,11 @@ function V10PreviewLayout() {
                     return typedVal !== null ? typedVal : vidTimer;
                 })(),
                 elevation: (() => {
-                    const p = activeProps.elevation && activeProps.elevation !== '--' ? parseFloat(activeProps.elevation as string) : NaN;
-                    if (!isNaN(p)) return p;
+                    const p = activeProps.verification_depth || activeProps.elevation;
+                    if (p && p !== '--') {
+                        const val = parseFloat(String(p).replace(/[^\d.-]/g, ''));
+                        if (!isNaN(val)) return val;
+                    }
                     return selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? parseFloat(selectedComp.lowestElev) : 0;
                 })(),
                 fp_kp: (activeProps.fp_kp !== undefined && activeProps.fp_kp !== '--') ? String(activeProps.fp_kp) : null,
@@ -3346,9 +3412,11 @@ function V10PreviewLayout() {
                     ...activeProps,
                     _meta_timecode: formatTime(Number((activeProps.tape_count_no !== undefined && activeProps.tape_count_no !== '--' && activeProps.tape_count_no !== "") ? parseTimecode(String(activeProps.tape_count_no)) : vidTimer)),
                     _meta_status: findingType,
+                    _mgi_profile_id: activeMGIProfile?.id || null,
                     incomplete_reason: findingType === 'Incomplete' ? incompleteReason : null
                 },
-                archived_data: newArchivedData
+                archived_data: newArchivedData,
+                updated_by: user?.email || user?.id || 'system'
             };
 
             // Tape Counter Validation logic
@@ -3449,8 +3517,8 @@ function V10PreviewLayout() {
             
             // Robust SOW Status Synchronization
             if (sowId) {
-                // 1. Sync the CURRENT component/task
-                await syncSowStatus(selectedComp.id, it?.code || activeSpec);
+                // 1. Sync the CURRENT component/task with elevation support
+                await syncSowStatus(selectedComp.id, it?.code || activeSpec, payload.elevation, payload.status);
 
                 // 2. Sync the ORIGINAL component/task if it was changed (Rollback)
                 if (editingRecordId && originalRecordContext) {
@@ -4252,7 +4320,7 @@ function V10PreviewLayout() {
                 })()}
 
                 {/* INSERT SEABED SURVEY MAP BUTTON */}
-                {activeDep && (
+                {activeDep && inspMethod === "ROV" && (
                     <Button
                         variant="default" 
                         size="sm" 

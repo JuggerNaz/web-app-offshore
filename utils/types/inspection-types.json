@@ -513,6 +513,7 @@
                     "label": "Scour Depth",
                     "type": "number",
                     "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
                     "required": false
                 },
                 {
@@ -520,6 +521,7 @@
                     "label": "Scour Depth Max",
                     "type": "number",
                     "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
                     "required": false
                 },
                 {
@@ -615,6 +617,7 @@
                     "label": "Distance From Member",
                     "type": "number",
                     "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
                     "required": false
                 },
                 {
@@ -622,6 +625,7 @@
                     "label": "Suspention Height",
                     "type": "number",
                     "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
                     "required": false
                 },
                 {

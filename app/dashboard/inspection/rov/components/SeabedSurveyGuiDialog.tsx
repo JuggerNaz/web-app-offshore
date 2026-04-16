@@ -125,7 +125,9 @@ export function SeabedSurveyGuiInline({
                     craterDiameterUnit: item.craterDiameterUnit,
                     craterDepth: item.craterDepth,
                     craterDepthUnit: item.craterDepthUnit,
-                    distanceUnit: item.distanceUnit
+                    distanceUnit: item.distanceUnit,
+                    distance: item.distance,
+                    face: item.face
                 });
             }
         }
@@ -310,11 +312,32 @@ export function SeabedSurveyGuiInline({
 
     const handleMoveDebris = async (id: string | number, x: number, y: number, geometry: any) => {
         if (isSaving) return;
+        
+        const generatedQid = generateQid(geometry);
+        const currentRec = existingDebris.find(d => d.id === id);
+        
+        // Confirmation alert on QID change
+        if (currentRec && currentRec.qid !== generatedQid) {
+            const confirmed = confirm(`You are moving this marker into a different distance box: ${generatedQid}. \n\nThis will re-assign the QID and update Work Scope (SOW) statuses. \n\nDo you want to proceed?`);
+            if (!confirmed) {
+                fetchExistingDebris(); // Refresh to reset visual position
+                return;
+            }
+        }
+
         try {
             setIsSaving(true);
-            const generatedQid = generateQid(geometry);
-            const currentRec = existingDebris.find(d => d.id === id);
             let componentId = undefined;
+            let oldComponentId = null;
+            let inspTypeId = null;
+
+            // Fetch current record to identify old component
+            const { data: recData } = await supabase.from('insp_records')
+                .select('component_id, inspection_type_id').eq('insp_id', id).single();
+            if (recData) {
+                oldComponentId = recData.component_id;
+                inspTypeId = recData.inspection_type_id;
+            }
 
             if (currentRec && currentRec.qid !== generatedQid) {
                 // Find or insert the new component since QID changed!
@@ -364,22 +387,72 @@ export function SeabedSurveyGuiInline({
             };
             if (componentId) updatePayload.component_id = componentId;
 
-            // Also ensure inspection_type_id is set if it was missing 
-            const { data: inspType } = await supabase.from('inspection_type').select('id').eq('code', 'RSEAB').maybeSingle();
-            if (inspType?.id) {
-                updatePayload.inspection_type_id = inspType.id;
-            } else if (typeof rovJob !== 'undefined') {
-                if (rovJob?.raw?.inspection_type_id) updatePayload.inspection_type_id = rovJob.raw.inspection_type_id;
-                else if (rovJob?.inspection_type_id) updatePayload.inspection_type_id = rovJob.inspection_type_id;
+            // Ensure inspection_type_id is set
+            if (!inspTypeId) {
+                const { data: it } = await supabase.from('inspection_type').select('id').eq('code', 'RSEAB').maybeSingle();
+                if (it?.id) inspTypeId = it.id;
             }
+            if (inspTypeId) updatePayload.inspection_type_id = inspTypeId;
 
             const { error } = await supabase.from('insp_records')
                 .update(updatePayload)
                 .eq('insp_id', id);
 
             if (error) throw error;
-            toast.success("Updated coordinates successfully");
+
+            // --- SOW Status Updates ---
+            if (sowRecordId && componentId && componentId !== oldComponentId) {
+                try {
+                    // 1. Mark NEW component as 'Completed'
+                    const { data: existingNewSow } = await supabase.from('u_sow_items')
+                        .select('id').eq('sow_id', sowRecordId).eq('component_id', componentId).maybeSingle();
+                    
+                    if (existingNewSow) {
+                        await supabase.from('u_sow_items').update({ 
+                            scope_status: 'Completed',
+                            report_number: sowReportNo || rovJob?.raw?.sow_report_no || "Auto-RSEAB"
+                        }).eq('id', existingNewSow.id);
+                    } else if (inspTypeId) {
+                        await supabase.from('u_sow_items').insert({
+                            sow_id: sowRecordId,
+                            component_id: componentId,
+                            inspection_type_id: inspTypeId,
+                            scope_status: 'Completed',
+                            report_number: sowReportNo || rovJob?.raw?.sow_report_no || "Auto-RSEAB"
+                        });
+                    }
+
+                    // 2. Mark OLD component as 'Pending' if no other records exist
+                    if (oldComponentId) {
+                        const { count } = await supabase.from('insp_records')
+                            .select('*', { count: 'exact', head: true })
+                            .eq('component_id', oldComponentId)
+                            .eq('inspection_type_code', 'RSEAB');
+                        
+                        if (!count || count === 0) {
+                            const { data: existingOldSow } = await supabase.from('u_sow_items')
+                                .select('id').eq('sow_id', sowRecordId).eq('component_id', oldComponentId).maybeSingle();
+                            if (existingOldSow) {
+                                await supabase.from('u_sow_items').update({ scope_status: 'Pending' }).eq('id', existingOldSow.id);
+                            }
+                        }
+                    }
+                } catch (sowErr) {
+                    console.warn("SOW Status Sync failed:", sowErr);
+                }
+            }
+
+            toast.success("Relocated successfully");
             if (onRefreshInspection) onRefreshInspection();
+            
+            // Auto-flip page if moved outside current range
+            if (geometry.distance) {
+                const targetPage = Math.floor(geometry.distance / 21);
+                if (targetPage !== currentPage && geometry.distance > 0) {
+                    setCurrentPage(targetPage);
+                }
+            }
+
             fetchExistingDebris();
         } catch (err: any) {
             toast.error("Failed to move debris: " + err.message);
@@ -392,9 +465,60 @@ export function SeabedSurveyGuiInline({
         if (!activeId || !editFormData || isSaving) return;
         try {
             setIsSaving(true);
-            const { data } = await supabase.from('insp_records').select('inspection_data').eq('insp_id', activeId).single();
+            const { data: record } = await supabase.from('insp_records')
+                .select('inspection_data, component_id, inspection_type_id')
+                .eq('insp_id', activeId)
+                .single();
+            
+            // If distance or face changed, we need to recalculate QID and component
+            let componentId = record?.component_id;
+            const oldComponentId = record?.component_id;
+            const distChanged = editFormData.distance !== (record?.inspection_data?.distance_from_leg);
+            const faceChanged = editFormData.face !== (record?.inspection_data?.face);
+
+            if (distChanged || faceChanged) {
+                const parsedDist = parseFloat(editFormData.distance);
+                // Match nearest 3m box for QID
+                const boxDist = Math.round(parsedDist / 3) * 3 || 3;
+                const legs = editFormData.face.split('-');
+                const startLeg = legs[0];
+                const endLeg = legs[1];
+                const generatedQid = `S/BED(${startLeg}-${endLeg})-${boxDist}M`;
+
+                if (!confirm(`Manual relocation detected. This will change the QID to ${generatedQid} and update Work Scope status. Proceed?`)) {
+                    setIsSaving(false);
+                    return;
+                }
+
+                // Find or create component
+                const { data: existingComp } = await supabase.from('structure_components')
+                    .select('id').eq('structure_id', structureId).eq('q_id', generatedQid).maybeSingle();
+                
+                if (existingComp) {
+                    componentId = existingComp.id;
+                } else {
+                    const componentTs = Math.floor(Date.now() / 1000);
+                    const { data: newComp } = await supabase.from('structure_components').insert({
+                        structure_id: structureId,
+                        q_id: generatedQid,
+                        id_no: `SD/${componentTs}`,
+                        code: 'SD',
+                        comp_id: componentTs,
+                        metadata: {
+                            description: `Seabed Survey Manual Shift ${generatedQid}`,
+                            f_leg: startLeg,
+                            s_leg: endLeg,
+                            dist: boxDist.toString(),
+                            face: editFormData.face,
+                            lvl: 'Seabed'
+                        }
+                    }).select('id').single();
+                    if (newComp) componentId = newComp.id;
+                }
+            }
+
             const newData = {
-                ...(data?.inspection_data || {}),
+                ...(record?.inspection_data || {}),
                 category: editFormData.category,
                 material: editFormData.material,
                 size_dimensions: editFormData.size,
@@ -403,21 +527,66 @@ export function SeabedSurveyGuiInline({
                 crater_diameter_unit: editFormData.craterDiameterUnit,
                 crater_depth: editFormData.craterDepth,
                 crater_depth_unit: editFormData.craterDepthUnit,
+                distance_from_leg: editFormData.distance,
+                face: editFormData.face,
                 distance_from_leg_unit: editFormData.distanceUnit,
-                type: editFormData.category, // sync
-                debris_material: editFormData.material, // sync
-                dimension_1: editFormData.size, // sync
+                type: editFormData.category, 
+                debris_material: editFormData.material,
+                dimension_1: editFormData.size,
             };
+
             const { data: authData } = await supabase.auth.getUser();
             const { error } = await supabase.from('insp_records')
                 .update({ 
                     inspection_data: newData,
+                    component_id: componentId,
                     description: editFormData.description ? `${editFormData.category}: ${editFormData.description}` : editFormData.category,
                     md_user: authData?.user?.id || null,
                     md_date: new Date().toISOString()
                 })
                 .eq('insp_id', activeId);
+
             if (error) throw error;
+
+            // SOW Sync for manual shift
+            if (sowRecordId && componentId !== oldComponentId) {
+                 try {
+                     // 1. Mark NEW component as 'Completed'
+                     const { data: existingNewSow } = await supabase.from('u_sow_items')
+                        .select('id').eq('sow_id', sowRecordId).eq('component_id', componentId).maybeSingle();
+                    
+                     if (existingNewSow) {
+                        await supabase.from('u_sow_items').update({ scope_status: 'Completed' }).eq('id', existingNewSow.id);
+                     } else if (record?.inspection_type_id) {
+                        await supabase.from('u_sow_items').insert({
+                            sow_id: sowRecordId,
+                            component_id: componentId,
+                            inspection_type_id: record.inspection_type_id,
+                            scope_status: 'Completed',
+                            report_number: sowReportNo || rovJob?.raw?.sow_report_no || "Auto-RSEAB"
+                        });
+                     }
+
+                     // 2. Mark OLD component as 'Pending' if no other records exist
+                     if (oldComponentId) {
+                        const { count } = await supabase.from('insp_records')
+                            .select('*', { count: 'exact', head: true })
+                            .eq('component_id', oldComponentId)
+                            .eq('inspection_type_code', 'RSEAB');
+                        
+                        if (!count || count === 0) {
+                            const { data: existingOldSow } = await supabase.from('u_sow_items')
+                                .select('id').eq('sow_id', sowRecordId).eq('component_id', oldComponentId).maybeSingle();
+                            if (existingOldSow) {
+                                await supabase.from('u_sow_items').update({ scope_status: 'Pending' }).eq('id', existingOldSow.id);
+                            }
+                        }
+                     }
+                 } catch (sowSyncErr) {
+                     console.warn("Manual shift SOW sync failed:", sowSyncErr);
+                 }
+            }
+
             toast.success("Details updated successfully");
             if (onRefreshInspection) onRefreshInspection();
             fetchExistingDebris();
@@ -712,15 +881,47 @@ export function SeabedSurveyGuiInline({
                                         <span>Y: {activeItem.y}</span>
                                     </div>
                                 </div>
-
-                                 <div className="p-3 bg-amber-50 border border-amber-100 rounded text-[10px] text-amber-800 leading-normal">
-                                    <span className="font-bold uppercase block mb-1 flex items-center gap-1">Drag Marker to update</span>
-                                    You can drag this # {activeItem.label} marker directly on the map to automatically update its coordinates and QID.
-                                </div>
                             </div>
 
-                            {editFormData && (
+                             {editFormData && (
                                 <div className="space-y-4 pt-4 border-t border-slate-100">
+                                    <div className="p-3 bg-amber-50 border border-amber-100 rounded text-[10px] text-amber-800 leading-normal">
+                                        <span className="font-bold uppercase block mb-1 flex items-center gap-1">Relocate Marker (Manual)</span>
+                                        Update the distance or face below to move this marker to another page or distance range.
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-100">
+                                        <div className="space-y-2">
+                                            <Label className="text-[10px] font-bold">Distance (m)</Label>
+                                            <Input 
+                                                type="number"
+                                                className="h-8 text-xs font-mono"
+                                                value={editFormData.distance}
+                                                onChange={e => {
+                                                    const d = parseFloat(e.target.value);
+                                                    setEditFormData((p: any) => ({...p, distance: e.target.value}));
+                                                    // Sync page if distance moved out of current range
+                                                    if (!isNaN(d)) {
+                                                        const p = Math.floor(d / 21);
+                                                        if (p !== currentPage && d > 0) setCurrentPage(p);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-[10px] font-bold">Face</Label>
+                                            <Select value={editFormData.face} onValueChange={v => setEditFormData((p: any) => ({...p, face: v}))}>
+                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="A1-A2">A1-A2</SelectItem>
+                                                    <SelectItem value="B1-B2">B1-B2</SelectItem>
+                                                    <SelectItem value="A1-B1">A1-B1</SelectItem>
+                                                    <SelectItem value="A2-B2">A2-B2</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
                                     <h4 className="text-sm font-bold text-slate-700">Edit Details</h4>
                                     <div className="space-y-2">
                                         <Label className="text-xs">Item Category</Label>
