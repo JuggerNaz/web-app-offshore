@@ -180,9 +180,9 @@ export interface ReportConfig {
   reportNoPrefix: string;
   reportYear: string;
   preparedBy: { name: string; date: string };
-  reviewedBy: { name: string; date: string };
-  approvedBy: { name: string; date: string };
-  watermark: { enabled: boolean; text: string; transparency: number };
+  reviewedBy?: { name: string; date: string };
+  approvedBy?: { name: string; date: string };
+  watermark?: { enabled: boolean; text: string; transparency: number };
   showContractorLogo: boolean;
   showPageNumbers: boolean;
   returnBlob?: boolean;
@@ -546,7 +546,7 @@ const generatePipelineReport = async (
         doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
       }
 
-      if (config.reviewedBy.name) {
+      if (config.reviewedBy?.name) {
         const x = 10 + sigWidth;
         doc.text("Reviewed By:", x, sigY);
         doc.text(config.reviewedBy.name, x, sigY + 5);
@@ -554,7 +554,7 @@ const generatePipelineReport = async (
         doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
       }
 
-      if (config.approvedBy.name) {
+      if (config.approvedBy?.name) {
         const x = 10 + (sigWidth * 2);
         doc.text("Approved By:", x, sigY);
         doc.text(config.approvedBy.name, x, sigY + 5);
@@ -1094,7 +1094,7 @@ const generatePlatformReport = async (
         doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
       }
 
-      if (config.reviewedBy.name) {
+      if (config.reviewedBy?.name) {
         const x = 10 + sigWidth;
         doc.text("Reviewed By:", x, sigY);
         doc.text(config.reviewedBy.name, x, sigY + 5);
@@ -1102,7 +1102,7 @@ const generatePlatformReport = async (
         doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
       }
 
-      if (config.approvedBy.name) {
+      if (config.approvedBy?.name) {
         const x = 10 + (sigWidth * 2);
         doc.text("Approved By:", x, sigY);
         doc.text(config.approvedBy.name, x, sigY + 5);

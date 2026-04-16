@@ -734,16 +734,67 @@
                     "$ref": "easting"
                 },
                 {
-                    "$ref": "debris"
+                    "name": "category",
+                    "label": "Item Category",
+                    "type": "select",
+                    "options": [
+                        "Debris",
+                        "Gas Seepage",
+                        "Crater",
+                        "Other"
+                    ],
+                    "required": true
                 },
                 {
-                    "$ref": "debris_material"
+                    "name": "material",
+                    "label": "Material",
+                    "type": "select",
+                    "options": [
+                        "Metallic",
+                        "Non-Metallic",
+                        "Unknown"
+                    ],
+                    "condition": { "field": "category", "value": "Debris" }
+                },
+                {
+                    "name": "size_dimensions",
+                    "label": "Size / Dimensions",
+                    "type": "text",
+                    "condition": { "field": "category", "value": "Debris" }
+                },
+                {
+                    "name": "seepage_intensity",
+                    "label": "Seepage Intensity",
+                    "type": "select",
+                    "options": [
+                        "Light",
+                        "Moderate",
+                        "Heavy"
+                    ],
+                    "condition": { "field": "category", "value": "Gas Seepage" }
+                },
+                {
+                    "name": "crater_diameter",
+                    "label": "Crater Diameter",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
+                    "condition": { "field": "category", "value": "Crater" }
+                },
+                {
+                    "name": "crater_depth",
+                    "label": "Crater Depth",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
+                    "condition": { "field": "category", "value": "Crater" }
                 },
                 {
                     "name": "distance_from_leg",
                     "label": "Distance From Leg",
                     "type": "number",
                     "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
                     "required": false
                 },
                 {

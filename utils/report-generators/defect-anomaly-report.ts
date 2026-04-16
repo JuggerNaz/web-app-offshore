@@ -17,9 +17,9 @@ export interface ReportConfig {
     reportNoPrefix: string;
     reportYear: string;
     preparedBy: { name: string; date: string };
-    reviewedBy: { name: string; date: string };
-    approvedBy: { name: string; date: string };
-    watermark: { enabled: boolean; text: string; transparency: number };
+    reviewedBy?: { name: string; date: string };
+    approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency: number };
     showContractorLogo: boolean;
     showPageNumbers: boolean;
     returnBlob?: boolean;

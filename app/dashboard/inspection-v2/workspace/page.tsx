@@ -138,6 +138,8 @@ import { InspectionForm } from "./components/InspectionForm";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { resolveInspectionType } from "@/utils/inspection-schema";
+import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
+import { getReportHeaderData } from "@/utils/company-settings";
 
 export default function WorkspaceV2Page() {
     return (
@@ -1821,16 +1823,22 @@ function V10PreviewLayout() {
 
         try {
             setSyncLoading(true);
-            // CRITICAL: Ensure depId is a number if possible to avoid Supabase 400 Bad Request
             const depId = !isNaN(Number(activeDep.id)) ? Number(activeDep.id) : activeDep.id;
-            console.log(`[Sync] Starting sync for ${inspMethod} | Dep ID: ${depId} (Type: ${typeof depId})`);
-
-            // 1. Movements
+            
             const movTable = inspMethod === "DIVING" ? 'insp_dive_movements' : 'insp_rov_movements';
             const movCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
-            const { data: movs, error: movErr } = await supabase.from(movTable).select('*').eq(movCol, depId).order('movement_time', { ascending: true });
 
-            if (movErr) console.error("[Sync] Movement fetch error:", movErr);
+            // 1 & 2. Fetch Movements and Tapes in parallel
+            const [movsRes, tapesRes] = await Promise.all([
+                supabase.from(movTable).select('*').eq(movCol, depId).order('movement_time', { ascending: true }),
+                supabase.from('insp_video_tapes').select('*').eq(movCol, depId).order('tape_id', { ascending: false })
+            ]);
+
+            const movs = movsRes.data;
+            let tapes = tapesRes.data;
+
+            if (movsRes.error) console.error("[Sync] Movement fetch error:", movsRes.error);
+            if (tapesRes.error) console.error("[Sync] Tape fetch error:", tapesRes.error);
 
             if (movs && movs.length > 0) {
                 const last = movs[movs.length - 1];
@@ -1840,10 +1848,8 @@ function V10PreviewLayout() {
                     if (mappedItem) mvtLabel = mappedItem.label;
                 }
                 setCurrentMovement(mvtLabel);
-                // Store raw event_time for calculations
                 setDiveStartTime(movs[0].movement_time || movs[0].event_time);
 
-                // Find recovery event if it exists
                 const recoveryEvent = movs.find(m =>
                     m.movement_type?.toLowerCase().includes('arrived surface') ||
                     m.movement_type?.toLowerCase().includes('recovered') ||
@@ -1856,60 +1862,44 @@ function V10PreviewLayout() {
                 setDiveEndTime(null);
             }
 
-            // 2. Video Tapes & Events
-            let { data: tapes, error: tapeErr } = await supabase.from('insp_video_tapes').select('*').eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', depId).order('tape_id', { ascending: false });
-
-            if (tapeErr) console.error("[Sync] Tape fetch error:", tapeErr);
-
-            // FALLBACK: If no tapes found in insp_video_tapes, check if there are any used in insp_records
+            // FALLBACK: If no tapes found in insp_video_tapes
             if (!tapes || tapes.length === 0) {
-                console.log("[Sync] No tapes found in insp_video_tapes table. Checking insp_records for associated tapes...");
                 let recTapesQuery = supabase.from('insp_records')
                     .select('tape_id')
-                    .eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', depId)
+                    .eq(movCol, depId)
                     .not('tape_id', 'is', null);
 
                 if (structureId && !isNaN(Number(structureId))) {
-                   recTapesQuery = recTapesQuery.eq('structure_id', Number(structureId));
+                    recTapesQuery = recTapesQuery.eq('structure_id', Number(structureId));
                 }
                 if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-                   recTapesQuery = recTapesQuery.eq('sow_report_no', headerData.sowReportNo);
+                    recTapesQuery = recTapesQuery.eq('sow_report_no', headerData.sowReportNo);
                 }
 
                 const { data: recTapes } = await recTapesQuery;
-
                 if (recTapes && recTapes.length > 0) {
                     const uniqueTapeIds = Array.from(new Set(recTapes.map(r => r.tape_id)));
-                    console.log("[Sync] Found unique tape IDs in records:", uniqueTapeIds);
-                    // Create virtual tape objects for UI compatibility
                     tapes = uniqueTapeIds.map(tid => ({ tape_id: tid, tape_no: `TAPE-${tid}`, status: 'ACTIVE' })) as any;
                 }
             }
 
             const tapeIds = tapes?.map(t => t.tape_id) || [];
-            console.log(`[Sync] Active Tapes:`, tapeIds);
-
             setJobTapes(tapes || []);
+
             if (tapes && tapes.length > 0) {
                 const latestTape = tapes[0];
                 setTapeNo(latestTape.tape_no);
                 setTapeId(latestTape.tape_id);
                 setActiveChapter(latestTape.chapter_no || 1);
 
-                const { data: lastLog } = await supabase.from('insp_video_logs')
-                    .select('*')
-                    .eq('tape_id', latestTape.tape_id)
-                    .order('event_time', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
+                // Fetch logs for latest tape in parallel
+                const [lastLogRes, stateLogRes] = await Promise.all([
+                    supabase.from('insp_video_logs').select('*').eq('tape_id', latestTape.tape_id).order('event_time', { ascending: false }).limit(1).maybeSingle(),
+                    supabase.from('insp_video_logs').select('event_type').eq('tape_id', latestTape.tape_id).in('event_type', ['NEW_LOG_START', 'RESUME', 'PAUSE', 'END']).order('event_time', { ascending: false }).limit(1).maybeSingle()
+                ]);
 
-                const { data: stateLog } = await supabase.from('insp_video_logs')
-                    .select('event_type')
-                    .eq('tape_id', latestTape.tape_id)
-                    .in('event_type', ['NEW_LOG_START', 'RESUME', 'PAUSE', 'END'])
-                    .order('event_time', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
+                const lastLog = lastLogRes.data;
+                const stateLog = stateLogRes.data;
 
                 if (lastLog) {
                     const currentState = stateLog ? stateLog.event_type : lastLog.event_type;
@@ -1936,30 +1926,6 @@ function V10PreviewLayout() {
             }
 
             let allEv: any[] = [];
-            if (tapeIds.length > 0) {
-                const { data: logs, error: logErr } = await supabase.from('insp_video_logs')
-                    .select('*')
-                    .in('tape_id', tapeIds)
-                    .order('event_time', { ascending: false });
-
-                if (logErr) console.error("[Sync] Video log fetch error:", logErr);
-
-                if (logs) {
-                    allEv.push(...logs.map((l: any) => ({
-                        id: `log_${l.video_log_id}`,
-                        realId: l.video_log_id,
-                        time: l.timecode_start || '00:00:00',
-                        action: l.event_type === "NEW_LOG_START" ? "Start Tape" : l.event_type === "END" ? "Stop Tape" : l.event_type === "PAUSE" ? "Pause" : l.event_type === "RESUME" ? "Resume" : l.event_type,
-                        logType: 'video_log',
-                        eventTime: parseDbDate(l.event_time).toISOString(),
-                        inspectionId: l.inspection_id,
-                        tape_id: l.tape_id,
-                        tape_counter_start: l.tape_counter_start || 0
-                    })));
-                }
-            }
-
-            // 4. Fetch Inspection Records
             const inspCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
             let inspsQuery = supabase.from('insp_records').select(`
                 *,
@@ -1974,13 +1940,33 @@ function V10PreviewLayout() {
                inspsQuery = inspsQuery.eq('sow_report_no', headerData.sowReportNo);
             }
 
-            const { data: insps, error: inspErr } = await inspsQuery;
+            // 3 & 4. Fetch Logs and Inspection Records in parallel to reduce network roundtrips
+            const [logsRes, inspsRes] = await Promise.all([
+                tapeIds.length > 0 
+                  ? supabase.from('insp_video_logs').select('*').in('tape_id', tapeIds).order('event_time', { ascending: false })
+                  : Promise.resolve({ data: [] }),
+                inspsQuery
+            ]);
 
-            if (inspErr) {
-                console.error("[Sync] Inspection fetch error:", inspErr);
-                // Fallback basic fetch
-                const { data: fallbackInsps } = await supabase.from('insp_records').select('*').eq(inspCol, depId);
-                if (fallbackInsps) setCurrentRecords(fallbackInsps);
+            const logs = logsRes.data;
+            const insps = inspsRes.data;
+
+            if (logs) {
+                allEv.push(...logs.map((l: any) => ({
+                    id: `log_${l.video_log_id}`,
+                    realId: l.video_log_id,
+                    time: l.timecode_start || '00:00:00',
+                    action: l.event_type === "NEW_LOG_START" ? "Start Tape" : l.event_type === "END" ? "Stop Tape" : l.event_type === "PAUSE" ? "Pause" : l.event_type === "RESUME" ? "Resume" : l.event_type,
+                    logType: 'video_log',
+                    eventTime: parseDbDate(l.event_time).toISOString(),
+                    inspectionId: l.inspection_id,
+                    tape_id: l.tape_id,
+                    tape_counter_start: l.tape_counter_start || 0
+                })));
+            }
+
+            if (inspsRes.error) {
+                console.error("[Sync] Inspection fetch error:", inspsRes.error);
             } else if (insps) {
                 // Fetch attachment counts manually for 'attachment' table
                 const { data: allAtts } = await supabase.from('attachment')
@@ -2000,10 +1986,11 @@ function V10PreviewLayout() {
 
                 setCurrentRecords(inspsWithCounts);
                 
+                // PERFORMANCE FIX: Use a Set for O(1) lookup during synchronization to avoid O(N*M) lag
+                const logInspectionIds = new Set(allEv.map(ev => ev.inspectionId).filter(Boolean));
+                
                 inspsWithCounts.forEach(r => {
-                    // Only add to allEv if not already represented by a video log with same inspectionId
-                    const alreadyInLogs = allEv.some(ev => ev.inspectionId === r.insp_id);
-                    if (!alreadyInLogs) {
+                    if (!logInspectionIds.has(r.insp_id)) {
                         const status = r.has_anomaly || (r.status === 'Anomaly' || r.status === 'Defect') ? 'ANOMALY' : 'INSPECTION';
                         allEv.push({
                             id: `insp_${r.insp_id}`,
@@ -3208,6 +3195,12 @@ function V10PreviewLayout() {
     const handleCommitRecord = async () => {
         if (!selectedComp || !activeSpec || !activeDep?.id) return;
 
+        // Block new inserts if video log is not active (Live Mode only)
+        if (!editingRecordId && !manualOverride && vidState !== "RECORDING") {
+            toast.error("Video log is currently STOPPED or PAUSED. New inspection events can only be added when a video log is active/recording in live mode.");
+            return;
+        }
+
         try {
             setIsCommitting(true);
             let tId = tapeId;
@@ -3849,6 +3842,50 @@ function V10PreviewLayout() {
         }
     };
 
+    const generateSeabedReport = async (templateId: string) => {
+        const filterMap: Record<string, string> = {
+            "seabed-survey-debris": "Debris",
+            "seabed-survey-gas": "Gas Seepage",
+            "seabed-survey-crater": "Crater"
+        };
+        
+        const itemTypeFilter = filterMap[templateId] || "Debris";
+        const recordsToPrint = currentRecords.filter(r => 
+            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && 
+            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
+        );
+
+        if (recordsToPrint.length === 0) {
+            toast.error(`No ${itemTypeFilter} records found for Seabed Survey.`);
+            return;
+        }
+
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('*').eq('id', Number(jobPackId)).single();
+        const { data: structure } = await supabase.from('structure').select('*').eq('str_id', Number(structureId)).single();
+
+        if (!jobPack || !structure) {
+            toast.error("Failed to fetch necessary data for report generation.");
+            return;
+        }
+
+        await generateSeabedSurveyReport(
+            { ...jobPack, id: jobPack.id },
+            { ...structure, id: structure.str_id },
+            headerData.sowReportNo,
+            { company_name: settings.companyName, logo_url: settings.companyLogo },
+            {
+                reportNoPrefix: "SEABED",
+                reportYear: new Date().getFullYear().toString(),
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                showContractorLogo: true,
+                showPageNumbers: true,
+                printFriendly: false
+            },
+            itemTypeFilter
+        );
+    };
+
     const generateInspectionReportByType = async (typeId: number) => {
         const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
         if (recordsToPrint.length === 0) {
@@ -4054,6 +4091,7 @@ function V10PreviewLayout() {
                 allInspectionTypes={allInspectionTypes}
                 currentRecords={currentRecords}
                 generateInspectionReportByType={generateInspectionReportByType}
+                generateSeabedReport={generateSeabedReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -5936,6 +5974,10 @@ function V10PreviewLayout() {
             {/* Defect Criteria Automated Confirmation Dialog */}
             <Dialog open={showCriteriaConfirm} onOpenChange={setShowCriteriaConfirm}>
                 <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl">
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>Defect Criteria Alert</DialogTitle>
+                        <DialogDescription>Confirm if the current observation matches defect criteria.</DialogDescription>
+                    </DialogHeader>
                     <div className="bg-red-600 p-4 flex items-center gap-3">
                         <div className="bg-white/20 p-2 rounded-lg">
                             <AlertTriangle className="w-5 h-5 text-white" />
@@ -6301,14 +6343,6 @@ function V10PreviewLayout() {
             {isSeabedGuiOpen && (
                 <div className="fixed inset-0 z-[100] bg-black/60 p-6 flex flex-col items-center justify-center backdrop-blur-sm animate-in fade-in duration-300">
                     <div className="w-full max-w-[1400px] h-full max-h-[92vh] flex flex-col bg-slate-50 shadow-2xl rounded-xl overflow-hidden ring-1 ring-slate-900/10 relative">
-                        <Button 
-                            variant="destructive" 
-                            size="icon" 
-                            className="absolute top-2 right-2 z-[110] rounded-full w-8 h-8 shadow-md"
-                            onClick={() => setIsSeabedGuiOpen(false)}
-                        >
-                            &times;
-                        </Button>
                         <SeabedSurveyGuiInline 
                             open={isSeabedGuiOpen}
                             onClose={() => setIsSeabedGuiOpen(false)}
@@ -6319,6 +6353,13 @@ function V10PreviewLayout() {
                             rovJob={activeDep || undefined}
                             tapeId={tapeId?.toString()}
                             tapeCounter={vidTimer?.toString()} 
+                            telemetryData={dataAcqFields}
+                            isStreamRecording={manualOverride || vidState !== "IDLE"}
+                            isStreamPaused={!manualOverride && vidState === "PAUSED"}
+                            onRefreshInspection={() => {
+                                syncDeploymentState();
+                                queryClient.invalidateQueries({ queryKey: ['inspection-records'] });
+                            }}
                         />
                     </div>
                 </div>

@@ -1878,6 +1878,9 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
                     rovJob={selectedROVJob}
                     tapeId={selectedTapeId?.toString()}
                     tapeCounter={undefined}
+                    isStreamRecording={jobTapes.find(t => t.tape_id === selectedTapeId)?.status === 'ACTIVE'}
+                    isStreamPaused={false}
+                    onRefreshInspection={() => setLastUpdated(new Date().toISOString())}
                 />
             </div>
           )}

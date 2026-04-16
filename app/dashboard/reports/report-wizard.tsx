@@ -36,6 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { generateWorkScopeReport } from "@/utils/report-generators/work-scope-report";
+import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 // Types
 type WizardStep = "template" | "context" | "configuration" | "preview";
@@ -95,6 +96,9 @@ const REPORT_TEMPLATES = {
         { id: "findings-report", name: "Findings Report", icon: FileCheck, description: "Detailed findings report with images", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diver-log-report", name: "Diver Log Report", icon: FileText, description: "Chronological diver log grouped by dive number with inspection findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "video-log-report", name: "Video Log Report", icon: FileText, description: "Video log entries grouped by tape number with timecodes and dive references", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "seabed-survey-debris", name: "Seabed Survey For Debris", icon: FileCheck, description: "Filtered Seabed GUI maps with debris items marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", icon: FileCheck, description: "Filtered Seabed GUI maps with gas seepages marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "seabed-survey-crater", name: "Seabed Survey For Crater", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -1067,6 +1071,21 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!jobPack || !structure) return null;
 
             return await generateVideoLogReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+        }
+
+        // Seabed Survey Reports
+        if (selections.templateId === "seabed-survey-debris" || selections.templateId === "seabed-survey-gas" || selections.templateId === "seabed-survey-crater") {
+            const jobPack = await fetchJobPackData();
+            const structure = await fetchStructureData();
+            if (!jobPack || !structure) return null;
+            
+            const filterMap: Record<string, string> = {
+                "seabed-survey-debris": "Debris",
+                "seabed-survey-gas": "Gas Seepage",
+                "seabed-survey-crater": "Crater"
+            };
+            
+            return await generateSeabedSurveyReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig, filterMap[selections.templateId]);
         }
 
         // Job Pack Summary Report

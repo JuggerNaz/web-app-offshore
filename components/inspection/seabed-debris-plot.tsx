@@ -169,15 +169,19 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
         else if (angle >= 135 && angle < 225) { face = 'SOUTH'; startLeg = bl; endLeg = br; }
         else { face = 'WEST'; startLeg = tl; endLeg = bl; }
 
-        // Find nearest grid distance
+        // Find target box distance (always round UP to the next interval to identify the "area")
         let nearestDistance = gridDistances[0];
         if (gridDistances.length > 0) {
-            nearestDistance = gridDistances.reduce((prev, curr) => 
-                Math.abs(curr - logicalDist) < Math.abs(prev - logicalDist) ? curr : prev
-            );
+            // Find the smallest grid distance that is greater than or equal to logicalDist
+            const candidates = gridDistances.filter(d => d >= (logicalDist + distanceOffset));
+            if (candidates.length > 0) {
+                nearestDistance = Math.min(...candidates);
+            } else {
+                nearestDistance = Math.max(...gridDistances);
+            }
         }
 
-        return { distance: logicalDist, angle, face, startLeg, endLeg, nearestDistance };
+        return { distance: logicalDist + distanceOffset, angle, face, startLeg, endLeg, nearestDistance };
     };
 
     // Auto-calculate position from manual text fields
@@ -255,202 +259,263 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
     };
 
     return (
-        <div className="relative w-full aspect-square bg-sky-50/50 dark:bg-slate-900 rounded-xl overflow-hidden shadow-inner border border-slate-200 dark:border-slate-700 select-none">
-            <svg
-                viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
-                className="w-full h-full cursor-crosshair"
-                onClick={(e) => {
-                    const svg = e.currentTarget;
-                    if (e.target === svg) {
-                        onSelectDebris?.(null);
-                    }
-                    
-                    if (readOnly) return;
-                    const pt = svg.createSVGPoint();
-                    pt.x = e.clientX;
-                    pt.y = e.clientY;
-                    const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-                    if (!transformed) return;
-                    const nx = fromScreen(transformed.x);
-                    const ny = fromScreen(transformed.y);
-                    onAddDebris?.(nx, ny, calculateGeometry(nx, ny));
-                }}
-                onMouseMove={(e) => {
-                    if (readOnly || !onHover) return;
-                    const svg = e.currentTarget;
-                    const pt = svg.createSVGPoint();
-                    pt.x = e.clientX;
-                    pt.y = e.clientY;
-                    const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-                    if (!transformed) return;
-                    const nx = fromScreen(transformed.x);
-                    const ny = fromScreen(transformed.y);
-                    onHover(nx, ny, calculateGeometry(nx, ny));
-                }}
-                onMouseLeave={() => {
-                    if (!readOnly && onHover) onHover(0, 0, null);
-                }}
-
-            >
-                {/* Background Compass Labels */}
-                <g className="text-[10px] fill-slate-500 font-bold pointer-events-none">
-                    <text x={CENTER} y={20} textAnchor="middle">NORTH</text>
-                    <text x={CENTER} y={VIEW_SIZE - 10} textAnchor="middle">SOUTH</text>
-                    <text x={VIEW_SIZE - 35} y={CENTER + 4} textAnchor="start">EAST</text>
-                    <text x={5} y={CENTER + 4} textAnchor="start">WEST</text>
-                </g>
-
-                {/* Grid Lines */}
-                <g>{renderGridLines()}</g>
-
-                {/* Grid Labels (corners) AND Sector QIDs in each box */}
-                <g className="text-[9px] fill-slate-500 font-bold pointer-events-none">
-                    {gridDistances.map((dist, i) => {
-                        const renderDist = Math.max(0, dist - distanceOffset);
-                        const offsetPx = renderDist * pxPerMeter;
-                        const topY = bounds.minY - offsetPx;
-                        const bottomY = bounds.maxY + offsetPx;
-                        const leftX = bounds.minX - offsetPx;
-                        const rightX = bounds.maxX + offsetPx;
-
-                        return (
-                            <React.Fragment key={`lbl-${i}`}>
-                                {/* Corners (Distances) */}
-                                <text x={leftX - 4} y={topY - 4} textAnchor="end">{dist}m</text>
-                                <text x={rightX + 4} y={topY - 4} textAnchor="start">{dist}m</text>
-                                <text x={leftX - 4} y={bottomY + 10} textAnchor="end">{dist}m</text>
-                                <text x={rightX + 4} y={bottomY + 10} textAnchor="start">{dist}m</text>
-
-                                {/* Box Sector QIDs (Light color in 4 faces) */}
-                                <text x={CENTER} y={topY + 12} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                    S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'})-{dist}M
-                                </text>
-                                <text x={CENTER} y={bottomY - 4} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                    S/BED({legPositions.find(p => p.name === 'B1')?.name || 'B1'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
-                                </text>
-                                <text x={rightX - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${rightX - 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                    S/BED({legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
-                                </text>
-                                <text x={leftX + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${leftX + 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                    S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === 'B1')?.name || 'B1'})-{dist}M
-                                </text>
-                            </React.Fragment>
-                        );
-                    })}
-                </g>
-
-                {/* Platform Legs */}
-                <g>
-                    {legPositions.map((pos, i) => (
-                        <g key={`leg-${i}`}>
-                            <circle
-                                cx={pos.x}
-                                cy={pos.y}
-                                r="8"
-                                className="fill-white dark:fill-slate-800 stroke-slate-500 stroke-2"
-                            />
-                            <text
-                                x={pos.x}
-                                y={pos.y + 20}
-                                textAnchor="middle"
-                                className="text-[8px] fill-slate-600 dark:fill-slate-400 font-bold"
-                            >
-                                {pos.name}
-                            </text>
-                        </g>
-                    ))}
-                </g>
-
-                {/* Plot Lines connecting legs (Visual only) */}
-                {layoutType === 'rectangular' ? (
-                    <rect
-                        x={Math.min(...legPositions.map(p => p.x))}
-                        y={Math.min(...legPositions.map(p => p.y))}
-                        width={Math.max(...legPositions.map(p => p.x)) - Math.min(...legPositions.map(p => p.x))}
-                        height={Math.max(...legPositions.map(p => p.y)) - Math.min(...legPositions.map(p => p.y))}
-                        fill="none"
-                        stroke="rgba(100, 116, 139, 0.4)"
-                        strokeWidth="1"
-                        pointerEvents="none"
-                    />
-                ) : (
-                    <polygon
-                        points={legPositions.map(p => `${p.x},${p.y}`).join(' ')}
-                        fill="none"
-                        stroke="rgba(100, 116, 139, 0.4)"
-                        strokeWidth="1"
-                        pointerEvents="none"
-                    />
-                )}
-
-                {/* Debris Markers */}
-                {debrisItems.map((item) => (
-                    <motion.g
-                        key={`${item.id}-${item.x}-${item.y}`}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectDebris?.(item.id);
-                        }}
-                        drag={!readOnly && activeDebrisId === item.id}
-                        dragMomentum={false}
-                        onDragStart={() => { isDraggingRef.current = true; }}
-                        onDragEnd={(e: any, info) => {
-                            isDraggingRef.current = false;
-                            if (readOnly) return;
-                            let svg = e.target;
-                            while (svg && svg.tagName !== 'svg') {
-                                svg = svg.parentNode;
-                            }
-                            if (!svg || !svg.createSVGPoint) return;
-                            
-                            const pt = svg.createSVGPoint();
-                            pt.x = info.point.x;
-                            pt.y = info.point.y;
-                            
-                            const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-                            const nx = fromScreen(transformed.x);
-                            const ny = fromScreen(transformed.y);
-                            
-                            onDebrisMove?.(item.id, nx, ny, calculateGeometry(nx, ny));
-                        }}
-                        style={{ x: toScreen(item.x) - CENTER, y: toScreen(item.y) - CENTER }}
-
-                        className={activeDebrisId === item.id ? 'z-10' : 'z-0'}
-                    >
-                        <title>{`${item.type || 'Debris'}${item.description ? ` - ${item.description}` : ''}\nQID: ${item.qid || item.label}`}</title>
-                        {/* Circle Shadow/Glow */}
-                        <circle
-                            cx={CENTER}
-                            cy={CENTER}
-                            r={activeDebrisId === item.id ? "18" : "12"}
-                            className={activeDebrisId === item.id ? 'fill-blue-500/40 animate-pulse' : item.type === 'Gas Seepage' ? 'fill-green-500/20' : item.type === 'Crater' ? 'fill-slate-500/20' : 'fill-amber-500/20'}
-                        />
-                        {/* Circle Border */}
-                        <circle
-                            cx={CENTER}
-                            cy={CENTER}
-                            r={activeDebrisId === item.id ? "12" : "10"}
-                            className={`stroke-2 ${activeDebrisId === item.id ? 'fill-blue-600 stroke-[3px] stroke-cyan-300' : item.type === 'Gas Seepage' ? 'fill-green-600 stroke-green-200' : item.type === 'Crater' ? 'fill-slate-600 stroke-slate-200' : 'fill-amber-600 stroke-amber-200'}`}
-                        />
-                        {/* Number */}
-                        <text
-                            x={CENTER}
-                            y={CENTER + 4}
-                            textAnchor="middle"
-                            className="fill-white text-[10px] font-bold pointer-events-none"
-                        >
-                            {item.label}
-                        </text>
-                    </motion.g>
-                ))}
-            </svg>
-
-            {/* Hint Overlay */}
-            {!readOnly && (
-                <div className="absolute top-2 left-2 bg-slate-800/80 backdrop-blur px-2 py-1 rounded text-[10px] text-slate-300 border border-slate-700 pointer-events-none">
-                    Click grid to drop flag • Click a flag to select it • Drag to reposition
+        <div className="flex flex-col w-full h-full bg-sky-50/50 dark:bg-slate-900 rounded-xl overflow-hidden shadow-inner border border-slate-200 dark:border-slate-700 select-none">
+            {/* COMPONENT HEADER: LEGEND & STATUS */}
+            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 px-3 py-2 flex items-center justify-between shrink-0 z-20">
+                {/* Status/Hint */}
+                <div className="flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${readOnly ? 'bg-slate-400' : 'bg-blue-500'}`} />
+                    <span className="text-[10px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest">
+                        {!readOnly ? "Live Grid: Click to Drop Flag" : "View Map"}
+                    </span>
                 </div>
-            )}
+
+                {/* Legend */}
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-700 border border-blue-400/30 shadow-sm" />
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Metallic</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-orange-600 border border-orange-400/30 shadow-sm" />
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Non-Metallic</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-green-600 border border-green-400/30 shadow-sm" />
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Seepage</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-purple-600 border-purple-400/30 shadow-sm" />
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Crater</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* MAP AREA */}
+            <div className="flex-1 relative overflow-hidden">
+                <svg
+                    viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
+                    className="w-full h-full cursor-crosshair"
+                    onClick={(e) => {
+                        const svg = e.currentTarget;
+                        if (e.target === svg) {
+                            onSelectDebris?.(null);
+                        }
+                        
+                        if (readOnly) return;
+                        const pt = svg.createSVGPoint();
+                        pt.x = e.clientX;
+                        pt.y = e.clientY;
+                        const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
+                        if (!transformed) return;
+                        const nx = fromScreen(transformed.x);
+                        const ny = fromScreen(transformed.y);
+                        onAddDebris?.(nx, ny, calculateGeometry(nx, ny));
+                    }}
+                    onMouseMove={(e) => {
+                        if (readOnly || !onHover) return;
+                        const svg = e.currentTarget;
+                        const pt = svg.createSVGPoint();
+                        pt.x = e.clientX;
+                        pt.y = e.clientY;
+                        const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
+                        if (!transformed) return;
+                        const nx = fromScreen(transformed.x);
+                        const ny = fromScreen(transformed.y);
+                        onHover(nx, ny, calculateGeometry(nx, ny));
+                    }}
+                    onMouseLeave={() => {
+                        if (!readOnly && onHover) onHover(0, 0, null);
+                    }}
+
+                >
+                    {/* Background Compass Labels */}
+                    <g className="text-[10px] fill-slate-500 font-bold pointer-events-none">
+                        <text x={CENTER} y={20} textAnchor="middle">NORTH</text>
+                        <text x={CENTER} y={VIEW_SIZE - 10} textAnchor="middle">SOUTH</text>
+                        <text x={VIEW_SIZE - 35} y={CENTER + 4} textAnchor="start">EAST</text>
+                        <text x={5} y={CENTER + 4} textAnchor="start">WEST</text>
+                    </g>
+
+                    {/* Grid Lines */}
+                    <g>{renderGridLines()}</g>
+
+                    {/* Grid Labels (corners) AND Sector QIDs in each box */}
+                    <g className="text-[9px] fill-slate-500 font-bold pointer-events-none">
+                        {gridDistances.map((dist, i) => {
+                            const renderDist = Math.max(0, dist - distanceOffset);
+                            const offsetPx = renderDist * pxPerMeter;
+                            const topY = bounds.minY - offsetPx;
+                            const bottomY = bounds.maxY + offsetPx;
+                            const leftX = bounds.minX - offsetPx;
+                            const rightX = bounds.maxX + offsetPx;
+
+                            return (
+                                <React.Fragment key={`lbl-${i}`}>
+                                    {/* Corners (Distances) */}
+                                    <text x={leftX - 4} y={topY - 4} textAnchor="end">{dist}m</text>
+                                    <text x={rightX + 4} y={topY - 4} textAnchor="start">{dist}m</text>
+                                    <text x={leftX - 4} y={bottomY + 10} textAnchor="end">{dist}m</text>
+                                    <text x={rightX + 4} y={bottomY + 10} textAnchor="start">{dist}m</text>
+
+                                    {/* Box Sector QIDs (Light color in 4 faces) */}
+                                    <text x={CENTER} y={topY + 12} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
+                                        S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'})-{dist}M
+                                    </text>
+                                    <text x={CENTER} y={bottomY - 4} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
+                                        S/BED({legPositions.find(p => p.name === 'B1')?.name || 'B1'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
+                                    </text>
+                                    <text x={rightX - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${rightX - 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
+                                        S/BED({legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
+                                    </text>
+                                    <text x={leftX + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${leftX + 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
+                                        S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === 'B1')?.name || 'B1'})-{dist}M
+                                    </text>
+                                </React.Fragment>
+                            );
+                        })}
+                    </g>
+
+                    {/* Platform Legs */}
+                    <g>
+                        {legPositions.map((pos, i) => (
+                            <g key={`leg-${i}`}>
+                                <circle
+                                    cx={pos.x}
+                                    cy={pos.y}
+                                    r="8"
+                                    className="fill-white dark:fill-slate-800 stroke-slate-500 stroke-2"
+                                />
+                                <text
+                                    x={pos.x}
+                                    y={pos.y + 20}
+                                    textAnchor="middle"
+                                    className="text-[8px] fill-slate-600 dark:fill-slate-400 font-bold"
+                                >
+                                    {pos.name}
+                                </text>
+                            </g>
+                        ))}
+                    </g>
+
+                    {/* Plot Lines connecting legs (Visual only) */}
+                    {layoutType === 'rectangular' ? (
+                        <rect
+                            x={Math.min(...legPositions.map(p => p.x))}
+                            y={Math.min(...legPositions.map(p => p.y))}
+                            width={Math.max(...legPositions.map(p => p.x)) - Math.min(...legPositions.map(p => p.x))}
+                            height={Math.max(...legPositions.map(p => p.y)) - Math.min(...legPositions.map(p => p.y))}
+                            fill="none"
+                            stroke="rgba(100, 116, 139, 0.4)"
+                            strokeWidth="1"
+                            pointerEvents="none"
+                        />
+                    ) : (
+                        <polygon
+                            points={legPositions.map(p => `${p.x},${p.y}`).join(' ')}
+                            fill="none"
+                            stroke="rgba(100, 116, 139, 0.4)"
+                            strokeWidth="1"
+                            pointerEvents="none"
+                        />
+                    )}
+
+                    {/* Debris Markers */}
+                    {debrisItems.map((item) => (
+                        <motion.g
+                            key={`${item.id}-${item.x}-${item.y}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectDebris?.(item.id);
+                            }}
+                            drag={!readOnly && activeDebrisId === item.id}
+                            dragMomentum={false}
+                            onDragStart={() => { isDraggingRef.current = true; }}
+                            onDragEnd={(e: any, info) => {
+                                isDraggingRef.current = false;
+                                if (readOnly) return;
+                                let svg = e.target;
+                                while (svg && svg.tagName !== 'svg') {
+                                    svg = svg.parentNode;
+                                }
+                                if (!svg || !svg.createSVGPoint) return;
+                                
+                                const pt = svg.createSVGPoint();
+                                pt.x = info.point.x;
+                                pt.y = info.point.y;
+                                
+                                const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
+                                const nx = fromScreen(transformed.x);
+                                const ny = fromScreen(transformed.y);
+                                
+                                onDebrisMove?.(item.id, nx, ny, calculateGeometry(nx, ny));
+                            }}
+                            style={{ x: toScreen(item.x) - CENTER, y: toScreen(item.y) - CENTER }}
+
+                            className={activeDebrisId === item.id ? 'z-10' : 'z-0'}
+                        >
+                            <title>{`${item.type || 'Debris'}${item.description ? ` - ${item.description}` : ''}\nQID: ${item.qid || item.label}`}</title>
+                            
+                            {/* Circle Shadow/Glow (Pulse) */}
+                            <circle
+                                cx={CENTER}
+                                cy={CENTER}
+                                r={activeDebrisId === item.id ? "18" : "12"}
+                                className={item.type === 'Gas Seepage' 
+                                        ? 'fill-green-500/20' 
+                                        : item.type === 'Crater' 
+                                            ? 'fill-purple-500/20' 
+                                            : item.isMetallic 
+                                                ? 'fill-blue-500/20' 
+                                                : 'fill-orange-500/20'}
+                            />
+                            
+                            {/* Selection Pulse (Only if active) */}
+                            {activeDebrisId === item.id && (
+                                <circle
+                                    cx={CENTER}
+                                    cy={CENTER}
+                                    r="20"
+                                    className="fill-cyan-400/20 animate-pulse"
+                                />
+                            )}
+
+                            {/* Circle Border & Fill */}
+                            <circle
+                                cx={CENTER}
+                                cy={CENTER}
+                                r={activeDebrisId === item.id ? "13" : "10"}
+                                className={`stroke-2 ${activeDebrisId === item.id ? 'stroke-cyan-400 stroke-[3px]' : 'stroke-white/30'} ${
+                                    item.type === 'Gas Seepage' 
+                                        ? 'fill-green-600' 
+                                        : item.type === 'Crater' 
+                                            ? 'fill-purple-600' 
+                                            : item.isMetallic 
+                                                ? 'fill-blue-700' 
+                                                : 'fill-orange-600'
+                                }`}
+                            />
+                            
+                            {/* Number */}
+                            <text
+                                x={CENTER}
+                                y={CENTER + 4}
+                                textAnchor="middle"
+                                className="fill-white text-[10px] font-bold pointer-events-none uppercase"
+                            >
+                                {item.label}
+                            </text>
+                        </motion.g>
+                    ))}
+                </svg>
+
+                {/* Minimal Hint Tooltip (Optional, subtle bottom overlay) */}
+                {!readOnly && (
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-slate-800/60 backdrop-blur px-2 py-0.5 rounded text-[8px] text-white/80 pointer-events-none uppercase tracking-widest">
+                        Drag # Markers to Shift Coordinates
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

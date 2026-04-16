@@ -19,6 +19,9 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
+    DropdownMenuSub,
+    DropdownMenuSubTrigger,
+    DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -31,6 +34,7 @@ interface InspectionHeaderProps {
     allInspectionTypes: any[];
     currentRecords: any[];
     generateInspectionReportByType: (id: any) => void;
+    generateSeabedReport: (templateId: string) => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -45,6 +49,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     allInspectionTypes,
     currentRecords,
     generateInspectionReportByType,
+    generateSeabedReport,
     generateFullInspectionReport,
     jobPackId,
     structureId
@@ -127,6 +132,27 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             ))}
                         </ScrollArea>
                         <div className="border-t border-slate-50 my-1"></div>
+                        
+                        {currentRecords.some(r => r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && (
+                            <DropdownMenuSub>
+                                <DropdownMenuSubTrigger className="text-xs py-2 cursor-pointer flex items-center">
+                                    <Grid3X3 className="w-3.5 h-3.5 mr-2 text-cyan-600" />
+                                    <span>Seabed Survey Reports</span>
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent className="w-56">
+                                    <DropdownMenuItem onClick={() => generateSeabedReport('seabed-survey-debris')} className="text-xs py-2 cursor-pointer">
+                                        Seabed Survey (Debris)
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => generateSeabedReport('seabed-survey-gas')} className="text-xs py-2 cursor-pointer">
+                                        Seabed Survey (Gas Seepage)
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => generateSeabedReport('seabed-survey-crater')} className="text-xs py-2 cursor-pointer">
+                                        Seabed Survey (Crater)
+                                    </DropdownMenuItem>
+                                </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                        )}
+
                         <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600">
                             <Layout className="w-3.5 h-3.5 mr-2" /> All Captured Records
                         </DropdownMenuItem>

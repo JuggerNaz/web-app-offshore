@@ -20,10 +20,14 @@ interface SeabedSurveyGuiDialogProps {
     rovJob: any;
     tapeId?: string;
     tapeCounter?: string;
+    telemetryData?: Array<{ label: string, targetField: string, value: string }>;
+    isStreamRecording?: boolean;
+    isStreamPaused?: boolean;
+    onRefreshInspection?: () => void;
 }
 
 export function SeabedSurveyGuiInline({
-    open, onClose, structureId, jobpackId, sowRecordId, sowReportNo, rovJob, tapeId, tapeCounter
+    open, onClose, structureId, jobpackId, sowRecordId, sowReportNo, rovJob, tapeId, tapeCounter, telemetryData, isStreamRecording, isStreamPaused, onRefreshInspection
 }: SeabedSurveyGuiDialogProps) {
     const supabase = createClient();
     const [existingDebris, setExistingDebris] = useState<any[]>([]);
@@ -38,9 +42,16 @@ export function SeabedSurveyGuiInline({
         description: '',
         material: 'Non-Metallic',
         size: '',
+        intensity: 'Moderate',
+        craterDiameter: '',
+        craterDiameterUnit: 'm',
+        craterDepth: '',
+        craterDepthUnit: 'm',
+        distanceUnit: 'm'
     });
     const [editFormData, setEditFormData] = useState<any>(null);
     const [currentPage, setCurrentPage] = useState(0);
+    const [isSaving, setIsSaving] = useState(false);
 
     const generateQid = (geometry: any) => {
         if (!geometry || !geometry.startLeg || !geometry.endLeg) return '';
@@ -71,20 +82,31 @@ export function SeabedSurveyGuiInline({
 
         if (error || !data) return;
         
-        const mapped = data.map((r: any, index: number) => ({
-            id: r.insp_id,
-            x: parseFloat(r.inspection_data.x),
-            y: parseFloat(r.inspection_data.y),
-            label: (index + 1).toString(),
-            qid: r.structure_components?.q_id || r.insp_id,
-            isMetallic: r.inspection_data.debris_material?.toLowerCase().includes('metal') || false,
-            face: r.inspection_data.face || '',
-            distance: r.inspection_data.distance_from_leg || 0,
-            type: r.inspection_data.type || (r.description?.includes('Debris') ? 'Debris' : r.description?.includes('Gas Seepage') ? 'Gas Seepage' : r.description?.includes('Crater') ? 'Crater' : 'Debris'),
-            description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || '',
-            size: r.inspection_data?.dimension_1 || '',
-            material: r.inspection_data?.debris_material || 'Unknown'
-        })).filter(r => !isNaN(r.x) && !isNaN(r.y));
+        const mapped = data.map((r: any, index: number) => {
+            const idraw = r.inspection_data || {};
+            const cat = idraw.category || (r.description?.includes('Gas Seepage') ? 'Gas Seepage' : r.description?.includes('Crater') ? 'Crater' : 'Debris');
+            
+            return {
+                id: r.insp_id,
+                x: parseFloat(idraw.x),
+                y: parseFloat(idraw.y),
+                label: (index + 1).toString(),
+                qid: r.structure_components?.q_id || r.insp_id,
+                isMetallic: idraw.material === 'Metallic' || idraw.debris_material === 'Metallic',
+                face: idraw.face || '',
+                distance: idraw.distance_from_leg || idraw.distance || 0,
+                type: cat,
+                description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || '',
+                size: idraw.size_dimensions || idraw.dimension_1 || '',
+                material: idraw.material || idraw.debris_material || 'Unknown',
+                intensity: idraw.seepage_intensity || 'Moderate',
+                craterDiameter: idraw.crater_diameter || '',
+                craterDiameterUnit: idraw.crater_diameter_unit || 'm',
+                craterDepth: idraw.crater_depth || '',
+                craterDepthUnit: idraw.crater_depth_unit || 'm',
+                distanceUnit: idraw.distance_from_leg_unit || 'm'
+            };
+        }).filter(r => !isNaN(r.x) && !isNaN(r.y));
         
         setExistingDebris(mapped);
     };
@@ -97,25 +119,77 @@ export function SeabedSurveyGuiInline({
                     category: item.type,
                     description: item.description,
                     material: item.material,
-                    size: item.size
+                    size: item.size,
+                    intensity: item.intensity,
+                    craterDiameter: item.craterDiameter,
+                    craterDiameterUnit: item.craterDiameterUnit,
+                    craterDepth: item.craterDepth,
+                    craterDepthUnit: item.craterDepthUnit,
+                    distanceUnit: item.distanceUnit
                 });
             }
         }
     }, [activeId, existingDebris]);
 
     const handleAddClick = (x: number, y: number, geometry: any) => {
+        if (!isStreamRecording || isStreamPaused) {
+            toast.error("Video log is currently STOPPED or PAUSED. New survey flags can only be added when a video log is active/recording in live mode.");
+            return;
+        }
         setNewPoint({ x, y, geometry });
         setIsAdding(true);
         setActiveId(null);
-        setFormData({ category: 'Debris', description: '', material: 'Non-Metallic', size: '' });
+        setFormData({ 
+            category: 'Debris', 
+            description: '', 
+            material: 'Non-Metallic', 
+            size: '',
+            intensity: 'Moderate',
+            craterDiameter: '',
+            craterDiameterUnit: 'm',
+            craterDepth: '',
+            craterDepthUnit: 'm',
+            distanceUnit: 'm'
+        });
     };
 
     const handleSaveNewDebris = async () => {
-        if (!newPoint) return;
-        
+        if (!newPoint || isSaving) return;
+
+        if (!isStreamRecording || isStreamPaused) {
+            toast.error("Video log is currently STOPPED or PAUSED. New survey flags can only be added when a video log is active/recording in live mode.");
+            return;
+        }
+
         const generatedQid = generateQid(newPoint.geometry);
 
         try {
+            setIsSaving(true);
+            
+            // Parallelize independent metadata fetches to reduce network latency
+            const [inspTypeRes, authRes] = await Promise.all([
+                supabase.from('inspection_type').select('id').eq('code', 'RSEAB').maybeSingle(),
+                supabase.auth.getUser()
+            ]);
+
+            const authData = authRes.data;
+            let inspTypeId = inspTypeRes.data?.id;
+
+            if (!inspTypeId) {
+                // Auto-create to prevent null insertion
+                const { data: newType } = await supabase.from('inspection_type').insert({
+                    code: 'RSEAB',
+                    name: 'ROV Seabed Inspection'
+                }).select('id').single();
+                if (newType?.id) inspTypeId = newType.id;
+            }
+
+            // Ultimate fallback if insert fails
+            if (!inspTypeId && typeof rovJob !== 'undefined') {
+                if (rovJob?.raw?.inspection_type_id) inspTypeId = rovJob.raw.inspection_type_id;
+                else if (rovJob?.inspection_type_id) inspTypeId = rovJob.inspection_type_id;
+            }
+
             // 1. Check or Insert Component dynamically
             let componentId = null;
             const { data: existingComp } = await supabase.from('structure_components')
@@ -146,26 +220,6 @@ export function SeabedSurveyGuiInline({
 
             // 2. Add to SOW if sowRecordId exists and not already mapped
             let sowItemId = null;
-            let inspTypeId = null;
-            
-            // Strictly get or create RSEAB inspection type
-            const { data: inspType } = await supabase.from('inspection_type').select('id').eq('code', 'RSEAB').maybeSingle();
-            if (inspType?.id) {
-                inspTypeId = inspType.id;
-            } else {
-                // Auto-create to prevent null insertion
-                const { data: newType } = await supabase.from('inspection_type').insert({
-                    code: 'RSEAB',
-                    name: 'ROV Seabed Inspection'
-                }).select('id').single();
-                if (newType?.id) inspTypeId = newType.id;
-            }
-
-            // Ultimate fallback if insert fails
-            if (!inspTypeId && typeof rovJob !== 'undefined') {
-                if (rovJob?.raw?.inspection_type_id) inspTypeId = rovJob.raw.inspection_type_id;
-                else if (rovJob?.inspection_type_id) inspTypeId = rovJob.inspection_type_id;
-            }
 
             if (sowRecordId && componentId) {
                 const { data: existingSow } = await supabase.from('u_sow_items')
@@ -188,18 +242,34 @@ export function SeabedSurveyGuiInline({
             }
 
             // 3. Create Insp Record
-            const inspectionData = {
+            // Capture telemetry if available
+            const northingVal = telemetryData?.find(f => f.targetField === 'northing' || f.label.toLowerCase() === 'northing')?.value;
+            const eastingVal = telemetryData?.find(f => f.targetField === 'easting' || f.label.toLowerCase() === 'easting')?.value;
+
+            const inspectionData: any = {
                 distance_from_leg: newPoint.geometry.distance.toFixed(1),
+                distance_from_leg_unit: formData.distanceUnit,
                 face: newPoint.geometry.face,
                 x: newPoint.x.toFixed(2),
                 y: newPoint.y.toFixed(2),
-                type: formData.category,
-                debris_material: formData.material,
-                dimension_1: formData.size,
+                category: formData.category,
+                material: formData.material,
+                size_dimensions: formData.size,
+                seepage_intensity: formData.intensity,
+                crater_diameter: formData.craterDiameter,
+                crater_diameter_unit: formData.craterDiameterUnit,
+                crater_depth: formData.craterDepth,
+                crater_depth_unit: formData.craterDepthUnit,
+                type: formData.category, // preserve for old code
+                debris_material: formData.material, // preserve for old code
+                dimension_1: formData.size, // preserve for old code
                 finding_type: "Anomaly",
             };
 
-            const { data: authData } = await supabase.auth.getUser();
+            // Inject telemetry if data is connected/valid (not '--')
+            if (northingVal && northingVal !== '--') inspectionData.northing = northingVal;
+            if (eastingVal && eastingVal !== '--') inspectionData.easting = eastingVal;
+
             const now = new Date();
             const { error: recErr } = await supabase.from('insp_records').insert({
                 rov_job_id: rovJob?.raw?.rov_job_id || rovJob?.id || null,
@@ -227,16 +297,21 @@ export function SeabedSurveyGuiInline({
             toast.success(`Registered Debris at ${generatedQid}`);
             setIsAdding(false);
             setNewPoint(null);
+            if (onRefreshInspection) onRefreshInspection();
             fetchExistingDebris(); // Refresh map
 
         } catch (err: any) {
             console.error(err);
             toast.error("Failed to register debris: " + err.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleMoveDebris = async (id: string | number, x: number, y: number, geometry: any) => {
+        if (isSaving) return;
         try {
+            setIsSaving(true);
             const generatedQid = generateQid(geometry);
             const currentRec = existingDebris.find(d => d.id === id);
             let componentId = undefined;
@@ -304,21 +379,34 @@ export function SeabedSurveyGuiInline({
 
             if (error) throw error;
             toast.success("Updated coordinates successfully");
+            if (onRefreshInspection) onRefreshInspection();
             fetchExistingDebris();
         } catch (err: any) {
             toast.error("Failed to move debris: " + err.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleSaveEdit = async () => {
-        if (!activeId || !editFormData) return;
+        if (!activeId || !editFormData || isSaving) return;
         try {
+            setIsSaving(true);
             const { data } = await supabase.from('insp_records').select('inspection_data').eq('insp_id', activeId).single();
             const newData = {
                 ...(data?.inspection_data || {}),
-                type: editFormData.category,
-                debris_material: editFormData.material,
-                dimension_1: editFormData.size,
+                category: editFormData.category,
+                material: editFormData.material,
+                size_dimensions: editFormData.size,
+                seepage_intensity: editFormData.intensity,
+                crater_diameter: editFormData.craterDiameter,
+                crater_diameter_unit: editFormData.craterDiameterUnit,
+                crater_depth: editFormData.craterDepth,
+                crater_depth_unit: editFormData.craterDepthUnit,
+                distance_from_leg_unit: editFormData.distanceUnit,
+                type: editFormData.category, // sync
+                debris_material: editFormData.material, // sync
+                dimension_1: editFormData.size, // sync
             };
             const { data: authData } = await supabase.auth.getUser();
             const { error } = await supabase.from('insp_records')
@@ -331,27 +419,34 @@ export function SeabedSurveyGuiInline({
                 .eq('insp_id', activeId);
             if (error) throw error;
             toast.success("Details updated successfully");
+            if (onRefreshInspection) onRefreshInspection();
             fetchExistingDebris();
         } catch(e: any) {
             toast.error(e.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleDeleteDebris = async () => {
-        if (!activeId) return;
+        if (!activeId || isSaving) return;
         if (!confirm("Are you sure you want to delete this debris record?")) return;
 
         try {
+            setIsSaving(true);
             const { error } = await supabase.from('insp_records')
                 .delete()
                 .eq('insp_id', activeId);
 
             if (error) throw error;
             toast.success("Debris record deleted");
+            if (onRefreshInspection) onRefreshInspection();
             setActiveId(null);
             fetchExistingDebris();
         } catch (err: any) {
             toast.error("Failed to delete debris: " + err.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -374,7 +469,7 @@ export function SeabedSurveyGuiInline({
                         </div>
                         <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => p + 1)}>Next Range</Button>
                     </div>
-                    <Button variant="outline" size="sm" onClick={onClose}>Close Planner</Button>
+                    <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
                 </div>
             </div>
             <div className="flex-1 flex overflow-hidden">
@@ -393,7 +488,15 @@ export function SeabedSurveyGuiInline({
                                      onClick={() => { setActiveId(item.id); setIsAdding(false); }}
                                      className={`p-2 rounded border text-xs cursor-pointer transition-all hover:-translate-y-[1px] ${activeId === item.id ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-300' : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'}`}>
                                     <div className="flex items-center gap-1.5 font-bold text-slate-700 mb-1">
-                                        <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm shrink-0 ${item.type === 'Gas Seepage' ? 'bg-green-600' : item.type === 'Crater' ? 'bg-slate-600' : 'bg-amber-600'}`}>
+                                        <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm shrink-0 ${
+                                            item.type === 'Gas Seepage' 
+                                                ? 'bg-green-600' 
+                                                : item.type === 'Crater' 
+                                                    ? 'bg-purple-600' 
+                                                    : item.isMetallic 
+                                                        ? 'bg-blue-700' 
+                                                        : 'bg-orange-600'
+                                        }`}>
                                             {item.label}
                                         </div>
                                         <span className="truncate">{item.type || 'Debris'}</span>
@@ -477,38 +580,105 @@ export function SeabedSurveyGuiInline({
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Description / Details</Label>
+
+                                {formData.category === 'Debris' && (
+                                    <>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Material</Label>
+                                            <Select value={formData.material} onValueChange={v => setFormData(p => ({...p, material: v}))}>
+                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Metallic">Metallic</SelectItem>
+                                                    <SelectItem value="Non-Metallic">Non-Metallic</SelectItem>
+                                                    <SelectItem value="Unknown">Unknown</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Size / Dimensions</Label>
+                                            <Input 
+                                                className="h-8 text-xs"
+                                                placeholder="e.g. 2m x 0.5m" 
+                                                value={formData.size}
+                                                onChange={e => setFormData(p => ({...p, size: e.target.value}))}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+
+                                {formData.category === 'Gas Seepage' && (
+                                    <div className="space-y-2">
+                                        <Label className="text-xs">Seepage Intensity</Label>
+                                        <Select value={formData.intensity} onValueChange={v => setFormData(p => ({...p, intensity: v}))}>
+                                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Light">Light Seepage</SelectItem>
+                                                <SelectItem value="Moderate">Moderate Bubbling</SelectItem>
+                                                <SelectItem value="Heavy">Heavy / High Pressure</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+
+                                {formData.category === 'Crater' && (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Diameter</Label>
+                                            <div className="flex gap-1">
+                                                <Input 
+                                                    type="number"
+                                                    className="h-8 text-xs flex-1"
+                                                    placeholder="e.g. 5" 
+                                                    value={formData.craterDiameter}
+                                                    onChange={e => setFormData(p => ({...p, craterDiameter: e.target.value}))}
+                                                />
+                                                <select 
+                                                    className="h-8 px-1 text-[10px] font-bold border rounded bg-slate-50 text-slate-600 focus:outline-none"
+                                                    value={formData.craterDiameterUnit}
+                                                    onChange={e => setFormData(p => ({...p, craterDiameterUnit: e.target.value}))}
+                                                >
+                                                    <option value="m">m</option>
+                                                    <option value="mm">mm</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Depth</Label>
+                                            <div className="flex gap-1">
+                                                <Input 
+                                                    type="number"
+                                                    className="h-8 text-xs flex-1"
+                                                    placeholder="e.g. 2" 
+                                                    value={formData.craterDepth}
+                                                    onChange={e => setFormData(p => ({...p, craterDepth: e.target.value}))}
+                                                />
+                                                <select 
+                                                    className="h-8 px-1 text-[10px] font-bold border rounded bg-slate-50 text-slate-600 focus:outline-none"
+                                                    value={formData.craterDepthUnit}
+                                                    onChange={e => setFormData(p => ({...p, craterDepthUnit: e.target.value}))}
+                                                >
+                                                    <option value="m">m</option>
+                                                    <option value="mm">mm</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="space-y-2 pt-2 border-t border-slate-100">
+                                    <Label className="text-xs text-slate-500 font-bold uppercase">General Description</Label>
                                     <Input 
                                         placeholder="e.g. Scaffolding pipe" 
                                         value={formData.description}
                                         onChange={e => setFormData(p => ({...p, description: e.target.value}))}
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Material</Label>
-                                    <Select value={formData.material} onValueChange={v => setFormData(p => ({...p, material: v}))}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="Metallic">Metallic</SelectItem>
-                                            <SelectItem value="Non-Metallic">Non-Metallic</SelectItem>
-                                            <SelectItem value="Unknown">Unknown</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Size / Dimensions</Label>
-                                    <Input 
-                                        placeholder="e.g. 2m x 0.5m" 
-                                        value={formData.size}
-                                        onChange={e => setFormData(p => ({...p, size: e.target.value}))}
-                                    />
-                                </div>
                             </div>
 
                             <div className="flex gap-2 pt-4">
-                                <Button className="flex-1" variant="outline" onClick={() => setIsAdding(false)}>Cancel</Button>
-                                <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleSaveNewDebris}>Save Record</Button>
+                                <Button className="flex-1" variant="outline" onClick={() => setIsAdding(false)} disabled={isSaving}>Cancel</Button>
+                                <Button className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50" onClick={handleSaveNewDebris} disabled={isSaving}>
+                                    {isSaving ? "Saving..." : "Save Record"}
+                                </Button>
                             </div>
                         </div>
                     )}
@@ -525,7 +695,17 @@ export function SeabedSurveyGuiInline({
                                 <div className="bg-slate-50 py-2 px-3 rounded text-sm text-slate-600 font-bold border border-slate-100 flex flex-col gap-1">
                                     <div className="flex justify-between items-center text-xs opacity-70">
                                         <span>Face: {activeItem.face}</span>
-                                        <span>Dist: {activeItem.distance}m</span>
+                                        <div className="flex items-center gap-1">
+                                            <span>Dist: {activeItem.distance}</span>
+                                            <select 
+                                                className="bg-transparent text-[10px] font-bold text-slate-500 focus:outline-none cursor-pointer"
+                                                value={editFormData?.distanceUnit || 'm'}
+                                                onChange={e => setEditFormData((p: any) => ({...p, distanceUnit: e.target.value}))}
+                                            >
+                                                <option value="m">m</option>
+                                                <option value="mm">mm</option>
+                                            </select>
+                                        </div>
                                     </div>
                                     <div className="flex justify-between items-center text-xs border-t border-slate-200/50 pt-1 mt-1">
                                         <span>X: {activeItem.x}</span>
@@ -562,32 +742,101 @@ export function SeabedSurveyGuiInline({
                                             onChange={e => setEditFormData((p: any) => ({...p, description: e.target.value}))}
                                         />
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-xs">Material</Label>
-                                        <Select value={editFormData.material} onValueChange={v => setEditFormData((p: any) => ({...p, material: v}))}>
-                                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+
+                                    {editFormData.category === 'Debris' && (
+                                        <>
+                                            <div className="space-y-2">
+                                                <Label className="text-xs">Material</Label>
+                                                <Select value={editFormData.material} onValueChange={v => setEditFormData((p: any) => ({...p, material: v}))}>
+                                                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="Metallic">Metallic</SelectItem>
+                                                        <SelectItem value="Non-Metallic">Non-Metallic</SelectItem>
+                                                        <SelectItem value="Unknown">Unknown</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="text-xs">Size / Dimensions</Label>
+                                                <Input 
+                                                    className="h-8 text-xs"
+                                                    value={editFormData.size}
+                                                    onChange={e => setEditFormData((p: any) => ({...p, size: e.target.value}))}
+                                                />
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {editFormData.category === 'Gas Seepage' && (
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Seepage Intensity</Label>
+                                            <Select value={editFormData.intensity} onValueChange={v => setEditFormData((p: any) => ({...p, intensity: v}))}>
+                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="Metallic">Metallic</SelectItem>
-                                                    <SelectItem value="Non-Metallic">Non-Metallic</SelectItem>
-                                                    <SelectItem value="Unknown">Unknown</SelectItem>
+                                                    <SelectItem value="Light">Light Seepage</SelectItem>
+                                                    <SelectItem value="Moderate">Moderate Bubbling</SelectItem>
+                                                    <SelectItem value="Heavy">Heavy / High Pressure</SelectItem>
                                                 </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-xs">Size / Dimensions</Label>
-                                        <Input 
-                                            className="h-8 text-xs"
-                                            value={editFormData.size}
-                                            onChange={e => setEditFormData((p: any) => ({...p, size: e.target.value}))}
-                                        />
-                                    </div>
-                                    <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700" onClick={handleSaveEdit}>Save Edits</Button>
+                                            </Select>
+                                        </div>
+                                    )}
+
+                                    {editFormData.category === 'Crater' && (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-2">
+                                                <Label className="text-xs">Diameter</Label>
+                                                <div className="flex gap-1">
+                                                    <Input 
+                                                        type="number"
+                                                        className="h-8 text-xs flex-1"
+                                                        value={editFormData.craterDiameter}
+                                                        onChange={e => setEditFormData((p: any) => ({...p, craterDiameter: e.target.value}))}
+                                                    />
+                                                    <select 
+                                                        className="h-8 px-1 text-[10px] font-bold border rounded bg-slate-50 text-slate-600 focus:outline-none"
+                                                        value={editFormData.craterDiameterUnit}
+                                                        onChange={e => setEditFormData((p: any) => ({...p, craterDiameterUnit: e.target.value}))}
+                                                    >
+                                                        <option value="m">m</option>
+                                                        <option value="mm">mm</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="text-xs">Depth</Label>
+                                                <div className="flex gap-1">
+                                                    <Input 
+                                                        type="number"
+                                                        className="h-8 text-xs flex-1"
+                                                        value={editFormData.craterDepth}
+                                                        onChange={e => setEditFormData((p: any) => ({...p, craterDepth: e.target.value}))}
+                                                    />
+                                                    <select 
+                                                        className="h-8 px-1 text-[10px] font-bold border rounded bg-slate-50 text-slate-600 focus:outline-none"
+                                                        value={editFormData.craterDepthUnit}
+                                                        onChange={e => setEditFormData((p: any) => ({...p, craterDepthUnit: e.target.value}))}
+                                                    >
+                                                        <option value="m">m</option>
+                                                        <option value="mm">mm</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50" onClick={handleSaveEdit} disabled={isSaving}>
+                                        {isSaving ? "Saving..." : "Save Edits"}
+                                    </Button>
                                 </div>
                             )}
 
                             <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
-                                <Button className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700" variant="outline" onClick={handleDeleteDebris}>
-                                    Delete This Record
+                                <Button 
+                                    className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50" 
+                                    variant="outline" 
+                                    onClick={handleDeleteDebris} 
+                                    disabled={isSaving}
+                                >
+                                    {isSaving ? "Deleting..." : "Delete This Record"}
                                 </Button>
                                 <Button className="w-full" variant="ghost" onClick={() => setActiveId(null)}>
                                     Deselect
