@@ -4,11 +4,12 @@ import { createClient } from "@/utils/supabase/server";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const supabase = createClient();
     const { id } = await params;
+    const numId = parseInt(id);
 
     const { data, error } = await supabase
         .from('mgi_profiles')
         .select('*')
-        .eq('id', id)
+        .eq('id', numId)
         .single();
 
     if (error) {
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const supabase = createClient();
     const { id } = await params;
+    const numId = parseInt(id);
     const body = await request.json();
     
     const { data: { user } } = await supabase.auth.getUser();
@@ -32,7 +34,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             .update({ is_active: false })
             .eq('is_active', true)
             .eq('is_job_specific', false)
-            .neq('id', id);
+            .neq('id', numId);
     }
 
     const { data, error } = await supabase
@@ -42,7 +44,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             updated_by: user?.email || 'system',
             updated_at: new Date().toISOString()
         })
-        .eq('id', id)
+        .eq('id', numId)
         .select()
         .single();
 
@@ -56,12 +58,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const supabase = createClient();
     const { id } = await params;
+    const numId = parseInt(id);
 
     // We prefer soft delete (archiving)
     const { error } = await supabase
         .from('mgi_profiles')
         .update({ is_archived: true, is_active: false })
-        .eq('id', id);
+        .eq('id', numId);
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });

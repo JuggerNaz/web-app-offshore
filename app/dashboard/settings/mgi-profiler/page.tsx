@@ -57,7 +57,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 
 interface MGIProfile {
-    id: string;
+    id: number;
     name: string;
     description: string;
     thresholds: Array<{ from_elevation: string | number; max_thickness: number }>;
@@ -73,7 +73,7 @@ interface JobPack {
     id: number;
     name: string;
     metadata: any;
-    mgi_profile_id?: string;
+    mgi_profile_id?: number;
 }
 
 const ELEVATION_LABELS = [
@@ -100,7 +100,7 @@ export default function MGIProfilerPage() {
     
     // Form State
     const [editingProfile, setEditingProfile] = useState<Partial<MGIProfile> | null>(null);
-    const [selectedJobId, setSelectedJobId] = useState<string>("");
+    const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
     useEffect(() => {
@@ -177,13 +177,13 @@ export default function MGIProfilerPage() {
         }
     };
 
-    const handleLinkToJob = async (profileId: string) => {
-        if (!selectedJobId) return toast.error("Please select a jobpack");
+    async function handleLinkProfile() {
+        if (!selectedJobId || !editingProfile?.id) return;
         
         try {
             const { error } = await supabase
                 .from('jobpack')
-                .update({ mgi_profile_id: profileId })
+                .update({ mgi_profile_id: editingProfile.id })
                 .eq('id', selectedJobId);
             
             if (error) throw error;
@@ -387,7 +387,7 @@ export default function MGIProfilerPage() {
                                                         size="sm" 
                                                         className="h-8 font-bold border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg"
                                                         onClick={() => {
-                                                            setSelectedJobId(job.id.toString());
+                                                            setSelectedJobId(job.id);
                                                             setIsLinkDialogOpen(true);
                                                         }}
                                                     >
@@ -600,13 +600,13 @@ export default function MGIProfilerPage() {
                         <div className="py-6 space-y-4">
                             <div className="space-y-2">
                                 <Label className="text-xs font-black uppercase tracking-widest text-slate-500">MGI profile</Label>
-                                <Select value={editingProfile?.id || ""} onValueChange={(val) => setEditingProfile(profiles.find(p => p.id === val) || null)}>
+                                <Select value={editingProfile?.id?.toString() || ""} onValueChange={(val) => setEditingProfile(profiles.find(p => p.id === Number(val)) || null)}>
                                     <SelectTrigger className="font-bold h-12">
                                         <SelectValue placeholder="Select Profile" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
                                         {profiles.map(p => (
-                                            <SelectItem key={p.id} value={p.id} className="font-bold">
+                                            <SelectItem key={p.id} value={p.id.toString()} className="font-bold">
                                                 {p.name} {p.is_active && !p.is_job_specific ? "(Global Default)" : ""}
                                             </SelectItem>
                                         ))}
@@ -626,7 +626,7 @@ export default function MGIProfilerPage() {
                             <Button variant="ghost" className="font-bold text-slate-500" onClick={() => setIsLinkDialogOpen(false)}>Cancel</Button>
                             <Button 
                                 className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-8 rounded-xl"
-                                onClick={() => handleLinkToJob(editingProfile?.id || "")}
+                                onClick={handleLinkProfile}
                             >
                                 Apply to Jobpack
                             </Button>

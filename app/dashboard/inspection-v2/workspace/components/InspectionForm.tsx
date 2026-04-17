@@ -67,7 +67,7 @@ interface InspectionFormProps {
     onChangeComponentClick?: () => void;
     isEditing?: boolean;
     dynamicProps?: any;
-    handleDynamicPropChange?: (e: any, name: string, directValue?: any) => void;
+    handleDynamicPropChange?: (name: string, value: any) => void;
     activeMGIProfile?: any;
 }
 
@@ -192,10 +192,12 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
         if (applicableMax === null) return;
 
-        // 4. Check thickness values
-        const hardT = parseFloat(dynamicProps?.mgi_hard_thickness) || 0;
-        const softT = parseFloat(dynamicProps?.mgi_soft_thickness) || 0;
-        const currentMaxT = Math.max(hardT, softT);
+        // 4. Check thickness values across all 8 clock positions
+        const thicknessFields = [
+            'mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9',
+            'mgi_soft_thickness_at_12', 'mgi_soft_thickness_at_3', 'mgi_soft_thickness_at_6', 'mgi_soft_thickness_at_9'
+        ];
+        const currentMaxT = Math.max(...thicknessFields.map(f => parseFloat(dynamicProps?.[f]) || 0));
 
         if (currentMaxT > applicableMax) {
             // Threshold breached!
@@ -217,7 +219,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             setLastFlaggedThreshold(null);
         }
 
-    }, [dynamicProps?.mgi_hard_thickness, dynamicProps?.mgi_soft_thickness, dynamicProps?.verification_depth, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev]);
+    }, [
+        dynamicProps?.mgi_hard_thickness_at_12, dynamicProps?.mgi_hard_thickness_at_3, dynamicProps?.mgi_hard_thickness_at_6, dynamicProps?.mgi_hard_thickness_at_9,
+        dynamicProps?.mgi_soft_thickness_at_12, dynamicProps?.mgi_soft_thickness_at_3, dynamicProps?.mgi_soft_thickness_at_6, dynamicProps?.mgi_soft_thickness_at_9,
+        dynamicProps?.verification_depth, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev
+    ]);
 
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white z-10">
@@ -260,18 +266,33 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 <div className="space-y-5 max-w-2xl mx-auto">
                     <div className="grid grid-cols-2 gap-5">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><MapPinIcon className="w-3 h-3" /> Verification Depth</label>
-                            <Input 
-                                value={dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? `${selectedComp.lowestElev}m` : selectedComp.depth)} 
-                                onChange={(e) => handleDynamicPropChange?.(e, 'verification_depth')}
-                                className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500" 
-                            />
+                            <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><MapPinIcon className="w-3 h-3" /> Verification Depth / Elevation</label>
+                            <div className="flex items-center gap-1">
+                                <Input 
+                                    type="number"
+                                    value={dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || ''} 
+                                    onChange={(e) => handleDynamicPropChange?.('verification_depth', e.target.value)}
+                                    placeholder="Enter depth"
+                                    className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500 flex-1" 
+                                />
+                                <select
+                                    className="h-10 px-2 text-xs font-bold border border-slate-200 rounded-md bg-slate-50 text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[55px]"
+                                    value={dynamicProps?.verification_depth_unit || 'm'}
+                                    onChange={(e) => handleDynamicPropChange?.('verification_depth_unit', e.target.value)}
+                                >
+                                    <option value="mm">mm</option>
+                                    <option value="cm">cm</option>
+                                    <option value="m">m</option>
+                                    <option value="ft">ft</option>
+                                    <option value="in">in</option>
+                                </select>
+                            </div>
                         </div>
                         {(selectedComp.startElev !== '-' || selectedComp.endElev !== '-') && (
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">Elevation Range</label>
                                 <div className="h-10 px-3 flex items-center text-sm font-bold bg-slate-50 border border-slate-200 rounded-md text-slate-600">
-                                    {selectedComp.startElev}m → {selectedComp.endElev}m
+                                    {selectedComp.startElev} → {selectedComp.endElev} {dynamicProps?.verification_depth_unit || 'm'}
                                 </div>
                             </div>
                         )}
@@ -338,17 +359,16 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             }}
                                             onDebrisMove={(id, x, y, geometry) => {
                                                 if (handleDynamicPropChange) {
-                                                    // Pass pseudo events or direct values if the handler supports it
-                                                    handleDynamicPropChange({target:{value: x.toFixed(2)}}, 'x');
-                                                    handleDynamicPropChange({target:{value: y.toFixed(2)}}, 'y');
-                                                    handleDynamicPropChange({target:{value: geometry.distance.toFixed(1)}}, 'distance_from_leg');
+                                                    handleDynamicPropChange('x', x.toFixed(2));
+                                                    handleDynamicPropChange('y', y.toFixed(2));
+                                                    handleDynamicPropChange('distance_from_leg', geometry.distance.toFixed(1));
                                                 }
                                             }}
                                             onAddDebris={(x, y, geometry) => {
                                                 if (handleDynamicPropChange) {
-                                                    handleDynamicPropChange({target:{value: x.toFixed(2)}}, 'x');
-                                                    handleDynamicPropChange({target:{value: y.toFixed(2)}}, 'y');
-                                                    handleDynamicPropChange({target:{value: geometry.distance.toFixed(1)}}, 'distance_from_leg');
+                                                    handleDynamicPropChange('x', x.toFixed(2));
+                                                    handleDynamicPropChange('y', y.toFixed(2));
+                                                    handleDynamicPropChange('distance_from_leg', geometry.distance.toFixed(1));
                                                 }
                                                 toast.info(`Point added at ${geometry.distance.toFixed(1)}m on ${geometry.face} face`);
                                             }}
@@ -357,28 +377,154 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-2 gap-4">
-                                {activeFormProps.map((p: any, idx: number) => {
-                                    if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
+                            {/* MGI Thickness Group - rendered specially when present */}
+                            {(() => {
+                                const mgiFields = activeFormProps.filter((p: any) => p.group === 'mgi_thickness');
+                                const otherFields = activeFormProps.filter((p: any) => p.group !== 'mgi_thickness');
+                                const hardFields = mgiFields.filter((p: any) => p.groupRow === 'hard');
+                                const softFields = mgiFields.filter((p: any) => p.groupRow === 'soft');
+                                const profileField = mgiFields.find((p: any) => p.type === 'mgi_profile_display');
 
-                                    return (
-                                        <motion.div 
-                                            layout
-                                            key={`${p.name || p.label}-${idx}`} 
-                                            className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            transition={{ delay: idx * 0.05 }}
-                                        >
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
-                                                {p.label || p.name}
-                                                {p.isLegacy && <span className="ml-2 text-amber-500 lowercase">(legacy)</span>}
-                                            </label>
-                                            {renderInspectionField(p, 'primary')}
-                                        </motion.div>
-                                    );
-                                })}
-                            </div>
+                                // Resolve the applicable threshold for the current depth
+                                const resolveApplicableMax = () => {
+                                    if (!activeMGIProfile?.thresholds?.length) return null;
+                                    const vDepthRaw = dynamicProps?.verification_depth || selectedComp.lowestElev || selectedComp.depth || '0';
+                                    const vDepthStr = String(vDepthRaw).replace(/[^\d.-]/g, '');
+                                    const currentDepth = Math.abs(parseFloat(vDepthStr) || 0);
+                                    const waterDepth = Math.abs(headerData.waterDepth || 0);
+
+                                    const resolved = activeMGIProfile.thresholds.map((t: any) => {
+                                        let d = 0;
+                                        const from = String(t.from_elevation).toUpperCase().trim();
+                                        if (from === 'MSL') d = 0;
+                                        else if (from === 'MUDLINE') d = waterDepth;
+                                        else if (from.includes('WD')) {
+                                            const m = from.match(/(\d+)\/(\d+)\s*WD/i);
+                                            if (m && parseInt(m[2]) !== 0) d = (parseInt(m[1]) / parseInt(m[2])) * waterDepth;
+                                            else d = waterDepth;
+                                        } else d = Math.abs(parseFloat(from) || 0);
+                                        return { depth: d, max: t.max_thickness };
+                                    }).sort((a: any, b: any) => a.depth - b.depth);
+
+                                    let applicableMax: number | null = null;
+                                    for (const t of resolved) { if (currentDepth >= t.depth) applicableMax = t.max; }
+                                    return applicableMax;
+                                };
+
+                                return (
+                                    <>
+                                        {mgiFields.length > 0 && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 5 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="col-span-2 border-2 border-teal-200 bg-gradient-to-br from-teal-50/60 to-white rounded-xl p-4 space-y-3 shadow-sm"
+                                            >
+                                                {/* Group Header */}
+                                                <div className="flex items-center justify-between border-b border-teal-200 pb-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 bg-teal-600 rounded-lg flex items-center justify-center">
+                                                            <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                                                        </div>
+                                                        <span className="text-[11px] font-black text-teal-800 uppercase tracking-widest">MGI Thickness</span>
+                                                    </div>
+                                                    {activeMGIProfile && (
+                                                        <span className="text-[9px] font-bold text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full">
+                                                            Max: {resolveApplicableMax() ?? '—'}mm
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* MGI Profile Display */}
+                                                {profileField && activeMGIProfile && (
+                                                    <div className="flex items-center gap-3 p-2.5 bg-white border border-teal-100 rounded-lg">
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Active Profile</div>
+                                                            <div className="text-sm font-black text-teal-800 truncate">{activeMGIProfile.name}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Segments</div>
+                                                            <div className="text-sm font-black text-teal-600">{activeMGIProfile.thresholds?.length || 0}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Depth</div>
+                                                            <div className="text-sm font-black text-teal-600">{headerData.waterDepth || 0}m</div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {profileField && !activeMGIProfile && (
+                                                    <div className="flex items-center gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                                                        <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                                                        <span className="text-[10px] font-bold text-amber-700">No active MGI Profile found. Configure one in Settings → MGI Profiler.</span>
+                                                    </div>
+                                                )}
+
+                                                {/* Clock Position Headers */}
+                                                <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-end">
+                                                    <div></div>
+                                                    {['12 o\'clk', '3 o\'clk', '6 o\'clk', '9 o\'clk'].map(pos => (
+                                                        <div key={pos} className="text-center">
+                                                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{pos}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Hard Thickness Row */}
+                                                {hardFields.length > 0 && (
+                                                    <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center">
+                                                        <span className="text-[10px] font-black text-rose-700 uppercase tracking-wider bg-rose-50 border border-rose-200 rounded-md px-2 py-1.5 text-center">Hard</span>
+                                                        {hardFields.map((p: any) => (
+                                                            <div key={p.name}>
+                                                                {renderInspectionField(p, 'primary')}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Soft Thickness Row */}
+                                                {softFields.length > 0 && (
+                                                    <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center">
+                                                        <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5 text-center">Soft</span>
+                                                        {softFields.map((p: any) => (
+                                                            <div key={p.name}>
+                                                                {renderInspectionField(p, 'primary')}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Unit indicator */}
+                                                <div className="text-right">
+                                                    <span className="text-[9px] font-bold text-slate-400 italic">All values in mm</span>
+                                                </div>
+                                            </motion.div>
+                                        )}
+
+                                        {/* Other (non-MGI) fields in normal 2-col grid */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {otherFields.map((p: any, idx: number) => {
+                                                if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
+
+                                                return (
+                                                    <motion.div 
+                                                        layout
+                                                        key={`${p.name || p.label}-${idx}`} 
+                                                        className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}
+                                                        initial={{ opacity: 0 }}
+                                                        animate={{ opacity: 1 }}
+                                                        transition={{ delay: idx * 0.05 }}
+                                                    >
+                                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
+                                                            {p.label || p.name}
+                                                            {p.isLegacy && <span className="ml-2 text-amber-500 lowercase">(legacy)</span>}
+                                                        </label>
+                                                        {renderInspectionField(p, 'primary')}
+                                                    </motion.div>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                );
+                            })()}
                             {activeFormProps.length === 0 && (
                                 <div className="py-6 text-center">
                                     <p className="text-xs text-slate-400 italic">No additional specialized fields for this type.</p>

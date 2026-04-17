@@ -664,7 +664,7 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           description: string | null
-          id: string
+          id: number
           is_active: boolean
           is_job_specific: boolean
           is_archived: boolean
@@ -677,7 +677,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           description?: string | null
-          id?: string
+          id?: number
           is_active?: boolean
           is_job_specific?: boolean
           is_archived?: boolean
@@ -690,7 +690,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           description?: string | null
-          id?: string
+          id?: number
           is_active?: boolean
           is_job_specific?: boolean
           is_archived?: boolean
@@ -706,7 +706,7 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           id: number
-          mgi_profile_id: string | null
+          mgi_profile_id: number | null
           metadata: Json | null
           modified_by: string | null
           name: string | null
@@ -717,7 +717,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: number
-          mgi_profile_id?: string | null
+          mgi_profile_id?: number | null
           metadata?: Json | null
           modified_by?: string | null
           name?: string | null
@@ -728,7 +728,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: number
-          mgi_profile_id?: string | null
+          mgi_profile_id?: number | null
           metadata?: Json | null
           modified_by?: string | null
           name?: string | null

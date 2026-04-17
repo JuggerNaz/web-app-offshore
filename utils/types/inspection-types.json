@@ -471,30 +471,83 @@
             ],
             "fields": [
                 {
-                    "name": "mgi_thickness_at",
-                    "label": "MGI Thickness At",
-                    "type": "select",
-                    "options": [
-                        "12 O'Clock",
-                        "3 O'Clock",
-                        "6 O'Clock",
-                        "9 O'Clock"
-                    ],
+                    "name": "mgi_profile",
+                    "label": "MGI Profile",
+                    "type": "mgi_profile_display",
+                    "group": "mgi_thickness",
+                    "required": false
+                },
+                {
+                    "name": "mgi_hard_thickness_at_12",
+                    "label": "12",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "hard",
                     "required": true
                 },
                 {
-                    "name": "mgi_hard_thickness",
-                    "label": "MGI Hard Thickness",
+                    "name": "mgi_hard_thickness_at_3",
+                    "label": "3",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "required": false
+                    "group": "mgi_thickness",
+                    "groupRow": "hard",
+                    "required": true
                 },
                 {
-                    "name": "mgi_soft_thickness",
-                    "label": "MGI Soft Thickness",
+                    "name": "mgi_hard_thickness_at_6",
+                    "label": "6",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "required": false
+                    "group": "mgi_thickness",
+                    "groupRow": "hard",
+                    "required": true
+                },
+                {
+                    "name": "mgi_hard_thickness_at_9",
+                    "label": "9",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "hard",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_thickness_at_12",
+                    "label": "12",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "soft",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_thickness_at_3",
+                    "label": "3",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "soft",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_thickness_at_6",
+                    "label": "6",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "soft",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_thickness_at_9",
+                    "label": "9",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "soft",
+                    "required": true
                 },
                 {
                     "$ref": "marine_growth"
@@ -758,13 +811,19 @@
                         "Non-Metallic",
                         "Unknown"
                     ],
-                    "condition": { "field": "category", "value": "Debris" }
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    }
                 },
                 {
                     "name": "size_dimensions",
                     "label": "Size / Dimensions",
                     "type": "text",
-                    "condition": { "field": "category", "value": "Debris" }
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    }
                 },
                 {
                     "name": "seepage_intensity",
@@ -775,7 +834,10 @@
                         "Moderate",
                         "Heavy"
                     ],
-                    "condition": { "field": "category", "value": "Gas Seepage" }
+                    "condition": {
+                        "field": "category",
+                        "value": "Gas Seepage"
+                    }
                 },
                 {
                     "name": "crater_diameter",
@@ -783,7 +845,10 @@
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultUnit": "m",
-                    "condition": { "field": "category", "value": "Crater" }
+                    "condition": {
+                        "field": "category",
+                        "value": "Crater"
+                    }
                 },
                 {
                     "name": "crater_depth",
@@ -791,7 +856,10 @@
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultUnit": "m",
-                    "condition": { "field": "category", "value": "Crater" }
+                    "condition": {
+                        "field": "category",
+                        "value": "Crater"
+                    }
                 },
                 {
                     "name": "distance_from_leg",

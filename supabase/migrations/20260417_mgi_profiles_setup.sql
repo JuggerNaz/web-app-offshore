@@ -4,7 +4,7 @@
 
 -- 1. Create MGI Profiles Table
 CREATE TABLE IF NOT EXISTS public.mgi_profiles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
     
@@ -25,11 +25,10 @@ CREATE TABLE IF NOT EXISTS public.mgi_profiles (
 );
 
 -- 2. Add foreign key to jobpack table
--- Note: jobpack_id is often BIGINT in this system
 DO $$ 
 BEGIN 
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='jobpack' AND column_name='mgi_profile_id') THEN
-        ALTER TABLE public.jobpack ADD COLUMN mgi_profile_id UUID REFERENCES public.mgi_profiles(id) ON DELETE SET NULL;
+        ALTER TABLE public.jobpack ADD COLUMN mgi_profile_id INTEGER REFERENCES public.mgi_profiles(id) ON DELETE SET NULL;
     END IF;
 END $$;
 
