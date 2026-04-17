@@ -858,14 +858,19 @@ function V10PreviewLayout() {
             }
 
             // Fetch Structure Name & Depth
+            // NOTE: The 'structure' table only has str_id + str_type. Name and depth live in platform table.
             let waterDepth = 0;
-            if (!strParam) {
-                const { data: structData } = await supabase.from('structure').select('str_name, depth').eq('str_id', Number(structureId)).single();
-                if (structData?.str_name) platformName = structData.str_name;
-                if (structData?.depth) waterDepth = Number(structData.depth);
-            } else {
-                const { data: structData } = await supabase.from('structure').select('depth').eq('str_id', Number(structureId)).single();
-                if (structData?.depth) waterDepth = Number(structData.depth);
+
+            // Always fetch from platform table — it has 'title' (name) and 'depth' (water depth)
+            const { data: platData } = await supabase
+                .from('platform' as any)
+                .select('title, depth')
+                .eq('plat_id', Number(structureId))
+                .maybeSingle() as any;
+
+            if (platData) {
+                if (!strParam && platData.title) platformName = platData.title;
+                if (platData.depth) waterDepth = Number(platData.depth);
             }
 
             // Fetch Structure Type for data acquisition
@@ -3338,9 +3343,13 @@ function V10PreviewLayout() {
 
             if (activeFormProps.length > 0) {
                 // 1. Move orphaned activeProps to archived pool
+                // NOTE: We whitelist 'verification_depth' and its unit because they are hardcoded in the UI 
+                // and should always be preserved in inspection_data even if not in the spec fields list.
+                const whitelist = new Set(['verification_depth', 'verification_depth_unit']);
+                
                 Object.keys(activeProps).forEach(key => {
                     if (key.startsWith('_')) return; // Ignore metadata
-                    if (!currentFieldNames.has(key)) {
+                    if (!currentFieldNames.has(key) && !whitelist.has(key)) {
                         newArchivedData[key] = activeProps[key];
                         delete activeProps[key];
                     }
@@ -3415,8 +3424,7 @@ function V10PreviewLayout() {
                     _mgi_profile_id: activeMGIProfile?.id || null,
                     incomplete_reason: findingType === 'Incomplete' ? incompleteReason : null
                 },
-                archived_data: newArchivedData,
-                updated_by: user?.email || user?.id || 'system'
+                archived_data: newArchivedData
             };
 
             // Tape Counter Validation logic
@@ -3808,8 +3816,14 @@ function V10PreviewLayout() {
             sow_report_no: fullRecord.sow_report_no
         });
         setArchivedData(fullRecord.archived_data || {});
+
+        // Explicitly load elevation if missing in inspection_data but present in column
+        if (fullRecord.elevation !== undefined && fullRecord.elevation !== null && !initialProps.verification_depth) {
+            initialProps.verification_depth = String(fullRecord.elevation);
+        }
+
         // Do not set debounced props immediately to avoid triggering validation without user interaction
-        setDebouncedProps(fullRecord.inspection_data || {});
+        setDebouncedProps(initialProps);
         setIsUserInteraction(false); 
         setLastAutoMatchedRuleId(null); 
         setPendingRule(null);
@@ -4675,6 +4689,17 @@ function V10PreviewLayout() {
                                                                     }
                                                                 });
                                                             }
+
+                                                            // 7. Default elevation for underwater types to negative
+                                                            if (inspMethod === 'ROV' || inspMethod === 'DIVING') {
+                                                                const depthVal = selectedComp.depth || (selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : null);
+                                                                if (depthVal) {
+                                                                    const numericDepth = parseFloat(String(depthVal).replace(/[^\d.-]/g, ''));
+                                                                    if (!isNaN(numericDepth)) {
+                                                                        newProps.verification_depth = -Math.abs(numericDepth);
+                                                                    }
+                                                                }
+                                                            }
                                                             
                                                             setDynamicProps(newProps);
                                                             setFindingType("Pass");
@@ -4837,6 +4862,7 @@ function V10PreviewLayout() {
                                     </div>
                                 ) : (
                                     <InspectionForm
+                                        activeMGIProfile={activeMGIProfile}
                                         selectedComp={selectedComp}
                                         activeSpec={activeSpec}
                                         allInspectionTypes={allInspectionTypes}

@@ -61,7 +61,7 @@ export async function GET(request: Request) {
                         str_type: item.str_type,
                         field_name: platform?.pfield || "",
                         location: platform?.location || "",
-                        water_depth: platform?.water_depth || 0,
+                        water_depth: platform?.depth || 0,
                         installation_date: platform?.installation_date || "",
                         status: platform?.status || "Active",
                         photo_url: platform?.photo_url || null,

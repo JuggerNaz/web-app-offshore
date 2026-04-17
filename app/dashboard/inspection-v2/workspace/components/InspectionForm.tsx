@@ -141,56 +141,77 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     // MGI Threshold Validation Logic
     const [lastFlaggedThreshold, setLastFlaggedThreshold] = React.useState<number | null>(null);
 
+    // Helper: Calculate interpolated MGI threshold
+    const getInterpolatedThreshold = (vDepth: any, vUnit: string, wDepth: number, thresholds: any[]) => {
+        if (!thresholds || thresholds.length === 0) return null;
+
+        // Clean depth input
+        const vDepthStr = String(vDepth).replace(/[^\d.-]/g, '');
+        let currentDepth = Math.abs(parseFloat(vDepthStr) || 0);
+        
+        // Resolve Effective Water Depth (Use Platform Depth or Leg Fallback)
+        let waterDepth = Math.abs(wDepth || 0);
+        if (waterDepth === 0 && selectedComp) {
+            // If global depth is missing and this is a LEG, use component's lowest elevation
+            const type = (selectedComp.raw?.type || String(selectedComp.name || '')).toUpperCase();
+            if (type.includes('LEG')) {
+                const lElev = parseFloat(String(selectedComp.lowestElev || '0').replace(/[^\d.-]/g, ''));
+                if (!isNaN(lElev)) waterDepth = Math.abs(lElev);
+            }
+        }
+
+        // Convert to meters for calculation
+        if (vUnit === 'ft') currentDepth *= 0.3048;
+        else if (vUnit === 'in') currentDepth *= 0.0254;
+        else if (vUnit === 'mm') currentDepth /= 1000;
+        else if (vUnit === 'cm') currentDepth /= 100;
+
+        // 1. Resolve labels to absolute depths
+        const resolved = thresholds.map(t => {
+            let d = 0;
+            const from = String(t.from_elevation).toUpperCase().trim();
+            if (from === 'MSL') d = 0;
+            else if (from === 'MUDLINE') d = waterDepth;
+            else if (from.includes('WD')) {
+                const m = from.match(/(\d+)\/(\d+)\s*WD/i);
+                if (m && parseInt(m[2]) !== 0) d = (parseInt(m[1]) / parseInt(m[2])) * waterDepth;
+                else d = waterDepth;
+            } else d = Math.abs(parseFloat(from) || 0);
+            return { depth: d, max: t.max_thickness };
+        }).sort((a, b) => a.depth - b.depth);
+
+        // 2. Interpolation
+        if (currentDepth <= resolved[0].depth) return resolved[0].max;
+        if (currentDepth >= resolved[resolved.length - 1].depth) return resolved[resolved.length - 1].max;
+
+        for (let i = 0; i < resolved.length - 1; i++) {
+            const p1 = resolved[i];
+            const p2 = resolved[i+1];
+            if (currentDepth >= p1.depth && currentDepth <= p2.depth) {
+                const ratio = (currentDepth - p1.depth) / (p2.depth - p1.depth);
+                return p1.max + (p2.max - p1.max) * ratio;
+            }
+        }
+        return resolved[resolved.length - 1].max;
+    };
+
+    // Auto-match thresholds and trigger anomalies
     React.useEffect(() => {
         if (!activeMGIProfile || !activeMGIProfile.thresholds || activeMGIProfile.thresholds.length === 0) return;
         if (!activeSpec || (activeSpec.toUpperCase() !== 'MGI' && activeSpec.toUpperCase() !== 'RMGI')) return;
 
-        // 1. Get current verification depth (fallback to component depth if not set)
-        const vDepthRaw = dynamicProps?.verification_depth || selectedComp.lowestElev || selectedComp.depth || "0";
-        // Clean string: remove 'm' and other non-numeric chars except . and -
-        const vDepthStr = String(vDepthRaw).replace(/[^\d.-]/g, '');
-        const currentDepth = Math.abs(parseFloat(vDepthStr) || 0);
+        const vDepthRaw = dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
+        const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
         const waterDepth = Math.abs(headerData.waterDepth || 0);
 
-        // 2. Resolve thresholds to absolute depths
-        const resolvedThresholds = activeMGIProfile.thresholds.map((t: any) => {
-            let thresholdDepth = 0;
-            const from = String(t.from_elevation).toUpperCase().trim();
-            
-            if (from === 'MSL') {
-                thresholdDepth = 0;
-            } else if (from === 'MUDLINE') {
-                thresholdDepth = waterDepth;
-            } else if (from.includes('WD')) {
-                // Handle fractions like "1/2 WD", "2/3 WD", "1/4 WD" etc.
-                const match = from.match(/(\d+)\/(\d+)\s*WD/i);
-                if (match) {
-                    const num = parseInt(match[1]);
-                    const den = parseInt(match[2]);
-                    if (den !== 0) {
-                        thresholdDepth = (num / den) * waterDepth;
-                    }
-                } else if (from === 'WD') {
-                    thresholdDepth = waterDepth;
-                }
-            } else {
-                // Proper depth value
-                thresholdDepth = Math.abs(parseFloat(from) || 0);
-            }
-            
-            return { depth: thresholdDepth, max: t.max_thickness };
-        }).sort((a: any, b: any) => a.depth - b.depth);
-
-        // 3. Find the applicable threshold for the current depth
-        // We look for the deepest threshold that is SHALLOWER or equal to current depth
-        let applicableMax: number | null = null;
-        for (const t of resolvedThresholds) {
-            if (currentDepth >= t.depth) {
-                applicableMax = t.max;
-            }
-        }
-
+        const applicableMax = getInterpolatedThreshold(vDepthRaw, vDepthUnit, waterDepth, activeMGIProfile.thresholds);
         if (applicableMax === null) return;
+
+        // Auto-persist threshold to mgi_profile field for reports
+        const formattedThreshold = `${applicableMax.toFixed(1)}mm`;
+        if (dynamicProps?.mgi_profile !== formattedThreshold && handleDynamicPropChange) {
+            handleDynamicPropChange('mgi_profile', formattedThreshold);
+        }
 
         // 4. Check thickness values across all 8 clock positions
         const thicknessFields = [
@@ -207,11 +228,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 setAnomalyData((prev: any) => ({
                     ...prev,
                     defectCode: 'Marine Growth',
-                    description: `MGI Thickness threshold breached. Depth: ${currentDepth}m. Threshold: ${applicableMax}mm. Measured: ${currentMaxT}mm.`,
+                    description: `MGI Thickness threshold breached. Depth: ${vDepthRaw}${vDepthUnit}. Threshold: ${applicableMax.toFixed(1)}mm. Measured: ${currentMaxT}mm.`,
                     priority: 'Anomalous'
                 }));
-                toast.warning(`MGI Threshold Breached (${applicableMax}mm)! Switch to Anomaly detected.`, {
-                    description: `Measured ${currentMaxT}mm at ${currentDepth}m depth.`
+                toast.warning(`MGI Threshold Breached (${applicableMax.toFixed(1)}mm)! Switch to Anomaly detected.`, {
+                    description: `Measured ${currentMaxT}mm at ${vDepthRaw}${vDepthUnit} depth.`
                 });
             }
         } else if (lastFlaggedThreshold === applicableMax && findingType === 'Anomaly' && anomalyData.defectCode === 'Marine Growth') {
@@ -222,7 +243,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     }, [
         dynamicProps?.mgi_hard_thickness_at_12, dynamicProps?.mgi_hard_thickness_at_3, dynamicProps?.mgi_hard_thickness_at_6, dynamicProps?.mgi_hard_thickness_at_9,
         dynamicProps?.mgi_soft_thickness_at_12, dynamicProps?.mgi_soft_thickness_at_3, dynamicProps?.mgi_soft_thickness_at_6, dynamicProps?.mgi_soft_thickness_at_9,
-        dynamicProps?.verification_depth, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev
+        dynamicProps?.verification_depth, dynamicProps?.verification_depth_unit, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev
     ]);
 
     return (
@@ -271,7 +292,17 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                 <Input 
                                     type="number"
                                     value={dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || ''} 
-                                    onChange={(e) => handleDynamicPropChange?.('verification_depth', e.target.value)}
+                                    onChange={(e) => {
+                                        let val = e.target.value;
+                                        const isUnderwater = headerData.inspMethod === 'ROV' || headerData.inspMethod === 'DIVING';
+                                        if (isUnderwater && val && val !== '-') {
+                                            const num = parseFloat(val);
+                                            if (!isNaN(num) && num > 0) {
+                                                val = String(-num);
+                                            }
+                                        }
+                                        handleDynamicPropChange?.('verification_depth', val);
+                                    }}
                                     placeholder="Enter depth"
                                     className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500 flex-1" 
                                 />
@@ -387,28 +418,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                                 // Resolve the applicable threshold for the current depth
                                 const resolveApplicableMax = () => {
-                                    if (!activeMGIProfile?.thresholds?.length) return null;
-                                    const vDepthRaw = dynamicProps?.verification_depth || selectedComp.lowestElev || selectedComp.depth || '0';
-                                    const vDepthStr = String(vDepthRaw).replace(/[^\d.-]/g, '');
-                                    const currentDepth = Math.abs(parseFloat(vDepthStr) || 0);
+                                    const vDepthRaw = dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
+                                    const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
                                     const waterDepth = Math.abs(headerData.waterDepth || 0);
-
-                                    const resolved = activeMGIProfile.thresholds.map((t: any) => {
-                                        let d = 0;
-                                        const from = String(t.from_elevation).toUpperCase().trim();
-                                        if (from === 'MSL') d = 0;
-                                        else if (from === 'MUDLINE') d = waterDepth;
-                                        else if (from.includes('WD')) {
-                                            const m = from.match(/(\d+)\/(\d+)\s*WD/i);
-                                            if (m && parseInt(m[2]) !== 0) d = (parseInt(m[1]) / parseInt(m[2])) * waterDepth;
-                                            else d = waterDepth;
-                                        } else d = Math.abs(parseFloat(from) || 0);
-                                        return { depth: d, max: t.max_thickness };
-                                    }).sort((a: any, b: any) => a.depth - b.depth);
-
-                                    let applicableMax: number | null = null;
-                                    for (const t of resolved) { if (currentDepth >= t.depth) applicableMax = t.max; }
-                                    return applicableMax;
+                                    
+                                    return getInterpolatedThreshold(vDepthRaw, vDepthUnit, waterDepth, activeMGIProfile?.thresholds);
                                 };
 
                                 return (
@@ -421,36 +435,35 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             >
                                                 {/* Group Header */}
                                                 <div className="flex items-center justify-between border-b border-teal-200 pb-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-6 h-6 bg-teal-600 rounded-lg flex items-center justify-center">
-                                                            <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                                                        </div>
-                                                        <span className="text-[11px] font-black text-teal-800 uppercase tracking-widest">MGI Thickness</span>
-                                                    </div>
-                                                    {activeMGIProfile && (
-                                                        <span className="text-[9px] font-bold text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full">
-                                                            Max: {resolveApplicableMax() ?? '—'}mm
-                                                        </span>
-                                                    )}
+                                                     <div className="flex items-center gap-2">
+                                                         <div className="w-6 h-6 bg-teal-600 rounded-lg flex items-center justify-center">
+                                                             <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                                                         </div>
+                                                         <div className="flex flex-col">
+                                                            <span className="text-[11px] font-black text-teal-800 uppercase tracking-widest leading-none">MGI Thickness</span>
+                                                            <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">
+                                                                Ref: {(() => {
+                                                                    const wDepth = Math.abs(headerData.waterDepth || 0);
+                                                                    if (wDepth > 0) return `${wDepth}m`;
+                                                                    const type = (selectedComp.raw?.type || String(selectedComp.name || '')).toUpperCase();
+                                                                    if (type.includes('LEG')) {
+                                                                        const lElev = Math.abs(parseFloat(String(selectedComp.lowestElev || '0').replace(/[^\d.-]/g, '')));
+                                                                        return lElev > 0 ? `${lElev}m (Leg)` : "0m";
+                                                                    }
+                                                                    return "0m";
+                                                                })()}
+                                                            </span>
+                                                         </div>
+                                                     </div>
+                                                     {activeMGIProfile && (
+                                                         <div className="flex flex-col items-end">
+                                                            <span className="text-[10px] font-black text-teal-600 bg-teal-100/50 px-2 py-0.5 rounded border border-teal-200">
+                                                                MAX: {resolveApplicableMax()?.toFixed(1) ?? '—'}mm
+                                                            </span>
+                                                         </div>
+                                                     )}
                                                 </div>
 
-                                                {/* MGI Profile Display */}
-                                                {profileField && activeMGIProfile && (
-                                                    <div className="flex items-center gap-3 p-2.5 bg-white border border-teal-100 rounded-lg">
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Active Profile</div>
-                                                            <div className="text-sm font-black text-teal-800 truncate">{activeMGIProfile.name}</div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Segments</div>
-                                                            <div className="text-sm font-black text-teal-600">{activeMGIProfile.thresholds?.length || 0}</div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Depth</div>
-                                                            <div className="text-sm font-black text-teal-600">{headerData.waterDepth || 0}m</div>
-                                                        </div>
-                                                    </div>
-                                                )}
                                                 {profileField && !activeMGIProfile && (
                                                     <div className="flex items-center gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
                                                         <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
