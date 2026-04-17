@@ -99,6 +99,7 @@ const REPORT_TEMPLATES = {
         { id: "seabed-survey-debris", name: "Seabed Survey For Debris", icon: FileCheck, description: "Filtered Seabed GUI maps with debris items marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", icon: FileCheck, description: "Filtered Seabed GUI maps with gas seepages marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "seabed-survey-crater", name: "Seabed Survey For Crater", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "mgi-report", name: "MGI Summary Report", icon: FileBarChart, description: "Vertical profile of marine growth thickness vs allowable thresholds", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -1000,6 +1001,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const { generateDiverLogReport } = await import("@/utils/report-generators/diver-log-report");
         const { generateVideoLogReport } = await import("@/utils/report-generators/video-log-report");
         const { generateDefectSummaryReport } = await import("@/utils/report-generators/defect-summary-report");
+        const { generateROVMGIReport } = await import("@/utils/report-generators/rov-mgi-report");
 
 
 
@@ -1094,6 +1096,100 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!jobPack) return null;
             // Map returnBlob to config if needed or pass directly. The generator expects config.returnBlob
             return await generateJobPackSummaryReport(jobPack, companySettings, reportConfig);
+        }
+
+        // ROV MGI Report
+        if (selections.templateId === "mgi-report") {
+            const jobPack = await fetchJobPackData();
+            const structure = await fetchStructureData();
+            if (!jobPack || !structure) return null;
+
+            // Fetch RMGI records
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            // 1. Find the RMGI type ID first
+            const { data: typeData } = await supabase
+                .from('inspection_type')
+                .select('id, code')
+                .eq('code', 'RMGI')
+                .maybeSingle();
+
+            const rmgiTypeId = typeData?.id || 79; // Fallback to 79 from screenshot if not found
+
+            // 2. Fetch records for the structure
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(q_id, code)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            // FILTER MANUALLY
+            const mgiRecords = records?.filter(r => {
+                // 1. SOW check (partial match, case insensitive)
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase()) ||
+                    selections.sowReportNo.toLowerCase().includes(String(r.sow_report_no || '').toLowerCase());
+                
+                // 2. JobPack check
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+
+                // 3. RMGI check
+                const recordData = r.inspection_data || r.inspection_dat;
+                const isRMGI = 
+                    r.inspection_type_id === rmgiTypeId ||
+                    String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RMGI' ||
+                    String(r.inspection_type?.name || '').toLowerCase().includes('marine growth') ||
+                    (recordData && (
+                        recordData.mgi_hard_thickness_at_12 !== undefined || 
+                        recordData.mgi_hard_thickness !== undefined || 
+                        recordData._mgi_profile_id !== undefined
+                    ));
+
+                return sowMatches && jobPackMatches && isRMGI;
+            });
+
+            if (!mgiRecords || mgiRecords.length === 0) {
+                console.warn("Records found for structure but didn't match filters:", records?.length);
+                alert(`Found ${records?.length || 0} records for this structure, but none matched SOW: "${selections.sowReportNo}" and Type: "RMGI". Please check your selection.`);
+                return null;
+            }
+
+            // Fetch MGI Profile
+            let profile = null;
+            const recordData = mgiRecords[0]?.inspection_data || mgiRecords[0]?.inspection_dat;
+            const profileId = recordData?._mgi_profile_id;
+            if (profileId) {
+                const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
+                profile = data;
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                waterDepth: Math.abs(structure.water_depth || structure.depth || structure.lowest_elevation || 0)
+            };
+
+            try {
+                return await generateROVMGIReport(
+                    mgiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    profile,
+                    headerData,
+                    companySettings,
+                    reportConfig as any
+                );
+            } catch (error) {
+                console.error("Generator threw error:", error);
+                throw error;
+            }
         }
 
         // Work Scope Status Summary (New)

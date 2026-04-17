@@ -82,6 +82,8 @@ import { toast } from "sonner";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
+import { generateROVMGIReport } from "@/utils/report-generators/rov-mgi-report";
+import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
 import { createMediaRecorder, startRecording, saveFile, generateFilename, getPhotoExtension, FORMAT_CONFIGS } from '@/lib/video-recorder/media-recorder';
@@ -138,7 +140,6 @@ import { InspectionForm } from "./components/InspectionForm";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { resolveInspectionType } from "@/utils/inspection-schema";
-import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 import { getReportHeaderData } from "@/utils/company-settings";
 
 export default function WorkspaceV2Page() {
@@ -3107,7 +3108,8 @@ function V10PreviewLayout() {
         const { data } = await supabase.from('attachment').select('*').eq('meta_type', 'COMPANY_PROFILE').limit(1).maybeSingle();
         return {
             companyName: data?.meta_name || "Deepwater Offshore",
-            companyLogo: data?.file_url || "/logo.png"
+            companyLogo: data?.file_url || "/logo.png",
+            departmentName: data?.meta?.departmentName || ""
         };
     };
 
@@ -3968,6 +3970,36 @@ function V10PreviewLayout() {
         );
     };
 
+    const generateMGIReport = async () => {
+        const mgiRecords = currentRecords.filter(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI');
+        if (mgiRecords.length === 0) {
+            toast.error("No MGI records found to generate report");
+            return;
+        }
+
+        const settings = await getReportHeaderData();
+        
+        let profile = null;
+        const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
+        if (profileId) {
+            const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
+            profile = data;
+        }
+
+        await generateROVMGIReport(
+            mgiRecords,
+            profile,
+            headerData,
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() }
+            }
+        );
+    };
+
     const generateInspectionReportByType = async (typeId: number) => {
         const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
         if (recordsToPrint.length === 0) {
@@ -4174,6 +4206,7 @@ function V10PreviewLayout() {
                 currentRecords={currentRecords}
                 generateInspectionReportByType={generateInspectionReportByType}
                 generateSeabedReport={generateSeabedReport}
+                generateMGIReport={generateMGIReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}

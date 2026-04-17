@@ -35,6 +35,7 @@ interface InspectionHeaderProps {
     currentRecords: any[];
     generateInspectionReportByType: (id: any) => void;
     generateSeabedReport: (templateId: string) => void;
+    generateMGIReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -50,6 +51,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     currentRecords,
     generateInspectionReportByType,
     generateSeabedReport,
+    generateMGIReport,
     generateFullInspectionReport,
     jobPackId,
     structureId
@@ -151,6 +153,12 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                     </DropdownMenuItem>
                                 </DropdownMenuSubContent>
                             </DropdownMenuSub>
+                        )}
+
+                        {currentRecords.some(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI') && (
+                            <DropdownMenuItem onClick={() => generateMGIReport()} className="text-xs py-2 cursor-pointer font-bold text-teal-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> MGI Summary Report
+                            </DropdownMenuItem>
                         )}
 
                         <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600">
