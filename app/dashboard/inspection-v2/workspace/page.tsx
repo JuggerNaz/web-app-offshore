@@ -83,6 +83,7 @@ import { generateInspectionReport } from "@/utils/report-generators/inspection-r
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
 import { generateROVMGIReport } from "@/utils/report-generators/rov-mgi-report";
+import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -691,6 +692,7 @@ function V10PreviewLayout() {
     const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [mPreviewOpen, setMPreviewOpen] = useState(false);
+    const [fmdPreviewOpen, setFmdPreviewOpen] = useState(false);
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const jpParam = searchParams.get('jpName');
@@ -2000,7 +2002,10 @@ function V10PreviewLayout() {
             let inspsQuery = supabase.from('insp_records').select(`
                 *,
                 inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (q_id, code)
+                structure_components:component_id!left (q_id, code),
+                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                insp_video_tapes:tape_id!left(tape_no)
             `).eq(inspCol, depId);
 
             if (structureId && !isNaN(Number(structureId))) {
@@ -2991,6 +2996,29 @@ function V10PreviewLayout() {
             if (!existingNames.includes('easting')) extra.push({ name: 'easting', label: 'Easting', type: 'text' });
             if (extra.length > 0) props = [...extra, ...props];
         }
+
+        // 3. Filter legacy fields logic:
+        // For new records, hide any field marked as isLegacy or having "(legacy)" in the label.
+        // For existing records (editing), show legacy fields only if data exists in ANY historical record for this component.
+        props = props.filter(p => {
+            const isLegacy = p.isLegacy || (p.label || '').toLowerCase().includes('(legacy)');
+            if (!isLegacy) return true;
+
+            // If it is legacy, only show if we are in modification mode (editingRecordId set)
+            // AND any historical record for this component has data for it.
+            if (editingRecordId) {
+                const hasDataInHistory = currentRecords.some(r => {
+                    if (r.component_id !== selectedComp?.id) return false;
+                    const recordData = typeof r.inspection_data === 'string' 
+                        ? JSON.parse(r.inspection_data) 
+                        : r.inspection_data;
+                    const val = recordData?.[p.name] || recordData?.[p.label];
+                    return val !== undefined && val !== null && String(val).trim() !== "" && val !== "--";
+                });
+                return hasDataInHistory;
+            }
+            return false;
+        });
 
         return props;
     }, [activeSpec, selectedComp, allInspectionTypes, editingRecordId, currentRecords, inspMethod]);
@@ -4020,6 +4048,47 @@ function V10PreviewLayout() {
         )) as Blob;
     };
 
+    const generateFMDReport = async () => {
+        const fmdRecords = currentRecords.filter(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD');
+        if (fmdRecords.length === 0) {
+            toast.error("No FMD records found to generate report");
+            return;
+        }
+        setFmdPreviewOpen(true);
+    };
+
+    const generateFMDReportBlob = async (): Promise<Blob | void> => {
+        const fmdRecords = currentRecords.filter(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD');
+        if (fmdRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+
+        // Fetch Contractor Logo URL and Vessel for the report header
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return (await generateROVFMDReport(
+            fmdRecords,
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: jobPack?.metadata?.vessel || 'N/A'
+            },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true
+            }
+        )) as Blob;
+    };
+
     const generateInspectionReportByType = async (typeId: number) => {
         const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
         if (recordsToPrint.length === 0) {
@@ -4227,6 +4296,7 @@ function V10PreviewLayout() {
                 generateInspectionReportByType={generateInspectionReportByType}
                 generateSeabedReport={generateSeabedReport}
                 generateMGIReport={generateMGIReport}
+                generateFMDReport={generateFMDReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -5852,6 +5922,13 @@ function V10PreviewLayout() {
                 title="ROV MGI Survey Report Preview"
                 fileName={`ROV_MGI_Report_${headerData.sowReportNo}`}
                 generateReport={generateMGIReportBlob}
+            />
+            <ReportPreviewDialog
+                open={fmdPreviewOpen}
+                onOpenChange={setFmdPreviewOpen}
+                title="ROV FMD Survey Report Preview"
+                fileName={`ROV_FMD_Report_${headerData.sowReportNo}`}
+                generateReport={generateFMDReportBlob}
             />
             {/* Recording Gallery Dialog */}
             <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>

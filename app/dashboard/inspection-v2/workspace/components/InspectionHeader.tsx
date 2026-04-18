@@ -36,6 +36,7 @@ interface InspectionHeaderProps {
     generateInspectionReportByType: (id: any) => void;
     generateSeabedReport: (templateId: string) => void;
     generateMGIReport: () => void;
+    generateFMDReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -52,6 +53,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateInspectionReportByType,
     generateSeabedReport,
     generateMGIReport,
+    generateFMDReport,
     generateFullInspectionReport,
     jobPackId,
     structureId
@@ -123,7 +125,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                     <DropdownMenuContent align="end" className="w-56 p-1">
                         <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-50 mb-1">Inspection Reports</div>
                         <ScrollArea className="h-48">
-                            {allInspectionTypes.filter(t => t.code !== 'RSEAB' && t.code !== 'RMGI' && currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))).map(t => (
+                            {allInspectionTypes.filter(t => t.code !== 'RSEAB' && t.code !== 'RMGI' && t.code !== 'RFMD' && currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))).map(t => (
                                 <DropdownMenuItem key={t.id} onClick={() => generateInspectionReportByType(t.id)} className="text-xs py-2 cursor-pointer flex items-center justify-between">
                                     <div className="flex items-center">
                                         <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-blue-500" />
@@ -153,6 +155,12 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                     </DropdownMenuItem>
                                 </DropdownMenuSubContent>
                             </DropdownMenuSub>
+                        )}
+
+                        {currentRecords.some(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD') && (
+                            <DropdownMenuItem onClick={() => generateFMDReport()} className="text-xs py-2 cursor-pointer font-bold text-indigo-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV FMD Survey Report
+                            </DropdownMenuItem>
                         )}
 
                         {currentRecords.some(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI') && (
