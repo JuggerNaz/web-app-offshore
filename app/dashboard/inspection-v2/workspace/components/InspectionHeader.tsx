@@ -37,6 +37,7 @@ interface InspectionHeaderProps {
     generateSeabedReport: (templateId: string) => void;
     generateMGIReport: () => void;
     generateFMDReport: () => void;
+    generateSZCIReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -54,6 +55,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateSeabedReport,
     generateMGIReport,
     generateFMDReport,
+    generateSZCIReport,
     generateFullInspectionReport,
     jobPackId,
     structureId
@@ -166,6 +168,12 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         {currentRecords.some(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI') && (
                             <DropdownMenuItem onClick={() => generateMGIReport()} className="text-xs py-2 cursor-pointer font-bold text-teal-600 border-t border-slate-50 mt-1">
                                 <Activity className="w-3.5 h-3.5 mr-2" /> ROV MGI Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI') && (
+                            <DropdownMenuItem onClick={() => generateSZCIReport()} className="text-xs py-2 cursor-pointer font-bold text-orange-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV SZCI Survey Report
                             </DropdownMenuItem>
                         )}
 

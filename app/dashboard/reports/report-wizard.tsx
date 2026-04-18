@@ -101,6 +101,7 @@ const REPORT_TEMPLATES = {
         { id: "seabed-survey-crater", name: "Seabed Survey For Crater", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "mgi-report", name: "ROV MGI Survey Report", icon: FileBarChart, description: "Vertical profile of marine growth thickness vs allowable thresholds", requires: ["jobpack", "structure", "sow_report"] },
         { id: "fmd-report", name: "ROV FMD Survey Report", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "szci-report", name: "ROV Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -1004,6 +1005,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const { generateDefectSummaryReport } = await import("@/utils/report-generators/defect-summary-report");
         const { generateROVMGIReport } = await import("@/utils/report-generators/rov-mgi-report");
         const { generateROVFMDReport } = await import("@/utils/report-generators/rov-fmd-report");
+        const { generateROVSZCIReport } = await import("@/utils/report-generators/rov-szci-report");
 
 
 
@@ -1275,6 +1277,78 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("FMD Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV SZCI Survey Report (New)
+        if (selections.templateId === "szci-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            // 1. Fetch records with all necessary joins for SZCI
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(q_id, code),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            // FILTER MANUALLY
+            const szciRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isRSZCI = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RSZCI';
+                return sowMatches && jobPackMatches && isRSZCI;
+            });
+
+            if (!szciRecords || szciRecords.length === 0) {
+                alert(`No ROV Splash Zone records (RSZCI) found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            // Fetch Contractor Logo if available
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: jobPack.metadata?.vessel || "N/A"
+            };
+
+            try {
+                return await generateROVSZCIReport(
+                    szciRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("SZCI Generator Error:", error);
                 throw error;
             }
         }

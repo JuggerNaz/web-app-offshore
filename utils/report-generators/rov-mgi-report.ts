@@ -96,9 +96,9 @@ export const generateROVMGIReport = async (
             }
 
             d.setTextColor(255); d.setFontSize(8); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NASQUEST RESOURCES SDN BHD', margin + (contentWidth/2), margin + 6, { align: 'center' });
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
             d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text('Inspection', margin + (contentWidth/2), margin + 10, { align: 'center' });
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
             d.setFontSize(12); d.setFont("helvetica", "bold");
             d.text(`ROV MGI Survey Report`, margin + (contentWidth/2), margin + 18, { align: 'center' });
         };

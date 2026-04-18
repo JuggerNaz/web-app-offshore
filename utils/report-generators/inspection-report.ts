@@ -70,56 +70,65 @@ export const generateInspectionReport = async (
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
 
-        const headerBlue: [number, number, number] = [26, 54, 93];
+        const margin = 12;
+        const contentWidth = pageWidth - (margin * 2);
+        const colors = {
+            navy: [31, 55, 93] as [number, number, number],
+            teal: [20, 184, 166] as [number, number, number],
+            lightGray: [248, 250, 252] as [number, number, number],
+            border: [203, 213, 225] as [number, number, number],
+            text: [30, 41, 59] as [number, number, number]
+        };
         const sectionBlue: [number, number, number] = [44, 82, 130];
         const isPrintFriendly = config?.printFriendly === true;
 
         // --- HEADER ---
-        if (isPrintFriendly) {
-            // Print-Friendly: White background with light gray border
-            doc.setDrawColor(180, 180, 180);
-            doc.setLineWidth(0.3);
-            doc.rect(0, 0, pageWidth, 28);
-        } else {
-            doc.setFillColor(...headerBlue);
-            doc.rect(0, 0, pageWidth, 28, "F");
-        }
+        const drawPremiumHeader = async (d: jsPDF) => {
+            const headerH = 22;
+            d.setFillColor(...colors.navy);
+            d.rect(margin, margin, contentWidth, headerH, 'F');
 
-        // Logo
-        if (companySettings?.logo_url) {
-            try {
-                const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-            } catch (e) {
-                doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-                doc.setFontSize(8);
-                doc.text("LOGO", pageWidth - 16, 13);
+            // 1. Company Logo (Right)
+            if (companySettings?.logo_url) {
+                try {
+                    const logoData = await loadLogoWithTransparency(companySettings.logo_url);
+                    if (logoData) {
+                        drawLogo(d, logoData, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
+                    }
+                } catch (e) {}
             }
-        }
 
-        // Company
-        doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", 10, 9);
+            // 2. Contractor Logo (Left - if provided in config)
+            const contractorLogoUrl = (config as any)?.contractorLogoUrl;
+            if (contractorLogoUrl) {
+                try {
+                    const logoData = await loadLogoWithTransparency(contractorLogoUrl);
+                    if (logoData) {
+                        drawLogo(d, logoData, 16, 16, margin + 4, margin + 3, 'left', 'center');
+                    }
+                } catch (e) {}
+            }
 
-        // Dept
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.text(companySettings?.department_name || "Engineering Department", 10, 14);
+            d.setTextColor(255); d.setFontSize(10); d.setFont("helvetica", "bold");
+            d.text(companySettings?.company_name || 'NASQUEST RESOURCES SDN BHD', margin + (contentWidth/2), margin + 6, { align: 'center' });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(companySettings?.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
+            d.setFontSize(12); d.setFont("helvetica", "bold");
+            const isAnomaly = inspection.has_anomaly;
+            d.text(isAnomaly ? "ANOMALY REPORT" : "INSPECTION REPORT", margin + (contentWidth/2), margin + 18, { align: 'center' });
+        };
 
-        // Title
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
+        await drawPremiumHeader(doc);
+
         const isAnomaly = inspection.has_anomaly;
-        doc.text(isAnomaly ? "ANOMALY REPORT" : "INSPECTION REPORT", 10, 22);
 
-        // Subtitle
-        doc.setFontSize(10);
+        // Subtitle / Reference
+        doc.setTextColor(...colors.text);
+        doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
-        doc.text(`Ref: ${inspection.insp_id}`, pageWidth - 30, 22, { align: "right" });
+        doc.text(`Record Ref: ${inspection.insp_id}`, margin, margin + 22 + 5);
 
-        let yPos = 35;
+        let yPos = margin + 22 + 12;
 
         // --- INSPECTION DETAILS ---
         const drawSectionHeader = (text: string, y: number) => {

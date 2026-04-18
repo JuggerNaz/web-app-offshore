@@ -184,6 +184,7 @@ export interface ReportConfig {
   approvedBy?: { name: string; date: string };
   watermark?: { enabled: boolean; text: string; transparency: number };
   showContractorLogo: boolean;
+  contractorLogoUrl?: string;
   showPageNumbers: boolean;
   returnBlob?: boolean;
   printFriendly?: boolean;
@@ -268,7 +269,7 @@ const generatePipelineReport = async (
   // Department Name
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 14);
+  doc.text(companySettings?.department_name || "Technical Inspection Division", 10, 14);
 
   // Report Title
   doc.setFontSize(11);
@@ -627,7 +628,7 @@ const generatePlatformReport = async (
   // Department Name - Under Company Name
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 14);
+  doc.text(companySettings?.department_name || "Technical Inspection Division", 10, 14);
 
   // Report Title - SMALLER
   doc.setFontSize(11);

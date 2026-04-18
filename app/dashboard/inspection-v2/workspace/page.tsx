@@ -84,6 +84,7 @@ import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-an
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
 import { generateROVMGIReport } from "@/utils/report-generators/rov-mgi-report";
 import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
+import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -693,6 +694,7 @@ function V10PreviewLayout() {
     const [previewOpen, setPreviewOpen] = useState(false);
     const [mPreviewOpen, setMPreviewOpen] = useState(false);
     const [fmdPreviewOpen, setFmdPreviewOpen] = useState(false);
+    const [szciPreviewOpen, setSzciPreviewOpen] = useState(false);
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const jpParam = searchParams.get('jpName');
@@ -3134,11 +3136,27 @@ function V10PreviewLayout() {
     };
 
     const getReportHeaderData = async () => {
+        // Try to fetch from standard API first
+        try {
+            const response = await fetch("/api/company-settings");
+            if (response.ok) {
+                const { data } = await response.json();
+                return {
+                    companyName: data.company_name || "NasQuest Resources Sdn Bhd",
+                    companyLogo: data.logo_url || "/logo.png",
+                    departmentName: data.department_name || "Technical Inspection Division"
+                };
+            }
+        } catch (error) {
+            console.error("Error fetching company settings for report:", error);
+        }
+
+        // Fallback to absolute defaults if API fails
         const { data } = await supabase.from('attachment').select('*').eq('meta_type', 'COMPANY_PROFILE').limit(1).maybeSingle();
         return {
-            companyName: data?.meta_name || "Deepwater Offshore",
+            companyName: data?.meta_name || "NasQuest Resources Sdn Bhd",
             companyLogo: data?.file_url || "/logo.png",
-            departmentName: data?.meta?.departmentName || ""
+            departmentName: data?.meta?.departmentName || "Technical Inspection Division"
         };
     };
 
@@ -4089,6 +4107,47 @@ function V10PreviewLayout() {
         )) as Blob;
     };
 
+    const generateSZCIReport = async () => {
+        const szciRecords = currentRecords.filter(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI');
+        if (szciRecords.length === 0) {
+            toast.error("No Splash Zone records found to generate report");
+            return;
+        }
+        setSzciPreviewOpen(true);
+    };
+
+    const generateSZCIReportBlob = async (): Promise<Blob | void> => {
+        const szciRecords = currentRecords.filter(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI');
+        if (szciRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+        
+        // Fetch Contractor Logo URL
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return (await generateROVSZCIReport(
+            szciRecords,
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: jobPack?.metadata?.vessel || 'N/A'
+            },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true
+            }
+        )) as Blob;
+    };
+
     const generateInspectionReportByType = async (typeId: number) => {
         const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
         if (recordsToPrint.length === 0) {
@@ -4098,6 +4157,12 @@ function V10PreviewLayout() {
 
         const type = allInspectionTypes.find(t => t.id === typeId);
         const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
 
         await generateMultiInspectionReport(
             recordsToPrint.map(r => r.insp_id),
@@ -4110,6 +4175,7 @@ function V10PreviewLayout() {
                 approvedBy: { name: "", date: "" },
                 watermark: { enabled: false, text: "", transparency: 0.1 },
                 showContractorLogo: true,
+                contractorLogoUrl,
                 showPageNumbers: true,
                 printFriendly: false
             }
@@ -4123,6 +4189,12 @@ function V10PreviewLayout() {
         }
 
         const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
 
         await generateMultiInspectionReport(
             currentRecords.map(r => r.insp_id),
@@ -4135,6 +4207,7 @@ function V10PreviewLayout() {
                 approvedBy: { name: "", date: "" },
                 watermark: { enabled: false, text: "", transparency: 0.1 },
                 showContractorLogo: true,
+                contractorLogoUrl,
                 showPageNumbers: true,
                 printFriendly: false
             }
@@ -4297,6 +4370,7 @@ function V10PreviewLayout() {
                 generateSeabedReport={generateSeabedReport}
                 generateMGIReport={generateMGIReport}
                 generateFMDReport={generateFMDReport}
+                generateSZCIReport={generateSZCIReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -5929,6 +6003,13 @@ function V10PreviewLayout() {
                 title="ROV FMD Survey Report Preview"
                 fileName={`ROV_FMD_Report_${headerData.sowReportNo}`}
                 generateReport={generateFMDReportBlob}
+            />
+            <ReportPreviewDialog
+                open={szciPreviewOpen}
+                onOpenChange={setSzciPreviewOpen}
+                title="ROV SZCI Survey Report Preview"
+                fileName={`ROV_SZCI_Report_${headerData.sowReportNo}`}
+                generateReport={generateSZCIReportBlob}
             />
             {/* Recording Gallery Dialog */}
             <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>
