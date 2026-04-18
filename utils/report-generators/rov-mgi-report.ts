@@ -66,7 +66,8 @@ export const generateROVMGIReport = async (
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
             actual: [20, 184, 166] as [number, number, number], // Teal
-            limit: [220, 38, 38] as [number, number, number]    // Red
+            limit: [128, 0, 0] as [number, number, number],    // Maroon
+            anomaly: [220, 38, 38] as [number, number, number]  // Red
         };
 
         const drawPremiumHeader = async (d: jsPDF, qid: string) => {
@@ -74,6 +75,7 @@ export const generateROVMGIReport = async (
             d.setFillColor(...colors.navy);
             d.rect(margin, margin, contentWidth, headerH, 'F');
 
+            // 1. Company Logo (Right)
             if (companySettings.logo_url) {
                 try {
                     const logoData = await loadLogoWithTransparency(companySettings.logo_url);
@@ -83,12 +85,22 @@ export const generateROVMGIReport = async (
                 } catch (e) {}
             }
 
+            // 2. Contractor Logo (Left)
+            if (headerData.contractorLogoUrl) {
+                try {
+                    const logoData = await loadLogoWithTransparency(headerData.contractorLogoUrl);
+                    if (logoData) {
+                        drawLogo(d, logoData, 16, 16, margin + 4, margin + 3, 'left', 'center');
+                    }
+                } catch (e) {}
+            }
+
             d.setTextColor(255); d.setFontSize(8); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NASQUEST RESOURCES SDN BHD', margin + (contentWidth/2), margin + 6, { align: 'center' });
             d.setFontSize(7); d.setFont("helvetica", "normal");
             d.text('Inspection', margin + (contentWidth/2), margin + 10, { align: 'center' });
             d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`Marine Growth Survey Graph Report (ROV)`, margin + (contentWidth/2), margin + 18, { align: 'center' });
+            d.text(`ROV MGI Survey Report`, margin + (contentWidth/2), margin + 18, { align: 'center' });
         };
 
         const drawPremiumContext = (d: jsPDF, y: number, qid: string) => {
@@ -107,9 +119,40 @@ export const generateROVMGIReport = async (
             drawBox('Date:', format(new Date(), 'dd/MM/yyyy'), margin + (colW * 2), colW, tableY);
             drawBox('Structure:', headerData.platformName, margin, colW, tableY + rowH);
             drawBox('Component:', qid, margin + colW, colW, tableY + rowH);
-            drawBox('MGI Profile:', mgiProfile?.name || 'Global', margin + (colW * 2), colW, tableY + rowH);
+            drawBox('Vessel:', headerData.vessel || 'N/A', margin + (colW * 2), colW, tableY + rowH);
             return tableY + (rowH * 2) + 5;
         }
+
+        const parseMG = (mg: string) => {
+            if (!mg || typeof mg !== 'string') return { h: '0', s: '0' };
+            const lower = mg.toLowerCase();
+            let rawVal = mg.split(':').pop()?.replace(/coverage/i, '').trim() || '0';
+            let val = rawVal.replace('%', '');
+            
+            if (val.toLowerCase() === 'all over') val = '100';
+
+            const getHighest = (v: string) => {
+                if (v.includes('-')) {
+                    const parts = v.split('-');
+                    return parts[parts.length - 1].trim();
+                }
+                return v;
+            };
+
+            if (lower.startsWith('hard:')) return { h: getHighest(val), s: '0' };
+            if (lower.startsWith('soft:')) return { h: '0', s: getHighest(val) };
+            
+            if (lower.startsWith('hard and soft:') || lower.startsWith('mgi:')) {
+                if (val.includes('-')) {
+                    const parts = val.split('-');
+                    if (parts.length === 2) {
+                        return { h: parts[0].trim(), s: parts[1].trim() };
+                    }
+                }
+                return { h: val, s: val };
+            }
+            return { h: '0', s: '0' };
+        };
 
         for (let i = 0; i < sortedQids.length; i++) {
             const qid = sortedQids[i];
@@ -138,9 +181,16 @@ export const generateROVMGIReport = async (
                 const sList = ['mgi_soft_thickness_at_12','mgi_soft_thickness_at_3','mgi_soft_thickness_at_6','mgi_soft_thickness_at_9'];
                 const hVals = hList.map(v => parseFloat(d[v]) || (v === 'mgi_hard_thickness_at_12' ? parseFloat(d.mgi_hard_thickness) : 0) || 0);
                 const sVals = sList.map(v => parseFloat(d[v]) || (v === 'mgi_soft_thickness_at_12' ? parseFloat(d.mgi_soft_thickness) : 0) || 0);
+                
+                const mgData = parseMG(d.marine_growth);
+                const hCov = d.mgi_hard_coverage ?? mgData.h;
+                const sCov = d.mgi_soft_coverage ?? mgData.s;
+
                 return {
-                    depth: elev, limit, maxInRow: Math.max(...hVals, ...sVals),
-                    hCov: d.mgi_hard_coverage || 0, sCov: d.mgi_soft_coverage || 0,
+                    depth: elev, limit, 
+                    maxInRow: Math.max(...hVals, ...sVals),
+                    maxHard: Math.max(...hVals),
+                    hCov, sCov,
                     h: hVals.map(v => v || '-'), s: sVals.map(v => v || '-'),
                     findings: r.description || 'N/A'
                 };
@@ -174,11 +224,17 @@ export const generateROVMGIReport = async (
                     ]
                 ],
                 body: tableData.map(row => {
-                    const maxVal = row.maxInRow;
-                    const formatReading = (v: any) => {
+                    const isAnomaly = row.maxInRow > row.limit && row.limit > 0;
+                    
+                    const formatReading = (v: any, isHard: boolean) => {
                         const numeric = parseFloat(v);
-                        if (!isNaN(numeric) && numeric === maxVal && maxVal > 0) {
-                            return { content: `${v}`, styles: { fontStyle: 'bold', textColor: colors.teal } };
+                        if (!isNaN(numeric) && numeric > 0) {
+                            if (isAnomaly && isHard && numeric === row.maxHard) {
+                                return { content: `${v}`, styles: { fontStyle: 'bold', textColor: colors.anomaly } };
+                            }
+                            if (numeric === row.maxInRow) {
+                                return { content: `${v}`, styles: { fontStyle: 'bold', textColor: colors.teal } };
+                            }
                         }
                         return v;
                     };
@@ -187,9 +243,9 @@ export const generateROVMGIReport = async (
                         `${row.depth.toFixed(1)}m`,
                         '',
                         `${row.hCov}% / ${row.sCov}%`,
-                        ...row.h.map(formatReading),
-                        ...row.s.map(formatReading),
-                        { content: `${row.limit}mm`, styles: { fontStyle: 'bold', textColor: row.maxInRow > row.limit && row.limit > 0 ? [200, 0, 0] : [0,0,0] } },
+                        ...row.h.map(v => formatReading(v, true)),
+                        ...row.s.map(v => formatReading(v, false)),
+                        { content: `${row.limit}mm`, styles: { fontStyle: 'bold', textColor: colors.limit } },
                         row.findings
                     ];
                 }),
@@ -226,7 +282,7 @@ export const generateROVMGIReport = async (
                         const first = plotPoints[0];
                         const last = plotPoints[plotPoints.length - 1];
 
-                        // 1. Max Allowable (Red)
+                        // 1. Max Allowable (Maroon)
                         doc.setDrawColor(...colors.limit); doc.setLineWidth(0.3);
                         doc.moveTo(first.limitX, first.y - (first.h / 2)); // Start at top edge
                         for (let p = 0; p < plotPoints.length; p++) doc.lineTo(plotPoints[p].limitX, plotPoints[p].y);

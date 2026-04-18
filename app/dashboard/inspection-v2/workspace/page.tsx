@@ -690,6 +690,7 @@ function V10PreviewLayout() {
 
     const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
     const [previewOpen, setPreviewOpen] = useState(false);
+    const [mPreviewOpen, setMPreviewOpen] = useState(false);
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const jpParam = searchParams.get('jpName');
@@ -3976,6 +3977,12 @@ function V10PreviewLayout() {
             toast.error("No MGI records found to generate report");
             return;
         }
+        setMPreviewOpen(true);
+    };
+
+    const generateMGIReportBlob = async (): Promise<Blob | void> => {
+        const mgiRecords = currentRecords.filter(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI');
+        if (mgiRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
         
@@ -3986,18 +3993,31 @@ function V10PreviewLayout() {
             profile = data;
         }
 
-        await generateROVMGIReport(
+        // Fetch Contractor Logo URL for the report header
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return (await generateROVMGIReport(
             mgiRecords,
             profile,
-            headerData,
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: jobPack?.metadata?.vessel || 'N/A'
+            },
             { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
             {
                 jobPackId: Number(jobPackId),
                 structureId: Number(structureId),
                 sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() }
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true
             }
-        );
+        )) as Blob;
     };
 
     const generateInspectionReportByType = async (typeId: number) => {
@@ -5825,6 +5845,13 @@ function V10PreviewLayout() {
                 title="Anomaly Report Preview"
                 fileName={`Anomaly_Report_${previewRecord?.anomaly_ref_no || 'Draft'}`}
                 generateReport={generateAnomalyReportBlob}
+            />
+            <ReportPreviewDialog
+                open={mPreviewOpen}
+                onOpenChange={setMPreviewOpen}
+                title="ROV MGI Survey Report Preview"
+                fileName={`ROV_MGI_Report_${headerData.sowReportNo}`}
+                generateReport={generateMGIReportBlob}
             />
             {/* Recording Gallery Dialog */}
             <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>

@@ -99,7 +99,7 @@ const REPORT_TEMPLATES = {
         { id: "seabed-survey-debris", name: "Seabed Survey For Debris", icon: FileCheck, description: "Filtered Seabed GUI maps with debris items marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", icon: FileCheck, description: "Filtered Seabed GUI maps with gas seepages marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "seabed-survey-crater", name: "Seabed Survey For Crater", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "mgi-report", name: "MGI Summary Report", icon: FileBarChart, description: "Vertical profile of marine growth thickness vs allowable thresholds", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "mgi-report", name: "ROV MGI Survey Report", icon: FileBarChart, description: "Vertical profile of marine growth thickness vs allowable thresholds", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -1171,11 +1171,24 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 profile = data;
             }
 
+            // Fetch Contractor Logo if available
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
             const headerData = {
                 jobpackName: jobPack.name || jobPack.title || "N/A",
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
-                waterDepth: Math.abs(structure.water_depth || structure.depth || structure.lowest_elevation || 0)
+                waterDepth: Math.abs(structure.water_depth || structure.depth || structure.lowest_elevation || 0),
+                contractorLogoUrl,
+                vessel: jobPack.metadata?.vessel || "N/A"
             };
 
             try {
