@@ -85,6 +85,7 @@ import { generateMultiInspectionReport } from "@/utils/report-generators/multi-i
 import { generateROVMGIReport } from "@/utils/report-generators/rov-mgi-report";
 import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
 import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report";
+import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -695,6 +696,7 @@ function V10PreviewLayout() {
     const [mPreviewOpen, setMPreviewOpen] = useState(false);
     const [fmdPreviewOpen, setFmdPreviewOpen] = useState(false);
     const [szciPreviewOpen, setSzciPreviewOpen] = useState(false);
+    const [utwtPreviewOpen, setUtwtPreviewOpen] = useState(false);
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const jpParam = searchParams.get('jpName');
@@ -4148,6 +4150,47 @@ function V10PreviewLayout() {
         )) as Blob;
     };
 
+    const generateUTWTReport = async () => {
+        const utwtRecords = currentRecords.filter(r => r.inspection_type_code === 'RUTWT' || r.inspection_type?.code === 'RUTWT');
+        if (utwtRecords.length === 0) {
+            toast.error("No UTWT records found to generate report");
+            return;
+        }
+        setUtwtPreviewOpen(true);
+    };
+
+    const generateUTWTReportBlob = async (): Promise<Blob | void> => {
+        const utwtRecords = currentRecords.filter(r => r.inspection_type_code === 'RUTWT' || r.inspection_type?.code === 'RUTWT');
+        if (utwtRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+        
+        // Fetch Contractor Logo URL
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return (await generateROVUTWTReport(
+            utwtRecords,
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: jobPack?.metadata?.vessel || 'N/A'
+            },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true
+            }
+        )) as Blob;
+    };
+
     const generateInspectionReportByType = async (typeId: number) => {
         const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
         if (recordsToPrint.length === 0) {
@@ -4371,6 +4414,7 @@ function V10PreviewLayout() {
                 generateMGIReport={generateMGIReport}
                 generateFMDReport={generateFMDReport}
                 generateSZCIReport={generateSZCIReport}
+                generateUTWTReport={generateUTWTReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -6003,6 +6047,13 @@ function V10PreviewLayout() {
                 title="ROV FMD Survey Report Preview"
                 fileName={`ROV_FMD_Report_${headerData.sowReportNo}`}
                 generateReport={generateFMDReportBlob}
+            />
+            <ReportPreviewDialog
+                open={utwtPreviewOpen}
+                onOpenChange={setUtwtPreviewOpen}
+                title="ROV UTWT Survey Report Preview"
+                fileName={`ROV_UTWT_Report_${headerData.sowReportNo}`}
+                generateReport={generateUTWTReportBlob}
             />
             <ReportPreviewDialog
                 open={szciPreviewOpen}

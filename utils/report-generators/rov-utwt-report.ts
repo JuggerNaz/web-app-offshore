@@ -21,16 +21,16 @@ interface ReportConfig {
 }
 
 /**
- * ROV FMD Inspection Summary Report
+ * ROV UT Wall Thickness Report (RUTWT)
  */
-export const generateROVFMDReport = async (
+export const generateROVUTWTReport = async (
     records: any[],
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
 ) => {
     try {
-        const doc = new jsPDF({ orientation: "portrait" });
+        const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 12;
@@ -95,12 +95,16 @@ export const generateROVFMDReport = async (
                 } catch (e) {}
             }
 
-            d.setFontSize(8); d.setFont("helvetica", "bold");
+            d.setFontSize(10); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
             d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`ROV Flooded Member Detection Report`, margin + (contentWidth/2), margin + 18, { align: 'center' });
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 9, { align: 'center' });
+            
+            d.setFontSize(13); d.setFont("helvetica", "bold");
+            d.text(`ROV UT Wall Thickness Report`, margin + (contentWidth/2), margin + 15, { align: 'center' });
+            
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 19, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -115,9 +119,9 @@ export const generateROVFMDReport = async (
                 d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 
-                d.setTextColor(...colors.text); d.setFontSize(7); d.setFont("helvetica", "bold");
+                d.setTextColor(...colors.text); d.setFontSize(8); d.setFont("helvetica", "bold");
                 d.text(label, x + 2, ty + 4.5); d.setFont("helvetica", "normal");
-                d.text(String(value), x + 35, ty + 4.5);
+                d.text(String(value), x + 40, ty + 4.5);
             };
 
             drawBox('Structure:', headerData.platformName, margin, colW, tableY);
@@ -137,39 +141,70 @@ export const generateROVFMDReport = async (
             startY: startY,
             margin: { left: margin, right: margin },
             head: [
-                ['Component QID', 'Elevation (m)', 'Dive No.', 'Tape No.', 'Status', 'Findings']
+                [
+                    { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Component QID', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Elevation (m)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Dive No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Wall Thickness Readings (mm)', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [240,240,240] : colors.teal, textColor: isPF ? colors.text : 255 } },
+                    { content: 'Nominal (mm)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Findings', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } }
+                ],
+                [
+                    { content: '12 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
+                    { content: '3 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
+                    { content: '6 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
+                    { content: '9 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } }
+                ]
             ],
-            body: records.map(r => {
-                const depth = parseFloat(r.elevation);
+            body: records.map((r, idx) => {
+                const d = r.inspection_data || r.inspection_dat || {};
                 const qid = r.structure_components?.q_id || 'N/A';
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
                                r.rov_job_id || r.dive_job_id || 'N/A';
-                const tapeNo = r.insp_video_tapes?.tape_no || 'N/A';
                 
-                // Construct findings from record description
-                let findings = r.description || '';
-                const data = r.inspection_data || {};
+                // Construct findings
+                let findingsParts: string[] = [];
+                if (r.description) findingsParts.push(r.description);
+                
+                // Add Additional UT
+                const addUT = d.ut_readings_additional || d.ut_additional || [];
+                if (Array.isArray(addUT)) {
+                    addUT.forEach((item: any) => {
+                        if (item.reading) findingsParts.push(`Add. UT: ${item.reading}mm${item.location ? ` (${item.location})` : ''}`);
+                    });
+                }
 
+                const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A';
+                
                 return [
+                    idx + 1,
                     qid,
-                    isNaN(depth) ? r.elevation : depth.toFixed(2),
+                    r.elevation || '-',
                     diveNo,
-                    tapeNo,
-                    data.member_status || 'N/A',
-                    findings || 'N/A'
+                    d.ut_12_o_clock || '-',
+                    d.ut_3_o_clock || '-',
+                    d.ut_6_o_clock || '-',
+                    d.ut_9_o_clock || '-',
+                    d.nominal_thickness || '-',
+                    findings
                 ];
             }),
             theme: 'grid',
-            headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
+            headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
             columnStyles: {
-                0: { cellWidth: 30 },
-                1: { cellWidth: 22, halign: 'center' },
+                0: { cellWidth: 15, halign: 'center' },
+                1: { cellWidth: 35 },
                 2: { cellWidth: 25, halign: 'center' },
-                3: { cellWidth: 35, halign: 'center' },
-                4: { cellWidth: 30, halign: 'center' },
-                5: { cellWidth: 'auto' }
+                3: { cellWidth: 30, halign: 'center' },
+                4: { cellWidth: 20, halign: 'center' },
+                5: { cellWidth: 20, halign: 'center' },
+                6: { cellWidth: 20, halign: 'center' },
+                7: { cellWidth: 20, halign: 'center' },
+                8: { cellWidth: 20, halign: 'center' },
+                9: { cellWidth: 'auto' }
             }
         });
 
@@ -190,11 +225,11 @@ export const generateROVFMDReport = async (
         drawSig('APPROVED BY', margin + (sigW * 2));
 
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`ROV_FMD_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        doc.save(`ROV_UTWT_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return true;
 
     } catch (e) {
-        console.error("FMD Report Error", e);
+        console.error("UTWT Report Error", e);
         throw e;
     }
 };

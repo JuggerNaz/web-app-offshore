@@ -62,8 +62,18 @@ export const generateROVSZCIReport = async (
 
         const drawHeader = async (d: jsPDF) => {
             const headerH = 22;
-            d.setFillColor(...colors.navy);
-            d.rect(margin, margin, contentWidth, headerH, 'F');
+            const isPF = config.printFriendly;
+            
+            if (isPF) {
+                d.setDrawColor(...colors.navy);
+                d.setLineWidth(0.5);
+                d.rect(margin, margin, contentWidth, headerH, 'S');
+                d.setTextColor(...colors.navy);
+            } else {
+                d.setFillColor(...colors.navy);
+                d.rect(margin, margin, contentWidth, headerH, 'F');
+                d.setTextColor(255);
+            }
 
             // 1. Company Logo (Right)
             if (companySettings.logo_url) {
@@ -85,7 +95,7 @@ export const generateROVSZCIReport = async (
                 } catch (e) {}
             }
 
-            d.setTextColor(255); d.setFontSize(10); d.setFont("helvetica", "bold");
+            d.setFontSize(10); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
@@ -97,10 +107,14 @@ export const generateROVSZCIReport = async (
             const rowH = 7;
             const tableY = y;
             const colW = contentWidth / 2;
+            const isPF = config.printFriendly;
             
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
-                d.setDrawColor(...colors.border); d.setLineWidth(0.1); d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, 'F'); d.rect(x, ty, w, rowH, 'S');
+                d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
+                if (!isPF) d.setFillColor(...colors.lightGray);
+                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
+                if (!isPF) d.rect(x, ty, w, rowH, 'S');
+                
                 d.setTextColor(...colors.text); d.setFontSize(8); d.setFont("helvetica", "bold");
                 d.text(label, x + 2, ty + 4.5); d.setFont("helvetica", "normal");
                 d.text(String(value), x + 40, ty + 4.5);
@@ -117,24 +131,26 @@ export const generateROVSZCIReport = async (
         await drawHeader(doc);
         const startY = drawContext(doc, margin + 22 + 2);
 
+        const isPF = config.printFriendly;
+
         autoTable(doc, {
             startY: startY,
             margin: { left: margin, right: margin },
             head: [
                 [
-                    { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: colors.navy } },
-                    { content: 'Component QID', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: colors.navy } },
-                    { content: 'CP (mV)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: colors.navy } },
-                    { content: 'Wall Thickness (mm)', colSpan: 4, styles: { halign: 'center', fillColor: colors.teal } },
-                    { content: 'Nominal (mm)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: colors.navy } },
-                    { content: 'Dive No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: colors.navy } },
-                    { content: 'Findings', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: colors.navy } }
+                    { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Component QID', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'CP (mV)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Wall Thickness (mm)', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [240,240,240] : colors.teal, textColor: isPF ? colors.text : 255 } },
+                    { content: 'Nominal (mm)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Dive No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Findings', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } }
                 ],
                 [
-                    { content: '12 o\'clock', styles: { halign: 'center', fillColor: colors.teal, fontSize: 7 } },
-                    { content: '3 o\'clock', styles: { halign: 'center', fillColor: colors.teal, fontSize: 7 } },
-                    { content: '6 o\'clock', styles: { halign: 'center', fillColor: colors.teal, fontSize: 7 } },
-                    { content: '9 o\'clock', styles: { halign: 'center', fillColor: colors.teal, fontSize: 7 } }
+                    { content: '12 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
+                    { content: '3 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
+                    { content: '6 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
+                    { content: '9 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } }
                 ]
             ],
             body: records.map((r, idx) => {
