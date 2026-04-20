@@ -230,7 +230,7 @@ export const generateROVSZCIReport = async (
 
         if (config.returnBlob) return doc.output("blob");
         doc.save(`ROV_SZCI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
-        return true;
+        return;
 
     } catch (e) {
         console.error("SZCI Report Error", e);

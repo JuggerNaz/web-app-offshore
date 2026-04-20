@@ -333,7 +333,7 @@ export const generateROVMGIReport = async (
 
         if (config.returnBlob) return doc.output("blob");
         doc.save(`ROV_MGI_Summary_${headerData.sowReportNo}.pdf`);
-        return true;
+        return;
     } catch (e) {
         console.error("MGI Report Error", e);
         throw e;

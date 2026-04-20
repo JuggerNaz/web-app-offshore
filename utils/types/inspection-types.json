@@ -562,19 +562,26 @@
             ],
             "fields": [
                 {
+                    "name": "scour_location",
+                    "label": "Scour Location",
+                    "type": "combo",
+                    "options": [
+                        "At Midpoint"
+                    ],
+                    "required": true
+                },
+                {
                     "name": "scour_depth",
                     "label": "Scour Depth",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "m",
+                    "defaultUnit": "mm",
                     "required": false
                 },
                 {
-                    "name": "scour_depth_max",
-                    "label": "Scour Depth Max",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
-                    "defaultUnit": "m",
+                    "name": "Exposed_pile",
+                    "label": "Exposed Pile",
+                    "type": "boolean",
                     "required": false
                 },
                 {

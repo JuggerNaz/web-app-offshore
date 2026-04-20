@@ -226,7 +226,7 @@ export const generateROVUTWTReport = async (
 
         if (config.returnBlob) return doc.output("blob");
         doc.save(`ROV_UTWT_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
-        return true;
+        return;
 
     } catch (e) {
         console.error("UTWT Report Error", e);

@@ -86,6 +86,8 @@ import { generateROVMGIReport } from "@/utils/report-generators/rov-mgi-report";
 import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
 import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report";
 import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
+import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
+import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -697,6 +699,8 @@ function V10PreviewLayout() {
     const [fmdPreviewOpen, setFmdPreviewOpen] = useState(false);
     const [szciPreviewOpen, setSzciPreviewOpen] = useState(false);
     const [utwtPreviewOpen, setUtwtPreviewOpen] = useState(false);
+    const [rscorPreviewOpen, setRscorPreviewOpen] = useState(false);
+    const [rrisiPreviewOpen, setRrisiPreviewOpen] = useState(false);
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const jpParam = searchParams.get('jpName');
@@ -2800,9 +2804,11 @@ function V10PreviewLayout() {
 
             (allCompsData || []).forEach((comp: any) => {
                 const isAssigned = assignedCompsMap.has(comp.id);
-                const md = comp.metadata || {};
+                const md = (typeof comp.metadata === 'string' ? JSON.parse(comp.metadata) : comp.metadata) || {};
                 const startNode = md.start_node || md.f_node || md.Node_1 || comp.startNode || comp.start_node || '-';
                 const endNode = md.end_node || md.s_node || md.Node_2 || comp.endNode || comp.end_node || '-';
+                const startLeg = md.s_leg || md.start_leg || md.leg_1 || md.StartLeg || md.Leg_1 || comp.startLeg || comp.start_leg || '-';
+                const endLeg = md.f_leg || md.end_leg || md.leg_2 || md.EndLeg || md.Leg_2 || comp.endLeg || comp.end_leg || '-';
                 const startElev = md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || '-';
                 const endElev = md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || '-';
                 const nominalThk = md.nominal_thickness || md.NominalThickness || md.nominal_thk || comp.nominal_thickness || '-';
@@ -2830,7 +2836,7 @@ function V10PreviewLayout() {
                     name: comp.q_id || comp.name || `Node ${comp.id}`,
                     depth: displayDepth,
                     lowestElev,
-                    startNode, endNode, startElev, endElev, nominalThk,
+                    startNode, endNode, startLeg, endLeg, startElev, endElev, nominalThk,
                     raw: comp,
                     tasks: Array.from(new Set(taskItems.map(t => t.code))),
                     taskStatuses: Array.from(new Map(taskItems.map(item => [item.code, item])).values())
@@ -3448,8 +3454,12 @@ function V10PreviewLayout() {
                         : null;
                     
                     if (manualOverride && typedVal === null) {
-                        toast.error("Manual Entry Mode: You must enter a valid Counter value (HH:mm:ss)");
-                        throw new Error("Missing counter value in manual mode");
+                        if (vidTimer > 0) {
+                            // Fallback to active timer if manual entry is empty
+                        } else {
+                            toast.error("Manual Entry Mode: You must enter a valid Counter value (HH:mm:ss)");
+                            throw new Error("Missing counter value in manual mode");
+                        }
                     }
 
                     if (activeProps.tape_count_no && activeProps.tape_count_no !== '--' && !isValidTimeFormat(String(activeProps.tape_count_no))) {
@@ -4257,6 +4267,24 @@ function V10PreviewLayout() {
         );
     };
 
+    const generateRSCORReport = async () => {
+        const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
+        if (scourRecords.length === 0) {
+            toast.error("No Scour Survey records found to generate report");
+            return;
+        }
+        setRscorPreviewOpen(true);
+    };
+
+    const generateRRISIReport = async () => {
+        const riserRecords = currentRecords.filter(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI');
+        if (riserRecords.length === 0) {
+            toast.error("No Riser Inspection records found to generate report");
+            return;
+        }
+        setRrisiPreviewOpen(true);
+    };
+
     const handleAddNewInspectionSpec = async (typeIdStr: string) => {
         if (!typeIdStr) return;
 
@@ -4401,6 +4429,41 @@ function V10PreviewLayout() {
 
     return (
         <div className="flex flex-col h-[calc(100vh)] bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 overflow-hidden">
+            <ReportPreviewDialog 
+                open={rrisiPreviewOpen} 
+                onOpenChange={setRrisiPreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const riserRecords = currentRecords.filter(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI');
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVRRISIReport(
+                        riserRecords,
+                        { 
+                            ...headerData, 
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly
+                        }
+                    );
+                }}
+                title="ROV Riser Inspection Report (RRISI)"
+                fileName={`ROV_Riser_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
             <InspectionHeader 
                 headerData={headerData}
                 inspMethod={inspMethod}
@@ -4415,6 +4478,8 @@ function V10PreviewLayout() {
                 generateFMDReport={generateFMDReport}
                 generateSZCIReport={generateSZCIReport}
                 generateUTWTReport={generateUTWTReport}
+                generateRSCORReport={generateRSCORReport}
+                generateRRISIReport={generateRRISIReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -6382,6 +6447,41 @@ function V10PreviewLayout() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <ReportPreviewDialog 
+                open={rscorPreviewOpen} 
+                onOpenChange={setRscorPreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVRSCORReport(
+                        scourRecords,
+                        { 
+                            ...headerData, 
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly
+                        }
+                    );
+                }}
+                title="ROV Scour Survey Report (RSCOR)"
+                fileName={`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
 
             {/* Anomaly Removal Confirmation Dialog */}
             <Dialog open={showRemovalConfirm} onOpenChange={setShowRemovalConfirm}>
