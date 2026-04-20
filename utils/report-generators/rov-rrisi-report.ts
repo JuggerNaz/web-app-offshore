@@ -100,7 +100,10 @@ export const generateROVRRISIReport = async (
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
             d.setFontSize(14); d.setFont("helvetica", "bold");
-            d.text(`ROV Riser Inspection Report`, margin + (contentWidth/2), margin + 18, { align: 'center' });
+            d.text(`ROV Riser Inspection Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -123,7 +126,7 @@ export const generateROVRRISIReport = async (
             drawBox('Structure:', headerData.platformName, margin, colW, tableY);
             drawBox('Vessel:', headerData.vessel || 'N/A', margin + colW, colW, tableY);
             drawBox('Job Pack:', headerData.jobpackName, margin, colW, tableY + rowH);
-            drawBox('Report No:', headerData.sowReportNo || 'N/A', margin + colW, colW, tableY + rowH);
+            drawBox('Insp. Date Range:', dateRangeStr, margin + colW, colW, tableY + rowH);
             drawBox('Insp. Date:', dateRangeStr, margin, contentWidth, tableY + (rowH * 2));
             
             return tableY + (rowH * 3) + 5;
@@ -240,8 +243,9 @@ export const generateROVRRISIReport = async (
             records.forEach(r => {
                 const comp = r.structure_components;
                 const d_data = r.inspection_data || r.inspection_dat || {};
-                const isAnomaly = r.component_condition === 'Anomalous' || r.is_anomaly || (r.description && r.description.toLowerCase().includes('anomaly'));
-                const isRectified = r.rectified || (r.description && r.description.toLowerCase().includes('rectified'));
+                const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                const isAnomaly = r.has_anomaly || !!linkedAnom || r.component_condition === 'Anomalous' || r.is_anomaly || (r.description && r.description.toLowerCase().includes('anomaly'));
+                const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
                 
                 let color = colors.navy;
                 if (isAnomaly) color = colors.anomaly;
@@ -301,6 +305,7 @@ export const generateROVRRISIReport = async (
 
         // --- Draw Data Table ---
         const drawDataTable = (d: jsPDF, y: number, h: number) => {
+            const isPF = config.printFriendly;
             const tableRecords = [...records].sort((a, b) => Number(b.elevation) - Number(a.elevation));
             
             autoTable(d, {
@@ -317,6 +322,12 @@ export const generateROVRRISIReport = async (
                     const loc = r.elevation ? `${r.elevation}m` : (rd.riser_item || 'N/A');
                     const cp = rd.cp_rdg || '-';
                     
+                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                    const isAnomaly = r.has_anomaly || !!linkedAnom || r.component_condition === 'Anomalous' || r.is_anomaly || (r.description && r.description.toLowerCase().includes('anomaly'));
+                    const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+                    const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
+                    const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
+
                     let findings = r.description || '';
                     if (rd.cp_rdg_additional && Array.isArray(rd.cp_rdg_additional)) {
                         rd.cp_rdg_additional.forEach((a: any) => {
@@ -326,8 +337,12 @@ export const generateROVRRISIReport = async (
                     if (rd.debris && rd.debris !== 'None') findings += `\nDebris: ${rd.debris}`;
                     if (rd.marine_growth) findings += `\nMG: ${rd.marine_growth}`;
 
-                    const isAnomaly = r.component_condition === 'Anomalous' || r.is_anomaly;
-                    const isRectified = r.rectified;
+                    if (isAnomaly && anomRef) {
+                        findings += `\n[Reference: ${anomRef}]`;
+                    }
+                    if (isRectified) {
+                        findings += `\nRectified: ${rectRem || 'N/A'}`;
+                    }
 
                     return [
                         { content: loc, styles: { fontStyle: 'bold' } },
@@ -335,13 +350,14 @@ export const generateROVRRISIReport = async (
                         { 
                             content: findings || 'No significant findings', 
                             styles: { 
-                                textColor: isAnomaly ? colors.anomaly : (isRectified ? colors.rectified : colors.text)
+                                textColor: isAnomaly ? colors.anomaly : (isRectified ? colors.rectified : colors.text),
+                                fontStyle: (isAnomaly || isRectified) ? 'bold' : 'normal'
                             } 
                         }
                     ];
                 }),
                 theme: 'grid',
-                headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8 },
+                headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 8 },
                 styles: { fontSize: 7, cellPadding: 2 },
                 columnStyles: {
                     0: { cellWidth: 20 },
@@ -361,9 +377,15 @@ export const generateROVRRISIReport = async (
         const sigY = pageHeight - 35;
         const sigW = contentWidth / 3;
         const drawSig = (label: string, lx: number) => {
-            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15);
-            doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 4, 'F');
-            doc.setTextColor(255); doc.setFontSize(7); doc.text(label, lx + 2, sigY + 3);
+            const isPF = config.printFriendly;
+            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15, 'S');
+            if (!isPF) {
+                doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 4, 'F');
+                doc.setTextColor(255);
+            } else {
+                doc.setTextColor(...colors.navy);
+            }
+            doc.setFontSize(7); doc.text(label, lx + 2, sigY + 3);
             doc.setTextColor(...colors.text); doc.setFontSize(6); 
             doc.text('Name:', lx + 2, sigY + 10);
             doc.text('Date:', lx + 2, sigY + 13);

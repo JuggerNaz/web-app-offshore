@@ -67,7 +67,8 @@ export const generateROVMGIReport = async (
             text: [30, 41, 59] as [number, number, number],
             actual: [20, 184, 166] as [number, number, number], // Teal
             limit: [128, 0, 0] as [number, number, number],    // Maroon
-            anomaly: [220, 38, 38] as [number, number, number]  // Red
+            anomaly: [220, 38, 38] as [number, number, number],  // Red
+            rectified: [22, 163, 74] as [number, number, number], // Green
         };
 
         const drawPremiumHeader = async (d: jsPDF, qid: string) => {
@@ -201,13 +202,26 @@ export const generateROVMGIReport = async (
                 const hCov = d.mgi_hard_coverage ?? mgData.h;
                 const sCov = d.mgi_soft_coverage ?? mgData.s;
 
+                const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                const isAnomRecord = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+                const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+                const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
+                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
+
+                let findingsParts: string[] = [];
+                if (r.description) findingsParts.push(r.description);
+                if (isAnomRecord && anomRef) findingsParts.push(`[Reference: ${anomRef}]`);
+                if (isRectified) findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
+
                 return {
                     depth: elev, limit, 
                     maxInRow: Math.max(...hVals, ...sVals),
                     maxHard: Math.max(...hVals),
                     hCov, sCov,
                     h: hVals.map(v => v || '-'), s: sVals.map(v => v || '-'),
-                    findings: r.description || 'N/A'
+                    findings: findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A',
+                    isAnomRecord,
+                    isRectified
                 };
             });
 
@@ -268,7 +282,19 @@ export const generateROVMGIReport = async (
                 }),
                 theme: 'grid',
                 styles: { fontSize: 6.5, cellPadding: 1.5, textColor: [0, 0, 0], lineColor: colors.border },
-                headStyles: { fillColor: colors.teal, textColor: 255, fontStyle: 'bold', halign: 'center', valign: 'middle' },
+                headStyles: { fillColor: isPF ? [255,255,255] : colors.teal, textColor: isPF ? colors.navy : 255, fontStyle: 'bold', halign: 'center', valign: 'middle' },
+                didParseCell: (data) => {
+                    if (data.section === 'body') {
+                        const row = tableData[data.row.index];
+                        if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
+                            data.cell.styles.textColor = colors.anomaly;
+                            data.cell.styles.fontStyle = 'bold';
+                        } else if (row.isRectified) {
+                            data.cell.styles.textColor = colors.rectified;
+                            data.cell.styles.fontStyle = 'bold';
+                        }
+                    }
+                },
                 columnStyles: {
                     0: { cellWidth: 15, halign: 'center' }, 1: { cellWidth: 80 }, 2: { cellWidth: 15, halign: 'center' },
                     3: { cellWidth: 8, halign: 'center' }, 4: { cellWidth: 8, halign: 'center' }, 5: { cellWidth: 8, halign: 'center' }, 6: { cellWidth: 8, halign: 'center' },

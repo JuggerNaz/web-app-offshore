@@ -41,7 +41,9 @@ export const generateROVFMDReport = async (
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
-            text: [30, 41, 59] as [number, number, number]
+            text: [30, 41, 59] as [number, number, number],
+            anomaly: [220, 38, 38] as [number, number, number],
+            rectified: [22, 163, 74] as [number, number, number],
         };
 
         // --- 1. Preparation ---
@@ -100,7 +102,10 @@ export const generateROVFMDReport = async (
             d.setFontSize(7); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
             d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`ROV Flooded Member Detection Report`, margin + (contentWidth/2), margin + 18, { align: 'center' });
+            d.text(`ROV Flooded Member Detection Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -133,13 +138,20 @@ export const generateROVFMDReport = async (
 
         const isPF = config.printFriendly;
 
+        // --- 3. Sorting & Mapping ---
+        const sortedRecords = [...records].sort((a, b) => {
+            const elevA = parseFloat(a.elevation) || 0;
+            const elevB = parseFloat(b.elevation) || 0;
+            return elevB - elevA; // Top to bottom
+        });
+
         autoTable(doc, {
             startY: startY,
             margin: { left: margin, right: margin },
             head: [
                 ['Component QID', 'Elevation (m)', 'Dive No.', 'Tape No.', 'Status', 'Findings']
             ],
-            body: records.map(r => {
+            body: sortedRecords.map(r => {
                 const depth = parseFloat(r.elevation);
                 const qid = r.structure_components?.q_id || 'N/A';
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
@@ -147,8 +159,18 @@ export const generateROVFMDReport = async (
                                r.rov_job_id || r.dive_job_id || 'N/A';
                 const tapeNo = r.insp_video_tapes?.tape_no || 'N/A';
                 
+                const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+                const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+                const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
+                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
+
                 // Construct findings from record description
-                let findings = r.description || '';
+                let findingsParts = [];
+                if (r.description) findingsParts.push(r.description);
+                if (isAnomaly && anomRef) findingsParts.push(`[Reference: ${anomRef}]`);
+                if (isRectified) findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
+
                 const data = r.inspection_data || {};
 
                 return [
@@ -157,12 +179,28 @@ export const generateROVFMDReport = async (
                     diveNo,
                     tapeNo,
                     data.member_status || 'N/A',
-                    findings || 'N/A'
+                    findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A'
                 ];
             }),
             theme: 'grid',
             headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
+            didParseCell: (data) => {
+                if (data.section === 'body') {
+                    const r = sortedRecords[data.row.index];
+                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                    const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+                    const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+
+                    if (isAnom) {
+                        data.cell.styles.textColor = colors.anomaly;
+                        data.cell.styles.fontStyle = 'bold';
+                    } else if (isRect) {
+                        data.cell.styles.textColor = colors.rectified;
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                }
+            },
             columnStyles: {
                 0: { cellWidth: 30 },
                 1: { cellWidth: 22, halign: 'center' },

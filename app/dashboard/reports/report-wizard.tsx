@@ -37,6 +37,7 @@ import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { generateWorkScopeReport } from "@/utils/report-generators/work-scope-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
+import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 
 // Types
 type WizardStep = "template" | "context" | "configuration" | "preview";
@@ -105,6 +106,7 @@ const REPORT_TEMPLATES = {
         { id: "utwt-report", name: "ROV UT Thickness Report", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rrisi-report", name: "ROV Riser Inspection Report", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-report", name: "ROV Scour Survey Report", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-anode-report", name: "ROV Anode Inspection Report", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -1231,7 +1233,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     structure_components:component_id!left(q_id, code),
                     insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no)
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
                 `)
                 .eq('structure_id', Number(selections.structureId));
 
@@ -1303,7 +1306,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     structure_components:component_id!left(q_id, code),
                     insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no)
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
                 `)
                 .eq('structure_id', Number(selections.structureId));
 
@@ -1375,7 +1379,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     structure_components:component_id!left(q_id, code),
                     insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no)
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
                 `)
                 .eq('structure_id', Number(selections.structureId));
 
@@ -1447,7 +1452,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     structure_components:component_id!left(id, q_id, code, metadata),
                     insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no)
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
                 `)
                 .eq('structure_id', Number(selections.structureId));
 
@@ -1526,7 +1532,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     structure_components:component_id(id, q_id, code, metadata),
                     insp_rov_jobs:rov_job_id(job_no:deployment_no, name:rov_operator),
                     insp_dive_jobs:dive_job_id(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id(tape_no)
+                    insp_video_tapes:tape_id(tape_no),
+                    insp_anomalies(*)
                 `)
                 .eq('structure_id', structId);
 
@@ -1578,6 +1585,85 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("RSCOR Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Anode Inspection Report (New)
+        if (selections.templateId === "rov-anode-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Invalid Structure selection. Please ensure a structure is selected.");
+                return null;
+            }
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id(id, code, name),
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId);
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message || 'Unknown fetching error'}`);
+                return null;
+            }
+
+            // FILTER: RGVI + Component Type AN
+            const anodeRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RGVI';
+                const isAN = String(r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                             String(r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+                return sowMatches && jobPackMatches && isRGVI && isAN;
+            });
+
+            if (!anodeRecords || anodeRecords.length === 0) {
+                alert(`No ROV Anode records (RGVI + component_type: AN) found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: jobPack.metadata?.vessel || "N/A"
+            };
+
+            try {
+                return await generateROVAnodeReport(
+                    anodeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("Anode Generator Error:", error);
                 throw error;
             }
         }

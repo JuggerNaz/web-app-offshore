@@ -41,7 +41,9 @@ export const generateROVSZCIReport = async (
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
-            text: [30, 41, 59] as [number, number, number]
+            text: [30, 41, 59] as [number, number, number],
+            anomaly: [220, 38, 38] as [number, number, number],
+            rectified: [22, 163, 74] as [number, number, number],
         };
 
         // --- 1. Preparation ---
@@ -100,7 +102,10 @@ export const generateROVSZCIReport = async (
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
             d.setFontSize(14); d.setFont("helvetica", "bold");
-            d.text(`ROV Splash Zone Inspection Report`, margin + (contentWidth/2), margin + 19, { align: 'center' });
+            d.text(`ROV Splash Zone Inspection Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -129,19 +134,26 @@ export const generateROVSZCIReport = async (
         };
 
         await drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
+        const currentY = drawContext(doc, margin + 22 + 2);
 
         const isPF = config.printFriendly;
 
+        // --- 3. Sorting & Mapping ---
+        const sortedRecords = [...records].sort((a, b) => {
+            const elevA = parseFloat(a.elevation) || 0;
+            const elevB = parseFloat(b.elevation) || 0;
+            return elevB - elevA; // Top to bottom
+        });
+
         autoTable(doc, {
-            startY: startY,
+            startY: currentY,
             margin: { left: margin, right: margin },
             head: [
                 [
                     { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
                     { content: 'Component QID', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
                     { content: 'CP (mV)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Wall Thickness (mm)', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [240,240,240] : colors.teal, textColor: isPF ? colors.text : 255 } },
+                    { content: 'Wall Thickness (mm)', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [230,230,230] : [20, 184, 166], textColor: isPF ? colors.text : 255 } },
                     { content: 'Nominal (mm)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
                     { content: 'Dive No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
                     { content: 'Findings', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } }
@@ -153,13 +165,19 @@ export const generateROVSZCIReport = async (
                     { content: '9 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } }
                 ]
             ],
-            body: records.map((r, idx) => {
+            body: sortedRecords.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
                 const qid = r.structure_components?.q_id || 'N/A';
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
                                r.rov_job_id || r.dive_job_id || 'N/A';
                 
+                const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+                const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+                const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
+                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
+
                 // Construct findings
                 let findingsParts: string[] = [];
                 if (r.description) findingsParts.push(r.description);
@@ -180,6 +198,13 @@ export const generateROVSZCIReport = async (
                     });
                 }
 
+                if (isAnomaly && anomRef) {
+                    findingsParts.push(`[Reference: ${anomRef}]`);
+                }
+                if (isRectified) {
+                    findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
+                }
+
                 const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A';
                 
                 return [
@@ -198,6 +223,22 @@ export const generateROVSZCIReport = async (
             theme: 'grid',
             headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
+            didParseCell: (data) => {
+                if (data.section === 'body') {
+                    const r = sortedRecords[data.row.index];
+                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                    const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+                    const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+
+                    if (isAnom) {
+                        data.cell.styles.textColor = colors.anomaly;
+                        data.cell.styles.fontStyle = 'bold';
+                    } else if (isRect) {
+                        data.cell.styles.textColor = colors.rectified;
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                }
+            },
             columnStyles: {
                 0: { cellWidth: 15, halign: 'center' },
                 1: { cellWidth: 35 },

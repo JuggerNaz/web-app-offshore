@@ -18,7 +18,8 @@ import {
     MapPin as MapPinIcon, 
     Paperclip, 
     Camera, 
-    CloudUpload
+    CloudUpload,
+    Search
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -408,10 +409,12 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                 </div>
                             )}
 
-                            {/* MGI Thickness Group - rendered specially when present */}
+                            {/* MGI & UT Thickness Groups - rendered specially when present */}
                             {(() => {
                                 const mgiFields = activeFormProps.filter((p: any) => p.group === 'mgi_thickness');
-                                const otherFields = activeFormProps.filter((p: any) => p.group !== 'mgi_thickness');
+                                const utFields = activeFormProps.filter((p: any) => p.group === 'ut_thickness');
+                                const otherFields = activeFormProps.filter((p: any) => p.group !== 'mgi_thickness' && p.group !== 'ut_thickness');
+                                
                                 const hardFields = mgiFields.filter((p: any) => p.groupRow === 'hard');
                                 const softFields = mgiFields.filter((p: any) => p.groupRow === 'soft');
                                 const profileField = mgiFields.find((p: any) => p.type === 'mgi_profile_display');
@@ -512,7 +515,42 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             </motion.div>
                                         )}
 
-                                        {/* Other (non-MGI) fields in normal 2-col grid */}
+                                        {utFields.length > 0 && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 5 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="col-span-2 border-2 border-blue-200 bg-gradient-to-br from-blue-50/60 to-white rounded-xl p-4 space-y-4 shadow-sm mb-4"
+                                            >
+                                                <div className="flex items-center gap-2 border-b border-blue-200 pb-2">
+                                                     <div className="w-6 h-6 bg-blue-600 rounded-lg flex items-center justify-center">
+                                                         <Search className="w-3.5 h-3.5 text-white" />
+                                                     </div>
+                                                     <span className="text-[11px] font-black text-blue-800 uppercase tracking-widest leading-none">UT Thickness Readings</span>
+                                                </div>
+
+                                                <div className="grid grid-cols-4 gap-3">
+                                                    {utFields.filter((f: any) => f.name !== 'nominal_thickness').map((p: any) => (
+                                                        <div key={p.name} className="space-y-1">
+                                                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider text-center block w-full">{p.label}</label>
+                                                            {renderInspectionField(p, 'primary')}
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {utFields.find((f: any) => f.name === 'nominal_thickness') && (
+                                                    <div className="pt-2 border-t border-blue-100/50">
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div className="space-y-1">
+                                                                <label className="text-[9px] font-black text-blue-600 uppercase tracking-wider">Nominal Thickness</label>
+                                                                {renderInspectionField(utFields.find((f: any) => f.name === 'nominal_thickness'), 'primary')}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </motion.div>
+                                        )}
+
+                                        {/* Other (non-specialized) fields in normal 2-col grid */}
                                         <div className="grid grid-cols-2 gap-4">
                                             {otherFields.map((p: any, idx: number) => {
                                                 if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;

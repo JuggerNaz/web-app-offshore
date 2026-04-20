@@ -27,6 +27,7 @@ export const generateROVRSCORReport = async (
     config: ReportConfig
 ) => {
     try {
+        const isPF = config.printFriendly;
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -40,6 +41,8 @@ export const generateROVRSCORReport = async (
             text: [30, 41, 59] as [number, number, number],
             mud: [249, 115, 22] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
+            anomaly: [220, 38, 38] as [number, number, number],
+            rectified: [22, 163, 74] as [number, number, number],
         };
 
         const drawHeader = async (d: jsPDF) => {
@@ -74,13 +77,15 @@ export const generateROVRSCORReport = async (
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 11, { align: 'center' });
             d.setFontSize(14); d.setFont("helvetica", "bold");
-            d.text(`ROV Scour Survey Report`, margin + (contentWidth/2), margin + 19, { align: 'center' });
+            d.text(`ROV Scour Survey Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
             const rowH = 7;
             const colW = contentWidth / 2;
-            const isPF = config.printFriendly;
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
@@ -221,8 +226,17 @@ export const generateROVRSCORReport = async (
                         target = 'end'; xp = 0.95; 
                     }
                     
+                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                    const isAnom = r.has_anomaly || !!linkedAnom;
+                    const isRect = linkedAnom ? linkedAnom.is_rectified : r.rectified;
+
                     if (!locValues.has(target) || locValues.get(target).depth < depth) {
-                        locValues.set(target, { x: homActualX1 + (xp * homLen), depth, burial, exposed: rd.Exposed_pile === 'Yes' });
+                        locValues.set(target, { 
+                            x: homActualX1 + (xp * homLen), 
+                            depth, burial, 
+                            exposed: rd.Exposed_pile === 'Yes',
+                            isAnom, isRect 
+                        });
                     }
                 });
 
@@ -264,7 +278,13 @@ export const generateROVRSCORReport = async (
                     const py = getMudY(p);
                     da.setDrawColor(120); da.setLineWidth(0.4); da.line(p.x, homY + 3, p.x, py); 
                     const r = 5; const my = (homY + 3 + py) / 2;
-                    da.setFillColor(255); da.circle(p.x, my, r, 'FD');
+                    
+                    let bubbleColor = [255, 255, 255]; // White
+                    let borderCol = [120, 120, 120];
+                    if (p.isAnom) { bubbleColor = [254, 226, 226]; borderCol = colors.anomaly; }
+                    else if (p.isRect) { bubbleColor = [220, 252, 231]; borderCol = colors.rectified; }
+
+                    da.setFillColor(...bubbleColor); da.setDrawColor(...borderCol); da.circle(p.x, my, r, 'FD');
                     da.setFontSize(5); da.setTextColor(0); da.setFont("helvetica", "normal");
                     const val = p.burial > 0 ? `${p.burial}%` : `${p.depth}MM`;
                     da.text(val, p.x, my + 1, { align: 'center' });
@@ -283,26 +303,68 @@ export const generateROVRSCORReport = async (
                 head: [['Location', 'Scour Depth', 'Burial %', 'Exposed Pile', 'Remarks']],
                 body: compRecords.map(r => {
                     const rd = r.inspection_data || {};
+                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                    const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+                    const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+                    const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
+                    const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
+
+                    let findings = r.description || '';
+                    if (isAnomaly && anomRef) {
+                        findings += `\n[Reference: ${anomRef}]`;
+                    }
+                    if (isRectified) {
+                        findings += `\nRectified: ${rectRem || 'N/A'}`;
+                    }
+
                     return [
                         rd.scour_location || 'N/A',
                         rd.scour_depth ? `${rd.scour_depth} mm` : '-',
                         rd.Burial_percent ? `${rd.Burial_percent}%` : '-',
                         rd.Exposed_pile === 'Yes' || rd.Exposed_pile === true ? 'Yes' : 'No',
-                        r.description || 'No significant findings'
+                        { 
+                            content: findings || 'No significant findings',
+                            styles: {
+                                textColor: isAnomaly ? colors.anomaly : (isRectified ? colors.rectified : colors.text),
+                                fontStyle: (isAnomaly || isRectified) ? 'bold' : 'normal'
+                            }
+                        }
                     ];
                 }),
                 theme: 'grid',
-                headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 7, halign: 'center' },
+                headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 7, halign: 'center' },
                 styles: { fontSize: 7 },
+                didParseCell: (data) => {
+                    if (data.section === 'body') {
+                        const r = compRecords[data.row.index];
+                        const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                        const isAnom = r.has_anomaly || !!linkedAnom;
+                        const isRect = linkedAnom ? linkedAnom.is_rectified : r.rectified;
+
+                        if (isAnom) {
+                            data.cell.styles.textColor = colors.anomaly;
+                            data.cell.styles.fontStyle = 'bold';
+                        } else if (isRect) {
+                            data.cell.styles.textColor = colors.rectified;
+                            data.cell.styles.fontStyle = 'bold';
+                        }
+                    }
+                }
             });
         }
 
         const sigY = pageHeight - 22;
         const sigW = (contentWidth / 3) - 2;
         const drawSigBlock = (label: string, lx: number) => {
-            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW, 11);
-            doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW, 3, 'F');
-            doc.setTextColor(255); doc.setFontSize(6); doc.text(label, lx + 2, sigY + 2.2);
+            const isPF = config.printFriendly;
+            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW, 11, 'S');
+            if (!isPF) {
+                doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW, 3, 'F');
+                doc.setTextColor(255);
+            } else {
+                doc.setTextColor(...colors.navy);
+            }
+            doc.setFontSize(6); doc.text(label, lx + 2, sigY + 2.2);
             doc.setTextColor(...colors.text); doc.setFontSize(5); 
             doc.text('Name:', lx + 2, sigY + 6.5); doc.text('Date:', lx + 2, sigY + 9);
         };

@@ -41,7 +41,9 @@ export const generateROVUTWTReport = async (
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
-            text: [30, 41, 59] as [number, number, number]
+            text: [30, 41, 59] as [number, number, number],
+            anomaly: [220, 38, 38] as [number, number, number],
+            rectified: [22, 163, 74] as [number, number, number],
         };
 
         // --- 1. Preparation ---
@@ -137,6 +139,13 @@ export const generateROVUTWTReport = async (
 
         const isPF = config.printFriendly;
 
+        // --- 2. Sorting & Mapping ---
+        const sortedRecords = [...records].sort((a, b) => {
+            const elevA = parseFloat(a.elevation) || 0;
+            const elevB = parseFloat(b.elevation) || 0;
+            return elevB - elevA; // Top to bottom
+        });
+
         autoTable(doc, {
             startY: startY,
             margin: { left: margin, right: margin },
@@ -157,13 +166,19 @@ export const generateROVUTWTReport = async (
                     { content: '9 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } }
                 ]
             ],
-            body: records.map((r, idx) => {
+            body: sortedRecords.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
                 const qid = r.structure_components?.q_id || 'N/A';
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
                                r.rov_job_id || r.dive_job_id || 'N/A';
                 
+                const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+                const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+                const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
+                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
+
                 // Construct findings
                 let findingsParts: string[] = [];
                 if (r.description) findingsParts.push(r.description);
@@ -174,6 +189,13 @@ export const generateROVUTWTReport = async (
                     addUT.forEach((item: any) => {
                         if (item.reading) findingsParts.push(`Add. UT: ${item.reading}mm${item.location ? ` (${item.location})` : ''}`);
                     });
+                }
+
+                if (isAnomaly && anomRef) {
+                    findingsParts.push(`[Reference: ${anomRef}]`);
+                }
+                if (isRectified) {
+                    findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
                 }
 
                 const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A';
@@ -194,6 +216,22 @@ export const generateROVUTWTReport = async (
             theme: 'grid',
             headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
+            didParseCell: (data) => {
+                if (data.section === 'body') {
+                    const r = sortedRecords[data.row.index];
+                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                    const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+                    const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+
+                    if (isAnom) {
+                        data.cell.styles.textColor = colors.anomaly;
+                        data.cell.styles.fontStyle = 'bold';
+                    } else if (isRect) {
+                        data.cell.styles.textColor = colors.rectified;
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                }
+            },
             columnStyles: {
                 0: { cellWidth: 15, halign: 'center' },
                 1: { cellWidth: 35 },

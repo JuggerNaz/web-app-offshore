@@ -88,6 +88,7 @@ import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report
 import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
+import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -701,6 +702,7 @@ function V10PreviewLayout() {
     const [utwtPreviewOpen, setUtwtPreviewOpen] = useState(false);
     const [rscorPreviewOpen, setRscorPreviewOpen] = useState(false);
     const [rrisiPreviewOpen, setRrisiPreviewOpen] = useState(false);
+    const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const jpParam = searchParams.get('jpName');
@@ -2013,7 +2015,8 @@ function V10PreviewLayout() {
                 structure_components:component_id!left (q_id, code),
                 insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                 insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                insp_video_tapes:tape_id!left(tape_no)
+                insp_video_tapes:tape_id!left(tape_no),
+                insp_anomalies(*)
             `).eq(inspCol, depId);
 
             if (structureId && !isNaN(Number(structureId))) {
@@ -4284,6 +4287,20 @@ function V10PreviewLayout() {
         }
         setRrisiPreviewOpen(true);
     };
+    
+    const generateAnodeReport = async () => {
+        const anodeRecords = currentRecords.filter(r => {
+            const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
+            const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                         (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+            return isRGVI && isAN;
+        });
+        if (anodeRecords.length === 0) {
+            toast.error("No Anode Inspection records (RGVI + component_type: AN) found to generate report");
+            return;
+        }
+        setAnodePreviewOpen(true);
+    };
 
     const handleAddNewInspectionSpec = async (typeIdStr: string) => {
         if (!typeIdStr) return;
@@ -4464,6 +4481,41 @@ function V10PreviewLayout() {
                 fileName={`ROV_Riser_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
+            <ReportPreviewDialog 
+                open={anodePreviewOpen} 
+                onOpenChange={setAnodePreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const anodeRecords = currentRecords.filter(r => {
+                        const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
+                        const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                                     (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+                        return isRGVI && isAN;
+                    });
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: jobPack?.metadata?.vessel || 'N/A',
+                        contractorLogoUrl
+                    };
+
+                    return await generateROVAnodeReport(
+                        anodeRecords,
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true }
+                    );
+                }}
+                title="ROV Anode Inspection Report"
+                fileName={`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
             <InspectionHeader 
                 headerData={headerData}
                 inspMethod={inspMethod}
@@ -4480,6 +4532,7 @@ function V10PreviewLayout() {
                 generateUTWTReport={generateUTWTReport}
                 generateRSCORReport={generateRSCORReport}
                 generateRRISIReport={generateRRISIReport}
+                generateAnodeReport={generateAnodeReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -6481,6 +6534,41 @@ function V10PreviewLayout() {
                 }}
                 title="ROV Scour Survey Report (RSCOR)"
                 fileName={`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={anodePreviewOpen} 
+                onOpenChange={setAnodePreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const anodeRecords = currentRecords.filter(r => {
+                        const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
+                        const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                                     (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+                        return isRGVI && isAN;
+                    });
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: jobPack?.metadata?.vessel || 'N/A',
+                        contractorLogoUrl
+                    };
+
+                    return await generateROVAnodeReport(
+                        anodeRecords,
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true }
+                    );
+                }}
+                title="ROV Anode Inspection Report"
+                fileName={`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             {/* Anomaly Removal Confirmation Dialog */}

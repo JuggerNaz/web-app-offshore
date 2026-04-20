@@ -56,37 +56,42 @@
         },
         "nominal_thickness": {
             "name": "nominal_thickness",
-            "label": "Nominal Thickness",
+            "label": "Nominal",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "ut_3_o_clock": {
             "name": "ut_3_o_clock",
-            "label": "3 O'Clock",
+            "label": "3",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "ut_6_o_clock": {
             "name": "ut_6_o_clock",
-            "label": "6 O'Clock",
+            "label": "6",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "ut_9_o_clock": {
             "name": "ut_9_o_clock",
-            "label": "9 O'Clock",
+            "label": "9",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "ut_12_o_clock": {
             "name": "ut_12_o_clock",
-            "label": "12 O'Clock",
+            "label": "12",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "cp_rdg_additional": {
@@ -1115,7 +1120,7 @@
             ],
             "fields": [
                 {
-                    "$ref": "nominal_thickness"
+                    "$ref": "ut_12_o_clock"
                 },
                 {
                     "$ref": "ut_3_o_clock"
@@ -1127,7 +1132,7 @@
                     "$ref": "ut_9_o_clock"
                 },
                 {
-                    "$ref": "ut_12_o_clock"
+                    "$ref": "nominal_thickness"
                 },
                 {
                     "$ref": "ut_readings_additional"
