@@ -727,6 +727,8 @@ function V10PreviewLayout() {
     const [rscorPreviewOpen, setRscorPreviewOpen] = useState(false);
     const [rrisiPreviewOpen, setRrisiPreviewOpen] = useState(false);
     const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
+    const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
+    const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const jpParam = searchParams.get('jpName');
@@ -4037,16 +4039,32 @@ function V10PreviewLayout() {
             return;
         }
 
+        setSeabedTemplateType(templateId);
+        setSeabedPreviewOpen(true);
+    };
+
+    const generateSeabedReportBlob = async (templateId: string, printFriendly?: boolean): Promise<Blob | void> => {
+        const filterMap: Record<string, string> = {
+            "seabed-survey-debris": "Debris",
+            "seabed-survey-gas": "Gas Seepage",
+            "seabed-survey-crater": "Crater"
+        };
+        
+        const itemTypeFilter = filterMap[templateId] || "Debris";
+        const recordsToPrint = currentRecords.filter(r => 
+            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && 
+            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
+        );
+
+        if (recordsToPrint.length === 0) return;
+
         const settings = await getReportHeaderData();
         const { data: jobPack } = await supabase.from('jobpack').select('*').eq('id', Number(jobPackId)).single();
         const { data: structure } = await supabase.from('structure').select('*').eq('str_id', Number(structureId)).single();
 
-        if (!jobPack || !structure) {
-            toast.error("Failed to fetch necessary data for report generation.");
-            return;
-        }
+        if (!jobPack || !structure) return;
 
-        await generateSeabedSurveyReport(
+        return await generateSeabedSurveyReport(
             { ...jobPack, id: jobPack.id },
             { ...structure, id: structure.str_id },
             headerData.sowReportNo,
@@ -4057,10 +4075,11 @@ function V10PreviewLayout() {
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 showContractorLogo: true,
                 showPageNumbers: true,
-                printFriendly: false
+                printFriendly: printFriendly || false,
+                returnBlob: true
             },
             itemTypeFilter
-        );
+        ) as Blob;
     };
 
     const generateMGIReport = async () => {
@@ -4545,6 +4564,16 @@ function V10PreviewLayout() {
                 }}
                 title="ROV Anode Inspection Report"
                 fileName={`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={seabedPreviewOpen} 
+                onOpenChange={setSeabedPreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    return await generateSeabedReportBlob(seabedTemplateType, isPrintFriendly);
+                }}
+                title={`Seabed Survey Report - ${seabedTemplateType === 'seabed-survey-debris' ? 'Debris' : seabedTemplateType === 'seabed-survey-gas' ? 'Gas Seepage' : 'Crater'}`}
+                fileName={`Seabed_Survey_${seabedTemplateType.replace('seabed-survey-', '')}_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             <InspectionHeader 

@@ -133,19 +133,34 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><Printer className="w-4 h-4 mr-2" /> Reports</Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56 p-1">
-                        <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-50 mb-1">Inspection Reports</div>
-                        <ScrollArea className="h-48">
-                            {allInspectionTypes.filter(t => t.code !== 'RSEAB' && t.code !== 'RMGI' && t.code !== 'RFMD' && t.code !== 'RSZCI' && t.code !== 'RUTWT' && t.code !== 'RSCOR' && t.code !== 'RRISI' && currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))).map(t => (
-                                <DropdownMenuItem key={t.id} onClick={() => generateInspectionReportByType(t.id)} className="text-xs py-2 cursor-pointer flex items-center justify-between">
-                                    <div className="flex items-center">
-                                        <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-blue-500" />
-                                        <span className="truncate max-w-[140px]">{t.name}</span>
-                                    </div>
-                                    <Badge variant="outline" className="text-[8px] h-3.5 px-1 font-black bg-slate-50 text-slate-400 border-slate-200">{t.code}</Badge>
-                                </DropdownMenuItem>
-                            ))}
-                        </ScrollArea>
-                        <div className="border-t border-slate-50 my-1"></div>
+                        {(() => {
+                            const filteredReports = allInspectionTypes.filter(t => 
+                                t.code !== 'RGVI' && 
+                                t.code !== 'RSEAB' && t.code !== 'RMGI' && t.code !== 'RFMD' && t.code !== 'RSZCI' && 
+                                t.code !== 'RUTWT' && t.code !== 'RSCOR' && t.code !== 'RRISI' && 
+                                currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))
+                            );
+
+                            if (filteredReports.length === 0) return null;
+
+                            return (
+                                <>
+                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-50 mb-1">Inspection Reports</div>
+                                    <ScrollArea className="max-h-48">
+                                        {filteredReports.map(t => (
+                                            <DropdownMenuItem key={t.id} onClick={() => generateInspectionReportByType(t.id)} className="text-xs py-2 cursor-pointer flex items-center justify-between">
+                                                <div className="flex items-center">
+                                                    <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-blue-500" />
+                                                    <span className="truncate max-w-[140px]">{t.name}</span>
+                                                </div>
+                                                <Badge variant="outline" className="text-[8px] h-3.5 px-1 font-black bg-slate-50 text-slate-400 border-slate-200">{t.code}</Badge>
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </ScrollArea>
+                                    <div className="border-t border-slate-50 my-1"></div>
+                                </>
+                            );
+                        })()}
                         
                         {currentRecords.some(r => r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && (
                             <DropdownMenuSub>
