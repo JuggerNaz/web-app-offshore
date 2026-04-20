@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react';
 import { SeabedDebrisPlot } from '@/components/inspection/seabed-debris-plot';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,6 +53,7 @@ export function SeabedSurveyGuiInline({
     const [editFormData, setEditFormData] = useState<any>(null);
     const [currentPage, setCurrentPage] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const generateQid = (geometry: any) => {
         if (!geometry || !geometry.startLeg || !geometry.endLeg) return '';
@@ -72,7 +74,9 @@ export function SeabedSurveyGuiInline({
 
     const fetchExistingDebris = async () => {
         if (!rovJob) return;
-        const { data, error } = await supabase.from('insp_records')
+        try {
+            setIsSyncing(true);
+            const { data, error } = await supabase.from('insp_records')
             .select(`
                 insp_id, inspection_data, description, status, tape_count_no, tape_id, cr_user, structure_components:component_id ( q_id )
             `)
@@ -80,7 +84,10 @@ export function SeabedSurveyGuiInline({
             .eq('inspection_type_code', 'RSEAB')
             .order('insp_id', { ascending: true });
 
-        if (error || !data) return;
+        if (error || !data) {
+            setExistingDebris([]);
+            return;
+        }
         
         const mapped = data.map((r: any, index: number) => {
             const idraw = r.inspection_data || {};
@@ -109,6 +116,11 @@ export function SeabedSurveyGuiInline({
         }).filter(r => !isNaN(r.x) && !isNaN(r.y));
         
         setExistingDebris(mapped);
+        } catch (err) {
+            console.error("fetchExistingDebris error:", err);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     useEffect(() => {
@@ -712,6 +724,21 @@ export function SeabedSurveyGuiInline({
                             {!isAdding && !activeId && (
                                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-lg shadow-sm font-bold text-slate-700 text-sm border-l-4 border-blue-500">
                                     Click anywhere on the grid to drop a new debris marker.
+                                </div>
+                            )}
+
+                            {isSyncing && (
+                                <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] flex flex-col items-center justify-center z-50 rounded-lg animate-in fade-in duration-300">
+                                    <div className="bg-white/90 p-4 rounded-xl shadow-xl flex flex-col items-center gap-3 border border-blue-100">
+                                        <div className="relative">
+                                            <div className="absolute inset-0 blur-md bg-blue-400/30 rounded-full animate-pulse" />
+                                            <Loader2 className="w-10 h-10 animate-spin text-blue-600 relative" />
+                                        </div>
+                                        <div className="flex flex-col items-center gap-1">
+                                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Syncing Seabed Data</span>
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Fetching live multi-drop coordinates...</span>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>

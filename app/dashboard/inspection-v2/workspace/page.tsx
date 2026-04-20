@@ -197,6 +197,7 @@ function V10PreviewLayout() {
     });
 
     const [unitSystem, setUnitSystem] = useState<"METRIC" | "IMPERIAL">("METRIC");
+    const [recordSearchQuery, setRecordSearchQuery] = useState("");
 
     // Fetch Global Unit Preference
     useEffect(() => {
@@ -273,9 +274,32 @@ function V10PreviewLayout() {
         
         return sortableRecords;
     }, [currentRecords, sortConfig]);
+    
+    const displayRecords = useMemo(() => {
+        if (!recordSearchQuery) return sortedRecords;
+        const q = recordSearchQuery.toLowerCase();
+        return sortedRecords.filter(r => {
+            const typeName = (r.inspection_type?.name || "").toLowerCase();
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toLowerCase();
+            const componentId = (r.structure_components?.q_id || "").toLowerCase();
+            const elev = (r.elevation || "").toString().toLowerCase();
+            const status = r.has_anomaly ? "anomaly" : (r.status === 'COMPLETED' ? "pass" : "incomplete");
+            const remarks = (r.inspection_data?.observation || r.inspection_data?.findings || "").toLowerCase();
+            const refNo = (r.anomaly_ref_no || "").toLowerCase();
+
+            return typeName.includes(q) || 
+                   typeCode.includes(q) || 
+                   componentId.includes(q) || 
+                   elev.includes(q) || 
+                   status.includes(q) || 
+                   remarks.includes(q) ||
+                   refNo.includes(q);
+        });
+    }, [sortedRecords, recordSearchQuery]);
     const [isFetchingDeps, setIsFetchingDeps] = useState(true);
     const [isDeploymentValid, setIsDeploymentValid] = useState(true);
     const [syncLoading, setSyncLoading] = useState(false);
+    const [historyLoading, setHistoryLoading] = useState(false);
     const [componentsSow, setComponentsSow] = useState<any[]>([]);
     const [componentsNonSow, setComponentsNonSow] = useState<any[]>(COMPONENTS_NON_SOW);
     const [allComps, setAllComps] = useState<any[]>([]);
@@ -2111,16 +2135,18 @@ function V10PreviewLayout() {
     const fetchHistory = useCallback(async () => {
         if (!selectedComp || !structureId) return;
         
-        let query = supabase.from('insp_records')
-            .select('*')
-            .eq('component_id', selectedComp.id)
-            .eq('structure_id', Number(structureId));
+        try {
+            setHistoryLoading(true);
+            let query = supabase.from('insp_records')
+                .select('*')
+                .eq('component_id', selectedComp.id)
+                .eq('structure_id', Number(structureId));
 
-        if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-            query = query.eq('sow_report_no', headerData.sowReportNo);
-        }
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                query = query.eq('sow_report_no', headerData.sowReportNo);
+            }
 
-        const { data, error } = await query.order('cr_date', { ascending: false });
+            const { data, error } = await query.order('cr_date', { ascending: false });
 
         if (error || !data) {
             console.error("Error fetching component history:", error);
@@ -2263,6 +2289,11 @@ function V10PreviewLayout() {
 
         setCurrentCompRecords(current);
         setHistoricalRecords(historical);
+        } catch (err) {
+            console.error("fetchHistory Error:", err);
+        } finally {
+            setHistoryLoading(false);
+        }
     }, [selectedComp, supabase, structureId, jobPackId, headerData.sowReportNo, inspMethod, activeDep, deployments]);
 
     useEffect(() => {
@@ -5275,7 +5306,28 @@ function V10PreviewLayout() {
                         <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
                             <div className="flex items-center gap-2">
                                 <span>CAPTURED EVENTS</span>
-                                <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
+                                <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                    {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                    {currentRecords.length} Captured
+                                </Badge>
+                            </div>
+
+                            <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                <Input 
+                                    placeholder="Smart Filter (Record, Component, Type, Status)..."
+                                    className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
+                                    value={recordSearchQuery}
+                                    onChange={(e) => setRecordSearchQuery(e.target.value)}
+                                />
+                                {recordSearchQuery && (
+                                    <button 
+                                        onClick={() => setRecordSearchQuery("")}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
+                                    >
+                                        <X className="w-2.5 h-2.5 text-slate-500" />
+                                    </button>
+                                )}
                             </div>
                             <Button 
                                 variant="ghost" 
@@ -5323,7 +5375,7 @@ function V10PreviewLayout() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {sortedRecords.map((r: any) => {
+                                        {displayRecords.map((r: any) => {
                                             const formatCounter = (val: any) => {
                                                 if (!val) return null;
                                                 if (typeof val === 'string' && val.includes(':')) return val;
@@ -5451,11 +5503,38 @@ function V10PreviewLayout() {
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+
+                                        {displayRecords.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="px-3 py-12 text-center bg-white/50">
+                                                    {syncLoading ? (
+                                                        <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
+                                                            <div className="relative">
+                                                                <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
+                                                                <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
+                                                            </div>
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Synchronizing</span>
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fetching live workspace data...</span>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center gap-2 text-slate-300">
+                                                            <Search className="w-8 h-8 opacity-20" />
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inventory Empty</span>
+                                                                <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">No events match your current filter or session</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </td>
                                             </tr>
-                                        )
-                                    })}
-                                </tbody>
+                                        )}
+                                    </tbody>
                             </table>
                         </ScrollArea>
                         )}
@@ -5464,11 +5543,33 @@ function V10PreviewLayout() {
                     {/* Captured Events PiP Portal */}
                     {capturedEventsPipWindow && createPortal(
                         <div className="h-screen w-screen flex flex-col bg-white overflow-hidden">
-                            <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center shrink-0">
+                            <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
                                 <div className="flex items-center gap-2">
                                     <span>CAPTURED EVENTS (FLOATING)</span>
-                                    <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
+                                    <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                        {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                        {currentRecords.length} Captured
+                                    </Badge>
                                 </div>
+                                
+                                <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                    <Input 
+                                        placeholder="Smart Filter..."
+                                        className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
+                                        value={recordSearchQuery}
+                                        onChange={(e) => setRecordSearchQuery(e.target.value)}
+                                    />
+                                    {recordSearchQuery && (
+                                        <button 
+                                            onClick={() => setRecordSearchQuery("")}
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
+                                        >
+                                            <X className="w-2.5 h-2.5 text-slate-500" />
+                                        </button>
+                                    )}
+                                </div>
+
                                 <div className="flex items-center gap-2">
                                     <button onClick={() => {
                                         if (capturedEventsPipWindow) {
@@ -5524,7 +5625,7 @@ function V10PreviewLayout() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {sortedRecords.map((r: any) => {
+                                        {displayRecords.map((r: any) => {
                                             const formatCounter = (val: any) => {
                                                 if (!val) return null;
                                                 if (typeof val === 'string' && val.includes(':')) return val;
@@ -5654,8 +5755,35 @@ function V10PreviewLayout() {
                                                         </div>
                                                     </td>
                                                 </tr>
-                                            )
+                                            );
                                         })}
+
+                                        {displayRecords.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="px-3 py-12 text-center bg-white/50">
+                                                    {syncLoading ? (
+                                                        <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
+                                                            <div className="relative">
+                                                                <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
+                                                                <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
+                                                            </div>
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Synchronizing</span>
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fetching live workspace data...</span>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center gap-2 text-slate-300">
+                                                            <Search className="w-8 h-8 opacity-20" />
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inventory Empty</span>
+                                                                <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">No events match your current filter or session</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </ScrollArea>
@@ -5786,7 +5914,18 @@ function V10PreviewLayout() {
                             <History className="w-3 h-3 text-slate-400" />
                         </div>
                         <ScrollArea className="flex-1 p-3">
-                            {!selectedComp ? (
+                            {historyLoading ? (
+                                <div className="flex flex-col items-center justify-center p-12 gap-3 animate-in fade-in duration-500">
+                                    <div className="relative">
+                                        <div className="absolute inset-0 blur-md bg-blue-400/20 rounded-full animate-pulse" />
+                                        <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
+                                    </div>
+                                    <div className="flex flex-col items-center gap-1">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Retrieving History</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Looking up past inspection data...</span>
+                                    </div>
+                                </div>
+                            ) : !selectedComp ? (
                                 <div className="text-center text-slate-400 text-xs py-10">Select component to view history</div>
                             ) : (
                                 <div className="space-y-4">
