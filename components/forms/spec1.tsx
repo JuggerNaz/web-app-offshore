@@ -14,6 +14,15 @@ import { Save, Info, Settings, MapPin, Ruler, Layers, Package, Globe } from "luc
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { getUnitOptions, getDefaultUnit } from "@/utils/unit-helpers";
+import { useEffect, useState } from "react";
 
 type Props = {
   data?: any; //TODO: use real type rather than any
@@ -35,9 +44,15 @@ export default function Spec1({ data }: Props) {
 
   const {
     data: libData,
-    error,
-    isLoading,
+    error: libError,
+    isLoading: libLoading,
   } = useSWR(`/api/library/${"PLAT_TYP,PLAT_FUNCT,PLAT_MAT,PLAT_CP,CORR_CTG,PLAT_CONT,OILFIELD"}`, fetcher);
+
+  const {
+    data: settingsData,
+    error: settingsError,
+    isLoading: settingsLoading,
+  } = useSWR("/api/company-settings", fetcher);
 
   const form = useForm<z.infer<typeof PlatformSchema>>({
     resolver: zodResolver(PlatformSchema),
@@ -47,6 +62,104 @@ export default function Spec1({ data }: Props) {
   const legsCountRaw = form.watch("plegs");
   const legsCount = Number(legsCountRaw) || 0;
   const isLegDisabled = (legNumber: number) => legNumber > legsCount;
+
+  // Watch leg ID values to populate North Side dropdowns
+  const legValues = form.watch([
+    "leg_t1", "leg_t2", "leg_t3", "leg_t4", "leg_t5",
+    "leg_t6", "leg_t7", "leg_t8", "leg_t9", "leg_t10",
+    "leg_t11", "leg_t12", "leg_t13", "leg_t14", "leg_t15",
+    "leg_t16", "leg_t17", "leg_t18", "leg_t19", "leg_t20"
+  ]);
+
+  const legOptions = legValues
+    .map((val, i) => ({ label: val || `Leg ${i + 1}`, value: val || "" }))
+    .filter((opt, i) => i < legsCount && opt.value !== "");
+
+  // Automatically synchronize North Side leg selection with first/last active legs
+  useEffect(() => {
+    const activeLegs = legValues.filter((_, i) => i < legsCount && legValues[i]);
+    if (activeLegs.length > 0) {
+      const currentN1 = form.getValues("nleg_t1");
+      const currentN2 = form.getValues("nleg_t2");
+      const firstLeg = activeLegs[0];
+      const lastLeg = activeLegs[activeLegs.length - 1];
+
+      if (firstLeg && firstLeg !== currentN1) {
+        form.setValue("nleg_t1", firstLeg, { shouldDirty: true });
+      }
+      if (lastLeg && lastLeg !== currentN2) {
+        form.setValue("nleg_t2", lastLeg, { shouldDirty: true });
+      }
+    }
+  }, [legValues, legsCount, form.setValue]);
+
+  const defUnit = form.watch("def_unit") || settingsData?.data?.def_unit || "METRIC";
+  const isImperial = defUnit === "IMPERIAL";
+
+  // Sync the form's def_unit field with company settings if not already set (e.g. for new assets)
+  useEffect(() => {
+    if (!settingsLoading && settingsData?.data) {
+      const currentVal = form.getValues("def_unit");
+      if (!currentVal) {
+        form.setValue("def_unit", settingsData.data.def_unit || "METRIC");
+      }
+    }
+  }, [settingsData, settingsLoading, form]);
+
+  // Transient unit state (not persisted as per user request)
+  const [units, setUnits] = useState({
+    depth: "m",
+    desg_life: "years",
+    st_north: "m",
+    st_east: "m",
+    north_angle: "deg",
+    dleg: "mm",
+    wall_thk: "mm"
+  });
+
+  useEffect(() => {
+    if (!settingsLoading && settingsData?.data) {
+      setUnits({
+        depth: getDefaultUnit("LENGTH", isImperial, "depth") || "m",
+        desg_life: getDefaultUnit("TIME", isImperial) || "years",
+        st_north: getDefaultUnit("LENGTH", isImperial, "st_north") || "m",
+        st_east: getDefaultUnit("LENGTH", isImperial, "st_east") || "m",
+        north_angle: getDefaultUnit("ANGLE", isImperial) || "deg",
+        dleg: getDefaultUnit("LENGTH", isImperial, "dleg") || "mm",
+        wall_thk: getDefaultUnit("LENGTH", isImperial, "wall_thk") || "mm"
+      });
+    }
+  }, [isImperial, settingsLoading, settingsData]);
+
+  const renderUnitSelect = (fieldName: keyof typeof units, category: string) => {
+    if (category.toUpperCase() === "PERCENT") {
+      return <span className="mb-2 text-[10px] text-muted-foreground font-black lowercase">{units[fieldName]}</span>;
+    }
+    const options = getUnitOptions(category, isImperial);
+    if (!options || options.length === 0) return <span className="mb-2 text-[10px] text-muted-foreground font-black lowercase">{units[fieldName]}</span>;
+
+    return (
+      <div className="mb-1.5 min-w-[50px]">
+        <Select 
+          value={units[fieldName]} 
+          onValueChange={(val) => setUnits(prev => ({ ...prev, [fieldName]: val }))}
+        >
+          <SelectTrigger className="h-7 border-none bg-slate-100/50 dark:bg-slate-900/50 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors text-[10px] font-black tracking-tighter rounded-lg px-2 shadow-none focus:ring-0 text-slate-900 dark:text-slate-100">
+            <div className="flex items-center justify-between w-full gap-1">
+              <span className="truncate">{units[fieldName] || options[0]}</span>
+            </div>
+          </SelectTrigger>
+          <SelectContent className="rounded-xl border-slate-200 dark:border-slate-800">
+            {options.map((opt) => (
+              <SelectItem key={opt} value={opt} className="text-[10px] font-bold">
+                {opt}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  };
 
   const onSubmit = async (values: z.infer<typeof PlatformSchema>) => {
     if (values.plat_id == 0) {
@@ -82,8 +195,8 @@ export default function Spec1({ data }: Props) {
     }
   };
 
-  if (error) return <div>failed to load</div>;
-  if (isLoading) return <div>loading...</div>;
+  if (libError || settingsError) return <div>failed to load</div>;
+  if (libLoading || settingsLoading) return <div>loading...</div>;
 
   return (
     <Form {...form}>
@@ -127,13 +240,13 @@ export default function Spec1({ data }: Props) {
                   <div className="flex-1">
                     <FormFieldWrap label="Depth" name="depth" form={form} placeholder="0" type="number" />
                   </div>
-                  <span className="mb-2 text-sm text-muted-foreground font-medium">m</span>
+                  {renderUnitSelect("depth", "LENGTH")}
                 </div>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <FormFieldWrap label="Design Life" name="desg_life" form={form} placeholder="0" type="number" />
                   </div>
-                  <span className="mb-2 text-sm text-muted-foreground font-medium">years</span>
+                  {renderUnitSelect("desg_life", "TIME")}
                 </div>
               </CardContent>
             </Card>
@@ -239,23 +352,45 @@ export default function Spec1({ data }: Props) {
                     <div className="flex-1">
                       <FormFieldWrap label="Northing" name="st_north" form={form} type="number" />
                     </div>
-                    <span className="mb-2 text-xs text-muted-foreground">m</span>
+                    {renderUnitSelect("st_north", "LENGTH")}
                   </div>
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <FormFieldWrap label="Easting" name="st_east" form={form} type="number" />
                     </div>
-                    <span className="mb-2 text-xs text-muted-foreground">m</span>
+                    {renderUnitSelect("st_east", "LENGTH")}
                   </div>
                 </div>
                 <Separator className="my-2" />
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-2 px-1">
                   <div className="flex-1">
                     <FormFieldWrap label="True North Angle" name="north_angle" form={form} type="number" />
                   </div>
-                  <span className="mb-2 text-xs text-muted-foreground font-medium">Deg.</span>
+                  {renderUnitSelect("north_angle", "ANGLE")}
                 </div>
-                <FormFieldWrap label="Platform North Side" name="north_side" form={form} placeholder="N/A" />
+                <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70 px-1">
+                    Platform North Side
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormFieldWrap
+                      label="First Leg"
+                      name="nleg_t1"
+                      form={form}
+                      ftype="vselect"
+                      options={legOptions}
+                      placeholder="Select"
+                    />
+                    <FormFieldWrap
+                      label="Last Leg"
+                      name="nleg_t2"
+                      form={form}
+                      ftype="vselect"
+                      options={legOptions}
+                      placeholder="Select"
+                    />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -268,12 +403,20 @@ export default function Spec1({ data }: Props) {
               <CardContent className="p-0">
                 <div className="grid grid-cols-2">
                   <div className="p-4 border-r border-b">
-                    <FormFieldWrap label="Max Leg Dia." name="dleg" form={form} type="number" />
-                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Unit: mm</span>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <FormFieldWrap label="Max Leg Dia." name="dleg" form={form} type="number" />
+                      </div>
+                      {renderUnitSelect("dleg", "LENGTH")}
+                    </div>
                   </div>
                   <div className="p-4 border-b">
-                    <FormFieldWrap label="Max Wall Thk." name="wall_thk" form={form} type="number" />
-                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Unit: mm</span>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <FormFieldWrap label="Max Wall Thk." name="wall_thk" form={form} type="number" />
+                      </div>
+                      {renderUnitSelect("wall_thk", "LENGTH")}
+                    </div>
                   </div>
                 </div>
                 <div className="p-4 grid grid-cols-2 gap-4">

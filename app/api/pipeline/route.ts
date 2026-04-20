@@ -44,7 +44,7 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
   // Attach field names
   const pipelinesWithFields = (data || []).map(pipeline => ({
     ...pipeline,
-    field_name: fieldMap.get(pipeline.pfield?.toString()) || pipeline.pfield,
+    field_name: fieldMap.get(pipeline.pfield?.toString() ?? "") || pipeline.pfield,
   }));
 
   // Create pagination metadata

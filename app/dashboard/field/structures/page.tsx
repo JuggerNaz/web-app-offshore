@@ -224,13 +224,13 @@ export default function StructuresPage() {
 
                 {/* Create New Actions */}
                 <div className="flex gap-2 self-stretch sm:self-auto">
-                    <Link href="/dashboard/field/platform/new" className="flex-1 sm:flex-none">
+                    <Link href={fieldId ? `/dashboard/field/platform/new?field=${fieldId}` : "/dashboard/field/platform/new"} className="flex-1 sm:flex-none">
                         <Button className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl h-12 px-6 shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all gap-2 border-0" title="New Platform">
                             <Plus className="w-4 h-4 stroke-[3px]" />
                             <span className="hidden sm:inline">New Platform</span>
                         </Button>
                     </Link>
-                    <Link href="/dashboard/field/pipeline/new" className="flex-1 sm:flex-none">
+                    <Link href={fieldId ? `/dashboard/field/pipeline/new?field=${fieldId}` : "/dashboard/field/pipeline/new"} className="flex-1 sm:flex-none">
                         <Button className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl h-12 px-6 shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all gap-2 border-0" title="New Pipeline">
                             <Plus className="w-4 h-4 stroke-[3px]" />
                             <span className="hidden sm:inline">New Pipeline</span>

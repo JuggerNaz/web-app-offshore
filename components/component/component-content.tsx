@@ -18,6 +18,7 @@ import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import useSWR, { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
+import { toast } from "sonner";
 
 type Component = {
   id: number;
@@ -138,6 +139,30 @@ export default function ComponentContent() {
   const handleEditComponent = (component: Component) => {
     setEditingComponent(component as EditableComponent);
     setEditDialogOpen(true);
+  };
+
+  const handleDuplicateComponent = async (comp: Component) => {
+    try {
+      const duplicateData = {
+        id_no: `${comp.id_no} (Copy)`,
+        q_id: `${comp.q_id} (Copy)`,
+        comp_id: 0,
+        structure_id: comp.structure_id,
+        code: comp.code,
+        metadata: comp.metadata,
+      };
+
+      await fetcher(`/api/structure-components/${comp.structure_id}`, {
+        method: "POST",
+        body: JSON.stringify(duplicateData),
+      });
+
+      if (apiUrl) mutate(apiUrl);
+      toast.success("Component duplicated successfully");
+    } catch (error) {
+      console.error("Duplicate failed", error);
+      toast.error("Failed to duplicate component");
+    }
   };
 
   const handleDeleteItem = async () => {
@@ -398,6 +423,15 @@ export default function ComponentContent() {
                               }}
                             >
                               Edit Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="rounded-lg py-2.5 font-bold cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDuplicateComponent(comp);
+                              }}
+                            >
+                              Duplicate Data
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className={cn(

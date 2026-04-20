@@ -1,8 +1,8 @@
 {
   "LENGTH": {
-    "metric": ["mm", "cm", "m"],
-    "imperial": ["in", "ft"],
-    "defaultMetric": "mm",
+    "metric": ["m", "cm", "mm", "in", "ft"],
+    "imperial": ["in", "ft", "m", "cm", "mm"],
+    "defaultMetric": "m",
     "defaultImperial": "in"
   },
   "MASS": {
@@ -34,5 +34,24 @@
     "imperial": ["%"],
     "defaultMetric": "%",
     "defaultImperial": "%"
+  },
+  "ANGLE": {
+    "metric": ["deg"],
+    "imperial": ["deg"],
+    "defaultMetric": "deg",
+    "defaultImperial": "deg"
+  },
+  "TIME": {
+    "metric": ["years"],
+    "imperial": ["years"],
+    "defaultMetric": "years",
+    "defaultImperial": "years"
+  },
+  "DISTANCE": {
+    "metric": ["km", "m", "cm", "mm", "in", "ft", "mile"],
+    "imperial": ["mile", "ft", "in", "mm", "cm", "m", "km"],
+    "defaultMetric": "km",
+    "defaultImperial": "mile"
   }
 }
+

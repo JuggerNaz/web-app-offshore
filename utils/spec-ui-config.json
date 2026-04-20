@@ -1521,6 +1521,34 @@
           "type": "string"
         }
       ]
+    },
+    {
+      "code": "pp",
+      "componentType": "pp_comp",
+      "fields": [
+        {
+          "name": "wall_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "cons_span",
+          "type": "string"
+        },
+        {
+          "name": "oper_span",
+          "type": "string"
+        },
+        {
+          "name": "diameter",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "spool_piece",
+          "type": "boolean"
+        }
+      ]
     }
   ]
 }

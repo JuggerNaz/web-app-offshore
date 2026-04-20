@@ -14,6 +14,15 @@ import { Save, Info, Settings, MapPin, Ruler, Layers, Package, Globe, Activity }
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { getUnitOptions, getDefaultUnit } from "@/utils/unit-helpers";
+import { useEffect, useState } from "react";
 
 type Props = {
   data?: any; //TODO: use real type rather than any
@@ -27,6 +36,12 @@ export default function Spec1Pipeline({ data }: Props) {
     error: libError,
     isLoading: libLoading,
   } = useSWR(`/api/library/${"OILFIELD"}`, fetcher);
+
+  const {
+    data: settingsData,
+    error: settingsError,
+    isLoading: settingsLoading,
+  } = useSWR("/api/company-settings", fetcher);
 
   const normalizeDate = (value: string | null | undefined) => {
     if (!value) return "";
@@ -43,6 +58,94 @@ export default function Spec1Pipeline({ data }: Props) {
     resolver: zodResolver(PipelineSchema),
     defaultValues: initialData,
   });
+
+  const defUnit = form.watch("def_unit") || settingsData?.data?.def_unit || "METRIC";
+  const isImperial = defUnit === "IMPERIAL";
+
+  // Sync the form's def_unit field with company settings if not already set (e.g. for new assets)
+  useEffect(() => {
+    if (!settingsLoading && settingsData?.data) {
+      const currentVal = form.getValues("def_unit");
+      if (!currentVal) {
+        form.setValue("def_unit", settingsData.data.def_unit || "METRIC");
+      }
+    }
+  }, [settingsData, settingsLoading, form]);
+
+  // Transient unit state
+  const [units, setUnits] = useState({
+    depth: "m",
+    desg_life: "years",
+    st_fp: "km",
+    st_x: "m",
+    st_y: "m",
+    end_fp: "km",
+    end_x: "m",
+    end_y: "m",
+    plength: "km",
+    line_diam: "mm",
+    wall_thk: "mm",
+    conc_ctg_per: "%",
+    desg_press: "bar",
+    oper_press: "bar",
+    burial: "%",
+    span_cons: "m",
+    span_oper: "m"
+  });
+
+  useEffect(() => {
+    if (!settingsLoading && settingsData?.data) {
+      setUnits({
+        depth: getDefaultUnit("LENGTH", isImperial, "depth") || "m",
+        desg_life: getDefaultUnit("TIME", isImperial) || "years",
+        st_fp: getDefaultUnit("DISTANCE", isImperial, "st_fp") || "km",
+        st_x: getDefaultUnit("LENGTH", isImperial, "st_x") || "m",
+        st_y: getDefaultUnit("LENGTH", isImperial, "st_y") || "m",
+        end_fp: getDefaultUnit("DISTANCE", isImperial, "end_fp") || "km",
+        end_x: getDefaultUnit("LENGTH", isImperial, "end_x") || "m",
+        end_y: getDefaultUnit("LENGTH", isImperial, "end_y") || "m",
+        plength: getDefaultUnit("DISTANCE", isImperial, "plength") || "km",
+        line_diam: getDefaultUnit("LENGTH", isImperial, "line_diam") || "mm",
+        wall_thk: getDefaultUnit("LENGTH", isImperial, "wall_thk") || "mm",
+        conc_ctg_per: getDefaultUnit("PERCENT", isImperial) || "%",
+        desg_press: getDefaultUnit("PRESSURE", isImperial) || "bar",
+        oper_press: getDefaultUnit("PRESSURE", isImperial) || "bar",
+        burial: getDefaultUnit("PERCENT", isImperial) || "%",
+        span_cons: getDefaultUnit("LENGTH", isImperial, "span_cons") || "m",
+        span_oper: getDefaultUnit("LENGTH", isImperial, "span_oper") || "m"
+      });
+    }
+  }, [isImperial, settingsLoading, settingsData]);
+
+  const renderUnitSelect = (fieldName: keyof typeof units, category: string) => {
+    if (category.toUpperCase() === "PERCENT") {
+      return <span className="mb-2 text-[10px] text-muted-foreground font-black lowercase">{units[fieldName]}</span>;
+    }
+    const options = getUnitOptions(category, isImperial);
+    if (!options || options.length === 0) return <span className="mb-2 text-[10px] text-muted-foreground font-black lowercase">{units[fieldName]}</span>;
+
+    return (
+      <div className="mb-1.5 min-w-[50px]">
+        <Select 
+          value={units[fieldName]} 
+          onValueChange={(val) => setUnits(prev => ({ ...prev, [fieldName]: val }))}
+        >
+          <SelectTrigger className="h-7 border-none bg-slate-100/50 dark:bg-slate-900/50 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors text-[10px] font-black tracking-tighter rounded-lg px-2 shadow-none focus:ring-0 text-slate-900 dark:text-slate-100">
+            <div className="flex items-center justify-between w-full gap-1">
+              <span className="truncate">{units[fieldName] || options[0]}</span>
+            </div>
+          </SelectTrigger>
+          <SelectContent className="rounded-xl border-slate-200 dark:border-slate-800">
+            {options.map((opt) => (
+              <SelectItem key={opt} value={opt} className="text-[10px] font-bold">
+                {opt}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  };
 
   const onSubmit = async (values: z.infer<typeof PipelineSchema>) => {
     if (values.pipe_id === 0) {
@@ -78,8 +181,8 @@ export default function Spec1Pipeline({ data }: Props) {
     }
   };
 
-  if (libError) return <div>failed to load library data</div>;
-  if (libLoading) return <div>loading...</div>;
+  if (libError || settingsError) return <div>failed to load library data</div>;
+  if (libLoading || settingsLoading) return <div>loading...</div>;
 
   return (
     <Form {...form}>
@@ -89,8 +192,7 @@ export default function Spec1Pipeline({ data }: Props) {
         className="space-y-6 max-w-7xl mx-auto p-4 sm:p-6"
       >
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column - Main Info */}
-          <div className="lg:col-span-10 space-y-6">
+          <div className="lg:col-span-12 space-y-6">
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
                 <Info className="h-5 w-5 text-blue-500" />
@@ -113,7 +215,7 @@ export default function Spec1Pipeline({ data }: Props) {
                   <div className="flex-1">
                     <FormFieldWrap label="Depth" name="depth" form={form} type="number" />
                   </div>
-                  <span className="mb-2 text-sm text-cyan-600">m</span>
+                  {renderUnitSelect("depth", "LENGTH")}
                 </div>
 
                 <FormFieldWrap label="Medium" name="ptype" form={form} placeholder="Medium" />
@@ -121,7 +223,7 @@ export default function Spec1Pipeline({ data }: Props) {
                   <div className="flex-1">
                     <FormFieldWrap label="Design Life" name="desg_life" form={form} type="number" />
                   </div>
-                  <span className="mb-2 text-sm text-cyan-600">year</span>
+                  {renderUnitSelect("desg_life", "TIME")}
                 </div>
 
                 <FormFieldWrap
@@ -148,19 +250,19 @@ export default function Spec1Pipeline({ data }: Props) {
                       <div className="flex-1">
                         <FormFieldWrap label="KP" name="st_fp" form={form} type="number" />
                       </div>
-                      <span className="mb-2 text-xs text-cyan-600">km</span>
+                      {renderUnitSelect("st_fp", "DISTANCE")}
                     </div>
                     <div className="flex items-end gap-1">
                       <div className="flex-1">
                         <FormFieldWrap label="Easting" name="st_x" form={form} />
                       </div>
-                      <span className="mb-2 text-xs text-cyan-600">m</span>
+                      {renderUnitSelect("st_x", "LENGTH")}
                     </div>
                     <div className="flex items-end gap-1">
                       <div className="flex-1">
                         <FormFieldWrap label="Northing" name="st_y" form={form} />
                       </div>
-                      <span className="mb-2 text-xs text-cyan-600">m</span>
+                      {renderUnitSelect("st_y", "LENGTH")}
                     </div>
                   </div>
                 </div>
@@ -173,19 +275,19 @@ export default function Spec1Pipeline({ data }: Props) {
                       <div className="flex-1">
                         <FormFieldWrap label="KP" name="end_fp" form={form} type="number" />
                       </div>
-                      <span className="mb-2 text-xs text-cyan-600">km</span>
+                      {renderUnitSelect("end_fp", "DISTANCE")}
                     </div>
                     <div className="flex items-end gap-1">
                       <div className="flex-1">
                         <FormFieldWrap label="Easting" name="end_x" form={form} />
                       </div>
-                      <span className="mb-2 text-xs text-cyan-600">m</span>
+                      {renderUnitSelect("end_x", "LENGTH")}
                     </div>
                     <div className="flex items-end gap-1">
                       <div className="flex-1">
                         <FormFieldWrap label="Northing" name="end_y" form={form} />
                       </div>
-                      <span className="mb-2 text-xs text-cyan-600">m</span>
+                      {renderUnitSelect("end_y", "LENGTH")}
                     </div>
                   </div>
                 </div>
@@ -203,19 +305,19 @@ export default function Spec1Pipeline({ data }: Props) {
                     <div className="flex-1">
                       <FormFieldWrap label="Length" name="plength" form={form} type="number" />
                     </div>
-                    <span className="mb-2 text-sm text-cyan-600">km</span>
+                    {renderUnitSelect("plength", "DISTANCE")}
                   </div>
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <FormFieldWrap label="Diameter" name="line_diam" form={form} type="number" />
                     </div>
-                    <span className="mb-2 text-sm text-cyan-600">mm</span>
+                    {renderUnitSelect("line_diam", "LENGTH")}
                   </div>
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <FormFieldWrap label="Wall Thkns." name="wall_thk" form={form} type="number" />
                     </div>
-                    <span className="mb-2 text-sm text-cyan-600">mm</span>
+                    {renderUnitSelect("wall_thk", "LENGTH")}
                   </div>
                   <FormFieldWrap label="Material" name="material" form={form} placeholder="e.g. API 5L G X65" />
                 </div>
@@ -227,8 +329,10 @@ export default function Spec1Pipeline({ data }: Props) {
                       <FormFieldWrap label="Concrete Coating" name="conc_ctg" form={form} placeholder="e.g. 3044KG/M3" />
                     </div>
                     <div className="flex-1 flex items-end gap-1">
-                      <FormFieldWrap label="%" name="conc_ctg_per" form={form} type="number" />
-                      <span className="mb-2 text-sm text-white">%</span>
+                      <div className="flex-1">
+                        <FormFieldWrap label="%" name="conc_ctg_per" form={form} type="number" />
+                      </div>
+                      {renderUnitSelect("conc_ctg_per", "PERCENT")}
                     </div>
                   </div>
                 </div>
@@ -245,66 +349,36 @@ export default function Spec1Pipeline({ data }: Props) {
                   <div className="flex-1">
                     <FormFieldWrap label="Design Pressure" name="desg_press" form={form} type="number" />
                   </div>
-                  <span className="mb-2 text-sm text-cyan-600">bars</span>
+                  {renderUnitSelect("desg_press", "PRESSURE")}
                 </div>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <FormFieldWrap label="Operating Pressure" name="oper_press" form={form} type="number" />
                   </div>
-                  <span className="mb-2 text-sm text-cyan-600">bars</span>
+                  {renderUnitSelect("oper_press", "PRESSURE")}
                 </div>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <FormFieldWrap label="Line Burried" name="burial" form={form} type="number" />
                   </div>
-                  <span className="mb-2 text-sm text-white">%</span>
+                  {renderUnitSelect("burial", "PERCENT")}
                 </div>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <FormFieldWrap label="Constructional Span" name="span_cons" form={form} type="number" />
                   </div>
-                  <span className="mb-2 text-sm text-cyan-600">m</span>
+                  {renderUnitSelect("span_cons", "LENGTH")}
                 </div>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <FormFieldWrap label="Operational Span" name="span_oper" form={form} type="number" />
                   </div>
-                  <span className="mb-2 text-sm text-cyan-600">m</span>
+                  {renderUnitSelect("span_oper", "LENGTH")}
                 </div>
                 <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="N/A" />
               </CardContent>
             </Card>
 
-          </div>
-
-          {/* Right Column - Misc & Unit */}
-          <div className="lg:col-span-2 space-y-6">
-
-            <Card className="shadow-sm border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
-              <CardHeader className="flex flex-row items-center gap-1 space-y-0 py-2 px-3">
-                <Globe className="h-3.5 w-3.5 text-blue-600" />
-                <CardTitle className="text-[10px] uppercase font-bold tracking-tight">Units</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-0 px-3 pb-3">
-                <p className="text-[9px] leading-tight text-muted-foreground">
-                  Default measurement system.
-                </p>
-                <FormFieldWrap label="" name="def_unit" form={form} placeholder="METRIC" />
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center gap-1 space-y-0 py-2 px-3">
-                <Layers className="h-3.5 w-3.5 text-indigo-500" />
-                <CardTitle className="text-[10px] uppercase font-bold tracking-tight">Finalize</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 px-3 pb-3">
-                <Button type="submit" className="w-full h-9 text-xs font-bold px-2">
-                  <Save className="mr-1.5 h-3.5 w-3.5" />
-                  Save
-                </Button>
-              </CardContent>
-            </Card>
           </div>
         </div>
 

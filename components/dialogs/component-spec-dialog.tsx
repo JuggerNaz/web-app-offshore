@@ -26,6 +26,7 @@ import { urlId, urlType } from "@/utils/client-state";
 import { toast } from "sonner";
 import specAdditionalDetails from "@/utils/spec-additional-details.json";
 import specUiConfig from "@/utils/spec-ui-config.json";
+import { getUnitOptions, getDefaultUnit } from "@/utils/unit-helpers";
 import { Wrench, Settings2, Save, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -70,36 +71,7 @@ const buildIdNo = (
   return `${code}/${startNode}-${endNode}/${distance}/${clockPos}`;
 };
 
-// Unit category helpers
-const getUnitOptions = (category: string | null, isImperial: boolean) => {
-  if (category === 'length') {
-    return isImperial ? ['inches', 'feet', 'm', 'cm', 'mm'] : ['m', 'cm', 'mm', 'inches', 'feet'];
-  }
-  if (category === 'weight') {
-    return isImperial ? ['pounds', 'tonne', 'kg', 'g'] : ['tonne', 'kg', 'g', 'pounds'];
-  }
-  if (category === 'pressure') {
-    return ['bars', 'psi'];
-  }
-  return null;
-};
 
-const getDefaultUnit = (category: string | null, isImperial: boolean, fieldName?: string, componentCode?: string) => {
-  const code = componentCode?.toLowerCase() || '';
-  if (category === 'length') {
-    if (isImperial) return 'inches';
-    // Maintain legacy special cases for Metric
-    if (code === 'ce' || code === 'gs') return 'm';
-    return 'mm';
-  }
-  if (category === 'weight') {
-    return isImperial ? 'pounds' : 'tonne';
-  }
-  if (category === 'pressure') {
-    return 'bars';
-  }
-  return null;
-};
 
 type ComponentSpecDialogProps = {
   component: Component | null;
@@ -176,6 +148,7 @@ export function ComponentSpecDialog({
   const { data: stubMatData } = useSWR(`/api/library/STUB_MAT`, fetcher);
   const { data: wsupTypData } = useSWR(`/api/library/WSUP_TYP`, fetcher);
   const { data: membMatData } = useSWR(`/api/library/mast/MEMB_MAT`, fetcher);
+  const { data: pipeMatData } = useSWR(`/api/library/PIPE_MAT`, fetcher);
   const { data: stdMembMatData } = useSWR(`/api/library/MEMB_MAT`, fetcher);
   // Anode specific options
   const { data: anodeTypeData } = useSWR(`/api/library/ANOD_TYP`, fetcher);
@@ -186,6 +159,12 @@ export function ComponentSpecDialog({
     pageType === "platform" && structureId ? `/api/platform/${structureId}` : null,
     fetcher
   );
+
+  const { data: pipelineData } = useSWR(
+    pageType === "pipeline" && structureId ? `/api/pipeline/${structureId}` : null,
+    fetcher
+  );
+
 
   const legOptions = platformData?.data ? Array.from({ length: 20 }, (_, i) => {
     const key = `leg_t${i + 1}`;
@@ -203,6 +182,7 @@ export function ComponentSpecDialog({
   const { data: companyData } = useSWR('/api/company-settings', fetcher);
   const defUnit = companyData?.data?.def_unit || "METRIC";
   const isImperial = defUnit === "IMPERIAL";
+
 
   const [selectorOpen, setSelectorOpen] = useState(false);
 
@@ -237,11 +217,11 @@ export function ComponentSpecDialog({
     s_leg: "",
     f_leg: "",
     dist: "",
-    dist_unit: "m",
+    dist_unit: "",
     elv_1: "",
-    elv_1_unit: "m",
+    elv_1_unit: "",
     elv_2: "",
-    elv_2_unit: "m",
+    elv_2_unit: "",
     clk_pos: "",
     lvl: "",
     face: "",
@@ -249,13 +229,14 @@ export function ComponentSpecDialog({
     comp_group: "",
     associated_comp_id: null as number | null,
     kp: "",
-    kp_unit: "km",
+    kp_unit: "",
     easting: "",
-    easting_unit: "m",
+    easting_unit: "",
     northing: "",
-    northing_unit: "m",
+    northing_unit: "",
     depth: "",
-    depth_unit: "m",
+    depth_unit: "",
+
     additionalInfo: {
       wall_thk: "",
       depth: "",
@@ -364,25 +345,35 @@ export function ComponentSpecDialog({
 
   // Dynamic unit defaults based on company settings
   useEffect(() => {
-    if (companyData?.data && open) {
+    if (open) {
       setFormData(prev => {
         let changed = false;
         const updates: any = {};
-        const isImp = isImperial;
+        const isImp = companyData?.data?.def_unit === "IMPERIAL";
+
 
         // Base fields
-        if (prev.dist_unit !== (isImp ? "inches" : "m")) { updates.dist_unit = isImp ? "inches" : "m"; changed = true; }
-        if (prev.elv_1_unit !== (isImp ? "inches" : "m")) { updates.elv_1_unit = isImp ? "inches" : "m"; changed = true; }
-        if (prev.elv_2_unit !== (isImp ? "inches" : "m")) { updates.elv_2_unit = isImp ? "inches" : "m"; changed = true; }
-        if (prev.kp_unit !== (isImp ? "mile" : "km")) { updates.kp_unit = isImp ? "mile" : "km"; changed = true; }
-        if (prev.depth_unit !== (isImp ? "inches" : "m")) { updates.depth_unit = isImp ? "inches" : "m"; changed = true; }
-        if (prev.easting_unit !== (isImp ? "inches" : "m")) { updates.easting_unit = isImp ? "inches" : "m"; changed = true; }
-        if (prev.northing_unit !== (isImp ? "inches" : "m")) { updates.northing_unit = isImp ? "inches" : "m"; changed = true; }
+        const dUnit = getDefaultUnit("LENGTH", isImp, "dist", effectiveCode || undefined) || (isImp ? "ft" : "m");
+        const eUnit = getDefaultUnit("LENGTH", isImp, "elv", effectiveCode || undefined) || (isImp ? "ft" : "m");
+        const kpUnit = getDefaultUnit("DISTANCE", isImp, "kp", effectiveCode || undefined) || (isImp ? "mile" : "km");
+        const depthUnit = getDefaultUnit("LENGTH", isImp, "depth", effectiveCode || undefined) || (isImp ? "ft" : "m");
+        const eastUnit = getDefaultUnit("LENGTH", isImp, "easting", effectiveCode || undefined) || (isImp ? "ft" : "m");
+        const northUnit = getDefaultUnit("LENGTH", isImp, "northing", effectiveCode || undefined) || (isImp ? "ft" : "m");
+
+        if (prev.dist_unit !== dUnit) { updates.dist_unit = dUnit; changed = true; }
+        if (prev.elv_1_unit !== eUnit) { updates.elv_1_unit = eUnit; changed = true; }
+        if (prev.elv_2_unit !== eUnit) { updates.elv_2_unit = eUnit; changed = true; }
+        if (prev.kp_unit !== kpUnit) { updates.kp_unit = kpUnit; changed = true; }
+        if (prev.depth_unit !== depthUnit) { updates.depth_unit = depthUnit; changed = true; }
+        if (prev.easting_unit !== eastUnit) { updates.easting_unit = eastUnit; changed = true; }
+        if (prev.northing_unit !== northUnit) { updates.northing_unit = northUnit; changed = true; }
+
+
         
         if (prev.additionalInfo) {
           const newAdd = { ...prev.additionalInfo };
           let addChanged = false;
-          const componentConfig = specUiConfig.components.find(c => c.code.toLowerCase() === effectiveCode?.toLowerCase());
+          const componentConfig = specUiConfig.components.find(c => c.code?.toLowerCase() === effectiveCode?.toLowerCase());
 
           Object.keys(newAdd).forEach(k => {
              if (k.endsWith('_unit')) {
@@ -413,6 +404,8 @@ export function ComponentSpecDialog({
 
 
 
+
+
   // Update code when defaultCode changes (when switching component types)
   useEffect(() => {
     if (isCreateMode && defaultCode) {
@@ -433,11 +426,11 @@ export function ComponentSpecDialog({
         s_leg: component.metadata?.s_leg ?? "",
         f_leg: component.metadata?.f_leg ?? "",
         dist: component.metadata?.dist ?? "",
-        dist_unit: component.metadata?.dist_unit ?? "m",
+        dist_unit: component.metadata?.dist_unit ?? "",
         elv_1: component.metadata?.elv_1 ?? "",
-        elv_1_unit: component.metadata?.elv_1_unit ?? "m",
+        elv_1_unit: component.metadata?.elv_1_unit ?? "",
         elv_2: component.metadata?.elv_2 ?? "",
-        elv_2_unit: component.metadata?.elv_2_unit ?? "m",
+        elv_2_unit: component.metadata?.elv_2_unit ?? "",
         clk_pos: component.metadata?.clk_pos ?? "",
         lvl: component.metadata?.lvl ?? "",
         face: component.metadata?.face ?? "",
@@ -445,13 +438,14 @@ export function ComponentSpecDialog({
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
         kp: component.metadata?.kp ?? "",
-        kp_unit: component.metadata?.kp_unit ?? "km",
+        kp_unit: component.metadata?.kp_unit ?? "",
         easting: component.metadata?.easting ?? "",
-        easting_unit: component.metadata?.easting_unit ?? "m",
+        easting_unit: component.metadata?.easting_unit ?? "",
         northing: component.metadata?.northing ?? "",
-        northing_unit: component.metadata?.northing_unit ?? "m",
+        northing_unit: component.metadata?.northing_unit ?? "",
         depth: component.metadata?.depth ?? "",
-        depth_unit: component.metadata?.depth_unit ?? "m",
+        depth_unit: component.metadata?.depth_unit ?? "",
+
         additionalInfo: (() => {
           const info = {
             ...getTemplate(component.code, pageType),
@@ -459,7 +453,7 @@ export function ComponentSpecDialog({
           };
 
           const code = component.code?.trim().toLowerCase();
-          const isSpecialComp = ['fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd', 'yp'].includes(code || '');
+          const isSpecialComp = ['pp', 'fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd', 'yp'].includes(code || '');
 
           if (isSpecialComp) {
             if (code === 'ct') {
@@ -636,6 +630,8 @@ export function ComponentSpecDialog({
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
+            } else if (code === 'pp') {
+              delete info.depth;
             } else if (code === 'sd') {
               delete info.wall_thk;
               delete info.depth;
@@ -665,19 +661,19 @@ export function ComponentSpecDialog({
         comp_group: "",
         associated_comp_id: null,
         kp: "",
-        kp_unit: "km",
+        kp_unit: getDefaultUnit("DISTANCE", isImperial, "kp", defaultCode || undefined) || (isImperial ? "mile" : "km"),
         easting: "",
-        easting_unit: "m",
+        easting_unit: getDefaultUnit("LENGTH", isImperial, "easting", defaultCode || undefined) || (isImperial ? "ft" : "m"),
         northing: "",
-        northing_unit: "m",
+        northing_unit: getDefaultUnit("LENGTH", isImperial, "northing", defaultCode || undefined) || (isImperial ? "ft" : "m"),
         depth: "",
-        depth_unit: "m",
+        depth_unit: getDefaultUnit("LENGTH", isImperial, "depth", defaultCode || undefined) || (isImperial ? "ft" : "m"),
         id_no: "",
         code: defaultCode || "",
         additionalInfo: (() => {
           const info = { ...getTemplate(defaultCode || "", pageType) };
           const code = (defaultCode || "").trim().toLowerCase();
-          const isSpecialComp = ['fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd', 'yp'].includes(code || '');
+          const isSpecialComp = ['pp', 'fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd', 'yp'].includes(code || '');
 
           if (isSpecialComp) {
             if (code === 'ct') {
@@ -927,11 +923,11 @@ export function ComponentSpecDialog({
         s_leg: "",
         f_leg: "",
         dist: "",
-        dist_unit: "m",
+        dist_unit: "",
         elv_1: "",
-        elv_1_unit: "m",
+        elv_1_unit: "",
         elv_2: "",
-        elv_2_unit: "m",
+        elv_2_unit: "",
         clk_pos: "",
         lvl: "",
         face: "",
@@ -939,13 +935,14 @@ export function ComponentSpecDialog({
         comp_group: "",
         associated_comp_id: null,
         kp: "",
-        kp_unit: "km",
+        kp_unit: getDefaultUnit("DISTANCE", isImperial, "kp", defaultCode || undefined) || (isImperial ? "mile" : "km"),
         easting: "",
-        easting_unit: "m",
+        easting_unit: getDefaultUnit("LENGTH", isImperial, "easting", defaultCode || undefined) || (isImperial ? "ft" : "m"),
         northing: "",
-        northing_unit: "m",
+        northing_unit: getDefaultUnit("LENGTH", isImperial, "northing", defaultCode || undefined) || (isImperial ? "ft" : "m"),
         depth: "",
-        depth_unit: "m",
+        depth_unit: getDefaultUnit("LENGTH", isImperial, "depth", defaultCode || undefined) || (isImperial ? "ft" : "m"),
+
         additionalInfo: cleanTemplate,
       });
     } catch (error) {
@@ -1033,8 +1030,8 @@ export function ComponentSpecDialog({
             {/* Specifications Tab */}
             <TabsContent value="specifications" className="space-y-8 mt-0 outline-none">
               <div className="grid grid-cols-12 gap-6 bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
-                {/* Row 1: Q ID, Code */}
-                <div className="col-span-10 space-y-2">
+                {/* Row 1: Q ID, Description, Code */}
+                <div className="col-span-3 space-y-2">
                   <Label htmlFor="qId" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Q Id</Label>
                   <Input
                     id="qId"
@@ -1043,7 +1040,7 @@ export function ComponentSpecDialog({
                     onChange={(e) => handleInputChange("q_id", e.target.value)}
                     readOnly={!(isCreateMode || isEditMode)}
                   />
-                  <p className="text-[10px] font-mono font-bold text-slate-400 ml-1">
+                  <p className="text-[9px] font-mono font-bold text-slate-400 ml-1 truncate">
                     ID No: {
                       isCreateMode
                         ? (buildIdNo(
@@ -1057,13 +1054,8 @@ export function ComponentSpecDialog({
                     }
                   </p>
                 </div>
-                <div className="col-span-2 space-y-2">
-                  <Label htmlFor="code" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Code</Label>
-                  <Input id="code" className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 text-center font-black h-11" value={isCreateMode ? formData.code : (defaultCode || component?.code || "")} readOnly />
-                </div>
 
-                {/* Row 2: Description */}
-                <div className="col-span-12 space-y-2">
+                <div className="col-span-7 space-y-2">
                   <Label htmlFor="description" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Description</Label>
                   <Input
                     id="description"
@@ -1074,11 +1066,16 @@ export function ComponentSpecDialog({
                   />
                 </div>
 
+                <div className="col-span-2 space-y-2">
+                  <Label htmlFor="code" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 text-center block">Code</Label>
+                  <Input id="code" className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 text-center font-black h-11" value={isCreateMode ? formData.code : (defaultCode || component?.code || "")} readOnly />
+                </div>
+
                 {/* Platform Specific Fields */}
                 {pageType === "platform" && (
                   <>
-                    {/* Row 4: Start Node, End Node */}
-                    <div className="col-span-6 space-y-2 text-blue-600">
+                    {/* Combined Row: Start Node, End Node, Start Leg, End Leg */}
+                    <div className="col-span-3 space-y-2 text-blue-600">
                       <Label htmlFor="sNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Node</Label>
                       <Input
                         id="sNode"
@@ -1088,7 +1085,7 @@ export function ComponentSpecDialog({
                         readOnly={!(isCreateMode || isEditMode)}
                       />
                     </div>
-                    <div className="col-span-6 space-y-2">
+                    <div className="col-span-3 space-y-2">
                       <Label htmlFor="eNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Node</Label>
                       <Input
                         id="eNode"
@@ -1099,8 +1096,7 @@ export function ComponentSpecDialog({
                       />
                     </div>
 
-                    {/* Row 5: Start Leg, End Leg, Distance */}
-                    <div className="col-span-4 space-y-2">
+                    <div className="col-span-3 space-y-2">
                       <Label htmlFor="sLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Leg</Label>
                       <Select
                         value={isCreateMode ? formData.s_leg : (component?.metadata?.s_leg ?? "")}
@@ -1119,7 +1115,7 @@ export function ComponentSpecDialog({
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="col-span-4 space-y-2">
+                    <div className="col-span-3 space-y-2">
                       <Label htmlFor="eLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Leg</Label>
                       <Select
                         value={isCreateMode ? formData.f_leg : (component?.metadata?.f_leg ?? "")}
@@ -1138,6 +1134,7 @@ export function ComponentSpecDialog({
                         </SelectContent>
                       </Select>
                     </div>
+                {/* Row 3: Distance, Elevation 1, Elevation 2 (Measurables) */}
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="distance" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Distance</Label>
                   <div className="relative">
@@ -1150,38 +1147,24 @@ export function ComponentSpecDialog({
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={isCreateMode || isEditMode ? formData.dist_unit : (component?.metadata?.dist_unit ?? "m")}
+                        value={isCreateMode || isEditMode ? (formData.dist_unit || getDefaultUnit("LENGTH", isImperial, "dist", effectiveCode || undefined)) : (component?.metadata?.dist_unit ?? "m")}
                         onValueChange={(val) => handleInputChange("dist_unit", val)}
                         disabled={!(isCreateMode || isEditMode)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl">
-                          {platformData?.data?.def_unit === "IMPERIAL" ? (
-                            <>
-                              <SelectItem value="inches">in</SelectItem>
-                              <SelectItem value="feet">ft</SelectItem>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                            </>
-                          ) : (
-                            <>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                              <SelectItem value="inches">in</SelectItem>
-                              <SelectItem value="feet">ft</SelectItem>
-                            </>
-                          )}
+                          {getUnitOptions("LENGTH", isImperial).map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
 
-                {/* Row 6: Elevation 1, Elevation 2, Clock Position */}
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="elevation1" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Elevation 1</Label>
                   <div className="relative">
@@ -1194,36 +1177,24 @@ export function ComponentSpecDialog({
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={isCreateMode || isEditMode ? formData.elv_1_unit : (component?.metadata?.elv_1_unit ?? "m")}
+                        value={isCreateMode || isEditMode ? (formData.elv_1_unit || getDefaultUnit("LENGTH", isImperial, "elv", effectiveCode || undefined)) : (component?.metadata?.elv_1_unit ?? "m")}
                         onValueChange={(val) => handleInputChange("elv_1_unit", val)}
                         disabled={!(isCreateMode || isEditMode)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl">
-                          {platformData?.data?.def_unit === "IMPERIAL" ? (
-                            <>
-                              <SelectItem value="inches">in</SelectItem>
-                              <SelectItem value="feet">ft</SelectItem>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                            </>
-                          ) : (
-                            <>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                              <SelectItem value="inches">in</SelectItem>
-                              <SelectItem value="feet">ft</SelectItem>
-                            </>
-                          )}
+                          {getUnitOptions("LENGTH", isImperial).map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
+
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="elevation2" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Elevation 2</Label>
                   <div className="relative">
@@ -1236,36 +1207,25 @@ export function ComponentSpecDialog({
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={isCreateMode || isEditMode ? formData.elv_2_unit : (component?.metadata?.elv_2_unit ?? "m")}
+                        value={isCreateMode || isEditMode ? (formData.elv_2_unit || getDefaultUnit("LENGTH", isImperial, "elv", effectiveCode || undefined)) : (component?.metadata?.elv_2_unit ?? "m")}
                         onValueChange={(val) => handleInputChange("elv_2_unit", val)}
                         disabled={!(isCreateMode || isEditMode)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl">
-                          {platformData?.data?.def_unit === "IMPERIAL" ? (
-                            <>
-                              <SelectItem value="inches">in</SelectItem>
-                              <SelectItem value="feet">ft</SelectItem>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                            </>
-                          ) : (
-                            <>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                              <SelectItem value="inches">in</SelectItem>
-                              <SelectItem value="feet">ft</SelectItem>
-                            </>
-                          )}
+                          {getUnitOptions("LENGTH", isImperial).map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
+
+                {/* Row 4: Clock Position, Level, Face (Context) */}
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="clockPos" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Clock Position</Label>
                   <Select
@@ -1292,7 +1252,6 @@ export function ComponentSpecDialog({
                   </Select>
                 </div>
 
-                {/* Row 7: Level, Face, Part */}
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="level" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Level</Label>
                   <Select
@@ -1312,6 +1271,7 @@ export function ComponentSpecDialog({
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="face" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Face</Label>
                   <Select
@@ -1331,7 +1291,9 @@ export function ComponentSpecDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="col-span-4 space-y-2">
+
+                {/* Row 5: Part, Structural Group (Identity) */}
+                <div className="col-span-6 space-y-2">
                   <Label htmlFor="part" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Part</Label>
                   <Select
                     value={
@@ -1352,8 +1314,7 @@ export function ComponentSpecDialog({
                   </Select>
                 </div>
 
-                {/* Row 8: Structural Group (full width) */}
-                <div className="col-span-12 space-y-2">
+                <div className="col-span-6 space-y-2">
                   <Label htmlFor="structuralGroup" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Structural Group</Label>
                   <Select
                     value={
@@ -1364,7 +1325,7 @@ export function ComponentSpecDialog({
                     onValueChange={(val) => handleInputChange("comp_group", val)}
                     disabled={!isCreateMode || !compGroupLib}
                   >
-                    <SelectTrigger id="structuralGroup" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-12 font-bold">
+                    <SelectTrigger id="structuralGroup" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
                       <SelectValue placeholder="Select structural group" />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl">
@@ -1384,7 +1345,7 @@ export function ComponentSpecDialog({
             {/* Pipeline Specific Fields */}
             {pageType === "pipeline" && (
               <>
-                <div className="col-span-6 space-y-2">
+                <div className="col-span-4 space-y-2">
                   <Label htmlFor="kp" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">KP</Label>
                   <div className="relative">
                     <Input
@@ -1396,51 +1357,27 @@ export function ComponentSpecDialog({
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={isCreateMode || isEditMode ? formData.kp_unit : (component?.metadata?.kp_unit ?? "km")}
+                        value={isCreateMode || isEditMode 
+                          ? (formData.kp_unit || getDefaultUnit("DISTANCE", isImperial, "kp", effectiveCode || undefined))
+                          : (component?.metadata?.kp_unit ?? getDefaultUnit("DISTANCE", isImperial, "kp", effectiveCode || undefined))}
+
                         onValueChange={(val) => handleInputChange("kp_unit", val)}
                         disabled={!(isCreateMode || isEditMode)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl">
-                          <SelectItem value="km">km</SelectItem>
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="mile">mile</SelectItem>
+                          {getUnitOptions("DISTANCE", isImperial)?.map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
-                <div className="col-span-6 space-y-2">
-                  <Label htmlFor="depth" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Depth</Label>
-                  <div className="relative">
-                    <Input
-                      id="depth"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                      value={isCreateMode || isEditMode ? formData.depth : (component?.metadata?.depth ?? "")}
-                      onChange={(e) => handleInputChange("depth", e.target.value)}
-                      readOnly={!(isCreateMode || isEditMode)}
-                    />
-                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                      <Select
-                        value={isCreateMode || isEditMode ? formData.depth_unit : (component?.metadata?.depth_unit ?? "m")}
-                        onValueChange={(val) => handleInputChange("depth_unit", val)}
-                        disabled={!(isCreateMode || isEditMode)}
-                      >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="cm">cm</SelectItem>
-                          <SelectItem value="ft">ft</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-                <div className="col-span-6 space-y-2">
+                <div className="col-span-4 space-y-2">
                   <Label htmlFor="easting" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Easting</Label>
                   <div className="relative">
                     <Input
@@ -1452,22 +1389,27 @@ export function ComponentSpecDialog({
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={isCreateMode || isEditMode ? formData.easting_unit : (component?.metadata?.easting_unit ?? "m")}
+                        value={isCreateMode || isEditMode 
+                          ? (formData.easting_unit || getDefaultUnit("LENGTH", isImperial, "easting", effectiveCode || undefined))
+                          : (component?.metadata?.easting_unit ?? getDefaultUnit("LENGTH", isImperial, "easting", effectiveCode || undefined))}
+
                         onValueChange={(val) => handleInputChange("easting_unit", val)}
                         disabled={!(isCreateMode || isEditMode)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl">
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="km">km</SelectItem>
+                          {getUnitOptions("LENGTH", isImperial)?.map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
-                <div className="col-span-6 space-y-2">
+                <div className="col-span-4 space-y-2">
                   <Label htmlFor="northing" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Northing</Label>
                   <div className="relative">
                     <Input
@@ -1479,16 +1421,21 @@ export function ComponentSpecDialog({
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={isCreateMode || isEditMode ? formData.northing_unit : (component?.metadata?.northing_unit ?? "m")}
+                        value={isCreateMode || isEditMode 
+                          ? (formData.northing_unit || getDefaultUnit("LENGTH", isImperial, "northing", effectiveCode || undefined))
+                          : (component?.metadata?.northing_unit ?? getDefaultUnit("LENGTH", isImperial, "northing", effectiveCode || undefined))}
+
                         onValueChange={(val) => handleInputChange("northing_unit", val)}
                         disabled={!(isCreateMode || isEditMode)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl">
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="km">km</SelectItem>
+                          {getUnitOptions("LENGTH", isImperial)?.map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1519,6 +1466,7 @@ export function ComponentSpecDialog({
 
                         let label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
                         const lowerCode = (formData.code || defaultCode || component?.code || "").trim().toLowerCase();
+
 
                         if (key === 'wall_thk') label = lowerCode === 'cl' ? "Attach Stub Length" : "Wall Thickness";
                         if (key === 'fender_type') label = "Boat Fender Types";
@@ -1555,6 +1503,13 @@ export function ComponentSpecDialog({
                         if (key === 'fitg_typ') label = 'Fitting Type';
                         if (key === 'no_caissons') label = 'No. Protected Caissons';
                         if (key === 'no_conductors') label = 'No. Protected Conductor';
+
+                        if (key === 'pipe_mat') label = 'Pipeline Material';
+                        if (key === 'spool_piece') label = 'Spool Piece?';
+                        if (key === 'cons_span') label = 'Constructional Span';
+                        if (key === 'oper_span') label = 'Operational Span';
+                        if (key === 'coat_cond') label = 'Coating Condition';
+                        if (key === 'gen_cond') label = 'General Condition';
 
                         if (key === 'easting') label = 'Easting';
                         if (key === 'northing') label = 'Northing';
@@ -1616,7 +1571,7 @@ export function ComponentSpecDialog({
                         const isImp = isImperial;
 
                         // Get category from config
-                        const componentConfig = specUiConfig.components.find(c => c.code.toLowerCase() === lowerCode);
+                        const componentConfig = specUiConfig.components.find(c => c.code?.toLowerCase() === lowerCode);
                         const fieldConfig = componentConfig?.fields.find(f => f.name === key);
                         const category = fieldConfig?.unitcategory || null;
 
@@ -1624,7 +1579,7 @@ export function ComponentSpecDialog({
                         const resolvedCategory = category || (k.includes('weight') || k.includes('wt') ? 'weight' : (k.includes('length') || k.includes('width') || k.includes('diameter') || k.includes('depth') || k.includes('dim') ? 'length' : null));
 
                         const options = getUnitOptions(resolvedCategory, isImp);
-                        if (options) {
+                        if (options.length > 0) {
                           unitOptions = options;
                           unit = formData.additionalInfo[`${key}_unit`] || getDefaultUnit(resolvedCategory, isImp, key, lowerCode);
                         } else {
@@ -1694,6 +1649,7 @@ export function ComponentSpecDialog({
                         if (key === 'cais_at' && lowerCode === 'cs') return renderSelect(key, "Select attachment type", caisAtData);
                         if (key === 'pile_typ' && lowerCode === 'pl') return renderSelect(key, "Select pile type", pileTypeData);
                         if (key === 'pile_mat' && lowerCode === 'pl') return renderSelect(key, "Select pile material", pileMatData);
+                        if (key === 'pipe_mat' && lowerCode === 'pp') return renderSelect(key, "Select material", pipeMatData);
                         if (key === 'thetype' && lowerCode === 'an') return renderSelect(key, "Select anode type", anodeTypeData);
                         if (key === 'position' && lowerCode === 'an') return renderSelect(key, "Select anode position", positionLib);
                         if (key === 'material' && lowerCode === 'an') return renderSelect(key, "Select anode material type", anodeMatData);
@@ -1728,7 +1684,7 @@ export function ComponentSpecDialog({
                             </div>
                           );
                         }
-                        if (key === 'corr_ctg' && (lowerCode === 'cs' || lowerCode === 'hd' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hm' || lowerCode === 'rs')) return renderSelect(key, "Select coating type", corrCtgData);
+                        if (key === 'corr_ctg' && (lowerCode === 'pp' || lowerCode === 'cs' || lowerCode === 'hd' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hm' || lowerCode === 'rs')) return renderSelect(key, "Select coating type", corrCtgData);
                         if (key === 'clam_typ' && lowerCode === 'cl') return renderSelect(key, "Select clamp type", clamTypeData);
                         if (key === 'clam_mat' && lowerCode === 'cl') return renderSelect(key, "Select clamp material", clamMatData);
                         if (key === 'coat_typ' && lowerCode === 'cd') return renderSelect(key, "Select coating type", coatTypData);
@@ -1809,13 +1765,13 @@ export function ComponentSpecDialog({
                                       onValueChange={(val) => handleAdditionalInfoChange(`${key}_unit`, val)}
                                       disabled={!(isCreateMode || isEditMode)}
                                     >
-                                      <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                                      <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-bold lowercase rounded-lg">
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent className="rounded-xl">
                                         {unitOptions.map((opt) => (
-                                          <SelectItem key={opt} value={opt}>
-                                            {opt === "inches" ? "in" : opt === "feet" ? "ft" : opt}
+                                          <SelectItem key={opt} value={opt} className="text-[10px] font-medium lowercase">
+                                            {opt}
                                           </SelectItem>
                                         ))}
                                       </SelectContent>

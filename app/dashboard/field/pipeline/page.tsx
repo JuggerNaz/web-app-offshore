@@ -172,7 +172,7 @@ export default function PipelinePage() {
           </div>
 
           <Button asChild className="rounded-2xl h-12 px-8 font-black uppercase tracking-wider bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 shadow-2xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all gap-3 border-0">
-            <Link href="/dashboard/field/pipeline/new">
+            <Link href={fieldId ? `/dashboard/field/pipeline/new?field=${fieldId}` : "/dashboard/field/pipeline/new"}>
               <Plus className="h-5 w-5 stroke-[3px]" />
               Register Pipeline
             </Link>

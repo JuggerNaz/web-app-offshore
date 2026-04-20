@@ -491,6 +491,23 @@
                 "comments": "",
                 "del": false
             }
+        },
+        {
+            "code": "pp",
+            "componentType": "pp_comp",
+            "additionalDataTemplate": {
+                "wall_thk": "",
+                "pipe_mat": "",
+                "corr_ctg": "",
+                "diameter": "",
+                "spool_piece": false,
+                "cons_span": "",
+                "oper_span": "",
+                "type": "",
+                "coat_cond": "",
+                "gen_cond": "",
+                "del": false
+            }
         }
     ]
 }

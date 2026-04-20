@@ -53,7 +53,7 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
       return {
         ...platform,
         images: images || [],
-        field_name: fieldMap.get(platform.pfield?.toString()) || platform.pfield,
+        field_name: fieldMap.get(platform.pfield?.toString() ?? "") || platform.pfield,
       };
     })
   );
