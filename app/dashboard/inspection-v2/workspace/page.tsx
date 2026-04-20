@@ -3,8 +3,7 @@
 import * as React from "react";
 import { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams,
-    useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 
@@ -143,6 +142,7 @@ import { TapeLogEvents } from "./components/TapeLogEvents";
 import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
+import { InspectionSummaryPanel } from "./components/InspectionSummaryPanel";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { resolveInspectionType } from "@/utils/inspection-schema";
@@ -182,6 +182,7 @@ function V10PreviewLayout() {
     // Mode
     const [inspMethod, setInspMethod] = useState<"DIVING" | "ROV">(initialMode || "DIVING");
     const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
+    const [isSummaryOpen, setIsSummaryOpen] = useState(false);
 
     const [deployments, setDeployments] = useState<any[]>([]);
     const [activeDep, setActiveDep] = useState<{ id: string, jobNo?: string, name: string, raw?: any } | null>(null);
@@ -4596,7 +4597,20 @@ function V10PreviewLayout() {
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
+                onSummaryOpen={() => setIsSummaryOpen(true)}
             />
+
+            {/* ── INSPECTION SUMMARY PANEL ───────────────────────────────────────── */}
+            <InspectionSummaryPanel
+                open={isSummaryOpen}
+                onClose={() => setIsSummaryOpen(false)}
+                sowId={sowId || null}
+                structureId={structureId || null}
+                jobpackId={jobPackId || null}
+                sowReportNo={headerData.sowReportNo}
+                headerData={headerData}
+            />
+
 
             {/* DEPLOYMENTS SUB-HEADER */}
             <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex items-center gap-3 shrink-0">
@@ -7087,5 +7101,6 @@ function V10PreviewLayout() {
         </div>
     );
 }
+
 
 

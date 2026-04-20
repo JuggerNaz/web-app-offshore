@@ -11,7 +11,8 @@ import {
     History,
     ChevronDown,
     Check,
-    Grid3X3
+    Grid3X3,
+    BarChart3
 } from "lucide-react";
 import Link from 'next/link';
 import {
@@ -45,6 +46,7 @@ interface InspectionHeaderProps {
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
+    onSummaryOpen?: () => void;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
@@ -66,7 +68,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateAnodeReport,
     generateFullInspectionReport,
     jobPackId,
-    structureId
+    structureId,
+    onSummaryOpen
 }) => {
     return (
         <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0">
@@ -127,6 +130,15 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
 
             <div className="flex gap-2">
                 <Link href="/dashboard/inspection-v2"><Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><ArrowLeft className="w-4 h-4 mr-2" /> Back</Button></Link>
+
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-gradient-to-r from-cyan-600 to-teal-600 border-cyan-500 text-white hover:from-cyan-500 hover:to-teal-500 hover:text-white h-8 font-bold shadow-md shadow-cyan-900/30"
+                    onClick={onSummaryOpen}
+                >
+                    <BarChart3 className="w-4 h-4 mr-2" /> Inspection Summary
+                </Button>
 
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>

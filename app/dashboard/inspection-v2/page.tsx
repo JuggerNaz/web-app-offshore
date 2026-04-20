@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -347,19 +349,6 @@ export default function InspectionLanding() {
         setSelectedSOW(sowId);
     }
 
-    function handleStart() {
-        if (!selectedJobPack || !selectedStructure || !selectedSOW) {
-            toast.error("Please complete all selections");
-            return;
-        }
-
-        const jpName = selectedJobPackData?.jobpack_no || selectedJobPackData?.jobpack_title || '';
-        const structName = selectedStructureData?.name || '';
-        const sowReport = selectedSOWData?.report_number || '';
-        const sowJobType = selectedSOWData?.job_type || '';
-
-        router.push(`/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${selectedSOW}&mode=DIVING&jpName=${encodeURIComponent(jpName)}&structName=${encodeURIComponent(structName)}&sowReport=${encodeURIComponent(sowReport)}&jobType=${encodeURIComponent(sowJobType)}`);
-    }
 
     const selectedJobPackData = jobPacks.find((jp) => jp.id.toString() === selectedJobPack);
     const selectedStructureData = structures.find((s) => s.id.toString() === selectedStructure);
@@ -486,6 +475,7 @@ export default function InspectionLanding() {
                             {selectedJobPackData && (
                                 <div className="flex items-center justify-between p-4 mt-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 shadow-sm transition-all animate-in fade-in slide-in-from-top-2">
                                     <div className="flex-1 pr-4">
+
                                         <p className="text-sm font-bold text-blue-900 dark:text-blue-100 uppercase tracking-wider mb-1">
                                             {selectedJobPackData.jobpack_title}
                                         </p>
@@ -634,16 +624,20 @@ export default function InspectionLanding() {
 
                         {/* Start Button */}
                         <div className="pt-6">
-                            <Button
-                                onClick={handleStart}
-                                disabled={!selectedJobPack || !selectedStructure || !selectedSOW}
-                                className={`w-full h-16 text-lg font-black transition-all duration-300 ${(!selectedJobPack || !selectedStructure || !selectedSOW)
-                                    ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
-                                    : "bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-0.5"}`}
+                            <Link 
+                                href={`/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${selectedSOW}&mode=DIVING&jpName=${encodeURIComponent(selectedJobPackData?.jobpack_no || selectedJobPackData?.jobpack_title || '')}&structName=${encodeURIComponent(selectedStructureData?.name || '')}&sowReport=${encodeURIComponent(selectedSOWData?.report_number || '')}&jobType=${encodeURIComponent(selectedSOWData?.job_type || '')}`}
+                                className="w-full"
                             >
-                                <span>Start Inspection</span>
-                                <ChevronRight className="h-6 w-6 ml-2" />
-                            </Button>
+                                <Button
+                                    disabled={!selectedJobPack || !selectedStructure || !selectedSOW}
+                                    className={`w-full h-16 text-lg font-black transition-all duration-300 ${(!selectedJobPack || !selectedStructure || !selectedSOW)
+                                        ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                                        : "bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-0.5"}`}
+                                >
+                                    <span>Start Inspection</span>
+                                    <ChevronRight className="h-6 w-6 ml-2" />
+                                </Button>
+                            </Link>
                         </div>
                     </div>
                 </Card>
