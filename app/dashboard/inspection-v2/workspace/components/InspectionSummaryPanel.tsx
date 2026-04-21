@@ -52,7 +52,7 @@ interface SummaryData {
         hasBothModes: boolean;
         uniqueRovJobs: number;
         uniqueDiveJobs: number;
-        inspTypeBreakdown: Record<string, { name: string; count: number; rov: number; dive: number }>;
+        inspTypeBreakdown: Record<string, { name: string; count: number; rov: number; dive: number; anomaly: number; finding: number }>;
     };
     fmd: {
         total: number;
@@ -223,22 +223,122 @@ function MultiSegmentBar({ segments }: { segments: { label: string; value: numbe
     );
 }
 
-function TypeCountRow({ code, name, count, rov, dive, hasBoth }: { code: string; name: string; count: number; rov: number; dive: number; hasBoth: boolean }) {
+// Per-inspection-type accent colour palette (cycles through 10 hues)
+const TYPE_ACCENT_PALETTE = [
+    { bg: "rgba(59,130,246,0.12)",  border: "rgba(59,130,246,0.30)",  text: "#60a5fa",  codeBg: "rgba(59,130,246,0.20)" },  // blue
+    { bg: "rgba(20,184,166,0.12)",  border: "rgba(20,184,166,0.30)",  text: "#2dd4bf",  codeBg: "rgba(20,184,166,0.20)" },  // teal
+    { bg: "rgba(168,85,247,0.12)",  border: "rgba(168,85,247,0.30)",  text: "#c084fc",  codeBg: "rgba(168,85,247,0.20)" },  // violet
+    { bg: "rgba(34,197,94,0.12)",   border: "rgba(34,197,94,0.30)",   text: "#4ade80",  codeBg: "rgba(34,197,94,0.20)" },   // green
+    { bg: "rgba(249,115,22,0.12)",  border: "rgba(249,115,22,0.30)",  text: "#fb923c",  codeBg: "rgba(249,115,22,0.20)" },  // orange
+    { bg: "rgba(234,179,8,0.12)",   border: "rgba(234,179,8,0.30)",   text: "#facc15",  codeBg: "rgba(234,179,8,0.20)" },   // yellow
+    { bg: "rgba(236,72,153,0.12)",  border: "rgba(236,72,153,0.30)",  text: "#f472b6",  codeBg: "rgba(236,72,153,0.20)" },  // pink
+    { bg: "rgba(99,102,241,0.12)",  border: "rgba(99,102,241,0.30)",  text: "#818cf8",  codeBg: "rgba(99,102,241,0.20)" },  // indigo
+    { bg: "rgba(6,182,212,0.12)",   border: "rgba(6,182,212,0.30)",   text: "#22d3ee",  codeBg: "rgba(6,182,212,0.20)" },   // cyan
+    { bg: "rgba(132,204,22,0.12)",  border: "rgba(132,204,22,0.30)",  text: "#a3e635",  codeBg: "rgba(132,204,22,0.20)" },  // lime
+];
+
+function InspTypeCard({
+    code, name, count, rov, dive, anomaly, finding, colorIndex
+}: {
+    code: string; name: string; count: number;
+    rov: number; dive: number;
+    anomaly: number; finding: number;
+    colorIndex: number;
+}) {
+    const accent = TYPE_ACCENT_PALETTE[colorIndex % TYPE_ACCENT_PALETTE.length];
+    const hasAlert = anomaly > 0 || finding > 0;
+
     return (
-        <div className="flex items-center gap-2 py-1.5 border-b border-slate-800/60 last:border-0">
-            <Badge className="bg-slate-800 text-slate-300 border border-slate-700 text-[8px] font-black px-1.5 h-4 flex-shrink-0 font-mono">
+        <div
+            className="rounded-lg border px-3 py-2.5 flex items-center gap-2.5 transition-all hover:scale-[1.005]"
+            style={{
+                background: accent.bg,
+                borderColor: hasAlert ? "rgba(239,68,68,0.45)" : accent.border,
+                boxShadow: hasAlert ? "0 0 0 1px rgba(239,68,68,0.12)" : undefined,
+            }}
+        >
+            {/* Code badge */}
+            <span
+                className="text-[11px] font-black px-2 py-0.5 rounded font-mono flex-shrink-0 tracking-wider"
+                style={{ background: accent.codeBg, color: accent.text }}
+            >
                 {code}
-            </Badge>
-            <span className="text-[10px] text-slate-400 flex-1 truncate">{name}</span>
-            {hasBoth ? (
-                <div className="flex gap-1 flex-shrink-0">
-                    <span className="text-[9px] font-black text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">R:{rov}</span>
-                    <span className="text-[9px] font-black text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded">D:{dive}</span>
-                    <span className="text-[9px] font-black text-white bg-slate-700 px-1.5 py-0.5 rounded">{count}</span>
-                </div>
-            ) : (
-                <span className="text-[10px] font-black text-white bg-slate-700 px-2 py-0.5 rounded flex-shrink-0">{count}</span>
+            </span>
+
+            {/* Name */}
+            <span className="text-[13px] font-semibold text-slate-200 flex-1 truncate">{name}</span>
+
+            {/* ROV pill — only when rov > 0 */}
+            {rov > 0 && (
+                <span
+                    className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded flex-shrink-0"
+                    style={{
+                        background: "rgba(59,130,246,0.22)",
+                        color: "#93c5fd",
+                        border: "1px solid rgba(59,130,246,0.35)"
+                    }}
+                >
+                    <span className="font-mono">ROV</span>
+                    <span>{rov}</span>
+                </span>
             )}
+
+            {/* DIVE pill — only when dive > 0 */}
+            {dive > 0 && (
+                <span
+                    className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded flex-shrink-0"
+                    style={{
+                        background: "rgba(6,182,212,0.18)",
+                        color: "#67e8f9",
+                        border: "1px solid rgba(6,182,212,0.35)"
+                    }}
+                >
+                    <span className="font-mono">DIVE</span>
+                    <span>{dive}</span>
+                </span>
+            )}
+
+            {/* Anomaly badge — only when > 0 */}
+            {anomaly > 0 && (
+                <span
+                    className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded flex-shrink-0"
+                    style={{
+                        background: "rgba(239,68,68,0.18)",
+                        color: "#f87171",
+                        border: "1px solid rgba(239,68,68,0.40)"
+                    }}
+                >
+                    <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 flex-shrink-0" fill="currentColor">
+                        <path d="M6 1L11 10H1L6 1z" />
+                    </svg>
+                    {anomaly} {anomaly === 1 ? "Anomaly" : "Anomalies"}
+                </span>
+            )}
+
+            {/* Finding badge — only when > 0 */}
+            {finding > 0 && (
+                <span
+                    className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded flex-shrink-0"
+                    style={{
+                        background: "rgba(168,85,247,0.18)",
+                        color: "#c084fc",
+                        border: "1px solid rgba(168,85,247,0.40)"
+                    }}
+                >
+                    <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 flex-shrink-0" fill="currentColor">
+                        <circle cx="6" cy="6" r="5" />
+                    </svg>
+                    {finding} {finding === 1 ? "Finding" : "Findings"}
+                </span>
+            )}
+
+            {/* Total count */}
+            <span
+                className="text-lg font-black flex-shrink-0 min-w-[20px] text-right"
+                style={{ color: accent.text }}
+            >
+                {count}
+            </span>
         </div>
     );
 }
@@ -515,28 +615,34 @@ export function InspectionSummaryPanel({
                         {/* Inspection type breakdown */}
                         {records && Object.keys(records.inspTypeBreakdown).length > 0 && (
                             <div className="mt-3 bg-slate-800/20 border border-slate-700/30 rounded-xl overflow-hidden">
-                                <div className="px-4 py-2 bg-slate-800/40 border-b border-slate-700/30 flex items-center gap-2">
+                                <div className="px-4 py-2.5 bg-slate-800/40 border-b border-slate-700/30 flex items-center gap-2">
                                     <Layers className="w-3.5 h-3.5 text-slate-400" />
                                     <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">By Inspection Type</span>
-                                    {hasBoth && (
-                                        <div className="ml-auto flex items-center gap-2">
-                                            <span className="text-[8px] font-black text-blue-400">R=ROV</span>
-                                            <span className="text-[8px] font-black text-cyan-400">D=DIVE</span>
-                                        </div>
-                                    )}
+                                    <div className="ml-auto flex items-center gap-2">
+                                        <span className="inline-flex items-center gap-1 text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>
+                                            <svg viewBox="0 0 12 12" className="w-2 h-2" fill="currentColor"><path d="M6 1L11 10H1L6 1z" /></svg>
+                                            Anomaly
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: "rgba(168,85,247,0.15)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.3)" }}>
+                                            <svg viewBox="0 0 12 12" className="w-2 h-2" fill="currentColor"><circle cx="6" cy="6" r="5" /></svg>
+                                            Finding
+                                        </span>
+                                    </div>
                                 </div>
-                                <div className="px-4 py-2">
+                                <div className="p-3 grid grid-cols-1 gap-2">
                                     {Object.entries(records.inspTypeBreakdown)
                                         .sort((a, b) => b[1].count - a[1].count)
-                                        .map(([code, info]) => (
-                                            <TypeCountRow
+                                        .map(([code, info], idx) => (
+                                            <InspTypeCard
                                                 key={code}
                                                 code={code}
                                                 name={info.name}
                                                 count={info.count}
                                                 rov={info.rov}
                                                 dive={info.dive}
-                                                hasBoth={hasBoth}
+                                                anomaly={info.anomaly}
+                                                finding={info.finding}
+                                                colorIndex={idx}
                                             />
                                         ))}
                                 </div>
@@ -703,34 +809,37 @@ export function InspectionSummaryPanel({
                                         </div>
                                     </div>
                                 )}
-                            </div>
-                        </section>
-                    )}
-
-                    {/* ═══ SECTION 5: SANI / RSANI ════════════════════════════════════════ */}
-                    {sani && sani.total > 0 && (
-                        <section>
-                            <SectionHeader icon={Target} title="Selected Anode Inspection (SANI / RSANI)" color="violet" count={sani.total} />
-                            <div className="bg-slate-800/30 border border-violet-500/20 rounded-2xl p-4">
-                                {hasBoth ? (
-                                    <div className="grid grid-cols-3 gap-3">
-                                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
-                                            <div className="text-xl font-black text-blue-400">{sani.rov}</div>
-                                            <div className="text-[9px] font-bold text-blue-500 uppercase tracking-wider mt-0.5">ROV</div>
+                                {/* Selected Anode Inspection (SANI / RSANI) — shown inside anode card when data exists */}
+                                {sani && sani.total > 0 && (
+                                    <div className="border-t border-slate-700/40 pt-3">
+                                        <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider mb-2 flex items-center gap-2">
+                                            Selected Anode Inspection
+                                            <span className="text-[8px] font-black text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded">SANI / RSANI</span>
                                         </div>
-                                        <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3 text-center">
-                                            <div className="text-xl font-black text-cyan-400">{sani.dive}</div>
-                                            <div className="text-[9px] font-bold text-cyan-500 uppercase tracking-wider mt-0.5">Diving</div>
-                                        </div>
-                                        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-center">
-                                            <div className="text-xl font-black text-violet-400">{sani.total}</div>
-                                            <div className="text-[9px] font-bold text-violet-500 uppercase tracking-wider mt-0.5">Total</div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-2">
-                                        <div className="text-4xl font-black text-violet-400">{sani.total}</div>
-                                        <div className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mt-1">Selected Anodes Inspected</div>
+                                        {hasBoth ? (
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-2.5 text-center">
+                                                    <div className="text-lg font-black text-blue-400">{sani.rov}</div>
+                                                    <div className="text-[9px] font-bold text-blue-500 uppercase tracking-wider mt-0.5">ROV</div>
+                                                </div>
+                                                <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-2.5 text-center">
+                                                    <div className="text-lg font-black text-cyan-400">{sani.dive}</div>
+                                                    <div className="text-[9px] font-bold text-cyan-500 uppercase tracking-wider mt-0.5">Diving</div>
+                                                </div>
+                                                <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-2.5 text-center">
+                                                    <div className="text-lg font-black text-violet-400">{sani.total}</div>
+                                                    <div className="text-[9px] font-bold text-violet-500 uppercase tracking-wider mt-0.5">Total</div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-between bg-violet-500/10 border border-violet-500/20 rounded-xl px-4 py-3">
+                                                <div>
+                                                    <div className="text-[10px] font-bold text-violet-400">Selected Anodes Inspected</div>
+                                                    <div className="text-[9px] text-slate-500">{sani.rov > 0 ? "ROV" : "Diving"} mode</div>
+                                                </div>
+                                                <div className="text-2xl font-black text-violet-300">{sani.total}</div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>

@@ -408,16 +408,44 @@ export async function GET(request: NextRequest) {
         const uniqueRovJobs = new Set(records.filter((r: any) => r.rov_job_id).map((r: any) => r.rov_job_id)).size;
         const uniqueDiveJobs = new Set(records.filter((r: any) => r.dive_job_id).map((r: any) => r.dive_job_id)).size;
 
-        const inspTypeBreakdown: Record<string, { name: string; count: number; rov: number; dive: number }> = {};
+        const inspTypeBreakdown: Record<string, { name: string; count: number; rov: number; dive: number; anomaly: number; finding: number }> = {};
         records.forEach((r: any) => {
             const code = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
             const name = r.inspection_type?.name || code;
             if (!inspTypeBreakdown[code]) {
-                inspTypeBreakdown[code] = { name, count: 0, rov: 0, dive: 0 };
+                inspTypeBreakdown[code] = { name, count: 0, rov: 0, dive: 0, anomaly: 0, finding: 0 };
             }
             inspTypeBreakdown[code].count++;
             if (r.rov_job_id) inspTypeBreakdown[code].rov++;
             if (r.dive_job_id && !r.rov_job_id) inspTypeBreakdown[code].dive++;
+            if (r.has_anomaly) {
+                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
+                const isFinding = metaStatus === "finding";
+
+                // Only count if there is a valid (non-null, non-unknown) defect code or priority
+                const anomaly = r.insp_anomalies?.[0];
+                const rawPriority = anomaly
+                    ? (anomaly.priority_code || "")
+                    : (r.inspection_data?.priority || "");
+                const rawDefect = (
+                    anomaly?.defect_type_code ||
+                    anomaly?.defect_category_code ||
+                    r.inspection_data?.defectCode ||
+                    ""
+                ).trim();
+
+                const hasPriority = VALID_PRIORITY(rawPriority);
+                const hasDefect   = VALID_DEFECT_TYPE(rawDefect);
+
+                // Must have at least one valid identifier (priority or defect type) to count
+                if (hasPriority || hasDefect) {
+                    if (isFinding) {
+                        inspTypeBreakdown[code].finding++;
+                    } else {
+                        inspTypeBreakdown[code].anomaly++;
+                    }
+                }
+            }
         });
 
         return NextResponse.json({
