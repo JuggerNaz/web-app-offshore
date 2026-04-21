@@ -107,6 +107,8 @@ const REPORT_TEMPLATES = {
         { id: "rrisi-report", name: "ROV Riser Inspection Report", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-report", name: "ROV Scour Survey Report", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-report", name: "ROV Anode Inspection Report", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-cp-report",    name: "ROV CP Survey Report",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rgvi-report",  name: "ROV GVI Report (RGVI)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -1014,6 +1016,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const { generateROVUTWTReport } = await import("@/utils/report-generators/rov-utwt-report");
         const { generateROVRRISIReport } = await import("@/utils/report-generators/rov-rrisi-report");
         const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
+        const { generateROVCPReport }    = await import("@/utils/report-generators/rov-cp-report");
+        const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
 
 
 
@@ -1664,6 +1668,147 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("Anode Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV CP Survey Report
+        if (selections.templateId === "rov-cp-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack  = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(q_id, code),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            // Filter to records that have CP data + optional SOW/jobpack scoping
+            const cpRecords = records?.filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const d = r.inspection_data || r.inspection_dat || {};
+                const hasCP = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+                return sowMatches && jobPackMatches && hasCP;
+            });
+
+            if (!cpRecords || cpRecords.length === 0) {
+                alert(`No CP readings found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            // Contractor logo
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel:           jobPack.metadata?.vessel || "N/A",
+            };
+
+            try {
+                return await generateROVCPReport(
+                    cpRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("CP Report Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV GVI Report (RGVI)
+        if (selections.templateId === "rov-rgvi-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(q_id, code),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const rgviRecords = records?.filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RGVI";
+                return sowMatches && jobPackMatches && isRGVI;
+            });
+
+            if (!rgviRecords || rgviRecords.length === 0) {
+                alert(`No RGVI records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel:           jobPack.metadata?.vessel || "N/A",
+            };
+
+            try {
+                return await generateROVRGVIReport(
+                    rgviRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("RGVI Report Generator Error:", error);
                 throw error;
             }
         }

@@ -43,6 +43,8 @@ interface InspectionHeaderProps {
     generateRSCORReport: () => void;
     generateRRISIReport: () => void;
     generateAnodeReport: () => void;
+    generateCPReport: () => void;
+    generateRGVIReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -66,6 +68,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateRSCORReport,
     generateRRISIReport,
     generateAnodeReport,
+    generateCPReport,
+    generateRGVIReport,
     generateFullInspectionReport,
     jobPackId,
     structureId,
@@ -233,6 +237,21 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         {currentRecords.some(r => ((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI') && ((r.structure_components?.code || '').toUpperCase() === 'AN' || (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE')) && (
                             <DropdownMenuItem onClick={() => generateAnodeReport()} className="text-xs py-2 cursor-pointer font-bold text-amber-600 border-t border-slate-50 mt-1">
                                 <Activity className="w-3.5 h-3.5 mr-2" /> ROV Anode Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => {
+                            const d = r.inspection_data || {};
+                            return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+                        }) && (
+                            <DropdownMenuItem onClick={() => generateCPReport()} className="text-xs py-2 cursor-pointer font-bold text-cyan-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV CP Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI') && (
+                            <DropdownMenuItem onClick={() => generateRGVIReport()} className="text-xs py-2 cursor-pointer font-bold text-emerald-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV GVI Report (RGVI)
                             </DropdownMenuItem>
                         )}
 

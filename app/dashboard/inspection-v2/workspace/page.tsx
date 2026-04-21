@@ -88,6 +88,8 @@ import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
+import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
+import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -728,6 +730,8 @@ function V10PreviewLayout() {
     const [rscorPreviewOpen, setRscorPreviewOpen] = useState(false);
     const [rrisiPreviewOpen, setRrisiPreviewOpen] = useState(false);
     const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
+    const [cpPreviewOpen,    setCpPreviewOpen]    = useState(false);
+    const [rgviPreviewOpen,  setRgviPreviewOpen]  = useState(false);
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -4353,6 +4357,29 @@ function V10PreviewLayout() {
         setAnodePreviewOpen(true);
     };
 
+    const generateCPReport = async () => {
+        const cpRecords = currentRecords.filter(r => {
+            const d = r.inspection_data || {};
+            return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+        });
+        if (cpRecords.length === 0) {
+            toast.error("No CP readings found in current records");
+            return;
+        }
+        setCpPreviewOpen(true);
+    };
+
+    const generateRGVIReport = async () => {
+        const rgviRecords = currentRecords.filter(r =>
+            (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI'
+        );
+        if (rgviRecords.length === 0) {
+            toast.error("No RGVI records found in current records");
+            return;
+        }
+        setRgviPreviewOpen(true);
+    };
+
     const handleAddNewInspectionSpec = async (typeIdStr: string) => {
         if (!typeIdStr) return;
 
@@ -4594,6 +4621,8 @@ function V10PreviewLayout() {
                 generateRSCORReport={generateRSCORReport}
                 generateRRISIReport={generateRRISIReport}
                 generateAnodeReport={generateAnodeReport}
+                generateCPReport={generateCPReport}
+                generateRGVIReport={generateRGVIReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -6751,6 +6780,83 @@ function V10PreviewLayout() {
                 }}
                 title="ROV Anode Inspection Report"
                 fileName={`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                open={cpPreviewOpen}
+                onOpenChange={setCpPreviewOpen}
+                generateReport={async (isPrintFriendly) => {
+                    const cpRecords = currentRecords.filter(r => {
+                        const d = r.inspection_data || {};
+                        return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+                    });
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVCPReport(
+                        cpRecords,
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                        }
+                    );
+                }}
+                title="ROV CP Survey Report"
+                fileName={`ROV_CP_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                open={rgviPreviewOpen}
+                onOpenChange={setRgviPreviewOpen}
+                generateReport={async (isPrintFriendly) => {
+                    const rgviRecords = currentRecords.filter(r =>
+                        (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI'
+                    );
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVRGVIReport(
+                        rgviRecords,
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                        }
+                    );
+                }}
+                title="ROV GVI Report (RGVI)"
+                fileName={`ROV_GVI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             {/* Anomaly Removal Confirmation Dialog */}
