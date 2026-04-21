@@ -112,11 +112,11 @@ export const generateVideoLogReport = async (
         d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
         d.setFont("helvetica", "bold");
         d.setFontSize(12);
-        d.text((companySettings.company_name || "").toUpperCase(), pageWidth / 2, sy + 8, { align: "center" });
+        d.text((companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase(), pageWidth / 2, sy + 8, { align: "center" });
 
         d.setFont("helvetica", "normal");
         d.setFontSize(9);
-        d.text(companySettings.departmentName || "Engineering Department", pageWidth / 2, sy + 12, { align: "center" });
+        d.text(companySettings.departmentName || "Technical Inspection Division", pageWidth / 2, sy + 12, { align: "center" });
 
         d.setFont("helvetica", "bold");
         d.setFontSize(13);

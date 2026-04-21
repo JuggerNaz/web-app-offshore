@@ -446,7 +446,7 @@ export const generateJobPackSummaryReport = async (
                 doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
             }
 
-            if (config.reviewedBy.name) {
+            if (config.reviewedBy?.name) {
                 const x = 10 + sigWidth;
                 doc.text("Reviewed By:", x, sigY);
                 doc.text(config.reviewedBy.name, x, sigY + 5);
@@ -454,7 +454,7 @@ export const generateJobPackSummaryReport = async (
                 doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
             }
 
-            if (config.approvedBy.name) {
+            if (config.approvedBy?.name) {
                 const x = 10 + (sigWidth * 2);
                 doc.text("Approved By:", x, sigY);
                 doc.text(config.approvedBy.name, x, sigY + 5);

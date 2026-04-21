@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { Database } from "@/supabase/schema";
 
 export const createClient = () => {
-  const cookieStore = cookies();
 
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

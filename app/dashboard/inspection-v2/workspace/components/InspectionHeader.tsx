@@ -11,7 +11,8 @@ import {
     History,
     ChevronDown,
     Check,
-    Grid3X3
+    Grid3X3,
+    BarChart3
 } from "lucide-react";
 import Link from 'next/link';
 import {
@@ -19,6 +20,9 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
+    DropdownMenuSub,
+    DropdownMenuSubTrigger,
+    DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -31,9 +35,20 @@ interface InspectionHeaderProps {
     allInspectionTypes: any[];
     currentRecords: any[];
     generateInspectionReportByType: (id: any) => void;
+    generateSeabedReport: (templateId: string) => void;
+    generateMGIReport: () => void;
+    generateFMDReport: () => void;
+    generateSZCIReport: () => void;
+    generateUTWTReport: () => void;
+    generateRSCORReport: () => void;
+    generateRRISIReport: () => void;
+    generateAnodeReport: () => void;
+    generateCPReport: () => void;
+    generateRGVIReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
+    onSummaryOpen?: () => void;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
@@ -45,9 +60,20 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     allInspectionTypes,
     currentRecords,
     generateInspectionReportByType,
+    generateSeabedReport,
+    generateMGIReport,
+    generateFMDReport,
+    generateSZCIReport,
+    generateUTWTReport,
+    generateRSCORReport,
+    generateRRISIReport,
+    generateAnodeReport,
+    generateCPReport,
+    generateRGVIReport,
     generateFullInspectionReport,
     jobPackId,
-    structureId
+    structureId,
+    onSummaryOpen
 }) => {
     return (
         <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0">
@@ -109,24 +135,126 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
             <div className="flex gap-2">
                 <Link href="/dashboard/inspection-v2"><Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><ArrowLeft className="w-4 h-4 mr-2" /> Back</Button></Link>
 
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-gradient-to-r from-cyan-600 to-teal-600 border-cyan-500 text-white hover:from-cyan-500 hover:to-teal-500 hover:text-white h-8 font-bold shadow-md shadow-cyan-900/30"
+                    onClick={onSummaryOpen}
+                >
+                    <BarChart3 className="w-4 h-4 mr-2" /> Inspection Summary
+                </Button>
+
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><Printer className="w-4 h-4 mr-2" /> Reports</Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56 p-1">
-                        <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-50 mb-1">Inspection Reports</div>
-                        <ScrollArea className="h-48">
-                            {allInspectionTypes.filter(t => currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))).map(t => (
-                                <DropdownMenuItem key={t.id} onClick={() => generateInspectionReportByType(t.id)} className="text-xs py-2 cursor-pointer flex items-center justify-between">
-                                    <div className="flex items-center">
-                                        <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-blue-500" />
-                                        <span className="truncate max-w-[140px]">{t.name}</span>
-                                    </div>
-                                    <Badge variant="outline" className="text-[8px] h-3.5 px-1 font-black bg-slate-50 text-slate-400 border-slate-200">{t.code}</Badge>
-                                </DropdownMenuItem>
-                            ))}
-                        </ScrollArea>
-                        <div className="border-t border-slate-50 my-1"></div>
+                        {(() => {
+                            const filteredReports = allInspectionTypes.filter(t => 
+                                t.code !== 'RGVI' && 
+                                t.code !== 'RSEAB' && t.code !== 'RMGI' && t.code !== 'RFMD' && t.code !== 'RSZCI' && 
+                                t.code !== 'RUTWT' && t.code !== 'RSCOR' && t.code !== 'RRISI' && 
+                                currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))
+                            );
+
+                            if (filteredReports.length === 0) return null;
+
+                            return (
+                                <>
+                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-50 mb-1">Inspection Reports</div>
+                                    <ScrollArea className="max-h-48">
+                                        {filteredReports.map(t => (
+                                            <DropdownMenuItem key={t.id} onClick={() => generateInspectionReportByType(t.id)} className="text-xs py-2 cursor-pointer flex items-center justify-between">
+                                                <div className="flex items-center">
+                                                    <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-blue-500" />
+                                                    <span className="truncate max-w-[140px]">{t.name}</span>
+                                                </div>
+                                                <Badge variant="outline" className="text-[8px] h-3.5 px-1 font-black bg-slate-50 text-slate-400 border-slate-200">{t.code}</Badge>
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </ScrollArea>
+                                    <div className="border-t border-slate-50 my-1"></div>
+                                </>
+                            );
+                        })()}
+                        
+                        {currentRecords.some(r => r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && (
+                            <DropdownMenuSub>
+                                <DropdownMenuSubTrigger className="text-xs py-2 cursor-pointer flex items-center">
+                                    <Grid3X3 className="w-3.5 h-3.5 mr-2 text-cyan-600" />
+                                    <span>Seabed Survey Reports</span>
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent className="w-56">
+                                    <DropdownMenuItem onClick={() => generateSeabedReport('seabed-survey-debris')} className="text-xs py-2 cursor-pointer">
+                                        Seabed Survey (Debris)
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => generateSeabedReport('seabed-survey-gas')} className="text-xs py-2 cursor-pointer">
+                                        Seabed Survey (Gas Seepage)
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => generateSeabedReport('seabed-survey-crater')} className="text-xs py-2 cursor-pointer">
+                                        Seabed Survey (Crater)
+                                    </DropdownMenuItem>
+                                </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                        )}
+
+                        {currentRecords.some(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD') && (
+                            <DropdownMenuItem onClick={() => generateFMDReport()} className="text-xs py-2 cursor-pointer font-bold text-indigo-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV FMD Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI') && (
+                            <DropdownMenuItem onClick={() => generateMGIReport()} className="text-xs py-2 cursor-pointer font-bold text-teal-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV MGI Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI') && (
+                            <DropdownMenuItem onClick={() => generateSZCIReport()} className="text-xs py-2 cursor-pointer font-bold text-orange-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV SZCI Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => r.inspection_type_code === 'RUTWT' || r.inspection_type?.code === 'RUTWT') && (
+                            <DropdownMenuItem onClick={() => generateUTWTReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-500 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV UTWT Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR') && (
+                            <DropdownMenuItem onClick={() => generateRSCORReport()} className="text-xs py-2 cursor-pointer font-bold text-stone-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV Scour Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI') && (
+                            <DropdownMenuItem onClick={() => generateRRISIReport()} className="text-xs py-2 cursor-pointer font-bold text-pink-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV Riser Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => ((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI') && ((r.structure_components?.code || '').toUpperCase() === 'AN' || (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE')) && (
+                            <DropdownMenuItem onClick={() => generateAnodeReport()} className="text-xs py-2 cursor-pointer font-bold text-amber-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV Anode Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => {
+                            const d = r.inspection_data || {};
+                            return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+                        }) && (
+                            <DropdownMenuItem onClick={() => generateCPReport()} className="text-xs py-2 cursor-pointer font-bold text-cyan-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV CP Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI') && (
+                            <DropdownMenuItem onClick={() => generateRGVIReport()} className="text-xs py-2 cursor-pointer font-bold text-emerald-600 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV GVI Report (RGVI)
+                            </DropdownMenuItem>
+                        )}
+
                         <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600">
                             <Layout className="w-3.5 h-3.5 mr-2" /> All Captured Records
                         </DropdownMenuItem>

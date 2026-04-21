@@ -7,9 +7,13 @@ import { PresenceProvider } from "@/components/presence-provider";
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data?.user;
+  } catch (error) {
+    console.error("Auth error in dashboard layout:", error);
+  }
 
   if (!user) {
     return redirect("/");

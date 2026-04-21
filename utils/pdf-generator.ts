@@ -180,10 +180,11 @@ export interface ReportConfig {
   reportNoPrefix: string;
   reportYear: string;
   preparedBy: { name: string; date: string };
-  reviewedBy: { name: string; date: string };
-  approvedBy: { name: string; date: string };
-  watermark: { enabled: boolean; text: string; transparency: number };
+  reviewedBy?: { name: string; date: string };
+  approvedBy?: { name: string; date: string };
+  watermark?: { enabled: boolean; text: string; transparency: number };
   showContractorLogo: boolean;
+  contractorLogoUrl?: string;
   showPageNumbers: boolean;
   returnBlob?: boolean;
   printFriendly?: boolean;
@@ -268,7 +269,7 @@ const generatePipelineReport = async (
   // Department Name
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 14);
+  doc.text(companySettings?.department_name || "Technical Inspection Division", 10, 14);
 
   // Report Title
   doc.setFontSize(11);
@@ -546,7 +547,7 @@ const generatePipelineReport = async (
         doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
       }
 
-      if (config.reviewedBy.name) {
+      if (config.reviewedBy?.name) {
         const x = 10 + sigWidth;
         doc.text("Reviewed By:", x, sigY);
         doc.text(config.reviewedBy.name, x, sigY + 5);
@@ -554,7 +555,7 @@ const generatePipelineReport = async (
         doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
       }
 
-      if (config.approvedBy.name) {
+      if (config.approvedBy?.name) {
         const x = 10 + (sigWidth * 2);
         doc.text("Approved By:", x, sigY);
         doc.text(config.approvedBy.name, x, sigY + 5);
@@ -627,7 +628,7 @@ const generatePlatformReport = async (
   // Department Name - Under Company Name
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 14);
+  doc.text(companySettings?.department_name || "Technical Inspection Division", 10, 14);
 
   // Report Title - SMALLER
   doc.setFontSize(11);
@@ -1094,7 +1095,7 @@ const generatePlatformReport = async (
         doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
       }
 
-      if (config.reviewedBy.name) {
+      if (config.reviewedBy?.name) {
         const x = 10 + sigWidth;
         doc.text("Reviewed By:", x, sigY);
         doc.text(config.reviewedBy.name, x, sigY + 5);
@@ -1102,7 +1103,7 @@ const generatePlatformReport = async (
         doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
       }
 
-      if (config.approvedBy.name) {
+      if (config.approvedBy?.name) {
         const x = 10 + (sigWidth * 2);
         doc.text("Approved By:", x, sigY);
         doc.text(config.approvedBy.name, x, sigY + 5);

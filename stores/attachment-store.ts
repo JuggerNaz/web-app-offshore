@@ -44,9 +44,9 @@ export const useAttachmentStore = create<AttachmentStore>((set) => ({
         fileType: null,
         hasAttachmentsOnly: true,
     },
-    setSearchQuery: (query) => set((state) => ({ filters: { ...state.filters, searchQuery: query } })),
-    setFileTypeFilter: (type) => set((state) => ({ filters: { ...state.filters, fileType: type } })),
-    setHasAttachmentsOnly: (enabled) => set((state) => ({ filters: { ...state.filters, hasAttachmentsOnly: enabled } })),
+    setSearchQuery: (query: string) => set((state: AttachmentStore) => ({ filters: { ...state.filters, searchQuery: query } })),
+    setFileTypeFilter: (type: string | null) => set((state: AttachmentStore) => ({ filters: { ...state.filters, fileType: type } })),
+    setHasAttachmentsOnly: (enabled: boolean) => set((state: AttachmentStore) => ({ filters: { ...state.filters, hasAttachmentsOnly: enabled } })),
     clearAllFilters: () => set({
         filters: {
             searchQuery: '',
@@ -57,7 +57,7 @@ export const useAttachmentStore = create<AttachmentStore>((set) => ({
 
     // Selection State
     selectedItems: new Set(),
-    toggleSelection: (id) => set((state) => {
+    toggleSelection: (id: number) => set((state: AttachmentStore) => {
         const newSelection = new Set(state.selectedItems);
         if (newSelection.has(id)) {
             newSelection.delete(id);
@@ -66,14 +66,14 @@ export const useAttachmentStore = create<AttachmentStore>((set) => ({
         }
         return { selectedItems: newSelection };
     }),
-    toggleAllSelection: (ids) => set((state) => {
-        const allSelected = ids.every(id => state.selectedItems.has(id));
+    toggleAllSelection: (ids: number[]) => set((state: AttachmentStore) => {
+        const allSelected = ids.every((id: number) => state.selectedItems.has(id));
         const newSelection = new Set(state.selectedItems);
 
         if (allSelected) {
-            ids.forEach(id => newSelection.delete(id));
+            ids.forEach((id: number) => newSelection.delete(id));
         } else {
-            ids.forEach(id => newSelection.add(id));
+            ids.forEach((id: number) => newSelection.add(id));
         }
         return { selectedItems: newSelection };
     }),
@@ -82,23 +82,23 @@ export const useAttachmentStore = create<AttachmentStore>((set) => ({
     // UI State
     isSlideOverOpen: false,
     activeAttachment: null,
-    openSlideOver: (attachment) => set({ isSlideOverOpen: true, activeAttachment: attachment }),
+    openSlideOver: (attachment: Attachment | null) => set({ isSlideOverOpen: true, activeAttachment: attachment }),
     closeSlideOver: () => set({ isSlideOverOpen: false, activeAttachment: null }),
 
     // Tree View State
     selectedPlatformId: null,
-    setSelectedPlatformId: (id) => set({ selectedPlatformId: id }),
+    setSelectedPlatformId: (id: number | null) => set({ selectedPlatformId: id }),
 
     // Actions
     isDeleting: false,
-    deleteAttachments: async (ids) => {
+    deleteAttachments: async (ids: number[]) => {
         set({ isDeleting: true });
         try {
             const { fetcher } = await import("@/utils/utils");
             const { mutate } = await import("swr");
             const { toast } = await import("sonner");
 
-            await Promise.all(ids.map(id => fetcher(`/api/attachment/${id}`, { method: 'DELETE' })));
+            await Promise.all(ids.map((id: number) => fetcher(`/api/attachment/${id}`, { method: 'DELETE' })));
 
             toast.success(`Successfully deleted ${ids.length} attachments`);
             set({ selectedItems: new Set() });

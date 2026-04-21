@@ -1,57 +1,123 @@
 {
   "LENGTH": {
-    "metric": ["m", "cm", "mm", "in", "ft"],
-    "imperial": ["in", "ft", "m", "cm", "mm"],
-    "defaultMetric": "m",
+    "metric": [
+      "mm",
+      "cm",
+      "m"
+    ],
+    "imperial": [
+      "in",
+      "ft"
+    ],
+    "defaultMetric": "mm",
     "defaultImperial": "in"
   },
   "MASS": {
-    "metric": ["g", "kg"],
-    "imperial": ["lb"],
+    "metric": [
+      "g",
+      "kg"
+    ],
+    "imperial": [
+      "lb"
+    ],
     "defaultMetric": "kg",
     "defaultImperial": "lb"
   },
   "TEMPERATURE": {
-    "metric": ["C"],
-    "imperial": ["F"],
+    "metric": [
+      "C"
+    ],
+    "imperial": [
+      "F"
+    ],
     "defaultMetric": "C",
     "defaultImperial": "F"
   },
   "PRESSURE": {
-    "metric": ["bar", "MPa"],
-    "imperial": ["psi"],
+    "metric": [
+      "bar",
+      "MPa"
+    ],
+    "imperial": [
+      "psi"
+    ],
     "defaultMetric": "bar",
     "defaultImperial": "psi"
   },
   "VOLTAGE": {
-    "metric": ["mV", "V"],
-    "imperial": ["mV", "V"],
+    "metric": [
+      "mV",
+      "V"
+    ],
+    "imperial": [
+      "mV",
+      "V"
+    ],
     "defaultMetric": "mV",
     "defaultImperial": "mV"
   },
   "PERCENT": {
-    "metric": ["%"],
-    "imperial": ["%"],
+    "metric": [
+      "%"
+    ],
+    "imperial": [
+      "%"
+    ],
     "defaultMetric": "%",
     "defaultImperial": "%"
   },
   "ANGLE": {
-    "metric": ["deg"],
-    "imperial": ["deg"],
+    "metric": [
+      "deg"
+    ],
+    "imperial": [
+      "deg"
+    ],
     "defaultMetric": "deg",
     "defaultImperial": "deg"
   },
   "TIME": {
-    "metric": ["years"],
-    "imperial": ["years"],
+    "metric": [
+      "years"
+    ],
+    "imperial": [
+      "years"
+    ],
     "defaultMetric": "years",
     "defaultImperial": "years"
   },
   "DISTANCE": {
-    "metric": ["km", "m", "cm", "mm", "in", "ft", "mile"],
-    "imperial": ["mile", "ft", "in", "mm", "cm", "m", "km"],
+    "metric": [
+      "km",
+      "m",
+      "cm",
+      "mm",
+      "in",
+      "ft",
+      "mile"
+    ],
+    "imperial": [
+      "mile",
+      "ft",
+      "in",
+      "mm",
+      "cm",
+      "m",
+      "km"
+    ],
     "defaultMetric": "km",
     "defaultImperial": "mile"
+  },
+  "DENSITY": {
+    "metric": [
+      "kg/m³",
+      "g/cm³"
+    ],
+    "imperial": [
+      "lb/ft³",
+      "lb/in³"
+    ],
+    "defaultMetric": "g/cm³",
+    "defaultImperial": "lb/ft³"
   }
 }
-

@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -659,11 +659,54 @@ export type Database = {
         }
         Relationships: []
       }
+      mgi_profiles: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: number
+          is_active: boolean
+          is_job_specific: boolean
+          is_archived: boolean
+          name: string
+          thresholds: Json
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: number
+          is_active?: boolean
+          is_job_specific?: boolean
+          is_archived?: boolean
+          name: string
+          thresholds?: Json
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: number
+          is_active?: boolean
+          is_job_specific?: boolean
+          is_archived?: boolean
+          name?: string
+          thresholds?: Json
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      },
       jobpack: {
         Row: {
           created_at: string | null
           created_by: string | null
           id: number
+          mgi_profile_id: number | null
           metadata: Json | null
           modified_by: string | null
           name: string | null
@@ -674,6 +717,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: number
+          mgi_profile_id?: number | null
           metadata?: Json | null
           modified_by?: string | null
           name?: string | null
@@ -684,6 +728,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: number
+          mgi_profile_id?: number | null
           metadata?: Json | null
           modified_by?: string | null
           name?: string | null
