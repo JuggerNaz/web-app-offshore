@@ -228,11 +228,22 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
   const { data: pipeMatData } = useSWR(open && formData.code?.toLowerCase() === 'pp' ? `/api/library/PIPE_MAT` : null, fetcher);
   const { data: risrTypData } = useSWR(`/api/library/RISR_TYP`, fetcher);
   const { data: risrMatData } = useSWR(open && formData.code?.toLowerCase() === 'rs' ? `/api/library/RISR_MAT` : null, fetcher);
-  const { data: pipeRtgData } = useSWR(open && (formData.code?.toLowerCase() === 'rs' || formData.code?.toLowerCase() === 'cm') ? `/api/library/PIPE_RTG` : null, fetcher);
+  const { data: pipeRtgData } = useSWR(open && (formData.code?.toLowerCase() === 'rs' || formData.code?.toLowerCase() === 'cm' || formData.code?.toLowerCase() === 'pc') ? `/api/library/PIPE_RTG` : null, fetcher);
+  const { data: plidTypData } = useSWR(open && formData.code?.toLowerCase() === 'pc' ? `/api/library/PLID_TYP` : null, fetcher);
   const { data: risgTypData } = useSWR(open && (formData.code?.toLowerCase() === 'rg' || formData.code?.toLowerCase() === 'sg') ? `/api/library/RISG_TYP` : null, fetcher);
   const { data: risbTypData } = useSWR(open && formData.code?.toLowerCase() === 'rb' ? `/api/library/RISB_TYP` : null, fetcher);
   const { data: stubMatData } = useSWR(open && formData.code?.toLowerCase() === 'sd' ? `/api/library/STUB_MAT` : null, fetcher);
   const { data: wsupTypData } = useSWR(open && formData.code?.toLowerCase() === 'wp' ? `/api/library/WSUP_TYP` : null, fetcher);
+  const { data: supoTypData } = useSWR(open && formData.code?.toLowerCase() === 'ss' ? `/api/library/SUPO_TYP` : null, fetcher);
+  // Pipeline Tap Valve specific options
+  const { data: tapvTypData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/TAPV_TYP` : null, fetcher);
+  const { data: pipeClsData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/PIPE_CLS` : null, fetcher);
+  const { data: cageTypData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/CAGE_TYP` : null, fetcher);
+  const { data: tapvMatData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/TAPV_MAT` : null, fetcher);
+  const { data: tapvCtgData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/TAPV_CTG` : null, fetcher);
+  const { data: cageAtcData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/CAGE_ATC` : null, fetcher);
+  const { data: valvManData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/VALV_MAN` : null, fetcher);
+  const { data: fjTypData } = useSWR(open && formData.code?.toLowerCase() === 'pw' ? `/api/library/FJ_TYPE` : null, fetcher);
   const getTemplate = (code: string | null, type: string) => {
     if (!code) return {};
     const lowerCode = code.toLowerCase();
@@ -313,6 +324,28 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     }
     if (lowerCode === 'sd' && !('stub_mat' in patchedTemplate)) {
       patchedTemplate.stub_mat = "";
+    }
+    if (lowerCode === 'pv' && !('tapv_typ' in patchedTemplate)) {
+      patchedTemplate.tapv_typ = "";
+      patchedTemplate.pipe_cls = "";
+      patchedTemplate.cage_typ = "";
+      patchedTemplate.tapv_mat = "";
+      patchedTemplate.tapv_ctg = "";
+      patchedTemplate.cage_atc = "";
+      patchedTemplate.valv_man = "";
+    }
+    if (lowerCode === 'pc' && !('plid_typ' in patchedTemplate)) {
+      patchedTemplate.plid_typ = "";
+      patchedTemplate.pipe_rtg = "";
+    }
+    if (lowerCode === 'ss' && !('supo_typ' in patchedTemplate)) {
+      patchedTemplate.supo_typ = "";
+    }
+    if (lowerCode === 'pw' && !('weld_des' in patchedTemplate)) {
+      patchedTemplate.weld_des = "";
+      patchedTemplate.weld_typ = "";
+      patchedTemplate.weld_mat = "";
+      patchedTemplate.fj_typ = "";
     }
 
     return patchedTemplate;
@@ -416,7 +449,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
           };
 
           const code = component.code?.trim().toLowerCase();
-          const isSpecialComp = ['pp', 'fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd'].includes(code || '');
+          const isSpecialComp = ['pp', 'fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd', 'yp', 'pv', 'pc', 'ss', 'pw'].includes(code || '');
 
           if (isSpecialComp) {
             if (code === 'ct') {
@@ -575,6 +608,20 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.id_chk;
             } else if (code === 'pp') {
               delete info.depth;
+            } else if (code === 'pv') {
+              delete info.wall_thk;
+              delete info.depth;
+            } else if (code === 'pc') {
+              delete info.wall_thk;
+              delete info.depth;
+            } else if (code === 'ss') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+            } else if (code === 'pw') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
             }
           } else {
             info.wall_thk = component.metadata?.additionalInfo?.wall_thk ?? "";
@@ -1222,6 +1269,26 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         if (key === 'boatlanding_types') label = 'Boatlanding Types';
                         if (key === 'valve_status') label = 'Status of the Valve';
                         if (key === 'dist_from_legs') label = 'dist. from legs';
+                        if (key === 'tapv_typ') label = 'Pipeline Tap Valve Type';
+                        if (key === 'pipe_cls') label = 'Pipe Class';
+                        if (key === 'cage_typ') label = 'Cage Type';
+                        if (key === 'tapv_mat') label = 'Pipeline Tap Valve Material';
+                        if (key === 'tapv_ctg') label = 'Pipeline Tap Valve Coating';
+                        if (key === 'cage_atc') label = 'Cage Attachment Type';
+                        if (key === 'valv_man') label = 'Valve Manufacturers';
+                        if (key === 'blind_flange') label = 'Blind Flange?';
+                        if (key === 'diameter') label = 'Diameter';
+                        if (key === 'desg_press') label = 'Design Pressure';
+                        if (key === 'op_press') label = 'Operating Pressure';
+                        if (key === 'no_supports') label = 'No. of Supports';
+                        if (key === 'plid_typ') label = 'Repair Clamp Type';
+                        if (key === 'pipe_rtg') label = 'Pipeline/Riser/Clamp Rating';
+                        if (key === 'no_bolts') label = 'No. Bolts';
+                        if (key === 'bolt_tension') label = 'Bolt Tension';
+                        if (key === 'seal_welded') label = 'Seal Welded';
+                        if (key === 'perm_clamp') label = 'Permanent Clamp';
+                        if (key === 'supo_typ') label = 'Support Type';
+                        if (key === 'fj_typ') label = 'Field Joint Wrappings';
 
                         let unit: string | null = null;
                         let unitOptions: string[] = [];
@@ -1234,7 +1301,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         const category = fieldConfig?.unitcategory || null;
 
                         // Fallback logic if category is missing in config
-                        const resolvedCategory = category || (k.includes('weight') || k.includes('wt') ? 'weight' : (k.includes('length') || k.includes('width') || k.includes('diameter') || k.includes('depth') || k.includes('dim') ? 'length' : null));
+                        const resolvedCategory = category || (k.includes('weight') || k.includes('wt') ? 'weight' : (k.includes('length') || k.includes('width') || k.includes('diameter') || k.includes('depth') || k.includes('dim') || k.includes('span') ? 'length' : null));
 
                         const options = getUnitOptions(resolvedCategory, isImperial);
                         if (options.length > 0) {
@@ -1397,9 +1464,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         if (key === 'hose_typ' && lowerCode === 'hs') return renderSelect(key, "Select hose type", hoseTypData);
                         if (key === 'hose_cnt' && lowerCode === 'hs') return renderSelect(key, "Select contents", hoseCntData);
                         if (key === 'flan_cls' && lowerCode === 'hs') return renderSelect(key, "Select flange class", flanClsData);
-                        if (key === 'weld_typ' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select weld type", weldTypData);
-                        if (key === 'weld_des' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select design code", weldDesData);
-                        if (key === 'weld_mat' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select material", weldMatData);
+                        if (key === 'weld_typ' && (lowerCode === 'wn' || lowerCode === 'wp' || lowerCode === 'pw')) return renderSelect(key, "Select weld type", weldTypData);
+                        if (key === 'weld_des' && (lowerCode === 'wn' || lowerCode === 'wp' || lowerCode === 'pw')) return renderSelect(key, "Select design code", weldDesData);
+                        if (key === 'weld_mat' && (lowerCode === 'wn' || lowerCode === 'wp' || lowerCode === 'pw')) return renderSelect(key, "Select material", weldMatData);
                         if (key === 'weld_cfg' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select configuration", weldCfgData);
                         if (key === 'risr_typ' && lowerCode === 'rs') return renderSelect(key, "Select riser type", risrTypData);
                         if (key === 'risr_mat' && lowerCode === 'rs') return renderSelect(key, "Select material", risrMatData);
@@ -1407,6 +1474,17 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         if (key === 'risg_typ' && lowerCode === 'rg') return renderSelect(key, "Select riser guard type", risgTypData);
                         if (key === 'risb_typ' && lowerCode === 'rb') return renderSelect(key, "Select beam type", risbTypData);
                         if (key === 'wsup_typ' && lowerCode === 'wp') return renderSelect(key, "Select component type", wsupTypData);
+                        if (key === 'tapv_typ' && lowerCode === 'pv') return renderSelect(key, "Select tap valve type", tapvTypData);
+                        if (key === 'pipe_cls' && lowerCode === 'pv') return renderSelect(key, "Select pipe class", pipeClsData);
+                        if (key === 'cage_typ' && lowerCode === 'pv') return renderSelect(key, "Select cage type", cageTypData);
+                        if (key === 'tapv_mat' && lowerCode === 'pv') return renderSelect(key, "Select material", tapvMatData);
+                        if (key === 'tapv_ctg' && lowerCode === 'pv') return renderSelect(key, "Select coating", tapvCtgData);
+                        if (key === 'cage_atc' && lowerCode === 'pv') return renderSelect(key, "Select attachment", cageAtcData);
+                        if (key === 'valv_man' && lowerCode === 'pv') return renderSelect(key, "Select manufacturer", valvManData);
+                        if (key === 'plid_typ' && lowerCode === 'pc') return renderSelect(key, "Select clamp type", plidTypData);
+                        if (key === 'pipe_rtg' && lowerCode === 'pc') return renderSelect(key, "Select rating", pipeRtgData);
+                        if (key === 'supo_typ' && lowerCode === 'ss') return renderSelect(key, "Select support type", supoTypData);
+                        if (key === 'fj_typ' && lowerCode === 'pw') return renderSelect(key, "Select field joint wrapping", fjTypData);
 
                         return (
                           <div key={key} className={cn("space-y-2", key === 'has_gas_seepage' && "col-span-2")}>

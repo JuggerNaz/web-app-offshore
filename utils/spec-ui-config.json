@@ -1549,6 +1549,131 @@
           "type": "boolean"
         }
       ]
+    },
+    {
+      "code": "pv",
+      "componentType": "pv_comp",
+      "fields": [
+        {
+          "name": "tapv_typ",
+          "type": "string"
+        },
+        {
+          "name": "pipe_cls",
+          "type": "string"
+        },
+        {
+          "name": "cage_typ",
+          "type": "string"
+        },
+        {
+          "name": "tapv_mat",
+          "type": "string"
+        },
+        {
+          "name": "tapv_ctg",
+          "type": "string"
+        },
+        {
+          "name": "cage_atc",
+          "type": "string"
+        },
+        {
+          "name": "valv_man",
+          "type": "string"
+        },
+        {
+          "name": "blind_flange",
+          "type": "string"
+        },
+        {
+          "name": "diameter",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "desg_press",
+          "type": "string",
+          "unitcategory": "pressure"
+        },
+        {
+          "name": "op_press",
+          "type": "string",
+          "unitcategory": "pressure"
+        },
+        {
+          "name": "no_supports",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "code": "pc",
+      "componentType": "pc_comp",
+      "fields": [
+        {
+          "name": "plid_typ",
+          "type": "string"
+        },
+        {
+          "name": "pipe_rtg",
+          "type": "string"
+        },
+        {
+          "name": "no_bolts",
+          "type": "string"
+        },
+        {
+          "name": "diameter",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "bolt_tension",
+          "type": "string",
+          "unitcategory": "pressure"
+        },
+        {
+          "name": "seal_welded",
+          "type": "boolean"
+        },
+        {
+          "name": "perm_clamp",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "code": "ss",
+      "componentType": "ss_comp",
+      "fields": [
+        {
+          "name": "supo_typ",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "code": "pw",
+      "componentType": "pw_comp",
+      "fields": [
+        {
+          "name": "weld_des",
+          "type": "string"
+        },
+        {
+          "name": "weld_typ",
+          "type": "string"
+        },
+        {
+          "name": "weld_mat",
+          "type": "string"
+        },
+        {
+          "name": "fj_typ",
+          "type": "string"
+        }
+      ]
     }
   ]
 }

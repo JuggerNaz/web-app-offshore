@@ -10,7 +10,7 @@ import { fetcher } from "@/utils/utils";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Save, Info, Settings, MapPin, Ruler, Layers, Package, Globe } from "lucide-react";
+import { Save, Info, Settings, MapPin, Ruler, Layers, Package } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -347,14 +347,14 @@ export default function Spec1({ data }: Props) {
                 <CardTitle className="text-lg">Location & Coordinates</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 pt-2">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-end gap-2">
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="flex items-end gap-3 px-1">
                     <div className="flex-1">
                       <FormFieldWrap label="Northing" name="st_north" form={form} type="number" />
                     </div>
                     {renderUnitSelect("st_north", "LENGTH")}
                   </div>
-                  <div className="flex items-end gap-2">
+                  <div className="flex items-end gap-3 px-1">
                     <div className="flex-1">
                       <FormFieldWrap label="Easting" name="st_east" form={form} type="number" />
                     </div>
@@ -401,19 +401,19 @@ export default function Spec1({ data }: Props) {
                 <CardTitle className="text-lg">Dimensions & Status</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="grid grid-cols-2">
-                  <div className="p-4 border-r border-b">
-                    <div className="flex items-end gap-2">
+                <div className="grid grid-cols-1 border-b">
+                  <div className="p-4 border-b last:border-b-0">
+                    <div className="flex items-end gap-3 px-1">
                       <div className="flex-1">
-                        <FormFieldWrap label="Max Leg Dia." name="dleg" form={form} type="number" />
+                        <FormFieldWrap label="Max Leg Diameter" name="dleg" form={form} type="number" />
                       </div>
                       {renderUnitSelect("dleg", "LENGTH")}
                     </div>
                   </div>
-                  <div className="p-4 border-b">
-                    <div className="flex items-end gap-2">
+                  <div className="p-4 border-b last:border-b-0">
+                    <div className="flex items-end gap-3 px-1">
                       <div className="flex-1">
-                        <FormFieldWrap label="Max Wall Thk." name="wall_thk" form={form} type="number" />
+                        <FormFieldWrap label="Max Wall Thickness" name="wall_thk" form={form} type="number" />
                       </div>
                       {renderUnitSelect("wall_thk", "LENGTH")}
                     </div>
@@ -426,29 +426,6 @@ export default function Spec1({ data }: Props) {
               </CardContent>
             </Card>
 
-            {/* Units & Settings */}
-            <Card className="shadow-sm border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
-              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
-                <Globe className="h-5 w-5 text-blue-600" />
-                <CardTitle className="text-lg">Reporting Units</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-2">
-                <p className="text-xs text-muted-foreground italic">
-                  Defines the default measurement system for this platform and all its associated components and inspections.
-                </p>
-                <FormFieldWrap 
-                  label="Unit System" 
-                  name="def_unit" 
-                  form={form} 
-                  ftype="select"
-                  options={[
-                    { label: "METRIC", value: "METRIC" },
-                    { label: "IMPERIAL", value: "IMPERIAL" }
-                  ]}
-                  placeholder="Select Unit System" 
-                />
-              </CardContent>
-            </Card>
           </div>
 
           {/* Leg Management - Full Width Bottom Section */}
