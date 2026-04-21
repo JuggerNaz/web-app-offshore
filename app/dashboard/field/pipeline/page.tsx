@@ -21,6 +21,7 @@ interface Pipeline {
   pipe_id: number;
   title: string;
   pfield: string;
+  field_name: string;
   plength: number | null;
   st_loc: string | null;
   end_loc: string | null;
@@ -28,7 +29,7 @@ interface Pipeline {
 }
 
 type ViewMode = "card" | "list";
-type SortField = "title" | "plength" | "st_loc" | "end_loc" | "ptype";
+type SortField = "title" | "field_name" | "plength" | "st_loc" | "end_loc" | "ptype";
 type SortOrder = "asc" | "desc";
 
 // Improved Oil Pipeline SVG Icon Component
@@ -171,7 +172,7 @@ export default function PipelinePage() {
           </div>
 
           <Button asChild className="rounded-2xl h-12 px-8 font-black uppercase tracking-wider bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 shadow-2xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all gap-3 border-0">
-            <Link href="/dashboard/field/pipeline/new">
+            <Link href={fieldId ? `/dashboard/field/pipeline/new?field=${fieldId}` : "/dashboard/field/pipeline/new"}>
               <Plus className="h-5 w-5 stroke-[3px]" />
               Register Pipeline
             </Link>
@@ -251,9 +252,16 @@ export default function PipelinePage() {
                   <div className="p-6 flex flex-col gap-4 bg-white dark:bg-slate-900 relative">
                     {/* Title Section */}
                     <div className="min-h-[3rem] flex items-center justify-center">
-                      <h3 className="text-sm font-black text-center uppercase tracking-tight text-slate-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors line-clamp-2 leading-tight">
-                        {pipeline.title}
-                      </h3>
+                      <div className="flex flex-col items-center gap-1">
+                        <h3 className="text-sm font-black text-center uppercase tracking-tight text-slate-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors line-clamp-2 leading-tight">
+                          {pipeline.title}
+                        </h3>
+                        {pipeline.field_name && (
+                          <div className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[8px] font-bold text-slate-500 uppercase tracking-wider">
+                            {pipeline.field_name}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Integrated Data Row */}
@@ -300,6 +308,15 @@ export default function PipelinePage() {
                     >
                       Title
                       <SortIcon field="title" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="px-6">
+                    <button
+                      onClick={() => handleSort("field_name")}
+                      className="flex items-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-teal-600 transition-colors"
+                    >
+                      Oil Field
+                      <SortIcon field="field_name" />
                     </button>
                   </TableHead>
                   <TableHead className="px-6">
@@ -354,6 +371,11 @@ export default function PipelinePage() {
                           PIPE-{pipeline.pipe_id}
                         </span>
                       </div>
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
+                      <span className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-tight">
+                        {pipeline.field_name || "-"}
+                      </span>
                     </TableCell>
                     <TableCell className="px-6 py-4">
                       <div className="flex items-center gap-2">

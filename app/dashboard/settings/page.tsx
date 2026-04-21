@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Settings, Building2, Video, Activity, AlertTriangle, User, FileText } from "lucide-react";
+import { Settings, Building2, Video, Activity, AlertTriangle, User, FileText, Waves } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SettingsPage() {
@@ -195,6 +195,43 @@ export default function SettingsPage() {
                                     <li className="flex items-center gap-2">
                                         <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full"></span>
                                         User Profiles & Access
+                                    </li>
+                                </ul>
+                            </CardContent>
+                        </Card>
+                    </Link>
+
+                    {/* MGI Profiler */}
+                    <Link href="/dashboard/settings/mgi-profiler">
+                        <Card className="cursor-pointer hover:border-rose-500 hover:shadow-lg transition-all duration-200 h-full">
+                            <CardHeader>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-rose-100 dark:bg-rose-900/30 rounded-lg">
+                                        <Waves className="w-6 h-6 text-rose-600" />
+                                    </div>
+                                    <div>
+                                        <CardTitle>MGI Profiler</CardTitle>
+                                        <CardDescription>Marine Growth Thresholds</CardDescription>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <ul className="space-y-2 text-sm text-muted-foreground">
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
+                                        Elevation-Based Rules
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
+                                        Max Thickness Thresholds
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
+                                        WD-Relative Calculations
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
+                                        Active Profile Management
                                     </li>
                                 </ul>
                             </CardContent>

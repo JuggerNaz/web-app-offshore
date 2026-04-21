@@ -45,7 +45,7 @@ export const generateAdvancedStructureReport = async (
         }
 
         // Reviewed By
-        if (config.reviewedBy.name) {
+        if (config.reviewedBy?.name) {
             doc.text("Reviewed By:", 10 + colWidth, sigY + 5);
             doc.setFont("helvetica", "bold");
             doc.text(config.reviewedBy.name, 10 + colWidth, sigY + 10);
@@ -54,7 +54,7 @@ export const generateAdvancedStructureReport = async (
         }
 
         // Approved By
-        if (config.approvedBy.name) {
+        if (config.approvedBy?.name) {
             doc.text("Approved By:", 10 + colWidth * 2, sigY + 5);
             doc.setFont("helvetica", "bold");
             doc.text(config.approvedBy.name, 10 + colWidth * 2, sigY + 10);

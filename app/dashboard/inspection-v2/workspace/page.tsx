@@ -3,8 +3,7 @@
 import * as React from "react";
 import { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams,
-    useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 
@@ -50,6 +49,7 @@ import {
     Lock,
     MapPin,
     Maximize2,
+    Minimize2,
     Menu,
     MessageSquare,
     MoreVertical,
@@ -81,6 +81,16 @@ import { toast } from "sonner";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
+import { generateROVMGIReport } from "@/utils/report-generators/rov-mgi-report";
+import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
+import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report";
+import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
+import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
+import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
+import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
+import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
+import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
+import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
 import { createMediaRecorder, startRecording, saveFile, generateFilename, getPhotoExtension, FORMAT_CONFIGS } from '@/lib/video-recorder/media-recorder';
@@ -134,9 +144,11 @@ import { TapeLogEvents } from "./components/TapeLogEvents";
 import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
+import { InspectionSummaryPanel } from "./components/InspectionSummaryPanel";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { resolveInspectionType } from "@/utils/inspection-schema";
+import { getReportHeaderData } from "@/utils/company-settings";
 
 export default function WorkspaceV2Page() {
     return (
@@ -172,6 +184,7 @@ function V10PreviewLayout() {
     // Mode
     const [inspMethod, setInspMethod] = useState<"DIVING" | "ROV">(initialMode || "DIVING");
     const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
+    const [isSummaryOpen, setIsSummaryOpen] = useState(false);
 
     const [deployments, setDeployments] = useState<any[]>([]);
     const [activeDep, setActiveDep] = useState<{ id: string, jobNo?: string, name: string, raw?: any } | null>(null);
@@ -187,6 +200,7 @@ function V10PreviewLayout() {
     });
 
     const [unitSystem, setUnitSystem] = useState<"METRIC" | "IMPERIAL">("METRIC");
+    const [recordSearchQuery, setRecordSearchQuery] = useState("");
 
     // Fetch Global Unit Preference
     useEffect(() => {
@@ -263,9 +277,32 @@ function V10PreviewLayout() {
         
         return sortableRecords;
     }, [currentRecords, sortConfig]);
+    
+    const displayRecords = useMemo(() => {
+        if (!recordSearchQuery) return sortedRecords;
+        const q = recordSearchQuery.toLowerCase();
+        return sortedRecords.filter(r => {
+            const typeName = (r.inspection_type?.name || "").toLowerCase();
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toLowerCase();
+            const componentId = (r.structure_components?.q_id || "").toLowerCase();
+            const elev = (r.elevation || "").toString().toLowerCase();
+            const status = r.has_anomaly ? "anomaly" : (r.status === 'COMPLETED' ? "pass" : "incomplete");
+            const remarks = (r.inspection_data?.observation || r.inspection_data?.findings || "").toLowerCase();
+            const refNo = (r.anomaly_ref_no || "").toLowerCase();
+
+            return typeName.includes(q) || 
+                   typeCode.includes(q) || 
+                   componentId.includes(q) || 
+                   elev.includes(q) || 
+                   status.includes(q) || 
+                   remarks.includes(q) ||
+                   refNo.includes(q);
+        });
+    }, [sortedRecords, recordSearchQuery]);
     const [isFetchingDeps, setIsFetchingDeps] = useState(true);
     const [isDeploymentValid, setIsDeploymentValid] = useState(true);
     const [syncLoading, setSyncLoading] = useState(false);
+    const [historyLoading, setHistoryLoading] = useState(false);
     const [componentsSow, setComponentsSow] = useState<any[]>([]);
     const [componentsNonSow, setComponentsNonSow] = useState<any[]>(COMPONENTS_NON_SOW);
     const [allComps, setAllComps] = useState<any[]>([]);
@@ -545,8 +582,53 @@ function V10PreviewLayout() {
     const [showRemovalConfirm, setShowRemovalConfirm] = useState(false);
     const [lastAutoMatchedRuleId, setLastAutoMatchedRuleId] = useState<string | null>(null);
     const [isManualOverride, setIsManualOverride] = useState(false);
+    const [activeMGIProfile, setActiveMGIProfile] = useState<any>(null);
 
-    // Auto-update pending attachment titles for Anomaly/Finding
+    // Fetch Active MGI Profile
+    useEffect(() => {
+        async function fetchMGIProfile() {
+            if (!jobPackId) return;
+
+            // 1. Try to fetch profile linked to jobpack
+            const { data: jobData } = await supabase
+                .from('jobpack')
+                .select('mgi_profile_id')
+                .eq('id', Number(jobPackId))
+                .single();
+
+            let profileId = jobData?.mgi_profile_id;
+
+            // 2. If no job-specific profile, fetch the global active profile
+            if (!profileId) {
+                const { data: globalProfile } = await supabase
+                    .from('mgi_profiles')
+                    .select('*')
+                    .eq('is_active', true)
+                    .eq('is_job_specific', false)
+                    .eq('is_archived', false)
+                    .maybeSingle();
+                
+                if (globalProfile) {
+                    setActiveMGIProfile(globalProfile);
+                    return;
+                }
+            } else {
+                const { data: specificProfile } = await supabase
+                    .from('mgi_profiles')
+                    .select('*')
+                    .eq('id', profileId)
+                    .single();
+                
+                if (specificProfile) {
+                    setActiveMGIProfile(specificProfile);
+                    return;
+                }
+            }
+        }
+        fetchMGIProfile();
+    }, [jobPackId, supabase]);
+
+    // Anomaly Library Statesuto-update pending attachment titles for Anomaly/Finding
     useEffect(() => {
         if (findingType === 'Anomaly' || findingType === 'Finding') {
             const label = findingType === 'Anomaly' ? 'Anomaly' : 'Finding';
@@ -641,6 +723,17 @@ function V10PreviewLayout() {
 
     const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
     const [previewOpen, setPreviewOpen] = useState(false);
+    const [mPreviewOpen, setMPreviewOpen] = useState(false);
+    const [fmdPreviewOpen, setFmdPreviewOpen] = useState(false);
+    const [szciPreviewOpen, setSzciPreviewOpen] = useState(false);
+    const [utwtPreviewOpen, setUtwtPreviewOpen] = useState(false);
+    const [rscorPreviewOpen, setRscorPreviewOpen] = useState(false);
+    const [rrisiPreviewOpen, setRrisiPreviewOpen] = useState(false);
+    const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
+    const [cpPreviewOpen,    setCpPreviewOpen]    = useState(false);
+    const [rgviPreviewOpen,  setRgviPreviewOpen]  = useState(false);
+    const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
+    const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const jpParam = searchParams.get('jpName');
@@ -649,23 +742,23 @@ function V10PreviewLayout() {
     const jtParam = searchParams.get('jobType');
 
     // Header Data
-    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, jobType: string, structureType: 'platform' | 'pipeline' }>({
+    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, jobType: string, structureType: 'platform' | 'pipeline', waterDepth: number }>({
         jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
         platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
         sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
         jobType: jtParam || "",
-        structureType: 'platform'
+        structureType: 'platform',
+        waterDepth: 0
     });
 
     /**
      * Robust SOW Status Synchronization
      * Derived from aggregated insp_records for a specific COMPONENT + TASK
      */
-    const syncSowStatus = useCallback(async (compId: number, taskInput: string) => {
+    const syncSowStatus = useCallback(async (compId: number, taskInput: string, currentElevation?: number, currentStatus?: string) => {
         if (!sowId) return;
 
         // 1. Resolve the canonical task info FIRST
-        // This handles cases where taskInput is either a Code (RGVI) or Name (General Visual Inspection)
         const it = allInspectionTypes.find(t => 
             t.code === taskInput || 
             t.name?.toLowerCase() === taskInput.toLowerCase()
@@ -678,67 +771,81 @@ function V10PreviewLayout() {
 
         const taskCode = it.code; // Canonical code
 
-        // 2. Get all records for this component + canonical task
-        let inspsQuery = supabase.from('insp_records')
-            .select('insp_id, status, has_anomaly, inspection_data')
-            .eq('component_id', compId)
-            .eq('inspection_type_code', taskCode);
-
-        if (structureId && !isNaN(Number(structureId))) {
-            inspsQuery = inspsQuery.eq('structure_id', Number(structureId));
-        }
-        if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-            inspsQuery = inspsQuery.eq('sow_report_no', headerData.sowReportNo);
-        }
-
-        const { data: records, error: fetchError } = await inspsQuery
-            .order('inspection_date', { ascending: false })
-            .order('inspection_time', { ascending: false });
-
-        if (fetchError) {
-            console.error(`[SOW Sync] Status fetch failed for ${taskCode}:`, fetchError);
-            return;
-        }
-
-        let newStatus: 'pending' | 'completed' | 'incomplete' = 'pending';
-        
-        if (records && records.length > 0) {
-            // Check for incomplete (latest record takes precedence for 'incomplete')
-            const latest = records[0];
-            if (latest.status?.toLowerCase() === 'incomplete') {
-                newStatus = 'incomplete';
-            } else {
-                newStatus = 'completed';
-            }
-        }
-
-        // 3. Upsert into u_sow_items (Aligned with documented schema)
-        const { data: existing } = await supabase.from('u_sow_items')
-            .select('id')
+        // 2. Get the SOW item for this component + canonical task
+        const { data: existing, error: fetchSowErr } = await supabase.from('u_sow_items')
+            .select('*')
             .eq('sow_id', Number(sowId))
             .eq('component_id', compId)
-            .eq('inspection_code', taskCode) // Canonical lookup
+            .eq('inspection_code', taskCode)
             .maybeSingle();
+
+        if (fetchSowErr) {
+            console.error(`[SOW Sync] Fetch failed for ${taskCode}:`, fetchSowErr);
+            return;
+        }
 
         const userRes = await supabase.auth.getUser();
         const user = userRes.data.user;
         const userName = user?.user_metadata?.full_name || user?.email || user?.id || 'system';
 
         if (existing) {
-            // Update: Set status and metadata
+            let updatedFields: any = {
+                updated_at: new Date().toISOString(),
+                updated_by: userName
+            };
+
+            // 3a. Handle Elevation-bound SOW Item
+            if (existing.elevation_required && existing.elevation_data && Array.isArray(existing.elevation_data) && currentElevation !== undefined) {
+                const elevStatus = currentStatus?.toLowerCase() || 'completed';
+                
+                const updatedElevationData = existing.elevation_data.map((elev: any) => {
+                    const start = parseFloat(elev.start);
+                    const end = parseFloat(elev.end);
+                    // Check if currentElevation falls within this range
+                    if (!isNaN(start) && !isNaN(end) && currentElevation >= Math.min(start, end) && currentElevation <= Math.max(start, end)) {
+                        return { ...elev, status: elevStatus };
+                    }
+                    return elev;
+                });
+
+                updatedFields.elevation_data = updatedElevationData;
+                
+                // Recalculate overall status: If any is 'pending', overall is 'incomplete'? 
+                // Or if all are 'completed', overall is 'completed'.
+                const allDone = updatedElevationData.every((e: any) => e.status === 'completed');
+                const anyIncomplete = updatedElevationData.some((e: any) => e.status === 'incomplete');
+                
+                if (allDone) {
+                    updatedFields.status = 'completed';
+                } else if (anyIncomplete) {
+                    updatedFields.status = 'incomplete';
+                } else {
+                    // If some are done but not all, it's still 'incomplete' or 'pending'?
+                    // Usually "In Progress" isn't a status here, so we keep 'incomplete' as "partially done"
+                    updatedFields.status = 'incomplete';
+                }
+            } else {
+                // 3b. Handle Standard SOW Item
+                let newStatus: 'pending' | 'completed' | 'incomplete' = 'completed';
+                if (currentStatus?.toUpperCase() === 'INCOMPLETE') {
+                    newStatus = 'incomplete';
+                }
+                updatedFields.status = newStatus;
+            }
+
             const { error: updateErr } = await supabase.from('u_sow_items')
-                .update({ 
-                    status: newStatus,
-                    updated_at: new Date().toISOString(),
-                    updated_by: userName
-                })
+                .update(updatedFields)
                 .eq('id', existing.id);
             
             if (updateErr) console.error("[SOW Sync] Update error:", updateErr);
-        } else if (newStatus !== 'pending') {
-            // Auto-add to SOW if we have records but no SOW entry
+        } else {
+            // 4. Auto-add to SOW if we have records but no SOW entry (Standard fallback)
+            let newStatus: 'pending' | 'completed' | 'incomplete' = 'completed';
+            if (currentStatus?.toUpperCase() === 'INCOMPLETE') {
+                newStatus = 'incomplete';
+            }
+
             const compObj = allComps.find(c => c.id === compId);
-            
             console.log(`[Status Sync] -> AUTO-ADDING to SOW: ${compObj?.name || compId} with task ${taskCode}`);
             
             const { error: insertError } = await supabase.from('u_sow_items').insert({
@@ -774,13 +881,12 @@ function V10PreviewLayout() {
                 }
             } else {
                 console.error("[SOW Sync] Auto-add SOW failed:", insertError);
-                toast.error(`Database error adding ${compObj?.name || 'component'}: ${insertError.message}`);
             }
         }
 
-        // 4. Invalidate query to refresh UI (including sidebar)
+        // 5. Invalidate query to refresh UI (including sidebar)
         queryClient.invalidateQueries({ queryKey: ['sow-data'] });
-    }, [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData, structureId]);
+    }, [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData]);
 
     useEffect(() => {
         async function fetchHeaderInfo() {
@@ -796,10 +902,20 @@ function V10PreviewLayout() {
                 if (jpData?.name) jobpackName = jpData.name;
             }
 
-            // Fetch Structure Name
-            if (!strParam) {
-                const { data: structData } = await supabase.from('structure').select('str_name').eq('str_id', Number(structureId)).single();
-                if (structData?.str_name) platformName = structData.str_name;
+            // Fetch Structure Name & Depth
+            // NOTE: The 'structure' table only has str_id + str_type. Name and depth live in platform table.
+            let waterDepth = 0;
+
+            // Always fetch from platform table — it has 'title' (name) and 'depth' (water depth)
+            const { data: platData } = await supabase
+                .from('platform' as any)
+                .select('title, depth')
+                .eq('plat_id', Number(structureId))
+                .maybeSingle() as any;
+
+            if (platData) {
+                if (!strParam && platData.title) platformName = platData.title;
+                if (platData.depth) waterDepth = Number(platData.depth);
             }
 
             // Fetch Structure Type for data acquisition
@@ -826,7 +942,7 @@ function V10PreviewLayout() {
                 }
             }
 
-            setHeaderData({ jobpackName, platformName, sowReportNo, jobType: jtParam || "", structureType: detectedStructureType });
+            setHeaderData({ jobpackName, platformName, sowReportNo, jobType: jtParam || "", structureType: detectedStructureType, waterDepth });
         }
         fetchHeaderInfo();
     }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam]);
@@ -1820,16 +1936,22 @@ function V10PreviewLayout() {
 
         try {
             setSyncLoading(true);
-            // CRITICAL: Ensure depId is a number if possible to avoid Supabase 400 Bad Request
             const depId = !isNaN(Number(activeDep.id)) ? Number(activeDep.id) : activeDep.id;
-            console.log(`[Sync] Starting sync for ${inspMethod} | Dep ID: ${depId} (Type: ${typeof depId})`);
-
-            // 1. Movements
+            
             const movTable = inspMethod === "DIVING" ? 'insp_dive_movements' : 'insp_rov_movements';
             const movCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
-            const { data: movs, error: movErr } = await supabase.from(movTable).select('*').eq(movCol, depId).order('movement_time', { ascending: true });
 
-            if (movErr) console.error("[Sync] Movement fetch error:", movErr);
+            // 1 & 2. Fetch Movements and Tapes in parallel
+            const [movsRes, tapesRes] = await Promise.all([
+                supabase.from(movTable).select('*').eq(movCol, depId).order('movement_time', { ascending: true }),
+                supabase.from('insp_video_tapes').select('*').eq(movCol, depId).order('tape_id', { ascending: false })
+            ]);
+
+            const movs = movsRes.data;
+            let tapes = tapesRes.data;
+
+            if (movsRes.error) console.error("[Sync] Movement fetch error:", movsRes.error);
+            if (tapesRes.error) console.error("[Sync] Tape fetch error:", tapesRes.error);
 
             if (movs && movs.length > 0) {
                 const last = movs[movs.length - 1];
@@ -1839,10 +1961,8 @@ function V10PreviewLayout() {
                     if (mappedItem) mvtLabel = mappedItem.label;
                 }
                 setCurrentMovement(mvtLabel);
-                // Store raw event_time for calculations
                 setDiveStartTime(movs[0].movement_time || movs[0].event_time);
 
-                // Find recovery event if it exists
                 const recoveryEvent = movs.find(m =>
                     m.movement_type?.toLowerCase().includes('arrived surface') ||
                     m.movement_type?.toLowerCase().includes('recovered') ||
@@ -1855,60 +1975,44 @@ function V10PreviewLayout() {
                 setDiveEndTime(null);
             }
 
-            // 2. Video Tapes & Events
-            let { data: tapes, error: tapeErr } = await supabase.from('insp_video_tapes').select('*').eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', depId).order('tape_id', { ascending: false });
-
-            if (tapeErr) console.error("[Sync] Tape fetch error:", tapeErr);
-
-            // FALLBACK: If no tapes found in insp_video_tapes, check if there are any used in insp_records
+            // FALLBACK: If no tapes found in insp_video_tapes
             if (!tapes || tapes.length === 0) {
-                console.log("[Sync] No tapes found in insp_video_tapes table. Checking insp_records for associated tapes...");
                 let recTapesQuery = supabase.from('insp_records')
                     .select('tape_id')
-                    .eq(inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id', depId)
+                    .eq(movCol, depId)
                     .not('tape_id', 'is', null);
 
                 if (structureId && !isNaN(Number(structureId))) {
-                   recTapesQuery = recTapesQuery.eq('structure_id', Number(structureId));
+                    recTapesQuery = recTapesQuery.eq('structure_id', Number(structureId));
                 }
                 if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-                   recTapesQuery = recTapesQuery.eq('sow_report_no', headerData.sowReportNo);
+                    recTapesQuery = recTapesQuery.eq('sow_report_no', headerData.sowReportNo);
                 }
 
                 const { data: recTapes } = await recTapesQuery;
-
                 if (recTapes && recTapes.length > 0) {
                     const uniqueTapeIds = Array.from(new Set(recTapes.map(r => r.tape_id)));
-                    console.log("[Sync] Found unique tape IDs in records:", uniqueTapeIds);
-                    // Create virtual tape objects for UI compatibility
                     tapes = uniqueTapeIds.map(tid => ({ tape_id: tid, tape_no: `TAPE-${tid}`, status: 'ACTIVE' })) as any;
                 }
             }
 
             const tapeIds = tapes?.map(t => t.tape_id) || [];
-            console.log(`[Sync] Active Tapes:`, tapeIds);
-
             setJobTapes(tapes || []);
+
             if (tapes && tapes.length > 0) {
                 const latestTape = tapes[0];
                 setTapeNo(latestTape.tape_no);
                 setTapeId(latestTape.tape_id);
                 setActiveChapter(latestTape.chapter_no || 1);
 
-                const { data: lastLog } = await supabase.from('insp_video_logs')
-                    .select('*')
-                    .eq('tape_id', latestTape.tape_id)
-                    .order('event_time', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
+                // Fetch logs for latest tape in parallel
+                const [lastLogRes, stateLogRes] = await Promise.all([
+                    supabase.from('insp_video_logs').select('*').eq('tape_id', latestTape.tape_id).order('event_time', { ascending: false }).limit(1).maybeSingle(),
+                    supabase.from('insp_video_logs').select('event_type').eq('tape_id', latestTape.tape_id).in('event_type', ['NEW_LOG_START', 'RESUME', 'PAUSE', 'END']).order('event_time', { ascending: false }).limit(1).maybeSingle()
+                ]);
 
-                const { data: stateLog } = await supabase.from('insp_video_logs')
-                    .select('event_type')
-                    .eq('tape_id', latestTape.tape_id)
-                    .in('event_type', ['NEW_LOG_START', 'RESUME', 'PAUSE', 'END'])
-                    .order('event_time', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
+                const lastLog = lastLogRes.data;
+                const stateLog = stateLogRes.data;
 
                 if (lastLog) {
                     const currentState = stateLog ? stateLog.event_type : lastLog.event_type;
@@ -1935,35 +2039,15 @@ function V10PreviewLayout() {
             }
 
             let allEv: any[] = [];
-            if (tapeIds.length > 0) {
-                const { data: logs, error: logErr } = await supabase.from('insp_video_logs')
-                    .select('*')
-                    .in('tape_id', tapeIds)
-                    .order('event_time', { ascending: false });
-
-                if (logErr) console.error("[Sync] Video log fetch error:", logErr);
-
-                if (logs) {
-                    allEv.push(...logs.map((l: any) => ({
-                        id: `log_${l.video_log_id}`,
-                        realId: l.video_log_id,
-                        time: l.timecode_start || '00:00:00',
-                        action: l.event_type === "NEW_LOG_START" ? "Start Tape" : l.event_type === "END" ? "Stop Tape" : l.event_type === "PAUSE" ? "Pause" : l.event_type === "RESUME" ? "Resume" : l.event_type,
-                        logType: 'video_log',
-                        eventTime: parseDbDate(l.event_time).toISOString(),
-                        inspectionId: l.inspection_id,
-                        tape_id: l.tape_id,
-                        tape_counter_start: l.tape_counter_start || 0
-                    })));
-                }
-            }
-
-            // 4. Fetch Inspection Records
             const inspCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
             let inspsQuery = supabase.from('insp_records').select(`
                 *,
                 inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (q_id, code)
+                structure_components:component_id!left (q_id, code),
+                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                insp_video_tapes:tape_id!left(tape_no),
+                insp_anomalies(*)
             `).eq(inspCol, depId);
 
             if (structureId && !isNaN(Number(structureId))) {
@@ -1973,13 +2057,33 @@ function V10PreviewLayout() {
                inspsQuery = inspsQuery.eq('sow_report_no', headerData.sowReportNo);
             }
 
-            const { data: insps, error: inspErr } = await inspsQuery;
+            // 3 & 4. Fetch Logs and Inspection Records in parallel to reduce network roundtrips
+            const [logsRes, inspsRes] = await Promise.all([
+                tapeIds.length > 0 
+                  ? supabase.from('insp_video_logs').select('*').in('tape_id', tapeIds).order('event_time', { ascending: false })
+                  : Promise.resolve({ data: [] }),
+                inspsQuery
+            ]);
 
-            if (inspErr) {
-                console.error("[Sync] Inspection fetch error:", inspErr);
-                // Fallback basic fetch
-                const { data: fallbackInsps } = await supabase.from('insp_records').select('*').eq(inspCol, depId);
-                if (fallbackInsps) setCurrentRecords(fallbackInsps);
+            const logs = logsRes.data;
+            const insps = inspsRes.data;
+
+            if (logs) {
+                allEv.push(...logs.map((l: any) => ({
+                    id: `log_${l.video_log_id}`,
+                    realId: l.video_log_id,
+                    time: l.timecode_start || '00:00:00',
+                    action: l.event_type === "NEW_LOG_START" ? "Start Tape" : l.event_type === "END" ? "Stop Tape" : l.event_type === "PAUSE" ? "Pause" : l.event_type === "RESUME" ? "Resume" : l.event_type,
+                    logType: 'video_log',
+                    eventTime: parseDbDate(l.event_time).toISOString(),
+                    inspectionId: l.inspection_id,
+                    tape_id: l.tape_id,
+                    tape_counter_start: l.tape_counter_start || 0
+                })));
+            }
+
+            if (inspsRes.error) {
+                console.error("[Sync] Inspection fetch error:", inspsRes.error);
             } else if (insps) {
                 // Fetch attachment counts manually for 'attachment' table
                 const { data: allAtts } = await supabase.from('attachment')
@@ -1999,10 +2103,11 @@ function V10PreviewLayout() {
 
                 setCurrentRecords(inspsWithCounts);
                 
+                // PERFORMANCE FIX: Use a Set for O(1) lookup during synchronization to avoid O(N*M) lag
+                const logInspectionIds = new Set(allEv.map(ev => ev.inspectionId).filter(Boolean));
+                
                 inspsWithCounts.forEach(r => {
-                    // Only add to allEv if not already represented by a video log with same inspectionId
-                    const alreadyInLogs = allEv.some(ev => ev.inspectionId === r.insp_id);
-                    if (!alreadyInLogs) {
+                    if (!logInspectionIds.has(r.insp_id)) {
                         const status = r.has_anomaly || (r.status === 'Anomaly' || r.status === 'Defect') ? 'ANOMALY' : 'INSPECTION';
                         allEv.push({
                             id: `insp_${r.insp_id}`,
@@ -2037,16 +2142,18 @@ function V10PreviewLayout() {
     const fetchHistory = useCallback(async () => {
         if (!selectedComp || !structureId) return;
         
-        let query = supabase.from('insp_records')
-            .select('*')
-            .eq('component_id', selectedComp.id)
-            .eq('structure_id', Number(structureId));
+        try {
+            setHistoryLoading(true);
+            let query = supabase.from('insp_records')
+                .select('*')
+                .eq('component_id', selectedComp.id)
+                .eq('structure_id', Number(structureId));
 
-        if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-            query = query.eq('sow_report_no', headerData.sowReportNo);
-        }
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                query = query.eq('sow_report_no', headerData.sowReportNo);
+            }
 
-        const { data, error } = await query.order('cr_date', { ascending: false });
+            const { data, error } = await query.order('cr_date', { ascending: false });
 
         if (error || !data) {
             console.error("Error fetching component history:", error);
@@ -2189,6 +2296,11 @@ function V10PreviewLayout() {
 
         setCurrentCompRecords(current);
         setHistoricalRecords(historical);
+        } catch (err) {
+            console.error("fetchHistory Error:", err);
+        } finally {
+            setHistoryLoading(false);
+        }
     }, [selectedComp, supabase, structureId, jobPackId, headerData.sowReportNo, inspMethod, activeDep, deployments]);
 
     useEffect(() => {
@@ -2733,9 +2845,11 @@ function V10PreviewLayout() {
 
             (allCompsData || []).forEach((comp: any) => {
                 const isAssigned = assignedCompsMap.has(comp.id);
-                const md = comp.metadata || {};
+                const md = (typeof comp.metadata === 'string' ? JSON.parse(comp.metadata) : comp.metadata) || {};
                 const startNode = md.start_node || md.f_node || md.Node_1 || comp.startNode || comp.start_node || '-';
                 const endNode = md.end_node || md.s_node || md.Node_2 || comp.endNode || comp.end_node || '-';
+                const startLeg = md.s_leg || md.start_leg || md.leg_1 || md.StartLeg || md.Leg_1 || comp.startLeg || comp.start_leg || '-';
+                const endLeg = md.f_leg || md.end_leg || md.leg_2 || md.EndLeg || md.Leg_2 || comp.endLeg || comp.end_leg || '-';
                 const startElev = md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || '-';
                 const endElev = md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || '-';
                 const nominalThk = md.nominal_thickness || md.NominalThickness || md.nominal_thk || comp.nominal_thickness || '-';
@@ -2763,7 +2877,7 @@ function V10PreviewLayout() {
                     name: comp.q_id || comp.name || `Node ${comp.id}`,
                     depth: displayDepth,
                     lowestElev,
-                    startNode, endNode, startElev, endElev, nominalThk,
+                    startNode, endNode, startLeg, endLeg, startElev, endElev, nominalThk,
                     raw: comp,
                     tasks: Array.from(new Set(taskItems.map(t => t.code))),
                     taskStatuses: Array.from(new Map(taskItems.map(item => [item.code, item])).values())
@@ -2776,7 +2890,8 @@ function V10PreviewLayout() {
             const combined = [...assigned, ...unassigned];
             return { assigned, unassigned, all: combined };
         },
-        staleTime: 30000, // 30 seconds
+        staleTime: 10 * 60 * 1000, // 10 minutes cache to avoid huge page loads
+        refetchOnWindowFocus: false,
     });
 
     // Populate local states whenever query data resolves
@@ -2933,6 +3048,29 @@ function V10PreviewLayout() {
             if (extra.length > 0) props = [...extra, ...props];
         }
 
+        // 3. Filter legacy fields logic:
+        // For new records, hide any field marked as isLegacy or having "(legacy)" in the label.
+        // For existing records (editing), show legacy fields only if data exists in ANY historical record for this component.
+        props = props.filter(p => {
+            const isLegacy = p.isLegacy || (p.label || '').toLowerCase().includes('(legacy)');
+            if (!isLegacy) return true;
+
+            // If it is legacy, only show if we are in modification mode (editingRecordId set)
+            // AND any historical record for this component has data for it.
+            if (editingRecordId) {
+                const hasDataInHistory = currentRecords.some(r => {
+                    if (r.component_id !== selectedComp?.id) return false;
+                    const recordData = typeof r.inspection_data === 'string' 
+                        ? JSON.parse(r.inspection_data) 
+                        : r.inspection_data;
+                    const val = recordData?.[p.name] || recordData?.[p.label];
+                    return val !== undefined && val !== null && String(val).trim() !== "" && val !== "--";
+                });
+                return hasDataInHistory;
+            }
+            return false;
+        });
+
         return props;
     }, [activeSpec, selectedComp, allInspectionTypes, editingRecordId, currentRecords, inspMethod]);
 
@@ -3047,10 +3185,27 @@ function V10PreviewLayout() {
     };
 
     const getReportHeaderData = async () => {
+        // Try to fetch from standard API first
+        try {
+            const response = await fetch("/api/company-settings");
+            if (response.ok) {
+                const { data } = await response.json();
+                return {
+                    companyName: data.company_name || "NasQuest Resources Sdn Bhd",
+                    companyLogo: data.logo_url || "/logo.png",
+                    departmentName: data.department_name || "Technical Inspection Division"
+                };
+            }
+        } catch (error) {
+            console.error("Error fetching company settings for report:", error);
+        }
+
+        // Fallback to absolute defaults if API fails
         const { data } = await supabase.from('attachment').select('*').eq('meta_type', 'COMPANY_PROFILE').limit(1).maybeSingle();
         return {
-            companyName: data?.meta_name || "Deepwater Offshore",
-            companyLogo: data?.file_url || "/logo.png"
+            companyName: data?.meta_name || "NasQuest Resources Sdn Bhd",
+            companyLogo: data?.file_url || "/logo.png",
+            departmentName: data?.meta?.departmentName || "Technical Inspection Division"
         };
     };
 
@@ -3206,6 +3361,12 @@ function V10PreviewLayout() {
     const handleCommitRecord = async () => {
         if (!selectedComp || !activeSpec || !activeDep?.id) return;
 
+        // Block new inserts if video log is not active (Live Mode only)
+        if (!editingRecordId && !manualOverride && vidState !== "RECORDING") {
+            toast.error("Video log is currently STOPPED or PAUSED. New inspection events can only be added when a video log is active/recording in live mode.");
+            return;
+        }
+
         try {
             setIsCommitting(true);
             let tId = tapeId;
@@ -3280,9 +3441,13 @@ function V10PreviewLayout() {
 
             if (activeFormProps.length > 0) {
                 // 1. Move orphaned activeProps to archived pool
+                // NOTE: We whitelist 'verification_depth' and its unit because they are hardcoded in the UI 
+                // and should always be preserved in inspection_data even if not in the spec fields list.
+                const whitelist = new Set(['verification_depth', 'verification_depth_unit']);
+                
                 Object.keys(activeProps).forEach(key => {
                     if (key.startsWith('_')) return; // Ignore metadata
-                    if (!currentFieldNames.has(key)) {
+                    if (!currentFieldNames.has(key) && !whitelist.has(key)) {
                         newArchivedData[key] = activeProps[key];
                         delete activeProps[key];
                     }
@@ -3330,8 +3495,12 @@ function V10PreviewLayout() {
                         : null;
                     
                     if (manualOverride && typedVal === null) {
-                        toast.error("Manual Entry Mode: You must enter a valid Counter value (HH:mm:ss)");
-                        throw new Error("Missing counter value in manual mode");
+                        if (vidTimer > 0) {
+                            // Fallback to active timer if manual entry is empty
+                        } else {
+                            toast.error("Manual Entry Mode: You must enter a valid Counter value (HH:mm:ss)");
+                            throw new Error("Missing counter value in manual mode");
+                        }
                     }
 
                     if (activeProps.tape_count_no && activeProps.tape_count_no !== '--' && !isValidTimeFormat(String(activeProps.tape_count_no))) {
@@ -3342,8 +3511,11 @@ function V10PreviewLayout() {
                     return typedVal !== null ? typedVal : vidTimer;
                 })(),
                 elevation: (() => {
-                    const p = activeProps.elevation && activeProps.elevation !== '--' ? parseFloat(activeProps.elevation as string) : NaN;
-                    if (!isNaN(p)) return p;
+                    const p = activeProps.verification_depth || activeProps.elevation;
+                    if (p && p !== '--') {
+                        const val = parseFloat(String(p).replace(/[^\d.-]/g, ''));
+                        if (!isNaN(val)) return val;
+                    }
                     return selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? parseFloat(selectedComp.lowestElev) : 0;
                 })(),
                 fp_kp: (activeProps.fp_kp !== undefined && activeProps.fp_kp !== '--') ? String(activeProps.fp_kp) : null,
@@ -3351,6 +3523,7 @@ function V10PreviewLayout() {
                     ...activeProps,
                     _meta_timecode: formatTime(Number((activeProps.tape_count_no !== undefined && activeProps.tape_count_no !== '--' && activeProps.tape_count_no !== "") ? parseTimecode(String(activeProps.tape_count_no)) : vidTimer)),
                     _meta_status: findingType,
+                    _mgi_profile_id: activeMGIProfile?.id || null,
                     incomplete_reason: findingType === 'Incomplete' ? incompleteReason : null
                 },
                 archived_data: newArchivedData
@@ -3454,8 +3627,8 @@ function V10PreviewLayout() {
             
             // Robust SOW Status Synchronization
             if (sowId) {
-                // 1. Sync the CURRENT component/task
-                await syncSowStatus(selectedComp.id, it?.code || activeSpec);
+                // 1. Sync the CURRENT component/task with elevation support
+                await syncSowStatus(selectedComp.id, it?.code || activeSpec, payload.elevation, payload.status);
 
                 // 2. Sync the ORIGINAL component/task if it was changed (Rollback)
                 if (editingRecordId && originalRecordContext) {
@@ -3745,8 +3918,14 @@ function V10PreviewLayout() {
             sow_report_no: fullRecord.sow_report_no
         });
         setArchivedData(fullRecord.archived_data || {});
+
+        // Explicitly load elevation if missing in inspection_data but present in column
+        if (fullRecord.elevation !== undefined && fullRecord.elevation !== null && !initialProps.verification_depth) {
+            initialProps.verification_depth = String(fullRecord.elevation);
+        }
+
         // Do not set debounced props immediately to avoid triggering validation without user interaction
-        setDebouncedProps(fullRecord.inspection_data || {});
+        setDebouncedProps(initialProps);
         setIsUserInteraction(false); 
         setLastAutoMatchedRuleId(null); 
         setPendingRule(null);
@@ -3847,6 +4026,239 @@ function V10PreviewLayout() {
         }
     };
 
+    const generateSeabedReport = async (templateId: string) => {
+        const filterMap: Record<string, string> = {
+            "seabed-survey-debris": "Debris",
+            "seabed-survey-gas": "Gas Seepage",
+            "seabed-survey-crater": "Crater"
+        };
+        
+        const itemTypeFilter = filterMap[templateId] || "Debris";
+        const recordsToPrint = currentRecords.filter(r => 
+            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && 
+            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
+        );
+
+        if (recordsToPrint.length === 0) {
+            toast.error(`No ${itemTypeFilter} records found for Seabed Survey.`);
+            return;
+        }
+
+        setSeabedTemplateType(templateId);
+        setSeabedPreviewOpen(true);
+    };
+
+    const generateSeabedReportBlob = async (templateId: string, printFriendly?: boolean): Promise<Blob | void> => {
+        const filterMap: Record<string, string> = {
+            "seabed-survey-debris": "Debris",
+            "seabed-survey-gas": "Gas Seepage",
+            "seabed-survey-crater": "Crater"
+        };
+        
+        const itemTypeFilter = filterMap[templateId] || "Debris";
+        const recordsToPrint = currentRecords.filter(r => 
+            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && 
+            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
+        );
+
+        if (recordsToPrint.length === 0) return;
+
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('*').eq('id', Number(jobPackId)).single();
+        const { data: structure } = await supabase.from('structure').select('*').eq('str_id', Number(structureId)).single();
+
+        if (!jobPack || !structure) return;
+
+        return await generateSeabedSurveyReport(
+            { ...jobPack, id: jobPack.id },
+            { ...structure, id: structure.str_id },
+            headerData.sowReportNo,
+            { company_name: settings.companyName, logo_url: settings.companyLogo },
+            {
+                reportNoPrefix: "SEABED",
+                reportYear: new Date().getFullYear().toString(),
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                showContractorLogo: true,
+                showPageNumbers: true,
+                printFriendly: printFriendly || false,
+                returnBlob: true
+            },
+            itemTypeFilter
+        ) as Blob;
+    };
+
+    const generateMGIReport = async () => {
+        const mgiRecords = currentRecords.filter(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI');
+        if (mgiRecords.length === 0) {
+            toast.error("No MGI records found to generate report");
+            return;
+        }
+        setMPreviewOpen(true);
+    };
+
+    const generateMGIReportBlob = async (): Promise<Blob | void> => {
+        const mgiRecords = currentRecords.filter(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI');
+        if (mgiRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+        
+        let profile = null;
+        const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
+        if (profileId) {
+            const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
+            profile = data;
+        }
+
+        // Fetch Contractor Logo URL for the report header
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return (await generateROVMGIReport(
+            mgiRecords,
+            profile,
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: jobPack?.metadata?.vessel || 'N/A'
+            },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true
+            }
+        )) as Blob;
+    };
+
+    const generateFMDReport = async () => {
+        const fmdRecords = currentRecords.filter(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD');
+        if (fmdRecords.length === 0) {
+            toast.error("No FMD records found to generate report");
+            return;
+        }
+        setFmdPreviewOpen(true);
+    };
+
+    const generateFMDReportBlob = async (): Promise<Blob | void> => {
+        const fmdRecords = currentRecords.filter(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD');
+        if (fmdRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+
+        // Fetch Contractor Logo URL and Vessel for the report header
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return (await generateROVFMDReport(
+            fmdRecords,
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: jobPack?.metadata?.vessel || 'N/A'
+            },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true
+            }
+        )) as Blob;
+    };
+
+    const generateSZCIReport = async () => {
+        const szciRecords = currentRecords.filter(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI');
+        if (szciRecords.length === 0) {
+            toast.error("No Splash Zone records found to generate report");
+            return;
+        }
+        setSzciPreviewOpen(true);
+    };
+
+    const generateSZCIReportBlob = async (): Promise<Blob | void> => {
+        const szciRecords = currentRecords.filter(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI');
+        if (szciRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+        
+        // Fetch Contractor Logo URL
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return (await generateROVSZCIReport(
+            szciRecords,
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: jobPack?.metadata?.vessel || 'N/A'
+            },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true
+            }
+        )) as Blob;
+    };
+
+    const generateUTWTReport = async () => {
+        const utwtRecords = currentRecords.filter(r => r.inspection_type_code === 'RUTWT' || r.inspection_type?.code === 'RUTWT');
+        if (utwtRecords.length === 0) {
+            toast.error("No UTWT records found to generate report");
+            return;
+        }
+        setUtwtPreviewOpen(true);
+    };
+
+    const generateUTWTReportBlob = async (): Promise<Blob | void> => {
+        const utwtRecords = currentRecords.filter(r => r.inspection_type_code === 'RUTWT' || r.inspection_type?.code === 'RUTWT');
+        if (utwtRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+        
+        // Fetch Contractor Logo URL
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return (await generateROVUTWTReport(
+            utwtRecords,
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: jobPack?.metadata?.vessel || 'N/A'
+            },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true
+            }
+        )) as Blob;
+    };
+
     const generateInspectionReportByType = async (typeId: number) => {
         const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
         if (recordsToPrint.length === 0) {
@@ -3856,6 +4268,12 @@ function V10PreviewLayout() {
 
         const type = allInspectionTypes.find(t => t.id === typeId);
         const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
 
         await generateMultiInspectionReport(
             recordsToPrint.map(r => r.insp_id),
@@ -3868,6 +4286,7 @@ function V10PreviewLayout() {
                 approvedBy: { name: "", date: "" },
                 watermark: { enabled: false, text: "", transparency: 0.1 },
                 showContractorLogo: true,
+                contractorLogoUrl,
                 showPageNumbers: true,
                 printFriendly: false
             }
@@ -3881,6 +4300,12 @@ function V10PreviewLayout() {
         }
 
         const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('contrac').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
 
         await generateMultiInspectionReport(
             currentRecords.map(r => r.insp_id),
@@ -3893,10 +4318,66 @@ function V10PreviewLayout() {
                 approvedBy: { name: "", date: "" },
                 watermark: { enabled: false, text: "", transparency: 0.1 },
                 showContractorLogo: true,
+                contractorLogoUrl,
                 showPageNumbers: true,
                 printFriendly: false
             }
         );
+    };
+
+    const generateRSCORReport = async () => {
+        const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
+        if (scourRecords.length === 0) {
+            toast.error("No Scour Survey records found to generate report");
+            return;
+        }
+        setRscorPreviewOpen(true);
+    };
+
+    const generateRRISIReport = async () => {
+        const riserRecords = currentRecords.filter(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI');
+        if (riserRecords.length === 0) {
+            toast.error("No Riser Inspection records found to generate report");
+            return;
+        }
+        setRrisiPreviewOpen(true);
+    };
+    
+    const generateAnodeReport = async () => {
+        const anodeRecords = currentRecords.filter(r => {
+            const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
+            const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                         (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+            return isRGVI && isAN;
+        });
+        if (anodeRecords.length === 0) {
+            toast.error("No Anode Inspection records (RGVI + component_type: AN) found to generate report");
+            return;
+        }
+        setAnodePreviewOpen(true);
+    };
+
+    const generateCPReport = async () => {
+        const cpRecords = currentRecords.filter(r => {
+            const d = r.inspection_data || {};
+            return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+        });
+        if (cpRecords.length === 0) {
+            toast.error("No CP readings found in current records");
+            return;
+        }
+        setCpPreviewOpen(true);
+    };
+
+    const generateRGVIReport = async () => {
+        const rgviRecords = currentRecords.filter(r =>
+            (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI'
+        );
+        if (rgviRecords.length === 0) {
+            toast.error("No RGVI records found in current records");
+            return;
+        }
+        setRgviPreviewOpen(true);
     };
 
     const handleAddNewInspectionSpec = async (typeIdStr: string) => {
@@ -4043,6 +4524,86 @@ function V10PreviewLayout() {
 
     return (
         <div className="flex flex-col h-[calc(100vh)] bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 overflow-hidden">
+            <ReportPreviewDialog 
+                open={rrisiPreviewOpen} 
+                onOpenChange={setRrisiPreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const riserRecords = currentRecords.filter(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI');
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVRRISIReport(
+                        riserRecords,
+                        { 
+                            ...headerData, 
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly
+                        }
+                    );
+                }}
+                title="ROV Riser Inspection Report (RRISI)"
+                fileName={`ROV_Riser_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={anodePreviewOpen} 
+                onOpenChange={setAnodePreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const anodeRecords = currentRecords.filter(r => {
+                        const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
+                        const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                                     (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+                        return isRGVI && isAN;
+                    });
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: jobPack?.metadata?.vessel || 'N/A',
+                        contractorLogoUrl
+                    };
+
+                    return await generateROVAnodeReport(
+                        anodeRecords,
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true }
+                    );
+                }}
+                title="ROV Anode Inspection Report"
+                fileName={`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={seabedPreviewOpen} 
+                onOpenChange={setSeabedPreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    return await generateSeabedReportBlob(seabedTemplateType, isPrintFriendly);
+                }}
+                title={`Seabed Survey Report - ${seabedTemplateType === 'seabed-survey-debris' ? 'Debris' : seabedTemplateType === 'seabed-survey-gas' ? 'Gas Seepage' : 'Crater'}`}
+                fileName={`Seabed_Survey_${seabedTemplateType.replace('seabed-survey-', '')}_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
             <InspectionHeader 
                 headerData={headerData}
                 inspMethod={inspMethod}
@@ -4052,10 +4613,33 @@ function V10PreviewLayout() {
                 allInspectionTypes={allInspectionTypes}
                 currentRecords={currentRecords}
                 generateInspectionReportByType={generateInspectionReportByType}
+                generateSeabedReport={generateSeabedReport}
+                generateMGIReport={generateMGIReport}
+                generateFMDReport={generateFMDReport}
+                generateSZCIReport={generateSZCIReport}
+                generateUTWTReport={generateUTWTReport}
+                generateRSCORReport={generateRSCORReport}
+                generateRRISIReport={generateRRISIReport}
+                generateAnodeReport={generateAnodeReport}
+                generateCPReport={generateCPReport}
+                generateRGVIReport={generateRGVIReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
+                onSummaryOpen={() => setIsSummaryOpen(true)}
             />
+
+            {/* ── INSPECTION SUMMARY PANEL ───────────────────────────────────────── */}
+            <InspectionSummaryPanel
+                open={isSummaryOpen}
+                onClose={() => setIsSummaryOpen(false)}
+                sowId={sowId || null}
+                structureId={structureId || null}
+                jobpackId={jobPackId || null}
+                sowReportNo={headerData.sowReportNo}
+                headerData={headerData}
+            />
+
 
             {/* DEPLOYMENTS SUB-HEADER */}
             <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex items-center gap-3 shrink-0">
@@ -4212,12 +4796,29 @@ function V10PreviewLayout() {
                 })()}
 
                 {/* INSERT SEABED SURVEY MAP BUTTON */}
-                {activeDep && (
+                {activeDep && inspMethod === "ROV" && (
                     <Button
                         variant="default" 
                         size="sm" 
                         className="ml-auto bg-blue-600 hover:bg-blue-700 text-white h-7 px-3 shadow-blue-500/20 shadow-lg text-[10px] font-black uppercase tracking-wider"
-                        onClick={() => setIsSeabedGuiOpen(true)}
+                        onClick={async () => {
+                            if (vidState === "IDLE") {
+                                toast.error("Video recording must be actively started to open the Seabed Map.");
+                                return;
+                            }
+                            if (!tapeId) {
+                                toast.error("No active tape available. Please configure a tape first.");
+                                return;
+                            }
+
+                            // Pre-fetch check for Inspection Type (optional, fallbacks exist)
+                            const { data, error } = await supabase.from('inspection_type').select('id').eq('code', 'RSEAB').maybeSingle();
+                            if (error || !data?.id) {
+                                console.warn("Seabed Inspection Type (RSEAB) is missing from the database. Falling back to active deployment inspection type.");
+                            }
+
+                            setIsSeabedGuiOpen(true);
+                        }}
                     >
                         <MapPin className="w-3.5 h-3.5 mr-1.5" /> Seabed Map
                     </Button>
@@ -4550,6 +5151,17 @@ function V10PreviewLayout() {
                                                                     }
                                                                 });
                                                             }
+
+                                                            // 7. Default elevation for underwater types to negative
+                                                            if (inspMethod === 'ROV' || inspMethod === 'DIVING') {
+                                                                const depthVal = selectedComp.depth || (selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : null);
+                                                                if (depthVal) {
+                                                                    const numericDepth = parseFloat(String(depthVal).replace(/[^\d.-]/g, ''));
+                                                                    if (!isNaN(numericDepth)) {
+                                                                        newProps.verification_depth = -Math.abs(numericDepth);
+                                                                    }
+                                                                }
+                                                            }
                                                             
                                                             setDynamicProps(newProps);
                                                             setFindingType("Pass");
@@ -4712,6 +5324,7 @@ function V10PreviewLayout() {
                                     </div>
                                 ) : (
                                     <InspectionForm
+                                        activeMGIProfile={activeMGIProfile}
                                         selectedComp={selectedComp}
                                         activeSpec={activeSpec}
                                         allInspectionTypes={allInspectionTypes}
@@ -4765,7 +5378,28 @@ function V10PreviewLayout() {
                         <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
                             <div className="flex items-center gap-2">
                                 <span>CAPTURED EVENTS</span>
-                                <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
+                                <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                    {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                    {currentRecords.length} Captured
+                                </Badge>
+                            </div>
+
+                            <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                <Input 
+                                    placeholder="Smart Filter (Record, Component, Type, Status)..."
+                                    className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
+                                    value={recordSearchQuery}
+                                    onChange={(e) => setRecordSearchQuery(e.target.value)}
+                                />
+                                {recordSearchQuery && (
+                                    <button 
+                                        onClick={() => setRecordSearchQuery("")}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
+                                    >
+                                        <X className="w-2.5 h-2.5 text-slate-500" />
+                                    </button>
+                                )}
                             </div>
                             <Button 
                                 variant="ghost" 
@@ -4813,7 +5447,7 @@ function V10PreviewLayout() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {sortedRecords.map((r: any) => {
+                                        {displayRecords.map((r: any) => {
                                             const formatCounter = (val: any) => {
                                                 if (!val) return null;
                                                 if (typeof val === 'string' && val.includes(':')) return val;
@@ -4941,11 +5575,38 @@ function V10PreviewLayout() {
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+
+                                        {displayRecords.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="px-3 py-12 text-center bg-white/50">
+                                                    {syncLoading ? (
+                                                        <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
+                                                            <div className="relative">
+                                                                <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
+                                                                <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
+                                                            </div>
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Synchronizing</span>
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fetching live workspace data...</span>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center gap-2 text-slate-300">
+                                                            <Search className="w-8 h-8 opacity-20" />
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inventory Empty</span>
+                                                                <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">No events match your current filter or session</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </td>
                                             </tr>
-                                        )
-                                    })}
-                                </tbody>
+                                        )}
+                                    </tbody>
                             </table>
                         </ScrollArea>
                         )}
@@ -4954,27 +5615,89 @@ function V10PreviewLayout() {
                     {/* Captured Events PiP Portal */}
                     {capturedEventsPipWindow && createPortal(
                         <div className="h-screen w-screen flex flex-col bg-white overflow-hidden">
-                            <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center shrink-0">
+                            <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
                                 <div className="flex items-center gap-2">
                                     <span>CAPTURED EVENTS (FLOATING)</span>
-                                    <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">{currentRecords.length} Captured</Badge>
+                                    <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                        {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                        {currentRecords.length} Captured
+                                    </Badge>
                                 </div>
-                                <button onClick={() => capturedEventsPipWindow.close()} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"><X className="w-4 h-4" /></button>
+                                
+                                <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                    <Input 
+                                        placeholder="Smart Filter..."
+                                        className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
+                                        value={recordSearchQuery}
+                                        onChange={(e) => setRecordSearchQuery(e.target.value)}
+                                    />
+                                    {recordSearchQuery && (
+                                        <button 
+                                            onClick={() => setRecordSearchQuery("")}
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
+                                        >
+                                            <X className="w-2.5 h-2.5 text-slate-500" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => {
+                                        if (capturedEventsPipWindow) {
+                                            const s = capturedEventsPipWindow.screen;
+                                            capturedEventsPipWindow.moveTo(s.availLeft || 0, s.availTop || 0);
+                                            capturedEventsPipWindow.resizeTo(s.availWidth, s.availHeight);
+                                        }
+                                    }} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Maximize">
+                                        <Maximize2 className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => {
+                                        if (capturedEventsPipWindow) {
+                                            const s = capturedEventsPipWindow.screen;
+                                            capturedEventsPipWindow.resizeTo(1000, 600);
+                                            capturedEventsPipWindow.moveTo((s.availLeft || 0) + (s.availWidth - 1000) / 2, (s.availTop || 0) + (s.availHeight - 600) / 2);
+                                        }
+                                    }} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Restore Size">
+                                        <Minimize2 className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => capturedEventsPipWindow.close()} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Close"><X className="w-4 h-4" /></button>
+                                </div>
                             </div>
                             <ScrollArea className="flex-1 w-full relative">
                                 <table className="w-full text-left text-xs whitespace-nowrap">
                                     <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
                                         <tr>
-                                            <th className="px-3 py-3 w-20">Date <History className="w-3.5 h-3.5 ml-1 inline opacity-60" /></th>
-                                            <th className="px-3 py-3">Type</th>
-                                            <th className="px-3 py-3">Component</th>
-                                            <th className="px-3 py-3 text-center">Elev/KP</th>
-                                            <th className="px-3 py-3 text-center">Status</th>
+                                            <th className="px-3 py-3 w-20 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('cr_date')}>
+                                                <div className="flex items-center gap-1.5">
+                                                    Date {sortConfig.key === 'cr_date' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('type')}>
+                                                <div className="flex items-center gap-1.5">
+                                                    Type {sortConfig.key === 'type' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('component')}>
+                                                <div className="flex items-center gap-1.5">
+                                                    Component {sortConfig.key === 'component' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('elev')}>
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    Elev/KP {sortConfig.key === 'elev' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('status')}>
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    Status {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
+                                                </div>
+                                            </th>
                                             <th className="px-3 py-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {currentRecords.map((r: any) => {
+                                        {displayRecords.map((r: any) => {
                                             const formatCounter = (val: any) => {
                                                 if (!val) return null;
                                                 if (typeof val === 'string' && val.includes(':')) return val;
@@ -5104,8 +5827,35 @@ function V10PreviewLayout() {
                                                         </div>
                                                     </td>
                                                 </tr>
-                                            )
+                                            );
                                         })}
+
+                                        {displayRecords.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="px-3 py-12 text-center bg-white/50">
+                                                    {syncLoading ? (
+                                                        <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
+                                                            <div className="relative">
+                                                                <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
+                                                                <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
+                                                            </div>
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Synchronizing</span>
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fetching live workspace data...</span>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center gap-2 text-slate-300">
+                                                            <Search className="w-8 h-8 opacity-20" />
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inventory Empty</span>
+                                                                <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">No events match your current filter or session</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </ScrollArea>
@@ -5236,7 +5986,18 @@ function V10PreviewLayout() {
                             <History className="w-3 h-3 text-slate-400" />
                         </div>
                         <ScrollArea className="flex-1 p-3">
-                            {!selectedComp ? (
+                            {historyLoading ? (
+                                <div className="flex flex-col items-center justify-center p-12 gap-3 animate-in fade-in duration-500">
+                                    <div className="relative">
+                                        <div className="absolute inset-0 blur-md bg-blue-400/20 rounded-full animate-pulse" />
+                                        <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
+                                    </div>
+                                    <div className="flex flex-col items-center gap-1">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Retrieving History</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Looking up past inspection data...</span>
+                                    </div>
+                                </div>
+                            ) : !selectedComp ? (
                                 <div className="text-center text-slate-400 text-xs py-10">Select component to view history</div>
                             ) : (
                                 <div className="space-y-4">
@@ -5602,6 +6363,34 @@ function V10PreviewLayout() {
                 fileName={`Anomaly_Report_${previewRecord?.anomaly_ref_no || 'Draft'}`}
                 generateReport={generateAnomalyReportBlob}
             />
+            <ReportPreviewDialog
+                open={mPreviewOpen}
+                onOpenChange={setMPreviewOpen}
+                title="ROV MGI Survey Report Preview"
+                fileName={`ROV_MGI_Report_${headerData.sowReportNo}`}
+                generateReport={generateMGIReportBlob}
+            />
+            <ReportPreviewDialog
+                open={fmdPreviewOpen}
+                onOpenChange={setFmdPreviewOpen}
+                title="ROV FMD Survey Report Preview"
+                fileName={`ROV_FMD_Report_${headerData.sowReportNo}`}
+                generateReport={generateFMDReportBlob}
+            />
+            <ReportPreviewDialog
+                open={utwtPreviewOpen}
+                onOpenChange={setUtwtPreviewOpen}
+                title="ROV UTWT Survey Report Preview"
+                fileName={`ROV_UTWT_Report_${headerData.sowReportNo}`}
+                generateReport={generateUTWTReportBlob}
+            />
+            <ReportPreviewDialog
+                open={szciPreviewOpen}
+                onOpenChange={setSzciPreviewOpen}
+                title="ROV SZCI Survey Report Preview"
+                fileName={`ROV_SZCI_Report_${headerData.sowReportNo}`}
+                generateReport={generateSZCIReportBlob}
+            />
             {/* Recording Gallery Dialog */}
             <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>
                 <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col p-6">
@@ -5877,6 +6666,10 @@ function V10PreviewLayout() {
             {/* Defect Criteria Automated Confirmation Dialog */}
             <Dialog open={showCriteriaConfirm} onOpenChange={setShowCriteriaConfirm}>
                 <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl">
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>Defect Criteria Alert</DialogTitle>
+                        <DialogDescription>Confirm if the current observation matches defect criteria.</DialogDescription>
+                    </DialogHeader>
                     <div className="bg-red-600 p-4 flex items-center gap-3">
                         <div className="bg-white/20 p-2 rounded-lg">
                             <AlertTriangle className="w-5 h-5 text-white" />
@@ -5918,6 +6711,153 @@ function V10PreviewLayout() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <ReportPreviewDialog 
+                open={rscorPreviewOpen} 
+                onOpenChange={setRscorPreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVRSCORReport(
+                        scourRecords,
+                        { 
+                            ...headerData, 
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly
+                        }
+                    );
+                }}
+                title="ROV Scour Survey Report (RSCOR)"
+                fileName={`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={anodePreviewOpen} 
+                onOpenChange={setAnodePreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const anodeRecords = currentRecords.filter(r => {
+                        const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
+                        const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                                     (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+                        return isRGVI && isAN;
+                    });
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: jobPack?.metadata?.vessel || 'N/A',
+                        contractorLogoUrl
+                    };
+
+                    return await generateROVAnodeReport(
+                        anodeRecords,
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true }
+                    );
+                }}
+                title="ROV Anode Inspection Report"
+                fileName={`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                open={cpPreviewOpen}
+                onOpenChange={setCpPreviewOpen}
+                generateReport={async (isPrintFriendly) => {
+                    const cpRecords = currentRecords.filter(r => {
+                        const d = r.inspection_data || {};
+                        return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+                    });
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVCPReport(
+                        cpRecords,
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                        }
+                    );
+                }}
+                title="ROV CP Survey Report"
+                fileName={`ROV_CP_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                open={rgviPreviewOpen}
+                onOpenChange={setRgviPreviewOpen}
+                generateReport={async (isPrintFriendly) => {
+                    const rgviRecords = currentRecords.filter(r =>
+                        (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI'
+                    );
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVRGVIReport(
+                        rgviRecords,
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                        }
+                    );
+                }}
+                title="ROV GVI Report (RGVI)"
+                fileName={`ROV_GVI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
 
             {/* Anomaly Removal Confirmation Dialog */}
             <Dialog open={showRemovalConfirm} onOpenChange={setShowRemovalConfirm}>
@@ -6242,14 +7182,6 @@ function V10PreviewLayout() {
             {isSeabedGuiOpen && (
                 <div className="fixed inset-0 z-[100] bg-black/60 p-6 flex flex-col items-center justify-center backdrop-blur-sm animate-in fade-in duration-300">
                     <div className="w-full max-w-[1400px] h-full max-h-[92vh] flex flex-col bg-slate-50 shadow-2xl rounded-xl overflow-hidden ring-1 ring-slate-900/10 relative">
-                        <Button 
-                            variant="destructive" 
-                            size="icon" 
-                            className="absolute top-2 right-2 z-[110] rounded-full w-8 h-8 shadow-md"
-                            onClick={() => setIsSeabedGuiOpen(false)}
-                        >
-                            &times;
-                        </Button>
                         <SeabedSurveyGuiInline 
                             open={isSeabedGuiOpen}
                             onClose={() => setIsSeabedGuiOpen(false)}
@@ -6260,6 +7192,13 @@ function V10PreviewLayout() {
                             rovJob={activeDep || undefined}
                             tapeId={tapeId?.toString()}
                             tapeCounter={vidTimer?.toString()} 
+                            telemetryData={dataAcqFields}
+                            isStreamRecording={manualOverride || vidState !== "IDLE"}
+                            isStreamPaused={!manualOverride && vidState === "PAUSED"}
+                            onRefreshInspection={() => {
+                                syncDeploymentState();
+                                queryClient.invalidateQueries({ queryKey: ['inspection-records'] });
+                            }}
                         />
                     </div>
                 </div>
@@ -6268,5 +7207,6 @@ function V10PreviewLayout() {
         </div>
     );
 }
+
 
 

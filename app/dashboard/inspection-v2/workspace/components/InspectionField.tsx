@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { 
     MARINE_GROWTH_LIST, 
@@ -51,8 +52,8 @@ const InspectionField = ({
     const [searchTerm, setSearchTerm] = useState("");
     const fieldName = String(p.label || p.name || '').toLowerCase();
     
-    const isLocation = fieldName === 'location' || fieldName === 'loc';
-    const isPosition = fieldName === 'position' || fieldName === 'pos';
+    const isLocation = fieldName === 'location' || fieldName === 'loc' || fieldName === 'scour location' || fieldName === 'scour_location';
+    const isPosition = fieldName.includes('position') || fieldName === 'pos' || fieldName.includes('clock');
     const isMarineGrowth = fieldName.includes('marine growth') || fieldName.includes('marinegrowth') || fieldName === 'mgi' || fieldName.includes('marine_growth');
     const isCoating = fieldName.includes('coating condition') || fieldName.includes('coatingcondition') || fieldName.includes('coating_condition');
     const isCompCondition = fieldName.includes('component condition') || fieldName.includes('componentcondition') || fieldName.includes('component_condition');
@@ -73,9 +74,9 @@ const InspectionField = ({
         ? Array.from(new Set([...(categoryUnits.metric || []), ...(categoryUnits.imperial || [])])) 
         : [];
         
-    const defaultUnit = categoryUnits 
+    const defaultUnit = p.defaultUnit || (categoryUnits 
         ? (unitSystem === "IMPERIAL" ? categoryUnits.defaultImperial : categoryUnits.defaultMetric) 
-        : null;
+        : null);
 
     // Unit value management
     const unitFieldName = `${p.name || p.label}_unit`;
@@ -101,8 +102,11 @@ const InspectionField = ({
 
         if (isLocation && selectedComp) {
             const locOptions = [
-                selectedComp.startNode !== '-' ? `At Node : ${selectedComp.startNode}` : null,
-                selectedComp.endNode !== '-' ? `At Node : ${selectedComp.endNode}` : null
+                selectedComp.startLeg && selectedComp.startLeg !== '-' ? `Leg : ${selectedComp.startLeg}` : null,
+                selectedComp.endLeg && selectedComp.endLeg !== '-' ? `Leg : ${selectedComp.endLeg}` : null,
+                selectedComp.startNode && selectedComp.startNode !== '-' ? `Node : ${selectedComp.startNode}` : null,
+                selectedComp.endNode && selectedComp.endNode !== '-' ? `Node : ${selectedComp.endNode}` : null,
+                "At Midpoint"
             ].filter(Boolean) as string[];
             options = Array.from(new Set([...options, ...locOptions]));
         } else if (isPosition && options.length === 0) {
@@ -261,6 +265,32 @@ const InspectionField = ({
                     <option key={opt} value={opt}>{opt}</option>
                 ))}
             </select>
+        );
+    }
+
+    if (p.type === 'boolean') {
+        const isChecked = currentValue === true || currentValue === "true" || currentValue === "Yes";
+        return (
+            <div className="flex items-center gap-2 h-9 px-1">
+                <Checkbox 
+                    id={`${p.name || p.label}-${type}`}
+                    checked={isChecked}
+                    onCheckedChange={(val) => {
+                        const finalVal = val ? "Yes" : "No";
+                        handler(p.name || p.label, finalVal);
+                        if (type === 'primary') {
+                            setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: finalVal }));
+                        }
+                    }}
+                    className={`${type === 'secondary' ? 'border-amber-400 data-[state=checked]:bg-amber-600' : 'border-slate-300 data-[state=checked]:bg-blue-600'}`}
+                />
+                <label 
+                    htmlFor={`${p.name || p.label}-${type}`}
+                    className="text-xs font-bold text-slate-600 cursor-pointer select-none"
+                >
+                    {isChecked ? "Yes" : "No"}
+                </label>
+            </div>
         );
     }
 

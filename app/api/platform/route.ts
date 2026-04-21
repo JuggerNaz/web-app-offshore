@@ -33,8 +33,16 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
     return handleSupabaseError(error, "Failed to fetch platforms");
   }
 
+  // Fetch all oil fields to resolve names efficiently
+  const { data: allFields } = await supabase
+    .from("u_lib_list")
+    .select("lib_id, lib_desc")
+    .eq("lib_code", "OILFIELD");
+
+  const fieldMap = new Map((allFields || []).map(f => [f.lib_id.toString(), f.lib_desc]));
+
   // Fetch structure images for each platform
-  const platformsWithImages = await Promise.all(
+  const platformsWithDetails = await Promise.all(
     (data || []).map(async (platform) => {
       const { data: images } = await supabase
         .from("attachment")
@@ -45,6 +53,7 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
       return {
         ...platform,
         images: images || [],
+        field_name: fieldMap.get(platform.pfield?.toString() ?? "") || platform.pfield,
       };
     })
   );
@@ -52,7 +61,7 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
   // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
-  return apiPaginated(platformsWithImages, pagination);
+  return apiPaginated(platformsWithDetails, pagination);
 });
 
 /**

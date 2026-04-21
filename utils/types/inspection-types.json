@@ -56,37 +56,42 @@
         },
         "nominal_thickness": {
             "name": "nominal_thickness",
-            "label": "Nominal Thickness",
+            "label": "Nominal",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "ut_3_o_clock": {
             "name": "ut_3_o_clock",
-            "label": "3 O'Clock",
+            "label": "3",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "ut_6_o_clock": {
             "name": "ut_6_o_clock",
-            "label": "6 O'Clock",
+            "label": "6",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "ut_9_o_clock": {
             "name": "ut_9_o_clock",
-            "label": "9 O'Clock",
+            "label": "9",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "ut_12_o_clock": {
             "name": "ut_12_o_clock",
-            "label": "12 O'Clock",
+            "label": "12",
             "type": "number",
             "unitCategory": "LENGTH",
+            "group": "ut_thickness",
             "required": false
         },
         "cp_rdg_additional": {
@@ -471,30 +476,83 @@
             ],
             "fields": [
                 {
-                    "name": "mgi_thickness_at",
-                    "label": "MGI Thickness At",
-                    "type": "select",
-                    "options": [
-                        "12 O'Clock",
-                        "3 O'Clock",
-                        "6 O'Clock",
-                        "9 O'Clock"
-                    ],
+                    "name": "mgi_profile",
+                    "label": "MGI Profile",
+                    "type": "mgi_profile_display",
+                    "group": "mgi_thickness",
+                    "required": false
+                },
+                {
+                    "name": "mgi_hard_thickness_at_12",
+                    "label": "12",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "hard",
                     "required": true
                 },
                 {
-                    "name": "mgi_hard_thickness",
-                    "label": "MGI Hard Thickness",
+                    "name": "mgi_hard_thickness_at_3",
+                    "label": "3",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "required": false
+                    "group": "mgi_thickness",
+                    "groupRow": "hard",
+                    "required": true
                 },
                 {
-                    "name": "mgi_soft_thickness",
-                    "label": "MGI Soft Thickness",
+                    "name": "mgi_hard_thickness_at_6",
+                    "label": "6",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "required": false
+                    "group": "mgi_thickness",
+                    "groupRow": "hard",
+                    "required": true
+                },
+                {
+                    "name": "mgi_hard_thickness_at_9",
+                    "label": "9",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "hard",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_thickness_at_12",
+                    "label": "12",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "soft",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_thickness_at_3",
+                    "label": "3",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "soft",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_thickness_at_6",
+                    "label": "6",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "soft",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_thickness_at_9",
+                    "label": "9",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "mgi_thickness",
+                    "groupRow": "soft",
+                    "required": true
                 },
                 {
                     "$ref": "marine_growth"
@@ -509,17 +567,26 @@
             ],
             "fields": [
                 {
+                    "name": "scour_location",
+                    "label": "Scour Location",
+                    "type": "combo",
+                    "options": [
+                        "At Midpoint"
+                    ],
+                    "required": true
+                },
+                {
                     "name": "scour_depth",
                     "label": "Scour Depth",
                     "type": "number",
                     "unitCategory": "LENGTH",
+                    "defaultUnit": "mm",
                     "required": false
                 },
                 {
-                    "name": "scour_depth_max",
-                    "label": "Scour Depth Max",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
+                    "name": "Exposed_pile",
+                    "label": "Exposed Pile",
+                    "type": "boolean",
                     "required": false
                 },
                 {
@@ -615,6 +682,7 @@
                     "label": "Distance From Member",
                     "type": "number",
                     "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
                     "required": false
                 },
                 {
@@ -622,6 +690,7 @@
                     "label": "Suspention Height",
                     "type": "number",
                     "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
                     "required": false
                 },
                 {
@@ -734,16 +803,82 @@
                     "$ref": "easting"
                 },
                 {
-                    "$ref": "debris"
+                    "name": "category",
+                    "label": "Item Category",
+                    "type": "select",
+                    "options": [
+                        "Debris",
+                        "Gas Seepage",
+                        "Crater",
+                        "Other"
+                    ],
+                    "required": true
                 },
                 {
-                    "$ref": "debris_material"
+                    "name": "material",
+                    "label": "Material",
+                    "type": "select",
+                    "options": [
+                        "Metallic",
+                        "Non-Metallic",
+                        "Unknown"
+                    ],
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    }
+                },
+                {
+                    "name": "size_dimensions",
+                    "label": "Size / Dimensions",
+                    "type": "text",
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    }
+                },
+                {
+                    "name": "seepage_intensity",
+                    "label": "Seepage Intensity",
+                    "type": "select",
+                    "options": [
+                        "Light",
+                        "Moderate",
+                        "Heavy"
+                    ],
+                    "condition": {
+                        "field": "category",
+                        "value": "Gas Seepage"
+                    }
+                },
+                {
+                    "name": "crater_diameter",
+                    "label": "Crater Diameter",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
+                    "condition": {
+                        "field": "category",
+                        "value": "Crater"
+                    }
+                },
+                {
+                    "name": "crater_depth",
+                    "label": "Crater Depth",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
+                    "condition": {
+                        "field": "category",
+                        "value": "Crater"
+                    }
                 },
                 {
                     "name": "distance_from_leg",
                     "label": "Distance From Leg",
                     "type": "number",
                     "unitCategory": "LENGTH",
+                    "defaultUnit": "m",
                     "required": false
                 },
                 {
@@ -759,7 +894,6 @@
                     "required": false
                 }
             ]
-
         },
         {
             "code": "RSWNI",
@@ -964,9 +1098,10 @@
                     "required": true
                 },
                 {
-                    "name": "reading_value",
-                    "label": "Reading Value",
+                    "name": "density_value",
+                    "label": "Density Value",
                     "type": "number",
+                    "unitCategory": "DENSITY",
                     "required": false
                 },
                 {
@@ -985,7 +1120,7 @@
             ],
             "fields": [
                 {
-                    "$ref": "nominal_thickness"
+                    "$ref": "ut_12_o_clock"
                 },
                 {
                     "$ref": "ut_3_o_clock"
@@ -997,7 +1132,7 @@
                     "$ref": "ut_9_o_clock"
                 },
                 {
-                    "$ref": "ut_12_o_clock"
+                    "$ref": "nominal_thickness"
                 },
                 {
                     "$ref": "ut_readings_additional"

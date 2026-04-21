@@ -17,9 +17,9 @@ export interface ReportConfig {
     reportNoPrefix: string;
     reportYear: string;
     preparedBy: { name: string; date: string };
-    reviewedBy: { name: string; date: string };
-    approvedBy: { name: string; date: string };
-    watermark: { enabled: boolean; text: string; transparency: number };
+    reviewedBy?: { name: string; date: string };
+    approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency: number };
     showContractorLogo: boolean;
     showPageNumbers: boolean;
     returnBlob?: boolean;
@@ -241,13 +241,13 @@ export const generateDefectAnomalyReport = async (
         // Company Name
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
-        const companyName = (companySettings.company_name || "TANJUNG OFFSHORE SERVICES SDN BHD").toUpperCase();
+        const companyName = (companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase();
         doc.text(companyName, pageWidth / 2, startY + 8, { align: "center" });
 
         // Department
         doc.setFont("helvetica", "normal");
         doc.setFontSize(9);
-        const deptName = companySettings.departmentName || "Engineering Department";
+        const deptName = companySettings.departmentName || "Technical Inspection Division";
         doc.text(deptName, pageWidth / 2, startY + 12, { align: "center" });
 
         // Report Title
