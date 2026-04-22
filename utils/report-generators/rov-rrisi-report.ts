@@ -19,6 +19,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    reportType?: 'R' | 'J' | 'I'; // 'R' = Riser, 'J' = J-Tube, 'I' = I-Tube
 }
 
 export const generateROVRRISIReport = async (
@@ -33,6 +34,14 @@ export const generateROVRRISIReport = async (
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 12;
         const contentWidth = pageWidth - (margin * 2);
+
+        // Determine Report Type & Filter
+        const rType = config.reportType || 'R';
+        const typeConfig = {
+            'R': { title: 'ROV Riser Survey Report', prefix: 'R', label: 'RISER', file: 'ROV_Riser_Survey_Report' },
+            'J': { title: 'ROV J-Tube Inspection Report', prefix: 'J', label: 'J-TUBE', file: 'ROV_JTube_Inspection_Report' },
+            'I': { title: 'ROV I-Tube Inspection Report', prefix: 'I', label: 'I-TUBE', file: 'ROV_ITube_Inspection_Report' }
+        }[rType];
 
         const colors = {
             navy: [31, 55, 93] as [number, number, number],
@@ -52,6 +61,16 @@ export const generateROVRRISIReport = async (
         const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
 
+        // Filter records by QID prefix
+        const filteredRecords = records.filter(r => {
+            const qid = (r.structure_components?.q_id || '').toUpperCase();
+            return qid.startsWith(typeConfig.prefix);
+        });
+
+        if (filteredRecords.length === 0) {
+            console.warn(`No records found for ${typeConfig.title} (Prefix: ${typeConfig.prefix})`);
+        }
+
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
         const compRegistry = new Map<number, any>();
         const qidToId = new Map<string, number>();
@@ -59,21 +78,22 @@ export const generateROVRRISIReport = async (
             allComps.forEach(c => {
                 compRegistry.set(c.id, c);
                 qidToId.set(c.q_id.toUpperCase(), c.id);
-                const m = c.q_id.match(/R[IS-]*(\d+)/i);
+                const m = c.q_id.match(/R[IS-]*(\d+)/i) || c.q_id.match(/J[IS-]*(\d+)/i) || c.q_id.match(/I[IS-]*(\d+)/i);
                 if (m) qidToId.set(m[1], c.id);
             });
         }
 
         const risersMap = new Map<number, { riserComp: any, records: any[] }>();
         const unassigned: any[] = [];
-        records.forEach(r => {
+        filteredRecords.forEach(r => {
             const comp = r.structure_components;
             if (!comp) return;
             let rid: number | null = null;
             if (comp.code === 'RS') rid = comp.id;
             else if (comp.metadata?.associated_comp_id) rid = Number(comp.metadata.associated_comp_id);
             else {
-                const q = (comp.q_id || '').toUpperCase(); const m = q.match(/R[IS-]*(\d+)/i);
+                const q = (comp.q_id || '').toUpperCase(); 
+                const m = q.match(/R[IS-]*(\d+)/i) || q.match(/J[IS-]*(\d+)/i) || q.match(/I[IS-]*(\d+)/i);
                 if (m && qidToId.has(m[1])) rid = qidToId.get(m[1])!;
                 else if (qidToId.has(q)) rid = qidToId.get(q)!;
             }
@@ -106,7 +126,7 @@ export const generateROVRRISIReport = async (
             if (ctLogo) drawLogo(d, ctLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
             d.setFontSize(9); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
             d.setFontSize(7); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10, { align: 'center' });
-            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text(`ROV Riser Survey Report`, margin + contentWidth/2, margin + 17, { align: 'center' });
+            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text(typeConfig.title, margin + contentWidth/2, margin + 17, { align: 'center' });
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
@@ -151,7 +171,7 @@ export const generateROVRRISIReport = async (
             // Sub-header
             doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 7, 'F');
             doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont("helvetica", "bold");
-            doc.text(`RISER QID: ${riser?.q_id || 'Unknown'}`, margin + 5, currentY + 5);
+            doc.text(`${typeConfig.label} QID: ${riser?.q_id || 'Unknown'}`, margin + 5, currentY + 5);
             currentY += 10;
 
             const gW = contentWidth * 0.40; const dW = contentWidth * 0.60;
@@ -181,7 +201,8 @@ export const generateROVRRISIReport = async (
             const cX = gX + (gW / 2) - 10;
             const pipeY = eToY(bottomElev); 
             const mudY = eToY(mudlineElev) + (rWidth / 2);
-            const bY = eToY(bottomElev + bRadius);
+            const isStraight = rType === 'I';
+            const bY = isStraight ? pipeY : eToY(bottomElev + bRadius);
 
             // --- Draw Mudline ---
             doc.setDrawColor(...colors.mudline); doc.setLineWidth(1.2);
@@ -217,23 +238,27 @@ export const generateROVRRISIReport = async (
             };
             drawP(cX, eToY(designStart), cX, bY, true);
             const endX = cX + bRadius; 
-            const drawC = (color: [number, number, number], width: number, off: number) => {
-                const segs = 20; let lx = cX + off; let ly = bY;
-                const cx = cX + off; const cy = bY; const ex = endX; const ey = pipeY + off;
-                doc.setDrawColor(...color); doc.setLineWidth(width);
-                for (let j = 1; j <= segs; j++) {
-                    const t = j / segs;
-                    const tx = Math.pow(1 - t, 2) * cx + 2 * (1 - t) * t * cx + Math.pow(t, 2) * ex;
-                    const ty = Math.pow(1 - t, 2) * cy + 2 * (1 - t) * t * ey + Math.pow(t, 2) * ey;
-                    doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
-                }
-            };
-            drawC([50, 60, 80], rWidth, 0); drawC([71, 85, 105], rWidth * 0.7, 0); drawC([148, 163, 184], rWidth * 0.2, -rWidth * 0.15);
-            drawP(endX, pipeY, gX + gW - 5, pipeY, false);
-            doc.setFontSize(6); doc.setTextColor(71, 85, 105); doc.text("PIPELINE", endX + 10, pipeY + 8);
+            if (!isStraight) {
+                const drawC = (color: [number, number, number], width: number, off: number) => {
+                    const segs = 20; let lx = cX + off; let ly = bY;
+                    const cx = cX + off; const cy = bY; const ex = endX; const ey = pipeY + off;
+                    doc.setDrawColor(...color); doc.setLineWidth(width);
+                    for (let j = 1; j <= segs; j++) {
+                        const t = j / segs;
+                        const tx = Math.pow(1 - t, 2) * cx + 2 * (1 - t) * t * cx + Math.pow(t, 2) * ex;
+                        const ty = Math.pow(1 - t, 2) * cy + 2 * (1 - t) * t * ey + Math.pow(t, 2) * ey;
+                        doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
+                    }
+                };
+                drawC([50, 60, 80], rWidth, 0); drawC([71, 85, 105], rWidth * 0.7, 0); drawC([148, 163, 184], rWidth * 0.2, -rWidth * 0.15);
+            }
+            if (rType !== 'J' && rType !== 'I') {
+                drawP(endX, pipeY, gX + gW - 5, pipeY, false);
+                doc.setFontSize(6); doc.setTextColor(71, 85, 105); doc.text("PIPELINE", endX + 10, pipeY + 8);
+            }
 
             // Scale
-            doc.setLineWidth(0.1); doc.setDrawColor(200);
+            doc.setLineWidth(0.1); doc.setDrawColor(200, 200, 200);
             for (let e = Math.floor(sMax); e >= sMin; e -= 5) {
                 const ey = eToY(e);
                 if (ey <= gMudlineY + 15) {
@@ -312,6 +337,6 @@ export const generateROVRRISIReport = async (
         }
 
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`ROV_Riser_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
-    } catch (e) { console.error("RRISI Report Error", e); throw e; }
+        doc.save(`${typeConfig.file}_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+    } catch (e) { console.error("ROV Tube Report Error", e); throw e; }
 };

@@ -104,7 +104,9 @@ const REPORT_TEMPLATES = {
         { id: "fmd-report", name: "ROV FMD Survey Report", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
         { id: "szci-report", name: "ROV Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "utwt-report", name: "ROV UT Thickness Report", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rrisi-report", name: "ROV Riser Inspection Report", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rrisi-report", name: "ROV Riser Survey Report", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-report", name: "ROV Scour Survey Report", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-report", name: "ROV Anode Inspection Report", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "ROV CP Survey Report",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
@@ -1131,6 +1133,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             const rmgiTypeId = typeData?.id || 79; // Fallback to 79 from screenshot if not found
 
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this report.");
+                return null;
+            }
+
             // 2. Fetch records for the structure
             let { data: records, error: fetchError } = await supabase
                 .from('insp_records')
@@ -1139,7 +1147,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     inspection_type:inspection_type_id!left(id, code, name),
                     structure_components:component_id!left(q_id, code)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -1440,47 +1448,42 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
-        // ROV RRISI Survey Report (New)
-        if (selections.templateId === "rrisi-report") {
+
+        // ROV RRISI/JTISI/ITISI Survey Report (Unified)
+        if (["rrisi-report", "rov-jtisi-report", "rov-itisi-report"].includes(selections.templateId)) {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            // 1. Fetch records with all necessary joins for RRISI
-            let { data: records, error: fetchError } = await supabase
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+            const { data: records, error } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no),
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
 
-            if (fetchError) {
-                console.error("Fetch Error:", fetchError);
-                alert(`Database error: ${fetchError.message}`);
+            if (error) throw error;
+            const tubeRecords = records || [];
+
+            if (tubeRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
 
-            // FILTER MANUALLY
-            const rrisiRecords = records?.filter(r => {
-                const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isRRISI = String(r.inspection_type?.code || r.inspection_type_code || r.inspection_type?.name || '').toUpperCase().includes('RRISI') || 
-                               String(r.inspection_type?.name || '').toLowerCase().includes('riser');
-                return sowMatches && jobPackMatches && isRRISI;
-            });
-
-            if (!rrisiRecords || rrisiRecords.length === 0) {
-                alert(`No ROV Riser records (RRISI) found for structure "${structure.str_name}" in this SOW.`);
-                return null;
-            }
+            // Determine Report Type based on Template ID
+            let reportType: 'R' | 'J' | 'I' = 'R';
+            if (selections.templateId === "rov-jtisi-report") reportType = 'J';
+            else if (selections.templateId === "rov-itisi-report") reportType = 'I';
 
             // Fetch Contractor Logo if available
             let contractorLogoUrl = "";
@@ -1503,10 +1506,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             try {
                 return await generateROVRRISIReport(
-                    rrisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, returnBlob } as any
+                    { ...reportConfig, returnBlob, reportType, structureId: structId, sowReportNo: selections.sowReportNo } as any
                 );
             } catch (error) {
                 console.error("RRISI Generator Error:", error);

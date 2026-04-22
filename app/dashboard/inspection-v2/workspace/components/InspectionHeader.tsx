@@ -42,6 +42,8 @@ interface InspectionHeaderProps {
     generateUTWTReport: () => void;
     generateRSCORReport: () => void;
     generateRRISIReport: () => void;
+    generateJTISIReport: () => void;
+    generateITISIReport: () => void;
     generateAnodeReport: () => void;
     generateCPReport: () => void;
     generateRGVIReport: () => void;
@@ -67,6 +69,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateUTWTReport,
     generateRSCORReport,
     generateRRISIReport,
+    generateJTISIReport,
+    generateITISIReport,
     generateAnodeReport,
     generateCPReport,
     generateRGVIReport,
@@ -229,9 +233,17 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         )}
 
                         {currentRecords.some(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI') && (
-                            <DropdownMenuItem onClick={() => generateRRISIReport()} className="text-xs py-2 cursor-pointer font-bold text-pink-600 border-t border-slate-50 mt-1">
-                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV Riser Survey Report
-                            </DropdownMenuItem>
+                            <>
+                                <DropdownMenuItem onClick={() => generateRRISIReport()} className="text-xs py-2 cursor-pointer font-bold text-pink-600 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Riser Survey Report
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => generateJTISIReport()} className="text-xs py-2 cursor-pointer font-bold text-pink-600 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV J-Tube Inspection Report
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => generateITISIReport()} className="text-xs py-2 cursor-pointer font-bold text-pink-600 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV I-Tube Inspection Report
+                                </DropdownMenuItem>
+                            </>
                         )}
 
                         {currentRecords.some(r => ((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI') && ((r.structure_components?.code || '').toUpperCase() === 'AN' || (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE')) && (

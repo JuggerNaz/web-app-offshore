@@ -730,6 +730,8 @@ function V10PreviewLayout() {
     const [utwtPreviewOpen, setUtwtPreviewOpen] = useState(false);
     const [rscorPreviewOpen, setRscorPreviewOpen] = useState(false);
     const [rrisiPreviewOpen, setRrisiPreviewOpen] = useState(false);
+    const [jtisiPreviewOpen, setJtisiPreviewOpen] = useState(false);
+    const [itisiPreviewOpen, setItisiPreviewOpen] = useState(false);
     const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
     const [cpPreviewOpen,    setCpPreviewOpen]    = useState(false);
     const [rgviPreviewOpen,  setRgviPreviewOpen]  = useState(false);
@@ -4395,12 +4397,30 @@ function V10PreviewLayout() {
     };
 
     const generateRRISIReport = async () => {
-        const riserRecords = currentRecords.filter(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI');
+        const riserRecords = currentRecords.filter(r => (r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI') && (r.structure_components?.q_id || '').toUpperCase().startsWith('R'));
         if (riserRecords.length === 0) {
-            toast.error("No Riser Inspection records found to generate report");
+            toast.error("No Riser Inspection records (QID starting with R) found to generate report");
             return;
         }
         setRrisiPreviewOpen(true);
+    };
+
+    const generateJTISIReport = async () => {
+        const jtisiRecords = currentRecords.filter(r => (r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI') && (r.structure_components?.q_id || '').toUpperCase().startsWith('J'));
+        if (jtisiRecords.length === 0) {
+            toast.error("No J-Tube Inspection records (QID starting with J) found to generate report");
+            return;
+        }
+        setJtisiPreviewOpen(true);
+    };
+
+    const generateITISIReport = async () => {
+        const itisiRecords = currentRecords.filter(r => (r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI') && (r.structure_components?.q_id || '').toUpperCase().startsWith('I'));
+        if (itisiRecords.length === 0) {
+            toast.error("No I-Tube Inspection records (QID starting with I) found to generate report");
+            return;
+        }
+        setItisiPreviewOpen(true);
     };
     
     const generateAnodeReport = async () => {
@@ -4588,9 +4608,23 @@ function V10PreviewLayout() {
                 open={rrisiPreviewOpen} 
                 onOpenChange={setRrisiPreviewOpen} 
                 generateReport={async (isPrintFriendly) => {
-                    const riserRecords = currentRecords.filter(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI');
                     const settings = await getReportHeaderData();
                     const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    
+                    // Fetch all records for this SOW and Structure (matching Report Wizard logic)
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            structure_components:component_id(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const riserRecords = (allRecords || []).filter(r => (r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI') && (r.structure_components?.q_id || '').toUpperCase().startsWith('R'));
+                    
                     let contractorLogoUrl = '';
                     if (jobPack?.contrac) {
                         const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
@@ -4598,7 +4632,7 @@ function V10PreviewLayout() {
                     }
 
                     return await generateROVRRISIReport(
-                        riserRecords,
+                        riserRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                         { 
                             ...headerData, 
                             contractorLogoUrl,
@@ -4611,12 +4645,113 @@ function V10PreviewLayout() {
                             sowReportNo: headerData.sowReportNo,
                             preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                             returnBlob: true,
-                            printFriendly: isPrintFriendly
+                            printFriendly: isPrintFriendly,
+                            reportType: 'R'
                         }
                     );
                 }}
                 title="ROV Riser Survey Report"
                 fileName={`ROV_Riser_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={jtisiPreviewOpen} 
+                onOpenChange={setJtisiPreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+
+                    // Fetch all records for this SOW and Structure (matching Report Wizard logic)
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            structure_components:component_id(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const jtisiRecords = (allRecords || []).filter(r => (r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI') && (r.structure_components?.q_id || '').toUpperCase().startsWith('J'));
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVRRISIReport(
+                        jtisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        { 
+                            ...headerData, 
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            reportType: 'J'
+                        }
+                    );
+                }}
+                title="ROV J-Tube Inspection Report"
+                fileName={`ROV_JTube_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={itisiPreviewOpen} 
+                onOpenChange={setItisiPreviewOpen} 
+                generateReport={async (isPrintFriendly) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+
+                    // Fetch all records for this SOW and Structure (matching Report Wizard logic)
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            structure_components:component_id(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const itisiRecords = (allRecords || []).filter(r => (r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI') && (r.structure_components?.q_id || '').toUpperCase().startsWith('I'));
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVRRISIReport(
+                        itisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        { 
+                            ...headerData, 
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            reportType: 'I'
+                        }
+                    );
+                }}
+                title="ROV I-Tube Inspection Report"
+                fileName={`ROV_ITube_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             <ReportPreviewDialog 
@@ -4680,6 +4815,8 @@ function V10PreviewLayout() {
                 generateUTWTReport={generateUTWTReport}
                 generateRSCORReport={generateRSCORReport}
                 generateRRISIReport={generateRRISIReport}
+                generateJTISIReport={generateJTISIReport}
+                generateITISIReport={generateITISIReport}
                 generateAnodeReport={generateAnodeReport}
                 generateCPReport={generateCPReport}
                 generateRGVIReport={generateRGVIReport}
