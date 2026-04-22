@@ -4615,8 +4615,8 @@ function V10PreviewLayout() {
                         }
                     );
                 }}
-                title="ROV Riser Inspection Report (RRISI)"
-                fileName={`ROV_Riser_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                title="ROV Riser Survey Report"
+                fileName={`ROV_Riser_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             <ReportPreviewDialog 

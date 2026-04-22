@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
     company_name?: string;
@@ -20,9 +21,6 @@ interface ReportConfig {
     returnBlob?: boolean;
 }
 
-/**
- * ROV Riser Structural Integrity Inspection Report (RRISI)
- */
 export const generateROVRRISIReport = async (
     records: any[],
     headerData: any,
@@ -42,365 +40,278 @@ export const generateROVRRISIReport = async (
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
-            anomaly: [239, 68, 68] as [number, number, number], // Red
-            rectified: [34, 197, 94] as [number, number, number], // Green
-            riser: [71, 85, 105] as [number, number, number], // Slate 600
+            anomaly: [239, 68, 68] as [number, number, number],
+            rectified: [34, 197, 94] as [number, number, number],
+            riser: [71, 85, 105] as [number, number, number],
+            mudline: [145, 123, 76] as [number, number, number],
         };
 
-        // --- 1. Preparation ---
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records.map(r => new Date(r.cr_date)).filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate = max(dates);
-            }
+        const supabase = createClient();
+
+        // ── 1. Context ──────────────────────────────────────────────────────────
+        const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
+        const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
+
+        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        const compRegistry = new Map<number, any>();
+        const qidToId = new Map<string, number>();
+        if (allComps) {
+            allComps.forEach(c => {
+                compRegistry.set(c.id, c);
+                qidToId.set(c.q_id.toUpperCase(), c.id);
+                const m = c.q_id.match(/R[IS-]*(\d+)/i);
+                if (m) qidToId.set(m[1], c.id);
+            });
         }
 
-        const dateRangeStr = startDate && endDate 
-            ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
-            : 'N/A';
+        const risersMap = new Map<number, { riserComp: any, records: any[] }>();
+        const unassigned: any[] = [];
+        records.forEach(r => {
+            const comp = r.structure_components;
+            if (!comp) return;
+            let rid: number | null = null;
+            if (comp.code === 'RS') rid = comp.id;
+            else if (comp.metadata?.associated_comp_id) rid = Number(comp.metadata.associated_comp_id);
+            else {
+                const q = (comp.q_id || '').toUpperCase(); const m = q.match(/R[IS-]*(\d+)/i);
+                if (m && qidToId.has(m[1])) rid = qidToId.get(m[1])!;
+                else if (qidToId.has(q)) rid = qidToId.get(q)!;
+            }
+            if (rid) {
+                if (!risersMap.has(rid)) risersMap.set(rid, { riserComp: compRegistry.get(rid) || comp, records: [] });
+                risersMap.get(rid)!.records.push(r);
+            } else unassigned.push(r);
+        });
 
-        const drawHeader = async (d: jsPDF) => {
-            const headerH = 22;
-            const isPF = config.printFriendly;
+        if (unassigned.length > 0) {
+            if (risersMap.size === 1) Array.from(risersMap.values())[0].records.push(...unassigned);
+            else risersMap.set(0, { riserComp: { q_id: 'Miscellaneous' }, records: unassigned });
+        }
+
+        const groups = Array.from(risersMap.values()).sort((a, b) => {
+            const qA = a.riserComp?.q_id || ''; const qB = b.riserComp?.q_id || '';
+            return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        // ── 2. Rendering ────────────────────────────────────────────────────────
+        let coLogo: any = null; let ctLogo: any = null;
+        if (companySettings.logo_url) { try { coLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {} }
+        if (headerData.contractorLogoUrl) { try { ctLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {} }
+
+        const drawHeader = (d: jsPDF) => {
+            const hH = 22; const isPF = config.printFriendly;
+            if (isPF) { d.setDrawColor(...colors.navy); d.setLineWidth(0.5); d.rect(margin, margin, contentWidth, hH, 'S'); d.setTextColor(...colors.navy); }
+            else { d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, hH, 'F'); d.setTextColor(255, 255, 255); }
+            if (coLogo) drawLogo(d, coLogo, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
+            if (ctLogo) drawLogo(d, ctLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
+            d.setFontSize(9); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
+            d.setFontSize(7); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10, { align: 'center' });
+            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text(`ROV Riser Survey Report`, margin + contentWidth/2, margin + 17, { align: 'center' });
+        };
+
+        const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
+            const footerY = pageHeight - 10;
+            d.setDrawColor(...colors.border); d.setLineWidth(0.1);
+            d.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+            d.setFontSize(7); d.setTextColor(150, 150, 150);
+            d.setFont("helvetica", "normal");
+            d.text(`Report ID: ${headerData.sowReportNo || 'N/A'}`, margin, footerY);
+            d.text(`Printed: ${format(new Date(), 'dd MMM yyyy HH:mm')}`, margin + contentWidth/2, footerY, { align: 'center' });
+            d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
+        };
+
+        const drawContext = (d: jsPDF, y: number, groupRecords: any[]) => {
+            const rH = 7; const half = contentWidth / 2; const isPF = config.printFriendly;
+            let sD: Date | null = null; let eD: Date | null = null;
+            const ds = groupRecords.map(r => new Date(r.cr_date || r.created_at)).filter(d => !isNaN(d.getTime()));
+            if (ds.length > 0) { sD = min(ds); eD = max(ds); }
+            const dr = sD && eD ? `${format(sD, 'dd MMM yyyy')} - ${format(eD, 'dd MMM yyyy')}` : 'N/A';
+            const drawBox = (l: string, v: string, x: number, w: number, ty: number) => {
+                d.setDrawColor(...colors.border); d.setLineWidth(0.1); if (!isPF) d.setFillColor(...colors.lightGray);
+                d.rect(x, ty, w, rH, isPF ? 'S' : 'F'); d.rect(x, ty, w, rH, 'S');
+                d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold"); d.text(l, x + 2, ty + 4.8);
+                d.setFont("helvetica", "normal"); d.text(String(v), x + 36, ty + 4.8);
+            };
+            drawBox('Structure:', headerData.platformName || 'N/A', margin, half, y);
+            drawBox('Vessel:', headerData.vessel || 'N/A', margin + half, half, y);
+            drawBox('Job Pack:', headerData.jobpackName || 'N/A', margin, half, y + rH);
+            drawBox('Insp. Date Range:', dr, margin + half, half, y + rH);
+            drawBox('SOW Report No:', headerData.sowReportNo || 'N/A', margin, contentWidth, y + (rH * 2));
+            return y + (rH * 3) + 4;
+        };
+
+        for (let i = 0; i < groups.length; i++) {
+            const group = groups[i];
+            const riser = group.riserComp;
+            const recordsInGroup = group.records;
+            if (i > 0) doc.addPage();
+            drawHeader(doc);
+            let currentY = drawContext(doc, margin + 22 + 2, recordsInGroup);
+
+            // Sub-header
+            doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 7, 'F');
+            doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont("helvetica", "bold");
+            doc.text(`RISER QID: ${riser?.q_id || 'Unknown'}`, margin + 5, currentY + 5);
+            currentY += 10;
+
+            const gW = contentWidth * 0.40; const dW = contentWidth * 0.60;
+            const gX = margin; const dX = margin + gW;
+
+            // --- Elev Processing ---
+            const rMeta = riser?.metadata || {};
+            const designStart = parseFloat(rMeta.start_elevation ?? rMeta.start_elev ?? 5);
+            const designEnd = parseFloat(rMeta.end_elevation ?? rMeta.end_elev ?? platformDepth);
             
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, headerH, 'S');
-                d.setTextColor(...colors.navy);
+            const suspRec = recordsInGroup.find(r => r.inspection_data?.suspension_gap || r.description?.toLowerCase().includes('suspension'));
+            const suspGap = suspRec ? parseFloat(suspRec.inspection_data?.suspension_gap || 0) : 0;
+            const mudTouchDist = suspRec ? parseFloat(suspRec.inspection_data?.mud_touch_distance || 15) : 0;
+
+            const rWidth = 8; const bRadius = 10;
+            const bottomElev = designEnd;
+            const mudlineElev = designEnd - suspGap;
+
+            const gTopY = currentY + 15;
+            const gMudlineY = gTopY + 140;
+
+            const sMax = Math.max(designStart + 2, 5);
+            const sMin = Math.min(mudlineElev - 10, -40);
+            const eRange = sMax - sMin;
+            const eToY = (e: number) => gTopY + ((sMax - e) / eRange) * (gMudlineY - gTopY);
+
+            const cX = gX + (gW / 2) - 10;
+            const pipeY = eToY(bottomElev); 
+            const mudY = eToY(mudlineElev) + (rWidth / 2);
+            const bY = eToY(bottomElev + bRadius);
+
+            // --- Draw Mudline ---
+            doc.setDrawColor(...colors.mudline); doc.setLineWidth(1.2);
+            if (suspGap === 0) {
+                doc.line(gX, mudY, gX + gW, mudY);
+                doc.setFontSize(7); doc.setTextColor(...colors.mudline); 
+                doc.text("SEABED / MUDLINE", gX + 2, mudY - 3, { align: 'left' });
             } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, headerH, 'F');
-                d.setTextColor(255);
+                const startMudY = mudY;
+                const endMudY = pipeY + (rWidth / 2);
+                const touchMudX = cX + bRadius + (mudTouchDist * (gW / 60));
+                doc.line(gX, startMudY, cX - 10, startMudY);
+                let lx = cX - 10; let ly = startMudY;
+                const segs = 20;
+                for (let j = 1; j <= segs; j++) {
+                    const t = j / segs;
+                    const tx = Math.pow(1 - t, 2) * (cX - 10) + 2 * (1 - t) * t * cX + Math.pow(t, 2) * touchMudX;
+                    const ty = Math.pow(1 - t, 2) * startMudY + 2 * (1 - t) * t * endMudY + Math.pow(t, 2) * endMudY;
+                    doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
+                }
+                doc.line(lx, ly, gX + gW, ly);
+                doc.setFontSize(7); doc.setTextColor(...colors.mudline); 
+                doc.text(`SUSPENSION (${suspGap}m)`, cX, startMudY + 5, { align: 'center' });
+                doc.text("SEABED", gX + 2, startMudY - 3, { align: 'left' });
             }
 
-            if (companySettings.logo_url) {
-                try {
-                    const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                    if (logoData) {
-                        drawLogo(d, logoData, 16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
-                    }
-                } catch (e) {}
-            }
-
-            if (headerData.contractorLogoUrl) {
-                try {
-                    const logoData = await loadLogoWithTransparency(headerData.contractorLogoUrl);
-                    if (logoData) {
-                        drawLogo(d, logoData, 16, 16, margin + 4, margin + 4, 'left', 'center');
-                    }
-                } catch (e) {}
-            }
-
-            d.setFontSize(10); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            d.setFontSize(14); d.setFont("helvetica", "bold");
-            d.text(`ROV Riser Inspection Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
-
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
-        };
-
-        const drawContext = (d: jsPDF, y: number) => {
-            const rowH = 7;
-            const tableY = y;
-            const colW = contentWidth / 2;
-            const isPF = config.printFriendly;
-            
-            const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
-                d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
-                if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
-                if (!isPF) d.rect(x, ty, w, rowH, 'S');
-                
-                d.setTextColor(...colors.text); d.setFontSize(8); d.setFont("helvetica", "bold");
-                d.text(label, x + 2, ty + 4.5); d.setFont("helvetica", "normal");
-                d.text(String(value), x + 35, ty + 4.5);
+            // --- Draw Riser ---
+            const drawP = (x1: number, y1: number, x2: number, y2: number, isV: boolean) => {
+                doc.setLineWidth(rWidth); doc.setDrawColor(50, 60, 80); doc.line(x1, y1, x2, y2);
+                doc.setLineWidth(rWidth * 0.7); doc.setDrawColor(71, 85, 105); doc.line(x1, y1, x2, y2);
+                doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(148, 163, 184); 
+                const o = -rWidth * 0.15; if (isV) doc.line(x1 + o, y1, x2 + o, y2); else doc.line(x1, y1 + o, x2, y2 + o);
             };
-
-            drawBox('Structure:', headerData.platformName, margin, colW, tableY);
-            drawBox('Vessel:', headerData.vessel || 'N/A', margin + colW, colW, tableY);
-            drawBox('Job Pack:', headerData.jobpackName, margin, colW, tableY + rowH);
-            drawBox('Insp. Date Range:', dateRangeStr, margin + colW, colW, tableY + rowH);
-            drawBox('Insp. Date:', dateRangeStr, margin, contentWidth, tableY + (rowH * 2));
-            
-            return tableY + (rowH * 3) + 5;
-        };
-
-        // --- Main Rendering ---
-        await drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
-
-        // Define panels
-        const graphicsWidth = contentWidth * 0.4;
-        const dataWidth = contentWidth * 0.6;
-        const graphicsX = margin;
-        const dataX = margin + graphicsWidth;
-        const mainHeight = pageHeight - startY - 45; // Space for signatures at bottom
-
-        // --- Draw Graphics ---
-        const drawGraphics = (d: jsPDF, y: number, h: number) => {
-            const centerX = graphicsX + (graphicsWidth / 2) - 10;
-            const riserTopY = y + 10;
-            const riserBottomY = y + h - 40;
-            const riserWidth = 7;
-            const bendRadius = 15;
-            
-            // Shading Helper for 3D Effect
-            const draw3DPipe = (x1: number, y1: number, x2: number, y2: number, isVertical: boolean) => {
-                const w = riserWidth;
-                // Shadow edge
-                d.setLineWidth(w); d.setDrawColor(50, 60, 80); 
-                d.line(x1, y1, x2, y2);
-                // Main body
-                d.setLineWidth(w * 0.7); d.setDrawColor(71, 85, 105);
-                d.line(x1, y1, x2, y2);
-                // Highlight
-                d.setLineWidth(w * 0.2); d.setDrawColor(148, 163, 184);
-                const offset = isVertical ? -w * 0.15 : -w * 0.15;
-                if (isVertical) d.line(x1 + offset, y1, x2 + offset, y2);
-                else d.line(x1, y1 + offset, x2, y2 + offset);
-            };
-
-            // 1. Riser Main Body (3D)
-            draw3DPipe(centerX, riserTopY, centerX, riserBottomY, true);
-            
-            // 2. Riser Bend (3D curve)
-            d.setLineCap("round");
-            const endX = centerX + bendRadius;
-            const endY = riserBottomY + bendRadius;
-
-            // Draw layered curves for 3D effect
-            const drawCurveLayer = (color: [number, number, number], width: number, off: number) => {
-                const segments = 25;
-                let lastX = centerX + off;
-                let lastY = riserBottomY;
-                d.setDrawColor(...color);
-                d.setLineWidth(width);
-                const cx = centerX + off;
-                const cy = riserBottomY;
-                const ex = endX;
-                const ey = endY + off;
-                // Control point P1 for Quadratic Bezier
-                const p1x = cx;
-                const p1y = ey;
-
-                for (let i = 1; i <= segments; i++) {
-                    const t = i / segments;
-                    const tx = Math.pow(1 - t, 2) * cx + 2 * (1 - t) * t * p1x + Math.pow(t, 2) * ex;
-                    const ty = Math.pow(1 - t, 2) * cy + 2 * (1 - t) * t * p1y + Math.pow(t, 2) * ey;
-                    d.line(lastX, lastY, tx, ty);
-                    lastX = tx;
-                    lastY = ty;
+            drawP(cX, eToY(designStart), cX, bY, true);
+            const endX = cX + bRadius; 
+            const drawC = (color: [number, number, number], width: number, off: number) => {
+                const segs = 20; let lx = cX + off; let ly = bY;
+                const cx = cX + off; const cy = bY; const ex = endX; const ey = pipeY + off;
+                doc.setDrawColor(...color); doc.setLineWidth(width);
+                for (let j = 1; j <= segs; j++) {
+                    const t = j / segs;
+                    const tx = Math.pow(1 - t, 2) * cx + 2 * (1 - t) * t * cx + Math.pow(t, 2) * ex;
+                    const ty = Math.pow(1 - t, 2) * cy + 2 * (1 - t) * t * ey + Math.pow(t, 2) * ey;
+                    doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
                 }
             };
+            drawC([50, 60, 80], rWidth, 0); drawC([71, 85, 105], rWidth * 0.7, 0); drawC([148, 163, 184], rWidth * 0.2, -rWidth * 0.15);
+            drawP(endX, pipeY, gX + gW - 5, pipeY, false);
+            doc.setFontSize(6); doc.setTextColor(71, 85, 105); doc.text("PIPELINE", endX + 10, pipeY + 8);
 
-            drawCurveLayer([50, 60, 80], riserWidth, 0); // Shadow
-            drawCurveLayer([71, 85, 105], riserWidth * 0.7, 0); // Core
-            drawCurveLayer([148, 163, 184], riserWidth * 0.2, -riserWidth * 0.15); // Highlight
-            
-            // 3. Pipeline (3D)
-            const pipelineX = endX;
-            const pipelineY = endY;
-            draw3DPipe(pipelineX, pipelineY, graphicsX + graphicsWidth - 5, pipelineY, false);
-            
-            // 4. Labels
-            d.setFontSize(7); d.setTextColor(71, 85, 105); d.setFont("helvetica", "bold");
-            d.text("RISER", centerX - 10, riserTopY - 2, { align: 'center' });
-            d.text("BEND", centerX - 12, riserBottomY + (bendRadius / 2));
-            d.text("PIPELINE (50m)", pipelineX + 15, pipelineY + 8, { align: 'center' });
-
-            // 5. Elevation Scale
-            // Determine elevation range from records
-            const elevations = records.map(r => Number(r.elevation)).filter(e => !isNaN(e));
-            const minElev = elevations.length > 0 ? Math.min(...elevations, -20) : -30;
-            const maxElev = elevations.length > 0 ? Math.max(...elevations, 2) : 5;
-            const elevRange = maxElev - minElev;
-            
-            const elevToY = (elev: number) => {
-                const ratio = (maxElev - elev) / elevRange;
-                return riserTopY + (ratio * (riserBottomY - riserTopY));
-            };
-
-            // Draw elevation markers on the left
-            d.setLineWidth(0.1); d.setDrawColor(150);
-            for (let e = Math.floor(maxElev); e >= Math.floor(minElev); e -= 5) {
-                const ey = elevToY(e);
-                if (ey >= riserTopY && ey <= riserBottomY) {
-                    d.line(centerX - 12, ey, centerX - riserWidth/2, ey);
-                    d.setFontSize(6); d.setTextColor(100);
-                    d.text(`${e}m`, centerX - 18, ey + 1);
+            // Scale
+            doc.setLineWidth(0.1); doc.setDrawColor(200);
+            for (let e = Math.floor(sMax); e >= sMin; e -= 5) {
+                const ey = eToY(e);
+                if (ey <= gMudlineY + 15) {
+                    doc.line(cX - 12, ey, cX - 5, ey);
+                    doc.setFontSize(6); doc.setTextColor(150, 150, 150); doc.text(`${e}m`, cX - 18, ey + 1);
                 }
             }
 
-            // 6. Components / Clamps
-            // Fetch clamps associated with this riser (records with type CL or similar)
-            records.forEach(r => {
-                const comp = r.structure_components;
-                const d_data = r.inspection_data || r.inspection_dat || {};
-                const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                const isAnomaly = r.has_anomaly || !!linkedAnom || r.component_condition === 'Anomalous' || r.is_anomaly || (r.description && r.description.toLowerCase().includes('anomaly'));
-                const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-                
-                let color = colors.navy;
-                if (isAnomaly) color = colors.anomaly;
-                if (isRectified) color = colors.rectified;
-
-                if (comp?.code === 'CL' || d_data.clamp_type || (comp?.q_id && comp.q_id.startsWith('CL'))) {
-                    const cy = elevToY(Number(r.elevation));
-                    if (cy >= riserTopY && cy <= riserBottomY) {
-                        // Draw Clamp Icon
-                        d.setDrawColor(...color); d.setLineWidth(1);
-                        d.rect(centerX - 5, cy - 2, 10, 4, 'S');
-                        d.setFontSize(6); d.setTextColor(...color);
-                        d.text(comp?.q_id || 'Clamp', centerX + 8, cy + 1);
-                    }
-                } else if (d_data.riser_item === 'Riser Bend') {
-                    // Mark bend
-                    d.setDrawColor(...color); d.setLineWidth(1.5);
-                    // Position at the approximate middle of the curve
-                    const midCurveX = centerX + (bendRadius * 0.3);
-                    const midCurveY = riserBottomY + (bendRadius * 0.7);
-                    d.circle(midCurveX, midCurveY, 4, 'S');
-                    d.setFontSize(7);
-                    d.text("INSP", midCurveX - 6, midCurveY + 1, { align: 'right' });
-                } else if (d_data.riser_item === 'Pipeline') {
-                    // Pipeline data
-                    const dist = Number(d_data.distance_from_member || 0);
-                    const px = pipelineX + (dist * ( (graphicsX + graphicsWidth - 5 - pipelineX) / 50 ));
-                    d.setDrawColor(...color); d.setLineWidth(1);
-                    d.line(px, pipelineY - 4, px, pipelineY + 4);
-                    d.setFontSize(5);
-                    d.text(`${dist}m`, px, pipelineY - 6, { align: 'center' });
+            // Mark Points
+            recordsInGroup.forEach(r => {
+                const c = r.structure_components || {}; const d = r.inspection_data || {};
+                const el = parseFloat(r.elevation ?? d.elevation); if (isNaN(el)) return;
+                const py = eToY(el);
+                const isA = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0);
+                const col = isA ? colors.anomaly : colors.navy;
+                if (c.code === 'CL' || d.clamp_type || c.q_id?.includes('SUPP') || c.q_id?.includes('CLP')) {
+                    const cw = rWidth + 8; const ch = 4.5; const fw = 3;
+                    doc.setFillColor(255, 255, 255); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'F');
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.8); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
+                    doc.rect(cX - cw/2 - fw, py - 1, fw, 2, 'S'); doc.rect(cX + cw/2, py - 1, fw, 2, 'S');
+                    doc.setFillColor(...colors.navy); doc.circle(cX - cw/2 - fw/2, py, 0.5, 'F'); doc.circle(cX + cw/2 + fw/2, py, 0.5, 'F');
+                    doc.setLineWidth(0.3); doc.line(cX + cw/2 + fw, py, dX - 5, py);
+                    doc.setFontSize(6); doc.setTextColor(...colors.navy); doc.text(c.q_id || 'Clamp', dX - 3, py + 1.5, { align: 'right' });
                 } else {
-                    // Regular inspection point on riser
-                    const iy = elevToY(Number(r.elevation));
-                    if (iy >= riserTopY && iy <= riserBottomY) {
-                        d.setFillColor(...color);
-                        d.circle(centerX, iy, 1.5, 'F');
-                        
-                        // Pointer Line to Data
-                        d.setDrawColor(...color); d.setLineWidth(0.1);
-                        d.line(centerX + 2, iy, dataX - 5, iy);
-                    }
+                    doc.setFillColor(...col); doc.circle(cX, py, 1.8, 'F');
+                    doc.setDrawColor(...col); doc.setLineWidth(0.1); doc.line(cX + 2, py, dX - 5, py);
                 }
             });
-            
-            // Legend
-            const legendY = riserBottomY + 40;
-            const drawLegendItem = (x: number, ly: number, color: [number, number, number], label: string) => {
-                d.setFillColor(...color); d.circle(x, ly, 2, 'F');
-                d.setTextColor(...colors.text); d.setFontSize(7);
-                d.text(label, x + 4, ly + 1.5);
-            };
-            drawLegendItem(graphicsX + 5, legendY, colors.navy, 'Normal');
-            drawLegendItem(graphicsX + 35, legendY, colors.anomaly, 'Anomaly');
-            drawLegendItem(graphicsX + 65, legendY, colors.rectified, 'Rectified');
-        };
 
-        // --- Draw Data Table ---
-        const drawDataTable = (d: jsPDF, y: number, h: number) => {
-            const isPF = config.printFriendly;
-            const tableRecords = [...records].sort((a, b) => Number(b.elevation) - Number(a.elevation));
-            
-            autoTable(d, {
-                startY: y,
-                margin: { left: dataX, right: margin },
-                tableWidth: dataWidth,
-                head: [[
-                    { content: 'Loc / Elev', styles: { halign: 'center' } },
-                    { content: 'CP (mV)', styles: { halign: 'center' } },
-                    { content: 'Findings / Anomalies', styles: { halign: 'left' } }
-                ]],
-                body: tableRecords.map(r => {
-                    const rd = r.inspection_data || r.inspection_dat || {};
-                    const loc = r.elevation ? `${r.elevation}m` : (rd.riser_item || 'N/A');
-                    const cp = rd.cp_rdg || '-';
-                    
-                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                    const isAnomaly = r.has_anomaly || !!linkedAnom || r.component_condition === 'Anomalous' || r.is_anomaly || (r.description && r.description.toLowerCase().includes('anomaly'));
-                    const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-                    const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
-                    const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
-
-                    let findings = r.description || '';
-                    if (rd.cp_rdg_additional && Array.isArray(rd.cp_rdg_additional)) {
-                        rd.cp_rdg_additional.forEach((a: any) => {
-                            if (a.reading) findings += `\nCP Add: ${a.reading}mV (${a.location || ''})`;
-                        });
+            // --- Table ---
+            const sortedR = [...recordsInGroup].sort((a, b) => (parseFloat(b.elevation) || 0) - (parseFloat(a.elevation) || 0));
+            autoTable(doc, {
+                startY: currentY,
+                margin: { left: dX, right: margin },
+                tableWidth: dW,
+                head: [['Loc / Elev', 'CP (mV)', 'Findings / Anomalies']],
+                body: sortedR.map(r => {
+                    const rd = r.inspection_data || {};
+                    const anoms = r.insp_anomalies || [];
+                    const isAnom = r.has_anomaly || anoms.length > 0;
+                    const c = r.structure_components || {};
+                    const isClamp = c.code === 'CL' || rd.clamp_type || c.q_id?.includes('SUPP') || c.q_id?.includes('CLP');
+                    let findings = r.description || 'No significant findings';
+                    if (isClamp) findings = `Clamp: ${c.q_id || 'N/A'}\n${findings}`;
+                    if (isAnom && anoms.length > 0) {
+                        findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`).join('\n');
                     }
-                    if (rd.debris && rd.debris !== 'None') findings += `\nDebris: ${rd.debris}`;
-                    if (rd.marine_growth) findings += `\nMG: ${rd.marine_growth}`;
-
-                    if (isAnomaly && anomRef) {
-                        findings += `\n[Reference: ${anomRef}]`;
-                    }
-                    if (isRectified) {
-                        findings += `\nRectified: ${rectRem || 'N/A'}`;
-                    }
-
+                    if (r.insp_rov_jobs?.job_no) findings += `\n[Dive: ${r.insp_rov_jobs.job_no}]`;
                     return [
-                        { content: loc, styles: { fontStyle: 'bold' } },
-                        { content: cp, styles: { halign: 'center' } },
-                        { 
-                            content: findings || 'No significant findings', 
-                            styles: { 
-                                textColor: isAnomaly ? colors.anomaly : (isRectified ? colors.rectified : colors.text),
-                                fontStyle: (isAnomaly || isRectified) ? 'bold' : 'normal'
-                            } 
-                        }
+                        { content: r.elevation ? `${r.elevation}m` : (rd.riser_item || 'N/A'), styles: { fontStyle: 'bold' } },
+                        { content: rd.cp_rdg ?? rd.cp ?? '-', styles: { halign: 'center' } },
+                        { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
                 }),
                 theme: 'grid',
-                headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 8 },
+                headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8 },
                 styles: { fontSize: 7, cellPadding: 2 },
-                columnStyles: {
-                    0: { cellWidth: 20 },
-                    1: { cellWidth: 15 },
-                    2: { cellWidth: 'auto' }
-                },
-                didDrawCell: (data) => {
-                    // Optional: add markers or icons in cells if needed
-                }
+                columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } }
             });
-        };
 
-        drawGraphics(doc, startY, mainHeight);
-        drawDataTable(doc, startY, mainHeight);
+            const sigY = pageHeight - 32; const sigW = contentWidth / 3;
+            const drawS = (l: string, lx: number) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 4, 15, 'S');
+                if (!config.printFriendly) { doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 4, 4, 'F'); doc.setTextColor(255, 255, 255); }
+                else doc.setTextColor(...colors.navy);
+                doc.setFontSize(7); doc.text(l, lx + 2, sigY + 3);
+            };
+            drawS('PREPARED BY', margin); drawS('REVIEWED BY', margin + sigW); drawS('APPROVED BY', margin + (sigW * 2));
+        }
 
-        // Signatures
-        const sigY = pageHeight - 35;
-        const sigW = contentWidth / 3;
-        const drawSig = (label: string, lx: number) => {
-            const isPF = config.printFriendly;
-            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15, 'S');
-            if (!isPF) {
-                doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 4, 'F');
-                doc.setTextColor(255);
-            } else {
-                doc.setTextColor(...colors.navy);
-            }
-            doc.setFontSize(7); doc.text(label, lx + 2, sigY + 3);
-            doc.setTextColor(...colors.text); doc.setFontSize(6); 
-            doc.text('Name:', lx + 2, sigY + 10);
-            doc.text('Date:', lx + 2, sigY + 13);
-        };
-
-        drawSig('PREPARED BY', margin);
-        drawSig('REVIEWED BY', margin + sigW);
-        drawSig('APPROVED BY', margin + (sigW * 2));
+        // --- Finalize Page Numbers ---
+        const totalPages = (doc as any).internal.getNumberOfPages();
+        for (let j = 1; j <= totalPages; j++) {
+            doc.setPage(j);
+            drawFooter(doc, j, totalPages);
+        }
 
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`ROV_RRISI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
-        return;
-
-    } catch (e) {
-        console.error("RRISI Report Error", e);
-        throw e;
-    }
+        doc.save(`ROV_Riser_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+    } catch (e) { console.error("RRISI Report Error", e); throw e; }
 };
