@@ -105,18 +105,36 @@ export function SOWDialog({
     // ── DATA LOADING ──
     useEffect(() => {
         if (open && structure) loadSOW();
-    }, [open, structure]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, structure?.id]);
 
     const loadSOW = async () => {
         setLoading(true);
+        // Force clear previous states immediately on switch to prevent caching issues
+        setSOW(null);
+        setSOWItems([]);
+        setReportNumbers([]);
+        setActiveReportNumber(null);
+        setSelectedItems(new Set<string>());
+        
         try {
             const res = await fetch(`/api/sow?jobpack_id=${jobpackId}&structure_id=${structure.id}`);
             const { data } = await res.json();
             if (data) {
                 setSOW(data);
                 setSOWItems(data.items || []);
-                setReportNumbers(data.report_numbers || []);
-                if (data.report_numbers?.length > 0 && !activeReportNumber) setActiveReportNumber(data.report_numbers[0].number);
+                
+                const fetchedReports = data.report_numbers || [];
+                setReportNumbers(fetchedReports);
+                
+                const validNumbers = fetchedReports.map((r: any) => r.number);
+                setActiveReportNumber((prev) => {
+                    if (validNumbers.length > 0 && (!prev || !validNumbers.includes(prev))) {
+                        return validNumbers[0];
+                    }
+                    if (validNumbers.length === 0) return null;
+                    return prev;
+                });
                 
                 const newSelectedItems = new Set<string>();
                 const splitEnabled: Record<number, boolean> = {};

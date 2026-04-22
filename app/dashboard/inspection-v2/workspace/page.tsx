@@ -168,6 +168,7 @@ function V10PreviewLayout() {
     const structureId = searchParams.get('structure');
     const sowIdFull = searchParams.get('sow');
     const sowId = sowIdFull?.split('-')[0];
+    const targetReportNumber = searchParams.get('sowReport');
     const initialMode = searchParams.get('mode') as "DIVING" | "ROV" | null;
 
     // Jotai State Sync for Dialog
@@ -177,7 +178,7 @@ function V10PreviewLayout() {
     useEffect(() => {
         if (structureId) {
             setGlobalUrlId(Number(structureId));
-            setGlobalUrlType("platform");
+            setGlobalUrlType("platform"); // Default; corrected in fetchHeaderInfo once structureType resolves
         }
     }, [structureId, setGlobalUrlId, setGlobalUrlType]);
 
@@ -304,7 +305,7 @@ function V10PreviewLayout() {
     const [syncLoading, setSyncLoading] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [componentsSow, setComponentsSow] = useState<any[]>([]);
-    const [componentsNonSow, setComponentsNonSow] = useState<any[]>(COMPONENTS_NON_SOW);
+    const [componentsNonSow, setComponentsNonSow] = useState<any[]>([]);
     const [allComps, setAllComps] = useState<any[]>([]);
 
     // Operations State
@@ -943,6 +944,7 @@ function V10PreviewLayout() {
             }
 
             setHeaderData({ jobpackName, platformName, sowReportNo, jobType: jtParam || "", structureType: detectedStructureType, waterDepth });
+            setGlobalUrlType(detectedStructureType);
         }
         fetchHeaderInfo();
     }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam]);
@@ -2765,30 +2767,89 @@ function V10PreviewLayout() {
 
     // Replacement: useQuery for SOW and Component Data
     const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
-        queryKey: ['sow-data', structureId, sowId, headerData.sowReportNo, inspMethod],
+        queryKey: ['sow-data', structureId, sowId, inspMethod],
+        enabled: !!(sowId && structureId && !isNaN(Number(structureId))),
         queryFn: async () => {
             if (!sowId || !structureId) return { assigned: [], unassigned: [], all: [] };
 
-            // 1. Fetch ALL components
-            const { data: allCompsData } = await supabase.from('structure_components')
-                .select('*')
-                .eq('structure_id', parseInt(structureId));
+            // 1. Fetch ALL active components for this structure (Paginated to bypass 1000 hard limit)
+            let allCompsDataRaw: any[] = [];
+            let hasMore = true;
+            let offset = 0;
+            const pageSize = 1000;
+            let compErr = null;
 
-            if (!allCompsData) return { assigned: [], unassigned: [], all: [] };
+            while (hasMore) {
+                const { data: pageData, error: pageErr } = await supabase.from('structure_components')
+                    .select('*')
+                    .eq('structure_id', parseInt(structureId))
+                    .not('is_deleted', 'eq', true)
+                    .range(offset, offset + pageSize - 1);
 
-            // 2. Fetch SOW items
-            const { data: sowItems } = await supabase.from('u_sow_items')
-                .select('*, inspection_type:inspection_type_id!left(id, code, name, metadata)')
-                .eq('sow_id', sowId);
+                if (pageErr) {
+                    compErr = pageErr;
+                    break;
+                }
+
+                if (pageData && pageData.length > 0) {
+                    allCompsDataRaw = [...allCompsDataRaw, ...pageData];
+                    offset += pageSize;
+                    if (pageData.length < pageSize) {
+                        hasMore = false;
+                    }
+                } else {
+                    hasMore = false;
+                }
+            }
+
+            if (!allCompsDataRaw || compErr) return { assigned: [], unassigned: [], all: [] };
+
+            // Further filter legacy 'del' flag from metadata
+            const allCompsData = allCompsDataRaw.filter((c: any) => {
+                if (c.is_deleted === true || c.is_deleted === 1) return false;
+                if (c.metadata && (c.metadata.del === 1 || c.metadata.del === '1' || c.metadata.del === true)) return false;
+                return true;
+            });
+
+            // 2. Fetch SOW items scoped strictly to this sowId AND report Number
+            let allSowItems: any[] = [];
+            let hasMoreSow = true;
+            let offsetSow = 0;
+
+            while (hasMoreSow) {
+                let sowItemsQuery = supabase.from('u_sow_items')
+                    .select('*, inspection_type:inspection_type_id!left(id, code, name, metadata)')
+                    .eq('sow_id', sowId)
+                    .range(offsetSow, offsetSow + pageSize - 1);
+                    
+                if (targetReportNumber) {
+                    sowItemsQuery = sowItemsQuery.eq('report_number', targetReportNumber);
+                }
+
+                const { data: pageSowItems, error: sowItemsErr } = await sowItemsQuery;
+
+                if (sowItemsErr) {
+                    console.error("Error fetching SOW items:", sowItemsErr);
+                    break;
+                }
+
+                if (pageSowItems && pageSowItems.length > 0) {
+                    allSowItems = [...allSowItems, ...pageSowItems];
+                    offsetSow += pageSize;
+                    if (pageSowItems.length < pageSize) {
+                        hasMoreSow = false;
+                    }
+                } else {
+                    hasMoreSow = false;
+                }
+            }
+
+            const sowItems = allSowItems;
 
             // 2.5 Fetch actual records for true dynamic status correction
             let recsQuery = supabase.from('insp_records')
                 .select('component_id, inspection_type_code, status, cr_date')
                 .eq('structure_id', Number(structureId));
-            
-            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-                recsQuery = recsQuery.eq('sow_report_no', headerData.sowReportNo);
-            }
 
             const { data: actualRecords } = await recsQuery.order('cr_date', { ascending: false });
 
@@ -2798,7 +2859,7 @@ function V10PreviewLayout() {
                 actualRecords.forEach((r: any) => {
                     if (!r.component_id || !r.inspection_type_code) return;
                     const key = `${r.component_id}_${r.inspection_type_code}`;
-                    // Array is newest first, so first encouter sets the final state
+                    // Array is newest first, so first encounter sets the final state
                     if (!trueStatusMap.has(key)) {
                         trueStatusMap.set(key, r.status?.toLowerCase() === 'incomplete' ? 'incomplete' : 'completed');
                     }
@@ -2809,21 +2870,18 @@ function V10PreviewLayout() {
 
             if (sowItems) {
                 sowItems.forEach(item => {
-                    const md = item.inspection_type?.metadata || {};
-                    const isRov = md.rov === 1 || md.rov === "1" || md.rov === true || md.job_type?.includes('ROV');
-                    const isDiving = md.diving === 1 || md.diving === "1" || md.diving === true || md.job_type?.includes('DIVING');
-
-                    let isCompatible = true;
-                    if (inspMethod === 'DIVING') isCompatible = isDiving;
-                    if (inspMethod === 'ROV') isCompatible = isRov;
-
-                    if (!isCompatible) return;
-
-                    const matchingComp = (allCompsData || []).find((c: any) =>
-                        (item.component_qid && c.q_id === item.component_qid) ||
-                        (item.component_id && c.id === item.component_id) ||
-                        (item.component_type && c.name === item.component_type)
-                    );
+                    // Match component by qid, id, or type — no method filter here
+                    // (ROV/DIVING filter applies to task display, not component scope)
+                    let matchingComp = null;
+                    if (item.component_id) {
+                        matchingComp = (allCompsData || []).find((c: any) => c.id === item.component_id);
+                    }
+                    if (!matchingComp && item.component_qid) {
+                        matchingComp = (allCompsData || []).find((c: any) => c.q_id === item.component_qid);
+                    }
+                    if (!matchingComp && item.component_type && !item.component_qid && !item.component_id) {
+                        matchingComp = (allCompsData || []).find((c: any) => c.code === item.component_type || c.name === item.component_type);
+                    }
 
                     if (matchingComp) {
                         if (!assignedCompsMap.has(matchingComp.id)) {
@@ -2836,6 +2894,8 @@ function V10PreviewLayout() {
                             const realStatus = trueStatusMap.get(dynKey1) || trueStatusMap.get(dynKey2) || 'pending';
                             assignedCompsMap.get(matchingComp.id)?.push({ code: taskToLog, status: realStatus });
                         }
+                    } else {
+                        console.log(`[CompQuery] No match for SOW item: qid=${item.component_qid} cid=${item.component_id} ctype=${item.component_type}`);
                     }
                 });
             }
@@ -2890,7 +2950,7 @@ function V10PreviewLayout() {
             const combined = [...assigned, ...unassigned];
             return { assigned, unassigned, all: combined };
         },
-        staleTime: 10 * 60 * 1000, // 10 minutes cache to avoid huge page loads
+        staleTime: 0,             // Always refetch when structure/sow changes
         refetchOnWindowFocus: false,
     });
 
@@ -5887,7 +5947,15 @@ function V10PreviewLayout() {
                                         <div>
                                             <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
                                             <div className="space-y-1">
-                                                {componentsSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
+                                                {componentsSow.filter((c: any) => {
+                                                    const term = compSearchTerm.toLowerCase().trim();
+                                                    if (!term) return true;
+                                                    const qid = (c.name || '').toLowerCase();
+                                                    const code = (c.raw?.code || '').toLowerCase();
+                                                    const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
+                                                    const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
+                                                    return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term);
+                                                }).map((c: any) => {
                                                     const isSelected = selectedComp?.id === c.id;
                                                     return (
                                                         <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
@@ -5944,7 +6012,15 @@ function V10PreviewLayout() {
                                         <div>
                                             <div className="text-[9px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200">Non-SOW</div>
                                             <div className="space-y-1">
-                                                {componentsNonSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
+                                                {componentsNonSow.filter((c: any) => {
+                                                    const term = compSearchTerm.toLowerCase().trim();
+                                                    if (!term) return true;
+                                                    const qid = (c.name || '').toLowerCase();
+                                                    const code = (c.raw?.code || '').toLowerCase();
+                                                    const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
+                                                    const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
+                                                    return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term);
+                                                }).map((c: any) => (
                                                     <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                         <div className="flex justify-between font-bold">
                                                             <div className="flex items-center gap-2">

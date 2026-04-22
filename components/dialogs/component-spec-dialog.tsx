@@ -1915,7 +1915,6 @@ export function ComponentSpecDialog({
                     const currentAssocId = isCreateMode ? formData.associated_comp_id : viewAssocId;
                     const associatedComp = allComponents?.data?.find((c: any) => c.id === currentAssocId);
 
-<<<<<<< HEAD
                     // Filter candidates: exclude current component
                     const candidates: any[] = (allComponents?.data || []).filter(
                       (c: any) => c.id !== component?.id
@@ -1980,15 +1979,6 @@ export function ComponentSpecDialog({
                             <div>
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Current Association</p>
                             </div>
-=======
-                      <div className="flex items-center space-x-4">
-                        <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider min-w-[120px]">Associated to:</Label>
-                        <div className="flex items-center space-x-2 flex-1">
-                          <div className="min-w-[200px] h-11 px-4 flex items-center bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
-                            <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
-                              {allComponents?.data?.find((c: any) => c.id === (isCreateMode ? formData.associated_comp_id : component?.metadata?.associated_comp_id))?.id_no || "None"}
-                            </span>
->>>>>>> origin/main
                           </div>
 
                           {associatedComp ? (
@@ -2155,54 +2145,8 @@ export function ComponentSpecDialog({
                           )}
                         </div>
                       </div>
-<<<<<<< HEAD
                     );
                   })()}
-=======
-                    </div>
-                  </div>
-
-                  <Dialog open={selectorOpen} onOpenChange={setSelectorOpen}>
-                    <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
-                      <DialogHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/50 border-b">
-                        <DialogTitle className="text-xl font-black uppercase tracking-tight">Select Component</DialogTitle>
-                        <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                          Associate with structure ({structureId})
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="flex-1 overflow-y-auto p-8">
-                        <div className="border border-slate-200/60 dark:border-slate-800/60 rounded-2xl overflow-hidden shadow-sm">
-                          <DataTable
-                            columns={[
-                              { accessorKey: "id_no", header: "ID No" },
-                              { accessorKey: "q_id", header: "Q ID" },
-                              { accessorKey: "code", header: "Code" },
-                              {
-                                id: "actions",
-                                header: "Action",
-                                cell: ({ row }) => (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="rounded-lg font-bold"
-                                    onClick={() => {
-                                      handleInputChange("associated_comp_id", (row.original as any).id);
-                                      setSelectorOpen(false);
-                                    }}
-                                  >
-                                    Select
-                                  </Button>
-                                ),
-                              },
-                            ]}
-                            data={allComponents?.data?.filter((c: any) => c.id !== component?.id) || []}
-                            disableRowClick={true}
-                          />
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
->>>>>>> origin/main
                 </TabsContent>
 
                 {/* Comments Tab */}

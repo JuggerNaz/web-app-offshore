@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ClipboardCheck, LifeBuoy, Bot, ChevronRight, Building2, Search, ChevronDown, Check } from "lucide-react";
+import { ClipboardCheck, LifeBuoy, Bot, ChevronRight, Building2, Search, ChevronDown, Check, AlertTriangle } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 interface JobPack {
@@ -127,7 +127,7 @@ export default function InspectionLanding() {
         }
     }, [selectedJobPack]);
 
-    // Load SOW reports when structure is selected
+    // Load SOW reports when structure is selected OR jobpack changes
     useEffect(() => {
         if (selectedStructure && selectedJobPack) {
             loadSOWReports(selectedJobPack, selectedStructure);
@@ -136,7 +136,7 @@ export default function InspectionLanding() {
             setSelectedSOW("");
             setSelectedMode("");
         }
-    }, [selectedStructure]);
+    }, [selectedStructure, selectedJobPack]);
 
     async function loadJobPacks() {
         try {
@@ -231,6 +231,13 @@ export default function InspectionLanding() {
             // Auto-select if only one structure
             if (jobPack.structures.length === 1) {
                 setSelectedStructure(jobPack.structures[0].id.toString());
+            } else {
+                // Clear selected structure if it's not in the new job pack's structure list
+                setSelectedStructure(prev => {
+                    if (!prev) return "";
+                    const stillValid = jobPack.structures.some((s: any) => s.id.toString() === prev);
+                    return stillValid ? prev : "";
+                });
             }
         }
     }
@@ -292,34 +299,63 @@ export default function InspectionLanding() {
             const reportNumbersSet = new Set<string>();
 
             sowData.forEach((sow: any) => {
-                const sowItems = itemsData?.filter((item: any) =>
-                    item.sow_id === sow.id
-                ) || [];
-
-                // Get distinct report numbers from this SOW
-                sowItems.forEach((item: any) => {
-                    const reportNum = item.report_number || `${sow.structure_title}-${item.id}`;
-
-                    // Only add if not already added (distinct)
-                    const uniqueKey = `${sow.id}-${reportNum}`;
-                    if (!reportNumbersSet.has(uniqueKey)) {
-                        reportNumbersSet.add(uniqueKey);
-
-                        // Extract job_type from report_numbers mappings
-                        const reportMapping = (sow.report_numbers || []).find((r: any) => r.number === reportNum);
-                        const jobType = reportMapping?.job_type || "";
-
+                const reportArray = sow.report_numbers || [];
+                
+                if (reportArray.length > 0) {
+                    reportArray.forEach((r: any) => {
+                        const reportNum = r.number;
+                        if (!reportNum) return;
+                        
+                        const uniqueKey = `${sow.id}-${reportNum}`;
+                        if (!reportNumbersSet.has(uniqueKey)) {
+                            reportNumbersSet.add(uniqueKey);
+                            formatted.push({
+                                sow_id: sow.id,
+                                item_no: reportNum, 
+                                report_number: reportNum,
+                                job_type: r.job_type || "",
+                                scope_description: sow.structure_title || "Inspection Report",
+                                inspection_method: "",
+                                structure_id: sow.structure_id,
+                            });
+                        }
+                    });
+                } else {
+                    // Fallback for older SOWs without defined report_numbers array
+                    const sowItems = itemsData?.filter((item: any) => item.sow_id === sow.id) || [];
+                    let foundAny = false;
+                    sowItems.forEach((item: any) => {
+                        const reportNum = item.report_number;
+                        if (reportNum) {
+                            const uniqueKey = `${sow.id}-${reportNum}`;
+                            if (!reportNumbersSet.has(uniqueKey)) {
+                                reportNumbersSet.add(uniqueKey);
+                                formatted.push({
+                                    sow_id: sow.id,
+                                    item_no: reportNum,
+                                    report_number: reportNum,
+                                    job_type: "",
+                                    scope_description: sow.structure_title || "Inspection Report",
+                                    inspection_method: "",
+                                    structure_id: sow.structure_id,
+                                });
+                                foundAny = true;
+                            }
+                        }
+                    });
+                    
+                    if (!foundAny) {
                         formatted.push({
                             sow_id: sow.id,
-                            item_no: item.id?.toString() || reportNum,
-                            report_number: reportNum,
-                            job_type: jobType,
+                            item_no: "Unassigned",
+                            report_number: "Unassigned Items",
+                            job_type: "",
                             scope_description: sow.structure_title || "Inspection Report",
-                            inspection_method: "", // Not shown, just for compatibility
+                            inspection_method: "",
                             structure_id: sow.structure_id,
                         });
                     }
-                });
+                }
             });
 
             console.log("Formatted distinct SOW reports:", formatted);
@@ -623,21 +659,44 @@ export default function InspectionLanding() {
                         </div>
 
                         {/* Start Button */}
-                        <div className="pt-6">
-                            <Link 
-                                href={`/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${selectedSOW}&mode=DIVING&jpName=${encodeURIComponent(selectedJobPackData?.jobpack_no || selectedJobPackData?.jobpack_title || '')}&structName=${encodeURIComponent(selectedStructureData?.name || '')}&sowReport=${encodeURIComponent(selectedSOWData?.report_number || '')}&jobType=${encodeURIComponent(selectedSOWData?.job_type || '')}`}
-                                className="w-full"
-                            >
+                        <div className="pt-6 border-t border-slate-100 dark:border-slate-800 mt-6">
+                            {selectedStructure && sowReports.length === 0 && (
+                                <div className="mb-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex gap-3 text-amber-800 dark:text-amber-200">
+                                    <AlertTriangle className="h-5 w-5 shrink-0" />
+                                    <div className="text-sm font-medium">
+                                        <strong>No SOW Reports Found</strong>
+                                        <p className="mt-1 opacity-90">This structure has no inspection scope assigned. You cannot enter the workspace without an agreed scope. Please return to the Job Pack Manager to define SOW reports for this structure.</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(!selectedStructure || sowReports.length > 0) ? (
+                                <Link 
+                                    href={selectedJobPack && selectedStructure && selectedSOW ? `/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.sow_id}&mode=DIVING&jpName=${encodeURIComponent(jobPacks.find(j => j.id.toString() === selectedJobPack)?.jobpack_no || '')}&structName=${encodeURIComponent(structures.find(s => s.id.toString() === selectedStructure)?.name || '')}&sowReport=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.report_number || '')}&jobType=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.job_type || '')}` : "#"}
+                                    onClick={(e) => {
+                                        if (!selectedJobPack || !selectedStructure || !selectedSOW) e.preventDefault();
+                                    }}
+                                    className={`w-full block ${(!selectedJobPack || !selectedStructure || !selectedSOW) ? "pointer-events-none" : ""}`}
+                                >
+                                    <Button
+                                        disabled={!selectedJobPack || !selectedStructure || !selectedSOW}
+                                        className={`w-full h-16 text-lg font-black transition-all duration-300 ${(!selectedJobPack || !selectedStructure || !selectedSOW)
+                                            ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                                            : "bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-0.5"}`}
+                                    >
+                                        <span>Start Inspection</span>
+                                        <ChevronRight className="h-6 w-6 ml-2" />
+                                    </Button>
+                                </Link>
+                            ) : (
                                 <Button
-                                    disabled={!selectedJobPack || !selectedStructure || !selectedSOW}
-                                    className={`w-full h-16 text-lg font-black transition-all duration-300 ${(!selectedJobPack || !selectedStructure || !selectedSOW)
-                                        ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
-                                        : "bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-0.5"}`}
+                                    disabled
+                                    className="w-full h-16 text-lg font-black bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
                                 >
                                     <span>Start Inspection</span>
                                     <ChevronRight className="h-6 w-6 ml-2" />
                                 </Button>
-                            </Link>
+                            )}
                         </div>
                     </div>
                 </Card>
