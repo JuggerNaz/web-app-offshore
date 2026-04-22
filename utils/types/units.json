@@ -66,6 +66,48 @@
     "defaultMetric": "%",
     "defaultImperial": "%"
   },
+  "ANGLE": {
+    "metric": [
+      "deg"
+    ],
+    "imperial": [
+      "deg"
+    ],
+    "defaultMetric": "deg",
+    "defaultImperial": "deg"
+  },
+  "TIME": {
+    "metric": [
+      "years"
+    ],
+    "imperial": [
+      "years"
+    ],
+    "defaultMetric": "years",
+    "defaultImperial": "years"
+  },
+  "DISTANCE": {
+    "metric": [
+      "km",
+      "m",
+      "cm",
+      "mm",
+      "in",
+      "ft",
+      "mile"
+    ],
+    "imperial": [
+      "mile",
+      "ft",
+      "in",
+      "mm",
+      "cm",
+      "m",
+      "km"
+    ],
+    "defaultMetric": "km",
+    "defaultImperial": "mile"
+  },
   "DENSITY": {
     "metric": [
       "kg/m³",

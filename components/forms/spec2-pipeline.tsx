@@ -47,7 +47,7 @@ export default function Spec2Pipeline() {
   });
 
   const onSubmit = async (values: z.infer<typeof PipeGeoSchema>) => {
-    if (!data.error && data.data) {
+    if (data && !data.error && data.data) {
       await fetcher(`/api/pipeline/pipegeo/${values.str_id}`, {
         method: "PUT",
         body: JSON.stringify(values),
@@ -67,16 +67,8 @@ export default function Spec2Pipeline() {
     }
   };
 
-  if (error) return (
-    <div className="flex flex-col items-center justify-center p-12 text-center bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border-2 border-dashed border-slate-200 dark:border-slate-800 animate-in fade-in duration-500">
-      <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-2xl mb-4 text-red-500">
-        <Save className="h-8 w-8" />
-      </div>
-      <h2 className="text-xl font-black tracking-tight mb-2">Sync Error</h2>
-      <p className="text-slate-500 max-w-xs mx-auto mb-6">Failed to synchronize geodetic parameters. Please refresh the connection.</p>
-      <Button onClick={() => window.location.reload()} variant="outline" className="rounded-xl px-8 font-bold">Retry Connection</Button>
-    </div>
-  );
+  // We ignore `error` state here so if data isn't found (e.g. not created yet),
+  // we still display the empty form for the user to create new data.
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 space-y-4 animate-in fade-in">

@@ -11,6 +11,8 @@ import { fetcher } from "@/utils/utils";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import specAdditionalDetails from "@/utils/spec-additional-details.json";
+import specUiConfig from "@/utils/spec-ui-config.json";
+import { getUnitOptions, getDefaultUnit } from "@/utils/unit-helpers";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable } from "@/components/data-table/data-table";
 import {
@@ -42,6 +44,9 @@ export type EditableComponent = {
   created_by: string | null;
   modified_by: string | null;
 };
+
+
+
 
 interface ComponentEditDialogProps {
   component: EditableComponent | null;
@@ -140,6 +145,12 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     fetcher
   );
 
+  const { data: pipelineData } = useSWR(
+    pageType === "pipeline" && structureId ? `/api/pipeline/${structureId}` : null,
+    fetcher
+  );
+
+
   const legOptions = platformData?.data ? Array.from({ length: 20 }, (_, i) => {
     const key = `leg_t${i + 1}`;
     const val = platformData.data[key];
@@ -151,6 +162,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     structureId ? `/api/structure-components/${structureId}` : null,
     fetcher
   );
+
+  // Global company settings for units
+  const { data: companyData } = useSWR('/api/company-settings', fetcher);
 
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [assocSearch, setAssocSearch] = useState("");
@@ -174,6 +188,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     value: x.face,
     label: x.face
   })) : [];
+  
+  const defUnit = companyData?.data?.def_unit || "METRIC";
+  const isImperial = defUnit === "IMPERIAL";
 
   const [formData, setFormData] = useState({
     q_id: "",
@@ -185,11 +202,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     s_leg: "",
     f_leg: "",
     dist: "",
-    dist_unit: "m",
+    dist_unit: "",
     elv_1: "",
-    elv_1_unit: "m",
+    elv_1_unit: "",
     elv_2: "",
-    elv_2_unit: "m",
+    elv_2_unit: "",
     clk_pos: "",
     lvl: "",
     face: "",
@@ -197,24 +214,37 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     comp_group: "",
     associated_comp_id: null as number | null,
     kp: "",
-    kp_unit: "km",
+    kp_unit: "",
     easting: "",
-    easting_unit: "m",
+    easting_unit: "",
     northing: "",
-    northing_unit: "m",
+    northing_unit: "",
     depth: "",
-    depth_unit: "m",
+    depth_unit: "",
+
     additionalInfo: {} as Record<string, any>,
   });
 
-  // Riser specific options (moved here to use formData)
+  // Library data fetching (moved here to ensure formData is defined)
+  const { data: pipeMatData } = useSWR(open && formData.code?.toLowerCase() === 'pp' ? `/api/library/PIPE_MAT` : null, fetcher);
   const { data: risrTypData } = useSWR(`/api/library/RISR_TYP`, fetcher);
   const { data: risrMatData } = useSWR(open && formData.code?.toLowerCase() === 'rs' ? `/api/library/RISR_MAT` : null, fetcher);
-  const { data: pipeRtgData } = useSWR(open && (formData.code?.toLowerCase() === 'rs' || formData.code?.toLowerCase() === 'cm') ? `/api/library/PIPE_RTG` : null, fetcher);
+  const { data: pipeRtgData } = useSWR(open && (formData.code?.toLowerCase() === 'rs' || formData.code?.toLowerCase() === 'cm' || formData.code?.toLowerCase() === 'pc') ? `/api/library/PIPE_RTG` : null, fetcher);
+  const { data: plidTypData } = useSWR(open && formData.code?.toLowerCase() === 'pc' ? `/api/library/PLID_TYP` : null, fetcher);
   const { data: risgTypData } = useSWR(open && (formData.code?.toLowerCase() === 'rg' || formData.code?.toLowerCase() === 'sg') ? `/api/library/RISG_TYP` : null, fetcher);
   const { data: risbTypData } = useSWR(open && formData.code?.toLowerCase() === 'rb' ? `/api/library/RISB_TYP` : null, fetcher);
   const { data: stubMatData } = useSWR(open && formData.code?.toLowerCase() === 'sd' ? `/api/library/STUB_MAT` : null, fetcher);
   const { data: wsupTypData } = useSWR(open && formData.code?.toLowerCase() === 'wp' ? `/api/library/WSUP_TYP` : null, fetcher);
+  const { data: supoTypData } = useSWR(open && formData.code?.toLowerCase() === 'ss' ? `/api/library/SUPO_TYP` : null, fetcher);
+  // Pipeline Tap Valve specific options
+  const { data: tapvTypData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/TAPV_TYP` : null, fetcher);
+  const { data: pipeClsData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/PIPE_CLS` : null, fetcher);
+  const { data: cageTypData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/CAGE_TYP` : null, fetcher);
+  const { data: tapvMatData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/TAPV_MAT` : null, fetcher);
+  const { data: tapvCtgData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/TAPV_CTG` : null, fetcher);
+  const { data: cageAtcData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/CAGE_ATC` : null, fetcher);
+  const { data: valvManData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/VALV_MAN` : null, fetcher);
+  const { data: fjTypData } = useSWR(open && formData.code?.toLowerCase() === 'pw' ? `/api/library/FJ_TYPE` : null, fetcher);
   const getTemplate = (code: string | null, type: string) => {
     if (!code) return {};
     const lowerCode = code.toLowerCase();
@@ -296,35 +326,72 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     if (lowerCode === 'sd' && !('stub_mat' in patchedTemplate)) {
       patchedTemplate.stub_mat = "";
     }
+    if (lowerCode === 'pv' && !('tapv_typ' in patchedTemplate)) {
+      patchedTemplate.tapv_typ = "";
+      patchedTemplate.pipe_cls = "";
+      patchedTemplate.cage_typ = "";
+      patchedTemplate.tapv_mat = "";
+      patchedTemplate.tapv_ctg = "";
+      patchedTemplate.cage_atc = "";
+      patchedTemplate.valv_man = "";
+    }
+    if (lowerCode === 'pc' && !('plid_typ' in patchedTemplate)) {
+      patchedTemplate.plid_typ = "";
+      patchedTemplate.pipe_rtg = "";
+    }
+    if (lowerCode === 'ss' && !('supo_typ' in patchedTemplate)) {
+      patchedTemplate.supo_typ = "";
+    }
+    if (lowerCode === 'pw' && !('weld_des' in patchedTemplate)) {
+      patchedTemplate.weld_des = "";
+      patchedTemplate.weld_typ = "";
+      patchedTemplate.weld_mat = "";
+      patchedTemplate.fj_typ = "";
+    }
 
     return patchedTemplate;
   };
 
-  // Dynamic unit defaults based on platformData
+  // Dynamic unit defaults based on company settings
   useEffect(() => {
-    const isImp = platformData?.data?.def_unit === "IMPERIAL";
-    if (isImp && open) {
+    const isImp = companyData?.data?.def_unit === "IMPERIAL";
+    if (open) {
+
       setFormData(prev => {
         let changed = false;
         const updates: any = {};
-        if (prev.dist_unit === "m" || prev.dist_unit === "cm" || prev.dist_unit === "mm") { updates.dist_unit = "inches"; changed = true; }
-        if (prev.elv_1_unit === "m" || prev.elv_1_unit === "cm" || prev.elv_1_unit === "mm") { updates.elv_1_unit = "inches"; changed = true; }
-        if (prev.elv_2_unit === "m" || prev.elv_2_unit === "cm" || prev.elv_2_unit === "mm") { updates.elv_2_unit = "inches"; changed = true; }
-        if (prev.kp_unit === "km") { updates.kp_unit = "mile"; changed = true; }
-        if (prev.depth_unit === "m" || prev.depth_unit === "cm" || prev.depth_unit === "mm") { updates.depth_unit = "inches"; changed = true; }
-        if (prev.easting_unit === "m" || prev.easting_unit === "cm" || prev.easting_unit === "mm") { updates.easting_unit = "inches"; changed = true; }
-        if (prev.northing_unit === "m" || prev.northing_unit === "cm" || prev.northing_unit === "mm") { updates.northing_unit = "inches"; changed = true; }
+        
+        const dUnit = getDefaultUnit("LENGTH", isImp, "dist", component?.code || undefined) || (isImp ? "ft" : "m");
+        const eUnit = getDefaultUnit("LENGTH", isImp, "elv", component?.code || undefined) || (isImp ? "ft" : "m");
+        const kpUnit = getDefaultUnit("DISTANCE", isImp, "kp", component?.code || undefined) || (isImp ? "mile" : "km");
+        const depthUnit = getDefaultUnit("LENGTH", isImp, "depth", component?.code || undefined) || (isImp ? "ft" : "m");
+        const eastUnit = getDefaultUnit("LENGTH", isImp, "easting", component?.code || undefined) || (isImp ? "ft" : "m");
+        const northUnit = getDefaultUnit("LENGTH", isImp, "northing", component?.code || undefined) || (isImp ? "ft" : "m");
+
+        if (prev.dist_unit !== dUnit) { updates.dist_unit = dUnit; changed = true; }
+        if (prev.elv_1_unit !== eUnit) { updates.elv_1_unit = eUnit; changed = true; }
+        if (prev.elv_2_unit !== eUnit) { updates.elv_2_unit = eUnit; changed = true; }
+        if (prev.kp_unit !== kpUnit) { updates.kp_unit = kpUnit; changed = true; }
+        if (prev.depth_unit !== depthUnit) { updates.depth_unit = depthUnit; changed = true; }
+        if (prev.easting_unit !== eastUnit) { updates.easting_unit = eastUnit; changed = true; }
+        if (prev.northing_unit !== northUnit) { updates.northing_unit = northUnit; changed = true; }
+
         
         if (prev.additionalInfo) {
           const newAdd = { ...prev.additionalInfo };
           let addChanged = false;
+          const componentConfig = specUiConfig.components.find((c: any) => c.code?.toLowerCase() === (component?.code || "").toLowerCase());
           Object.keys(newAdd).forEach(k => {
              if (k.endsWith('_unit')) {
-               if (['m', 'cm', 'mm'].includes(newAdd[k])) {
-                 newAdd[k] = "inches";
-                 addChanged = true;
-               } else if (['tonne', 'kg', 'g'].includes(newAdd[k])) {
-                 newAdd[k] = "pounds";
+               const fieldName = k.replace('_unit', '');
+               const fieldConfig = componentConfig?.fields.find((f: any) => f.name === fieldName);
+               const category = fieldConfig?.unitcategory || null;
+               
+               const resolvedCategory = category || (fieldName.includes('weight') || fieldName.includes('wt') ? 'weight' : 'length');
+               
+               const newUnit = getDefaultUnit(resolvedCategory, isImp, fieldName, component?.code || undefined);
+               if (newUnit && newAdd[k] !== newUnit) {
+                 newAdd[k] = newUnit;
                  addChanged = true;
                }
              }
@@ -338,7 +405,10 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         return changed ? { ...prev, ...updates } : prev;
       });
     }
-  }, [platformData?.data?.def_unit, open]);
+  }, [companyData?.data?.def_unit, open, component?.code]);
+
+
+
 
   useEffect(() => {
     if (open && component) {
@@ -353,11 +423,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         s_leg: component.metadata?.s_leg ?? "",
         f_leg: component.metadata?.f_leg ?? "",
         dist: component.metadata?.dist ?? "",
-        dist_unit: component.metadata?.dist_unit ?? "m",
+        dist_unit: component.metadata?.dist_unit ?? "",
         elv_1: component.metadata?.elv_1 ?? "",
-        elv_1_unit: component.metadata?.elv_1_unit ?? "m",
+        elv_1_unit: component.metadata?.elv_1_unit ?? "",
         elv_2: component.metadata?.elv_2 ?? "",
-        elv_2_unit: component.metadata?.elv_2_unit ?? "m",
+        elv_2_unit: component.metadata?.elv_2_unit ?? "",
         clk_pos: component.metadata?.clk_pos ?? "",
         lvl: component.metadata?.lvl ?? "",
         face: component.metadata?.face ?? "",
@@ -365,13 +435,14 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
         kp: component.metadata?.kp ?? "",
-        kp_unit: component.metadata?.kp_unit ?? "km",
+        kp_unit: component.metadata?.kp_unit ?? "",
         easting: component.metadata?.easting ?? "",
-        easting_unit: component.metadata?.easting_unit ?? "m",
+        easting_unit: component.metadata?.easting_unit ?? "",
         northing: component.metadata?.northing ?? "",
-        northing_unit: component.metadata?.northing_unit ?? "m",
+        northing_unit: component.metadata?.northing_unit ?? "",
         depth: component.metadata?.depth ?? "",
-        depth_unit: component.metadata?.depth_unit ?? "m",
+        depth_unit: component.metadata?.depth_unit ?? "",
+
         additionalInfo: (() => {
           const info = {
             ...template,
@@ -379,7 +450,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
           };
 
           const code = component.code?.trim().toLowerCase();
-          const isSpecialComp = ['fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd'].includes(code || '');
+          const isSpecialComp = ['pp', 'fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd', 'yp', 'pv', 'pc', 'ss', 'pw'].includes(code || '');
 
           if (isSpecialComp) {
             if (code === 'ct') {
@@ -428,6 +499,15 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.attach_method;
               delete info.top_und;
               delete info.comp_group;
+            } else if (code === 'sd') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
+              delete info.id_chk;
+              delete info.dist_leg;
+              delete info.stub_mat;
+            } else if (code === 'pp') {
+              delete info.depth;
             } else if (code === 'it') {
               delete info.wall_thk;
               delete info.depth;
@@ -527,13 +607,22 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
             } else if (code === 'ce') {
               delete info.wall_thk;
               delete info.id_chk;
-            } else if (code === 'sd') {
+            } else if (code === 'pp') {
+              delete info.depth;
+            } else if (code === 'pv') {
+              delete info.wall_thk;
+              delete info.depth;
+            } else if (code === 'pc') {
+              delete info.wall_thk;
+              delete info.depth;
+            } else if (code === 'ss') {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
-              delete info.id_chk;
-              delete info.dist_leg;
-              delete info.stub_mat;
+            } else if (code === 'pw') {
+              delete info.wall_thk;
+              delete info.depth;
+              delete info.diameter;
             }
           } else {
             info.wall_thk = component.metadata?.additionalInfo?.wall_thk ?? "";
@@ -699,8 +788,8 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
             {/* Specifications Tab */}
             <TabsContent value="specifications" className="space-y-8 mt-0 outline-none">
               <div className="grid grid-cols-12 gap-6 bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
-                {/* Row 1: Q ID, Code */}
-                <div className="col-span-10 space-y-2">
+                {/* Row 1: Q ID, Description, Code */}
+                <div className="col-span-3 space-y-2">
                   <Label htmlFor="edit-qId" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Q Id</Label>
                   <Input
                     id="edit-qId"
@@ -708,22 +797,12 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     value={formData.q_id}
                     onChange={(e) => handleChange("q_id", e.target.value)}
                   />
-                  <p className="text-[10px] font-mono font-bold text-slate-400 ml-1">
+                  <p className="text-[9px] font-mono font-bold text-slate-400 ml-1 truncate">
                     ID No: {generatedIdNo || component?.id_no || "-"}
                   </p>
                 </div>
-                <div className="col-span-2 space-y-2">
-                  <Label htmlFor="edit-code" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Code</Label>
-                  <Input
-                    id="edit-code"
-                    className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 text-center font-black h-11"
-                    value={formData.code}
-                    onChange={(e) => handleChange("code", e.target.value)}
-                  />
-                </div>
 
-                {/* Row 2: Description */}
-                <div className="col-span-12 space-y-2">
+                <div className="col-span-7 space-y-2">
                   <Label htmlFor="edit-description" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Description</Label>
                   <Input
                     id="edit-description"
@@ -733,75 +812,85 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                   />
                 </div>
 
-                {pageType === "platform" && (
-                  <>
-                    {/* Row 3: Start Node, End Node */}
-                    <div className="col-span-6 space-y-2">
-                      <Label htmlFor="edit-sNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Node</Label>
+                <div className="col-span-2 space-y-2">
+                  <Label htmlFor="edit-code" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 text-center block">Code</Label>
                   <Input
-                    id="edit-sNode"
-                    className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
-                    value={formData.s_node}
-                    onChange={(e) => handleChange("s_node", e.target.value)}
-                  />
-                </div>
-                <div className="col-span-6 space-y-2">
-                  <Label htmlFor="edit-eNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Node</Label>
-                  <Input
-                    id="edit-eNode"
-                    className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
-                    value={formData.f_node}
-                    onChange={(e) => handleChange("f_node", e.target.value)}
+                    id="edit-code"
+                    className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 text-center font-black h-11"
+                    value={formData.code}
+                    onChange={(e) => handleChange("code", e.target.value)}
                   />
                 </div>
 
-                {/* Row 4: Start Leg, End Leg, Distance */}
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-sLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Leg</Label>
-                  {pageType === "platform" ? (
-                    <Select
-                      value={formData.s_leg}
-                      onValueChange={(val) => handleChange("s_leg", val)}
-                      disabled={legOptions.length === 0}
-                    >
-                      <SelectTrigger id="edit-sLeg" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
-                        <SelectValue placeholder="Select start leg" />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-xl">
-                        {legOptions.map((opt: any) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
-                  )}
-                </div>
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-eLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Leg</Label>
-                  {pageType === "platform" ? (
-                    <Select
-                      value={formData.f_leg}
-                      onValueChange={(val) => handleChange("f_leg", val)}
-                      disabled={legOptions.length === 0}
-                    >
-                      <SelectTrigger id="edit-eLeg" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
-                        <SelectValue placeholder="Select end leg" />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-xl">
-                        {legOptions.map((opt: any) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
-                  )}
-                </div>
+                {pageType === "platform" && (
+                  <>
+                    {/* Combined Row: Start Node, End Node, Start Leg, End Leg */}
+                    <div className="col-span-3 space-y-2">
+                      <Label htmlFor="edit-sNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Node</Label>
+                      <Input
+                        id="edit-sNode"
+                        className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
+                        value={formData.s_node}
+                        onChange={(e) => handleChange("s_node", e.target.value)}
+                      />
+                    </div>
+                    <div className="col-span-3 space-y-2">
+                      <Label htmlFor="edit-eNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Node</Label>
+                      <Input
+                        id="edit-eNode"
+                        className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
+                        value={formData.f_node}
+                        onChange={(e) => handleChange("f_node", e.target.value)}
+                      />
+                    </div>
+
+                    <div className="col-span-3 space-y-2">
+                      <Label htmlFor="edit-sLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Leg</Label>
+                      {pageType === "platform" ? (
+                        <Select
+                          value={formData.s_leg}
+                          onValueChange={(val) => handleChange("s_leg", val)}
+                          disabled={legOptions.length === 0}
+                        >
+                          <SelectTrigger id="edit-sLeg" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
+                            <SelectValue placeholder="Select start leg" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl">
+                            {legOptions.map((opt: any) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
+                      )}
+                    </div>
+                    <div className="col-span-3 space-y-2">
+                      <Label htmlFor="edit-eLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Leg</Label>
+                      {pageType === "platform" ? (
+                        <Select
+                          value={formData.f_leg}
+                          onValueChange={(val) => handleChange("f_leg", val)}
+                          disabled={legOptions.length === 0}
+                        >
+                          <SelectTrigger id="edit-eLeg" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
+                            <SelectValue placeholder="Select end leg" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl">
+                            {legOptions.map((opt: any) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
+                      )}
+                    </div>
+                {/* Row 3: Distance, Elevation 1, Elevation 2 (Measurables) */}
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-dist" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Distance</Label>
                   <div className="relative">
@@ -813,37 +902,23 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={formData.dist_unit}
+                        value={formData.dist_unit || getDefaultUnit("LENGTH", isImperial, "dist", component?.code || undefined)}
                         onValueChange={(val) => handleChange("dist_unit", val)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl">
-                          {platformData?.data?.def_unit === "IMPERIAL" ? (
-                            <>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                            </>
-                          ) : (
-                            <>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
-                            </>
-                          )}
+                          {getUnitOptions("LENGTH", isImperial).map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
 
-                {/* Row 5: elevations and clock pos */}
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-elv1" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Elevation 1</Label>
                   <div className="relative">
@@ -855,35 +930,23 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={formData.elv_1_unit}
+                        value={formData.elv_1_unit || getDefaultUnit("LENGTH", isImperial, "elv_1", component?.code || undefined)}
                         onValueChange={(val) => handleChange("elv_1_unit", val)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl">
-                          {platformData?.data?.def_unit === "IMPERIAL" ? (
-                            <>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                            </>
-                          ) : (
-                            <>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
-                            </>
-                          )}
+                          {getUnitOptions("LENGTH", isImperial).map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
+
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-elv2" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Elevation 2</Label>
                   <div className="relative">
@@ -895,35 +958,24 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={formData.elv_2_unit}
+                        value={formData.elv_2_unit || getDefaultUnit("LENGTH", isImperial, "elv_2", component?.code || undefined)}
                         onValueChange={(val) => handleChange("elv_2_unit", val)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl">
-                          {platformData?.data?.def_unit === "IMPERIAL" ? (
-                            <>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                            </>
-                          ) : (
-                            <>
-                              <SelectItem value="m">m</SelectItem>
-                              <SelectItem value="cm">cm</SelectItem>
-                              <SelectItem value="mm">mm</SelectItem>
-                              <SelectItem value="inches">inches</SelectItem>
-                              <SelectItem value="feet">feet</SelectItem>
-                            </>
-                          )}
+                          {getUnitOptions("LENGTH", isImperial).map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
+
+                {/* Row 4: Clock Position, Level, Face (Context) */}
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-clockPos" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Clock Position</Label>
                   <Select
@@ -946,7 +998,6 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                   </Select>
                 </div>
 
-                {/* Row 6: Level / Face / Part */}
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-level" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Level</Label>
                   <Select
@@ -965,6 +1016,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-face" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Face</Label>
                   <Select
@@ -983,7 +1035,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="col-span-4 space-y-2">
+
+                {/* Row 5: Part, Structural Group (Identity) */}
+                <div className="col-span-6 space-y-2">
                   <Label htmlFor="edit-part" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Part</Label>
                   <Select
                     value={formData.top_und}
@@ -999,14 +1053,13 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                   </Select>
                 </div>
 
-                {/* Row 7: Structural Group */}
-                <div className="col-span-12 space-y-2">
+                <div className="col-span-6 space-y-2">
                   <Label htmlFor="edit-group" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Structural Group</Label>
                   <Select
                     value={formData.comp_group}
                     onValueChange={(val) => handleChange("comp_group", val)}
                   >
-                    <SelectTrigger id="edit-group" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-12 font-bold">
+                    <SelectTrigger id="edit-group" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
                       <SelectValue placeholder="Select structural group" />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl z-[9999]">
@@ -1025,7 +1078,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
 
             {pageType === "pipeline" && (
               <>
-                <div className="col-span-6 space-y-2">
+                <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-kp" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">KP</Label>
                   <div className="relative">
                     <Input
@@ -1036,50 +1089,25 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={formData.kp_unit}
+                        value={formData.kp_unit || getDefaultUnit("DISTANCE", isImperial, "kp", component?.code || undefined)}
                         onValueChange={(val) => handleChange("kp_unit", val)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl z-[9999]">
-                          <SelectItem value="km">km</SelectItem>
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="mile">mile</SelectItem>
+                          {getUnitOptions("DISTANCE", isImperial).map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
 
-                <div className="col-span-6 space-y-2">
-                  <Label htmlFor="edit-depth-pipe" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Depth</Label>
-                  <div className="relative">
-                    <Input
-                      id="edit-depth-pipe"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                      value={formData.depth}
-                      onChange={(e) => handleChange("depth", e.target.value)}
-                    />
-                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                      <Select
-                        value={formData.depth_unit}
-                        onValueChange={(val) => handleChange("depth_unit", val)}
-                      >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl z-[9999]">
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="cm">cm</SelectItem>
-                          <SelectItem value="ft">ft</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="col-span-6 space-y-2">
+                <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-easting" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Easting</Label>
                   <div className="relative">
                     <Input
@@ -1090,22 +1118,24 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={formData.easting_unit}
+                        value={formData.easting_unit || getDefaultUnit("LENGTH", isImperial, "easting", component?.code || undefined)}
                         onValueChange={(val) => handleChange("easting_unit", val)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl z-[9999]">
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="km">km</SelectItem>
+                          {getUnitOptions("LENGTH", isImperial).map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
 
-                <div className="col-span-6 space-y-2">
+                <div className="col-span-4 space-y-2">
                   <Label htmlFor="edit-northing" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Northing</Label>
                   <div className="relative">
                     <Input
@@ -1116,15 +1146,17 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                     />
                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                       <Select
-                        value={formData.northing_unit}
+                        value={formData.northing_unit || getDefaultUnit("LENGTH", isImperial, "northing", component?.code || undefined)}
                         onValueChange={(val) => handleChange("northing_unit", val)}
                       >
-                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
                           <SelectValue />
                         </SelectTrigger>
+
                         <SelectContent className="rounded-xl z-[9999]">
-                          <SelectItem value="m">m</SelectItem>
-                          <SelectItem value="km">km</SelectItem>
+                          {getUnitOptions("LENGTH", isImperial).map(u => (
+                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1185,6 +1217,13 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         if (key === 'no_caissons') label = 'No. Protected Caissons';
                         if (key === 'no_conductors') label = 'No. Protected Conductor';
 
+                        if (key === 'pipe_mat') label = 'Pipeline Material';
+                        if (key === 'spool_piece') label = 'Spool Piece?';
+                        if (key === 'cons_span') label = 'Constructional Span';
+                        if (key === 'oper_span') label = 'Operational Span';
+                        if (key === 'coat_cond') label = 'Coating Condition';
+                        if (key === 'gen_cond') label = 'General Condition';
+
                         if (key === 'easting') label = 'Easting';
                         if (key === 'northing') label = 'Northing';
                         if (key === 'equipment') label = 'Equipment';
@@ -1231,28 +1270,54 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         if (key === 'boatlanding_types') label = 'Boatlanding Types';
                         if (key === 'valve_status') label = 'Status of the Valve';
                         if (key === 'dist_from_legs') label = 'dist. from legs';
+                        if (key === 'tapv_typ') label = 'Pipeline Tap Valve Type';
+                        if (key === 'pipe_cls') label = 'Pipe Class';
+                        if (key === 'cage_typ') label = 'Cage Type';
+                        if (key === 'tapv_mat') label = 'Pipeline Tap Valve Material';
+                        if (key === 'tapv_ctg') label = 'Pipeline Tap Valve Coating';
+                        if (key === 'cage_atc') label = 'Cage Attachment Type';
+                        if (key === 'valv_man') label = 'Valve Manufacturers';
+                        if (key === 'blind_flange') label = 'Blind Flange?';
+                        if (key === 'diameter') label = 'Diameter';
+                        if (key === 'desg_press') label = 'Design Pressure';
+                        if (key === 'op_press') label = 'Operating Pressure';
+                        if (key === 'no_supports') label = 'No. of Supports';
+                        if (key === 'plid_typ') label = 'Repair Clamp Type';
+                        if (key === 'pipe_rtg') label = 'Pipeline/Riser/Clamp Rating';
+                        if (key === 'no_bolts') label = 'No. Bolts';
+                        if (key === 'bolt_tension') label = 'Bolt Tension';
+                        if (key === 'seal_welded') label = 'Seal Welded';
+                        if (key === 'perm_clamp') label = 'Permanent Clamp';
+                        if (key === 'supo_typ') label = 'Support Type';
+                        if (key === 'fj_typ') label = 'Field Joint Wrappings';
 
                         let unit: string | null = null;
                         let unitOptions: string[] = [];
                         const k = key.toLowerCase();
                         const isImperial = platformData?.data?.def_unit === "IMPERIAL";
 
-                        if (k.includes('length') || k.includes('width') || k.includes('diameter') || k.includes('depth') || k.includes('dim')) {
-                          unitOptions = isImperial ? ['inches', 'feet', 'm', 'cm', 'mm'] : ['m', 'cm', 'mm', 'inches', 'feet'];
-                          unit = formData.additionalInfo[`${key}_unit`] || (isImperial ? 'inches' : (lowerCode === 'ce' || lowerCode === 'gs' ? "m" : "mm"));
-                        } else if (k.includes('weight') || k.includes('wt')) {
-                          unitOptions = isImperial ? ['pounds', 'tonne', 'kg', 'g'] : ['tonne', 'kg', 'g', 'pounds'];
-                          unit = formData.additionalInfo[`${key}_unit`] || (isImperial ? 'pounds' : "tonne");
+                        // Get category from config
+                        const componentConfig = specUiConfig.components.find((c: any) => c.code?.toLowerCase() === lowerCode);
+                        const fieldConfig = componentConfig?.fields.find((f: any) => f.name === key);
+                        const category = fieldConfig?.unitcategory || null;
+
+                        // Fallback logic if category is missing in config
+                        const resolvedCategory = category || (k.includes('weight') || k.includes('wt') ? 'weight' : (k.includes('length') || k.includes('width') || k.includes('diameter') || k.includes('depth') || k.includes('dim') || k.includes('span') ? 'length' : null));
+
+                        const options = getUnitOptions(resolvedCategory, isImperial);
+                        if (options.length > 0) {
+                          unitOptions = options;
+                          unit = formData.additionalInfo[`${key}_unit`] || getDefaultUnit(resolvedCategory, isImperial, key, lowerCode);
                         } else {
+                          // Special cases for fields without a direct category in config
                           if (key === 'angle' && lowerCode === 'yp') { unit = "deg."; unitOptions = ["deg."]; }
-                          else if (key === 'wall_thk' || key === 'nc_wall_thk' || key === 'memb_wall_thk' || key === 'node_diam' || key === 'memb_diam' || key === 'supp_wt' || key === 'memb_wt' || key === 'supp_diam') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
-                          else if (key === 'dist_from_legs') { unit = "m"; unitOptions = ['m', 'cm', 'mm']; }
-                          else if (key === 'life' && lowerCode === 'an') { unit = "years"; unitOptions = ['years']; }
-                          else if (key === 'termination_p' && lowerCode === 'cs') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
-                          else if (key === 'bolt_diam' && lowerCode === 'cl') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
-                          else if (key === 'out_diam' && lowerCode === 'cd') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
-                          else if (key === 'in_diam' && lowerCode === 'cd') { unit = "mm"; unitOptions = ['m', 'cm', 'mm']; }
-                          else if ((key === 'desg_press' || key === 'op_press') && lowerCode === 'rs') { unit = "bars"; unitOptions = ['bars']; }
+                          else if (key === 'life' && lowerCode === 'an') { unit = "years"; unitOptions = ["years"]; }
+                          else if ((key === 'desg_press' || key === 'op_press') && lowerCode === 'rs') { unit = "bars"; unitOptions = ["bars", "psi"]; }
+                          else {
+                            // Default fallback - no unit
+                            unit = null;
+                            unitOptions = [];
+                          }
                         }
 
                         // Override with existing unit if available
@@ -1328,6 +1393,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         if (key === 'cais_at' && lowerCode === 'cs') return renderSelect(key, "Select attachment type", caisAtData);
                         if (key === 'pile_typ' && lowerCode === 'pl') return renderSelect(key, "Select pile type", pileTypeData);
                         if (key === 'pile_mat' && lowerCode === 'pl') return renderSelect(key, "Select pile material", pileMatData);
+                        if (key === 'pipe_mat' && lowerCode === 'pp') return renderSelect(key, "Select material", pipeMatData);
                         if (key === 'thetype' && lowerCode === 'an') return renderSelect(key, "Select anode type", anodeTypeData);
                         if (key === 'position' && lowerCode === 'an') return renderSelect(key, "Select anode position", positionLib);
                         if (key === 'material' && lowerCode === 'an') return renderSelect(key, "Select anode material type", anodeMatData);
@@ -1362,7 +1428,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                             </div>
                           );
                         }
-                        if (key === 'corr_ctg' && (lowerCode === 'cs' || lowerCode === 'hd' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hm' || lowerCode === 'rs')) return renderSelect(key, "Select coating type", corrCtgData);
+                        if (key === 'corr_ctg' && (lowerCode === 'pp' || lowerCode === 'cs' || lowerCode === 'hd' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hm' || lowerCode === 'rs')) return renderSelect(key, "Select coating type", corrCtgData);
                         if (key === 'clam_typ' && lowerCode === 'cl') return renderSelect(key, "Select clamp type", clamTypeData);
                         if (key === 'clam_mat' && lowerCode === 'cl') return renderSelect(key, "Select clamp material", clamMatData);
                         if (key === 'coat_typ' && lowerCode === 'cd') return renderSelect(key, "Select coating type", coatTypData);
@@ -1399,9 +1465,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         if (key === 'hose_typ' && lowerCode === 'hs') return renderSelect(key, "Select hose type", hoseTypData);
                         if (key === 'hose_cnt' && lowerCode === 'hs') return renderSelect(key, "Select contents", hoseCntData);
                         if (key === 'flan_cls' && lowerCode === 'hs') return renderSelect(key, "Select flange class", flanClsData);
-                        if (key === 'weld_typ' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select weld type", weldTypData);
-                        if (key === 'weld_des' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select design code", weldDesData);
-                        if (key === 'weld_mat' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select material", weldMatData);
+                        if (key === 'weld_typ' && (lowerCode === 'wn' || lowerCode === 'wp' || lowerCode === 'pw')) return renderSelect(key, "Select weld type", weldTypData);
+                        if (key === 'weld_des' && (lowerCode === 'wn' || lowerCode === 'wp' || lowerCode === 'pw')) return renderSelect(key, "Select design code", weldDesData);
+                        if (key === 'weld_mat' && (lowerCode === 'wn' || lowerCode === 'wp' || lowerCode === 'pw')) return renderSelect(key, "Select material", weldMatData);
                         if (key === 'weld_cfg' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select configuration", weldCfgData);
                         if (key === 'risr_typ' && lowerCode === 'rs') return renderSelect(key, "Select riser type", risrTypData);
                         if (key === 'risr_mat' && lowerCode === 'rs') return renderSelect(key, "Select material", risrMatData);
@@ -1409,6 +1475,17 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         if (key === 'risg_typ' && lowerCode === 'rg') return renderSelect(key, "Select riser guard type", risgTypData);
                         if (key === 'risb_typ' && lowerCode === 'rb') return renderSelect(key, "Select beam type", risbTypData);
                         if (key === 'wsup_typ' && lowerCode === 'wp') return renderSelect(key, "Select component type", wsupTypData);
+                        if (key === 'tapv_typ' && lowerCode === 'pv') return renderSelect(key, "Select tap valve type", tapvTypData);
+                        if (key === 'pipe_cls' && lowerCode === 'pv') return renderSelect(key, "Select pipe class", pipeClsData);
+                        if (key === 'cage_typ' && lowerCode === 'pv') return renderSelect(key, "Select cage type", cageTypData);
+                        if (key === 'tapv_mat' && lowerCode === 'pv') return renderSelect(key, "Select material", tapvMatData);
+                        if (key === 'tapv_ctg' && lowerCode === 'pv') return renderSelect(key, "Select coating", tapvCtgData);
+                        if (key === 'cage_atc' && lowerCode === 'pv') return renderSelect(key, "Select attachment", cageAtcData);
+                        if (key === 'valv_man' && lowerCode === 'pv') return renderSelect(key, "Select manufacturer", valvManData);
+                        if (key === 'plid_typ' && lowerCode === 'pc') return renderSelect(key, "Select clamp type", plidTypData);
+                        if (key === 'pipe_rtg' && lowerCode === 'pc') return renderSelect(key, "Select rating", pipeRtgData);
+                        if (key === 'supo_typ' && lowerCode === 'ss') return renderSelect(key, "Select support type", supoTypData);
+                        if (key === 'fj_typ' && lowerCode === 'pw') return renderSelect(key, "Select field joint wrapping", fjTypData);
 
                         return (
                           <div key={key} className={cn("space-y-2", key === 'has_gas_seepage' && "col-span-2")}>
@@ -1440,18 +1517,20 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                                         value={unit}
                                         onValueChange={(val) => handleAdditionalInfoChange(`${key}_unit`, val)}
                                       >
-                                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg">
+                                        <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-bold lowercase rounded-lg">
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent className="rounded-xl">
                                           {unitOptions.map((opt) => (
-                                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                            <SelectItem key={opt} value={opt} className="text-[10px] font-medium lowercase">
+                                              {opt}
+                                            </SelectItem>
                                           ))}
                                         </SelectContent>
                                       </Select>
                                     </div>
                                   ) : (
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 tracking-tighter">
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 tracking-tighter lowercase">
                                       {unit}
                                     </span>
                                   )

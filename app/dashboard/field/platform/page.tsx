@@ -18,6 +18,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Filter, X, RotateCcw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface Platform {
   plat_id: number;
@@ -26,6 +45,7 @@ interface Platform {
   plegs: number | null;
   process: string | null;
   ptype: string | null;
+  field_name?: string;
   images?: Array<{
     id: number;
     path: string;
@@ -36,7 +56,7 @@ interface Platform {
 }
 
 type ViewMode = "card" | "list";
-type SortField = "title" | "plegs" | "process" | "ptype";
+type SortField = "title" | "plegs" | "process" | "ptype" | "field_name";
 type SortOrder = "asc" | "desc";
 
 // Improved Oil Platform SVG Icon Component
@@ -62,9 +82,24 @@ const OilPlatformIcon = ({ className = "w-20 h-20" }: { className?: string }) =>
   </svg>
 );
 
+interface FilterState {
+  legs: string | null;
+  field: string | null;
+  type: string | null;
+}
+
 export default function PlatformPage() {
   const searchParams = useSearchParams();
   const fieldId = searchParams.get("field");
+
+  // Fetch platforms first so 'data' is available for following hooks
+  const { data, error, isLoading } = useSWR(
+    fieldId ? `/api/platform?field=${fieldId}` : `/api/platform`,
+    fetcher
+  );
+
+  const platforms: Platform[] = useMemo(() => data?.data || [], [data]);
+
   const [randomImages, setRandomImages] = useState<Map<number, string>>(new Map());
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== 'undefined') {
@@ -76,12 +111,49 @@ export default function PlatformPage() {
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
-  const { data, error, isLoading } = useSWR(
-    fieldId ? `/api/platform?field=${fieldId}` : `/api/platform`,
-    fetcher
-  );
+  // Filter state
+  const [filters, setFilters] = useState<FilterState>({
+    legs: null,
+    field: null,
+    type: null,
+  });
 
-  const platforms: Platform[] = useMemo(() => data?.data || [], [data]);
+  // Fetch oil fields for the filter
+  const { data: fieldsData } = useSWR("/api/library/fields-stats", fetcher);
+  const oilFields = useMemo(() => fieldsData?.data || [], [fieldsData]);
+
+  // Derive unique leg counts from current data
+  const availableLegs = useMemo(() => {
+    const legs = new Set<string>();
+    platforms.forEach((p: Platform) => {
+      if (p.plegs !== null && p.plegs !== undefined) {
+        legs.add(String(p.plegs));
+      }
+    });
+    return Array.from(legs).sort((a, b) => Number(a) - Number(b));
+  }, [platforms]);
+
+  // Derive unique platform types from current data if possible, or use standard
+  const platTypes = useMemo(() => {
+    if (!data?.data) return ["JACKET", "TRIPOD", "MONOPILE", "JACK-UP"];
+    const types = new Set<string>();
+    data.data.forEach((p: Platform) => {
+      if (p.ptype) types.add(p.ptype);
+    });
+    return Array.from(types).sort();
+  }, [data]);
+
+  const activeFilterCount = useMemo(() => {
+    return Object.values(filters).filter(value => value !== null).length;
+  }, [filters]);
+
+  const resetFilters = () => {
+    setFilters({
+      legs: null,
+      field: null,
+      type: null,
+    });
+  };
 
   // Generate random image selection for platforms with multiple images
   useEffect(() => {
@@ -108,9 +180,25 @@ export default function PlatformPage() {
 
   // Filter and sort platforms
   const filteredAndSortedPlatforms = useMemo(() => {
-    let filtered = platforms.filter((platform) =>
-      platform.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    let filtered = platforms.filter((platform) => {
+      // Search query filter
+      const matchesSearch = platform.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          platform.field_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          `PLAT-${platform.plat_id}`.toLowerCase().includes(searchQuery.toLowerCase());
+
+      if (!matchesSearch) return false;
+
+      // Legs filter
+      if (filters.legs && String(platform.plegs) !== filters.legs) return false;
+
+      // Field filter
+      if (filters.field && String(platform.pfield) !== filters.field) return false;
+
+      // Type filter
+      if (filters.type && platform.ptype !== filters.type) return false;
+
+      return true;
+    });
 
     // Sort
     filtered.sort((a, b) => {
@@ -133,7 +221,7 @@ export default function PlatformPage() {
     });
 
     return filtered;
-  }, [platforms, searchQuery, sortField, sortOrder]);
+  }, [platforms, searchQuery, sortField, sortOrder, filters]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -193,7 +281,7 @@ export default function PlatformPage() {
           </div>
 
           <Button asChild className="rounded-2xl h-12 px-8 font-black uppercase tracking-wider bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 shadow-2xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all gap-3 border-0">
-            <Link href="/dashboard/field/platform/new">
+            <Link href={fieldId ? `/dashboard/field/platform/new?field=${fieldId}` : "/dashboard/field/platform/new"}>
               <Plus className="h-5 w-5 stroke-[3px]" />
               Register Platform
             </Link>
@@ -202,16 +290,140 @@ export default function PlatformPage() {
 
         {/* Controls Bar */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6 items-center">
-          {/* Search */}
-          <div className="relative flex-1 group w-full">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
-            <Input
-              type="text"
-              placeholder="Search platforms..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-11 pr-4 h-12 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm focus-visible:ring-blue-600/20 focus-visible:border-blue-600 transition-all text-sm font-medium"
-            />
+          {/* Search & Filter */}
+          <div className="flex flex-1 items-center gap-2 w-full">
+            <div className="relative flex-1 group">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+              <Input
+                type="text"
+                placeholder="Search platforms, ID, or field..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-11 pr-4 h-12 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm focus-visible:ring-blue-600/20 focus-visible:border-blue-600 transition-all text-sm font-medium"
+              />
+            </div>
+
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className={cn(
+                    "h-12 px-5 rounded-2xl border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider gap-2 transition-all",
+                    activeFilterCount > 0 && "border-blue-500 bg-blue-50/50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                  )}
+                >
+                  <Filter className="w-4 h-4" />
+                  <span className="hidden sm:inline">Filters</span>
+                  {activeFilterCount > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-5 min-w-5 rounded-full p-0 flex items-center justify-center bg-blue-600 text-white border-none text-[10px]">
+                      {activeFilterCount}
+                    </Badge>
+                  )}
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-[340px] sm:w-[400px] rounded-l-[2rem] border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl">
+                <SheetHeader className="pb-6 border-b border-slate-100 dark:border-slate-800">
+                  <SheetTitle className="text-2xl font-black tracking-tighter uppercase italic">Refine Results</SheetTitle>
+                  <SheetDescription className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Narrow down the platform network by specific criteria
+                  </SheetDescription>
+                </SheetHeader>
+
+                <div className="py-8 space-y-8">
+                  {/* Oil Field Filter */}
+                  <div className="space-y-3">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Oil Field</Label>
+                    <Select 
+                      value={filters.field || "all"} 
+                      onValueChange={(val) => setFilters(prev => ({ ...prev, field: val === "all" ? null : val }))}
+                    >
+                      <SelectTrigger className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 font-bold">
+                        <SelectValue placeholder="All Oil Fields" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl border-slate-200 dark:border-slate-800">
+                        <SelectItem value="all">All Fields</SelectItem>
+                        {oilFields.map((field: any) => (
+                          <SelectItem key={field.lib_id} value={String(field.lib_id)}>
+                            {field.lib_desc}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Legs Filter */}
+                  <div className="space-y-3">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Number of Legs</Label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {["all", ...availableLegs].map((l) => (
+                        <button
+                          key={`leg-${l}`}
+                          onClick={() => setFilters(prev => ({ ...prev, legs: l === "all" ? null : l }))}
+                          className={cn(
+                            "h-10 rounded-xl text-[10px] font-black uppercase transition-all border shadow-sm",
+                            (l === "all" ? filters.legs === null : filters.legs === l)
+                              ? "bg-blue-600 text-white border-blue-600 scale-105"
+                              : "bg-slate-50 dark:bg-slate-950 border-slate-100 dark:border-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                          )}
+                        >
+                          {l === "all" ? "All" : l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Platform Type Filter */}
+                  <div className="space-y-3">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Platform Type</Label>
+                    <Select 
+                      value={filters.type || "all"} 
+                      onValueChange={(val) => setFilters(prev => ({ ...prev, type: val === "all" ? null : val }))}
+                    >
+                      <SelectTrigger className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 font-bold uppercase text-[10px] tracking-wider">
+                        <SelectValue placeholder="All Types" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl border-slate-200 dark:border-slate-800">
+                        <SelectItem value="all">All Types</SelectItem>
+                        {platTypes.map((type) => (
+                          <SelectItem key={type} value={type} className="uppercase text-[10px] font-bold">
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <SheetFooter className="absolute bottom-8 left-6 right-6 flex-col gap-3 sm:flex-col">
+                  <Button 
+                    onClick={resetFilters}
+                    variant="ghost" 
+                    className="w-full h-12 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 font-black uppercase tracking-widest text-[10px] gap-2 transition-all"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Reset All Filters
+                  </Button>
+                  <Button 
+                    asChild
+                    className="w-full h-14 rounded-2xl bg-slate-900 dark:bg-white dark:text-slate-900 font-black uppercase tracking-widest text-xs"
+                  >
+                    <SheetTrigger>Show {filteredAndSortedPlatforms.length} Platforms</SheetTrigger>
+                  </Button>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+
+            {activeFilterCount > 0 && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={resetFilters}
+                className="h-12 px-2 text-slate-400 hover:text-red-500 transition-colors"
+                title="Reset Filters"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            )}
           </div>
 
           {/* View Toggle */}
@@ -288,11 +500,15 @@ export default function PlatformPage() {
 
                     {/* Content Area */}
                     <div className="p-6 flex flex-col gap-4 bg-white dark:bg-slate-900 relative">
-                      {/* Title Section */}
-                      <div className="min-h-[3rem] flex items-center justify-center">
+                      <div className="flex flex-col items-center justify-center min-h-[4rem]">
                         <h3 className="text-sm font-black text-center uppercase tracking-tight text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight">
                           {platform.title}
                         </h3>
+                        {platform.field_name && (
+                          <div className="mt-1 text-[9px] font-black uppercase tracking-widest text-slate-400 text-center">
+                             {platform.field_name}
+                          </div>
+                        )}
                       </div>
 
                       {/* Integrated Data Row */}
@@ -344,6 +560,15 @@ export default function PlatformPage() {
                   </TableHead>
                   <TableHead className="px-6">
                     <button
+                      onClick={() => handleSort("field_name")}
+                      className="flex items-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 transition-colors"
+                    >
+                      Oil Field
+                      <SortIcon field="field_name" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="px-6">
+                    <button
                       onClick={() => handleSort("plegs")}
                       className="flex items-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 transition-colors"
                     >
@@ -360,15 +585,15 @@ export default function PlatformPage() {
                       <SortIcon field="process" />
                     </button>
                   </TableHead>
-                  <TableHead className="px-6 text-right">
-                    <button
-                      onClick={() => handleSort("ptype")}
-                      className="flex items-center justify-end text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 transition-colors w-full"
-                    >
-                      Type
-                      <SortIcon field="ptype" />
-                    </button>
-                  </TableHead>
+                      <TableHead className="px-6 text-right">
+                        <button
+                          onClick={() => handleSort("ptype")}
+                          className="flex items-center justify-end text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 transition-colors w-full"
+                        >
+                          Type
+                          <SortIcon field="ptype" />
+                        </button>
+                      </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -410,6 +635,11 @@ export default function PlatformPage() {
                             PLAT-{platform.plat_id}
                           </span>
                         </div>
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
+                        <span className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-tighter">
+                          {platform.field_name || "-"}
+                        </span>
                       </TableCell>
                       <TableCell className="px-6 py-4">
                         <div className="flex items-center gap-2">

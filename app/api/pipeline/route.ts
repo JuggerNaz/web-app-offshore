@@ -33,10 +33,24 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
     return handleSupabaseError(error, "Failed to fetch pipelines");
   }
 
+  // Fetch all oil fields to resolve names efficiently
+  const { data: allFields } = await supabase
+    .from("u_lib_list")
+    .select("lib_id, lib_desc")
+    .eq("lib_code", "OILFIELD");
+
+  const fieldMap = new Map((allFields || []).map(f => [f.lib_id.toString(), f.lib_desc]));
+
+  // Attach field names
+  const pipelinesWithFields = (data || []).map(pipeline => ({
+    ...pipeline,
+    field_name: fieldMap.get(pipeline.pfield?.toString() ?? "") || pipeline.pfield,
+  }));
+
   // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
-  return apiPaginated(data || [], pagination);
+  return apiPaginated(pipelinesWithFields, pagination);
 });
 
 /**

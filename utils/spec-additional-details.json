@@ -491,6 +491,75 @@
                 "comments": "",
                 "del": false
             }
+        },
+        {
+            "code": "pp",
+            "componentType": "pp_comp",
+            "additionalDataTemplate": {
+                "wall_thk": "",
+                "pipe_mat": "",
+                "corr_ctg": "",
+                "diameter": "",
+                "spool_piece": false,
+                "cons_span": "",
+                "oper_span": "",
+                "type": "",
+                "coat_cond": "",
+                "gen_cond": "",
+                "del": false
+            }
+        },
+        {
+            "code": "pv",
+            "componentType": "pv_comp",
+            "additionalDataTemplate": {
+                "tapv_typ": "",
+                "pipe_cls": "",
+                "cage_typ": "",
+                "tapv_mat": "",
+                "tapv_ctg": "",
+                "cage_atc": "",
+                "valv_man": "",
+                "blind_flange": "",
+                "diameter": "",
+                "desg_press": "",
+                "op_press": "",
+                "no_supports": "",
+                "del": false
+            }
+        },
+        {
+            "code": "pc",
+            "componentType": "pc_comp",
+            "additionalDataTemplate": {
+                "plid_typ": "",
+                "pipe_rtg": "",
+                "no_bolts": "",
+                "diameter": "",
+                "bolt_tension": "",
+                "seal_welded": false,
+                "perm_clamp": false,
+                "del": false
+            }
+        },
+        {
+            "code": "ss",
+            "componentType": "ss_comp",
+            "additionalDataTemplate": {
+                "supo_typ": "",
+                "del": false
+            }
+        },
+        {
+            "code": "pw",
+            "componentType": "pw_comp",
+            "additionalDataTemplate": {
+                "weld_des": "",
+                "weld_typ": "",
+                "weld_mat": "",
+                "fj_typ": "",
+                "del": false
+            }
         }
     ]
 }

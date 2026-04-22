@@ -46,8 +46,14 @@ export default function DetailPage() {
 
   const defaults = getSchemaDefaults(PlatformSchema);
   defaults.plat_id = 0;
+  if (searchParams.get("field")) {
+    defaults.pfield = searchParams.get("field") as string;
+  }
   const pipelineDefaults = getSchemaDefaults(PipelineSchema);
   pipelineDefaults.pipe_id = 0;
+  if (searchParams.get("field")) {
+    pipelineDefaults.pfield = searchParams.get("field") as string;
+  }
 
   useEffect(() => {
     const resolvedType = Array.isArray(type) ? type[0] : type;
