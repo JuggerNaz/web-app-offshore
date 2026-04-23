@@ -558,7 +558,29 @@
                 "weld_typ": "",
                 "weld_mat": "",
                 "fj_typ": "",
-                "del": false
+                "del": false,
+                "diameter": "",
+                "wall_thk": "",
+                "condition": ""
+            }
+        },
+        {
+            "code": "rc",
+            "componentType": "rc_comp",
+            "additionalDataTemplate": {
+                "manufacture": "",
+                "model_type": "",
+                "material": "",
+                "pipe_cls": "",
+                "serial_no": "",
+                "repair_comp_t": "",
+                "po_no": "",
+                "installed_date": "",
+                "desg_press": "",
+                "op_press": "",
+                "no_bolts": "",
+                "del": false,
+                "diameter": ""
             }
         }
     ]

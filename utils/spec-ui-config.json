@@ -1672,6 +1672,77 @@
         {
           "name": "fj_typ",
           "type": "string"
+        },
+        {
+          "name": "diameter",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "wall_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "condition",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "code": "rc",
+      "componentType": "rc_comp",
+      "fields": [
+        {
+          "name": "manufacture",
+          "type": "string"
+        },
+        {
+          "name": "model_type",
+          "type": "string"
+        },
+        {
+          "name": "material",
+          "type": "string"
+        },
+        {
+          "name": "pipe_cls",
+          "type": "string"
+        },
+        {
+          "name": "serial_no",
+          "type": "string"
+        },
+        {
+          "name": "repair_comp_t",
+          "type": "string"
+        },
+        {
+          "name": "po_no",
+          "type": "string"
+        },
+        {
+          "name": "installed_date",
+          "type": "string"
+        },
+        {
+          "name": "desg_press",
+          "type": "string",
+          "unitcategory": "pressure"
+        },
+        {
+          "name": "op_press",
+          "type": "string",
+          "unitcategory": "pressure"
+        },
+        {
+          "name": "no_bolts",
+          "type": "string"
+        },
+        {
+          "name": "diameter",
+          "type": "string",
+          "unitcategory": "length"
         }
       ]
     }

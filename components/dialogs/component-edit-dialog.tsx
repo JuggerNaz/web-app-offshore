@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { fetcher } from "@/utils/utils";
@@ -45,9 +51,6 @@ export type EditableComponent = {
   modified_by: string | null;
 };
 
-
-
-
 interface ComponentEditDialogProps {
   component: EditableComponent | null;
   open: boolean;
@@ -79,7 +82,13 @@ const buildIdNoEdit = (
   return `${code}/${startNode}-${endNode}/${distance}/${clockPos}`;
 };
 
-export function ComponentEditDialog({ component, open, onOpenChange, listKey, typeName }: ComponentEditDialogProps) {
+export function ComponentEditDialog({
+  component,
+  open,
+  onOpenChange,
+  listKey,
+  typeName,
+}: ComponentEditDialogProps) {
   const [structureId] = useAtom(urlId);
   const [pageType] = useAtom(urlType);
   const [isSaving, setIsSaving] = useState(false);
@@ -138,7 +147,6 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
   const { data: anodeMatData } = useSWR(`/api/library/ANOD_MAT`, fetcher);
   const { data: anodeFitData } = useSWR(`/api/library/FITTING`, fetcher);
 
-
   // Platform details for legs
   const { data: platformData } = useSWR(
     pageType === "platform" && structureId ? `/api/platform/${structureId}` : null,
@@ -150,12 +158,13 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     fetcher
   );
 
-
-  const legOptions = platformData?.data ? Array.from({ length: 20 }, (_, i) => {
-    const key = `leg_t${i + 1}`;
-    const val = platformData.data[key];
-    return val ? { value: val, label: val } : null;
-  }).filter(Boolean) : [];
+  const legOptions = platformData?.data
+    ? Array.from({ length: 20 }, (_, i) => {
+        const key = `leg_t${i + 1}`;
+        const val = platformData.data[key];
+        return val ? { value: val, label: val } : null;
+      }).filter(Boolean)
+    : [];
 
   // All components for association
   const { data: allComponents } = useSWR(
@@ -164,7 +173,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
   );
 
   // Global company settings for units
-  const { data: companyData } = useSWR('/api/company-settings', fetcher);
+  const { data: companyData } = useSWR("/api/company-settings", fetcher);
 
   const [selectorOpen, setSelectorOpen] = useState(false);
 
@@ -173,21 +182,25 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     pageType === "platform" && structureId ? `/api/platform/level/${structureId}` : null,
     fetcher
   );
-  const levelOptions = levelData?.data ? levelData.data.map((x: any) => ({
-    value: x.level_name,
-    label: x.level_name
-  })) : [];
+  const levelOptions = levelData?.data
+    ? levelData.data.map((x: any) => ({
+        value: x.level_name,
+        label: x.level_name,
+      }))
+    : [];
 
   // Face options
   const { data: faceData } = useSWR(
     pageType === "platform" && structureId ? `/api/platform/faces/${structureId}` : null,
     fetcher
   );
-  const faceOptions = faceData?.data ? faceData.data.map((x: any) => ({
-    value: x.face,
-    label: x.face
-  })) : [];
-  
+  const faceOptions = faceData?.data
+    ? faceData.data.map((x: any) => ({
+        value: x.face,
+        label: x.face,
+      }))
+    : [];
+
   const defUnit = companyData?.data?.def_unit || "METRIC";
   const isImperial = defUnit === "IMPERIAL";
 
@@ -225,107 +238,176 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
   });
 
   // Library data fetching (moved here to ensure formData is defined)
-  const { data: pipeMatData } = useSWR(open && formData.code?.toLowerCase() === 'pp' ? `/api/library/PIPE_MAT` : null, fetcher);
+  const { data: pipeMatData } = useSWR(
+    open && formData.code?.toLowerCase() === "pp" ? `/api/library/PIPE_MAT` : null,
+    fetcher
+  );
   const { data: risrTypData } = useSWR(`/api/library/RISR_TYP`, fetcher);
-  const { data: risrMatData } = useSWR(open && formData.code?.toLowerCase() === 'rs' ? `/api/library/RISR_MAT` : null, fetcher);
-  const { data: pipeRtgData } = useSWR(open && (formData.code?.toLowerCase() === 'rs' || formData.code?.toLowerCase() === 'cm' || formData.code?.toLowerCase() === 'pc') ? `/api/library/PIPE_RTG` : null, fetcher);
-  const { data: plidTypData } = useSWR(open && formData.code?.toLowerCase() === 'pc' ? `/api/library/PLID_TYP` : null, fetcher);
-  const { data: risgTypData } = useSWR(open && (formData.code?.toLowerCase() === 'rg' || formData.code?.toLowerCase() === 'sg') ? `/api/library/RISG_TYP` : null, fetcher);
-  const { data: risbTypData } = useSWR(open && formData.code?.toLowerCase() === 'rb' ? `/api/library/RISB_TYP` : null, fetcher);
-  const { data: stubMatData } = useSWR(open && formData.code?.toLowerCase() === 'sd' ? `/api/library/STUB_MAT` : null, fetcher);
-  const { data: wsupTypData } = useSWR(open && formData.code?.toLowerCase() === 'wp' ? `/api/library/WSUP_TYP` : null, fetcher);
-  const { data: supoTypData } = useSWR(open && formData.code?.toLowerCase() === 'ss' ? `/api/library/SUPO_TYP` : null, fetcher);
+  const { data: risrMatData } = useSWR(
+    open && formData.code?.toLowerCase() === "rs" ? `/api/library/RISR_MAT` : null,
+    fetcher
+  );
+  const { data: pipeRtgData } = useSWR(
+    open &&
+      (formData.code?.toLowerCase() === "rs" ||
+        formData.code?.toLowerCase() === "cm" ||
+        formData.code?.toLowerCase() === "pc")
+      ? `/api/library/PIPE_RTG`
+      : null,
+    fetcher
+  );
+  const { data: plidTypData } = useSWR(
+    open && formData.code?.toLowerCase() === "pc" ? `/api/library/PLID_TYP` : null,
+    fetcher
+  );
+  const { data: risgTypData } = useSWR(
+    open && (formData.code?.toLowerCase() === "rg" || formData.code?.toLowerCase() === "sg")
+      ? `/api/library/RISG_TYP`
+      : null,
+    fetcher
+  );
+  const { data: risbTypData } = useSWR(
+    open && formData.code?.toLowerCase() === "rb" ? `/api/library/RISB_TYP` : null,
+    fetcher
+  );
+  const { data: stubMatData } = useSWR(
+    open && formData.code?.toLowerCase() === "sd" ? `/api/library/STUB_MAT` : null,
+    fetcher
+  );
+  const { data: wsupTypData } = useSWR(
+    open && formData.code?.toLowerCase() === "wp" ? `/api/library/WSUP_TYP` : null,
+    fetcher
+  );
+  const { data: supoTypData } = useSWR(
+    open && formData.code?.toLowerCase() === "ss" ? `/api/library/SUPO_TYP` : null,
+    fetcher
+  );
   // Pipeline Tap Valve specific options
-  const { data: tapvTypData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/TAPV_TYP` : null, fetcher);
-  const { data: pipeClsData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/PIPE_CLS` : null, fetcher);
-  const { data: cageTypData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/CAGE_TYP` : null, fetcher);
-  const { data: tapvMatData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/TAPV_MAT` : null, fetcher);
-  const { data: tapvCtgData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/TAPV_CTG` : null, fetcher);
-  const { data: cageAtcData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/CAGE_ATC` : null, fetcher);
-  const { data: valvManData } = useSWR(open && formData.code?.toLowerCase() === 'pv' ? `/api/library/VALV_MAN` : null, fetcher);
-  const { data: fjTypData } = useSWR(open && formData.code?.toLowerCase() === 'pw' ? `/api/library/FJ_TYPE` : null, fetcher);
+  const { data: tapvTypData } = useSWR(
+    open && formData.code?.toLowerCase() === "pv" ? `/api/library/TAPV_TYP` : null,
+    fetcher
+  );
+  const { data: pipeClsData } = useSWR(
+    open && formData.code?.toLowerCase() === "pv" ? `/api/library/PIPE_CLS` : null,
+    fetcher
+  );
+  const { data: cageTypData } = useSWR(
+    open && formData.code?.toLowerCase() === "pv" ? `/api/library/CAGE_TYP` : null,
+    fetcher
+  );
+  const { data: tapvMatData } = useSWR(
+    open && formData.code?.toLowerCase() === "pv" ? `/api/library/TAPV_MAT` : null,
+    fetcher
+  );
+  const { data: tapvCtgData } = useSWR(
+    open && formData.code?.toLowerCase() === "pv" ? `/api/library/TAPV_CTG` : null,
+    fetcher
+  );
+  const { data: cageAtcData } = useSWR(
+    open && formData.code?.toLowerCase() === "pv" ? `/api/library/CAGE_ATC` : null,
+    fetcher
+  );
+  const { data: valvManData } = useSWR(
+    open && formData.code?.toLowerCase() === "pv" ? `/api/library/VALV_MAN` : null,
+    fetcher
+  );
+  const { data: fjTypData } = useSWR(
+    open && formData.code?.toLowerCase() === "pw" ? `/api/library/FJ_TYPE` : null,
+    fetcher
+  );
   const getTemplate = (code: string | null, type: string) => {
     if (!code) return {};
     const lowerCode = code.toLowerCase();
     let template = {};
     if (lowerCode === "an") {
       const compType = type === "platform" ? "an_comp_plat" : "an_comp_pipe";
-      template = specAdditionalDetails.data.find((d: any) => d.componentType === compType)?.additionalDataTemplate || {};
+      template =
+        specAdditionalDetails.data.find((d: any) => d.componentType === compType)
+          ?.additionalDataTemplate || {};
     } else {
-      template = specAdditionalDetails.data.find((d: any) => d.code === lowerCode)?.additionalDataTemplate || {};
+      template =
+        specAdditionalDetails.data.find((d: any) => d.code === lowerCode)?.additionalDataTemplate ||
+        {};
     }
 
     const patchedTemplate: Record<string, any> = { ...template };
-    if (lowerCode === 'bb' && !('bumper_type' in patchedTemplate)) {
+    if (lowerCode === "bb" && !("bumper_type" in patchedTemplate)) {
       patchedTemplate.bumper_type = "";
     }
-    if (lowerCode === 'fd' && !('fender_type' in patchedTemplate)) {
+    if (lowerCode === "fd" && !("fender_type" in patchedTemplate)) {
       patchedTemplate.fender_type = "";
     }
-    if (lowerCode === 'cs' && !('csum_typ' in patchedTemplate)) {
+    if (lowerCode === "cs" && !("csum_typ" in patchedTemplate)) {
       patchedTemplate.csum_typ = "";
       patchedTemplate.cais_at = "";
       patchedTemplate.corr_ctg = "";
     }
-    if (lowerCode === 'cl' && !('clam_typ' in patchedTemplate)) {
+    if (lowerCode === "cl" && !("clam_typ" in patchedTemplate)) {
       patchedTemplate.clam_typ = "";
       patchedTemplate.clam_mat = "";
     }
-    if (lowerCode === 'cd' && !('coat_typ' in patchedTemplate)) {
+    if (lowerCode === "cd" && !("coat_typ" in patchedTemplate)) {
       patchedTemplate.coat_typ = "";
     }
-    if (lowerCode === 'cf' && !('cgud_typ' in patchedTemplate)) {
+    if (lowerCode === "cf" && !("cgud_typ" in patchedTemplate)) {
       patchedTemplate.cgud_typ = "";
       patchedTemplate.fitg_typ = "";
     }
-    if (lowerCode === 'ct' && !('ctry_typ' in patchedTemplate)) {
+    if (lowerCode === "ct" && !("ctry_typ" in patchedTemplate)) {
       patchedTemplate.ctry_typ = "";
       patchedTemplate.ctry_pos = "";
       patchedTemplate.ctry_mat = "";
       patchedTemplate.ctry_fas = "";
     }
-    if (lowerCode === 'fa' && !('face_pos' in patchedTemplate)) {
+    if (lowerCode === "fa" && !("face_pos" in patchedTemplate)) {
       patchedTemplate.face_pos = "";
     }
-    if ((lowerCode === 'hd' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hm' || lowerCode === 'lg') && !('memb_mat' in patchedTemplate)) {
+    if (
+      (lowerCode === "hd" ||
+        lowerCode === "vd" ||
+        lowerCode === "vm" ||
+        lowerCode === "hm" ||
+        lowerCode === "lg") &&
+      !("memb_mat" in patchedTemplate)
+    ) {
       patchedTemplate.memb_mat = "";
-      if (lowerCode !== 'lg') patchedTemplate.corr_ctg = "";
+      if (lowerCode !== "lg") patchedTemplate.corr_ctg = "";
     }
-    if (lowerCode === 'hs' && !('hose_typ' in patchedTemplate)) {
+    if (lowerCode === "hs" && !("hose_typ" in patchedTemplate)) {
       patchedTemplate.hose_typ = "";
       patchedTemplate.hose_man = "";
       patchedTemplate.flan_cls = "";
       patchedTemplate.hose_cnt = "";
     }
-    if (lowerCode === 'wn' && !('weld_typ' in patchedTemplate)) {
+    if (lowerCode === "wn" && !("weld_typ" in patchedTemplate)) {
       patchedTemplate.weld_typ = "";
       patchedTemplate.weld_des = "";
       patchedTemplate.weld_mat = "";
       patchedTemplate.weld_cfg = "";
     }
-    if (lowerCode === 'wp' && !('weld_typ' in patchedTemplate)) {
+    if (lowerCode === "wp" && !("weld_typ" in patchedTemplate)) {
       patchedTemplate.weld_typ = "";
       patchedTemplate.weld_des = "";
       patchedTemplate.weld_mat = "";
       patchedTemplate.weld_cfg = "";
       patchedTemplate.wsup_typ = "";
     }
-    if (lowerCode === 'rs' && !('risr_typ' in patchedTemplate)) {
+    if (lowerCode === "rs" && !("risr_typ" in patchedTemplate)) {
       patchedTemplate.risr_typ = "";
       patchedTemplate.risr_mat = "";
       patchedTemplate.corr_ctg = "";
       patchedTemplate.pipe_rtg = "";
     }
-    if ((lowerCode === 'rg' || lowerCode === 'sg') && !('risg_typ' in patchedTemplate)) {
+    if ((lowerCode === "rg" || lowerCode === "sg") && !("risg_typ" in patchedTemplate)) {
       patchedTemplate.risg_typ = "";
     }
-    if (lowerCode === 'rb' && !('risb_typ' in patchedTemplate)) {
+    if (lowerCode === "rb" && !("risb_typ" in patchedTemplate)) {
       patchedTemplate.risb_typ = "";
     }
-    if (lowerCode === 'sd' && !('stub_mat' in patchedTemplate)) {
+    if (lowerCode === "sd" && !("stub_mat" in patchedTemplate)) {
       patchedTemplate.stub_mat = "";
     }
-    if (lowerCode === 'pv' && !('tapv_typ' in patchedTemplate)) {
+    if (lowerCode === "pv" && !("tapv_typ" in patchedTemplate)) {
       patchedTemplate.tapv_typ = "";
       patchedTemplate.pipe_cls = "";
       patchedTemplate.cage_typ = "";
@@ -334,14 +416,14 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
       patchedTemplate.cage_atc = "";
       patchedTemplate.valv_man = "";
     }
-    if (lowerCode === 'pc' && !('plid_typ' in patchedTemplate)) {
+    if (lowerCode === "pc" && !("plid_typ" in patchedTemplate)) {
       patchedTemplate.plid_typ = "";
       patchedTemplate.pipe_rtg = "";
     }
-    if (lowerCode === 'ss' && !('supo_typ' in patchedTemplate)) {
+    if (lowerCode === "ss" && !("supo_typ" in patchedTemplate)) {
       patchedTemplate.supo_typ = "";
     }
-    if (lowerCode === 'pw' && !('weld_des' in patchedTemplate)) {
+    if (lowerCode === "pw" && !("weld_des" in patchedTemplate)) {
       patchedTemplate.weld_des = "";
       patchedTemplate.weld_typ = "";
       patchedTemplate.weld_mat = "";
@@ -355,59 +437,96 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
   useEffect(() => {
     const isImp = companyData?.data?.def_unit === "IMPERIAL";
     if (open) {
-
-      setFormData(prev => {
+      setFormData((prev) => {
         let changed = false;
         const updates: any = {};
-        
-        const dUnit = getDefaultUnit("LENGTH", isImp, "dist", component?.code || undefined) || (isImp ? "ft" : "m");
-        const eUnit = getDefaultUnit("LENGTH", isImp, "elv", component?.code || undefined) || (isImp ? "ft" : "m");
-        const kpUnit = getDefaultUnit("DISTANCE", isImp, "kp", component?.code || undefined) || (isImp ? "mile" : "km");
-        const depthUnit = getDefaultUnit("LENGTH", isImp, "depth", component?.code || undefined) || (isImp ? "ft" : "m");
-        const eastUnit = getDefaultUnit("LENGTH", isImp, "easting", component?.code || undefined) || (isImp ? "ft" : "m");
-        const northUnit = getDefaultUnit("LENGTH", isImp, "northing", component?.code || undefined) || (isImp ? "ft" : "m");
 
-        if (prev.dist_unit !== dUnit) { updates.dist_unit = dUnit; changed = true; }
-        if (prev.elv_1_unit !== eUnit) { updates.elv_1_unit = eUnit; changed = true; }
-        if (prev.elv_2_unit !== eUnit) { updates.elv_2_unit = eUnit; changed = true; }
-        if (prev.kp_unit !== kpUnit) { updates.kp_unit = kpUnit; changed = true; }
-        if (prev.depth_unit !== depthUnit) { updates.depth_unit = depthUnit; changed = true; }
-        if (prev.easting_unit !== eastUnit) { updates.easting_unit = eastUnit; changed = true; }
-        if (prev.northing_unit !== northUnit) { updates.northing_unit = northUnit; changed = true; }
+        const dUnit =
+          getDefaultUnit("LENGTH", isImp, "dist", component?.code || undefined) ||
+          (isImp ? "ft" : "m");
+        const eUnit =
+          getDefaultUnit("LENGTH", isImp, "elv", component?.code || undefined) ||
+          (isImp ? "ft" : "m");
+        const kpUnit =
+          getDefaultUnit("DISTANCE", isImp, "kp", component?.code || undefined) ||
+          (isImp ? "mile" : "km");
+        const depthUnit =
+          getDefaultUnit("LENGTH", isImp, "depth", component?.code || undefined) ||
+          (isImp ? "ft" : "m");
+        const eastUnit =
+          getDefaultUnit("LENGTH", isImp, "easting", component?.code || undefined) ||
+          (isImp ? "ft" : "m");
+        const northUnit =
+          getDefaultUnit("LENGTH", isImp, "northing", component?.code || undefined) ||
+          (isImp ? "ft" : "m");
 
-        
+        if (prev.dist_unit !== dUnit) {
+          updates.dist_unit = dUnit;
+          changed = true;
+        }
+        if (prev.elv_1_unit !== eUnit) {
+          updates.elv_1_unit = eUnit;
+          changed = true;
+        }
+        if (prev.elv_2_unit !== eUnit) {
+          updates.elv_2_unit = eUnit;
+          changed = true;
+        }
+        if (prev.kp_unit !== kpUnit) {
+          updates.kp_unit = kpUnit;
+          changed = true;
+        }
+        if (prev.depth_unit !== depthUnit) {
+          updates.depth_unit = depthUnit;
+          changed = true;
+        }
+        if (prev.easting_unit !== eastUnit) {
+          updates.easting_unit = eastUnit;
+          changed = true;
+        }
+        if (prev.northing_unit !== northUnit) {
+          updates.northing_unit = northUnit;
+          changed = true;
+        }
+
         if (prev.additionalInfo) {
           const newAdd = { ...prev.additionalInfo };
           let addChanged = false;
-          const componentConfig = specUiConfig.components.find((c: any) => c.code?.toLowerCase() === (component?.code || "").toLowerCase());
-          Object.keys(newAdd).forEach(k => {
-             if (k.endsWith('_unit')) {
-               const fieldName = k.replace('_unit', '');
-               const fieldConfig = componentConfig?.fields.find((f: any) => f.name === fieldName);
-               const category = fieldConfig?.unitcategory || null;
-               
-               const resolvedCategory = category || (fieldName.includes('weight') || fieldName.includes('wt') ? 'weight' : 'length');
-               
-               const newUnit = getDefaultUnit(resolvedCategory, isImp, fieldName, component?.code || undefined);
-               if (newUnit && newAdd[k] !== newUnit) {
-                 newAdd[k] = newUnit;
-                 addChanged = true;
-               }
-             }
+          const componentConfig = specUiConfig.components.find(
+            (c: any) => c.code?.toLowerCase() === (component?.code || "").toLowerCase()
+          );
+          Object.keys(newAdd).forEach((k) => {
+            if (k.endsWith("_unit")) {
+              const fieldName = k.replace("_unit", "");
+              const fieldConfig = componentConfig?.fields.find((f: any) => f.name === fieldName);
+              const category = fieldConfig?.unitcategory || null;
+
+              const resolvedCategory =
+                category ||
+                (fieldName.includes("weight") || fieldName.includes("wt") ? "weight" : "length");
+
+              const newUnit = getDefaultUnit(
+                resolvedCategory,
+                isImp,
+                fieldName,
+                component?.code || undefined
+              );
+              if (newUnit && newAdd[k] !== newUnit) {
+                newAdd[k] = newUnit;
+                addChanged = true;
+              }
+            }
           });
           if (addChanged) {
             updates.additionalInfo = newAdd;
             changed = true;
           }
         }
-        
+
         return changed ? { ...prev, ...updates } : prev;
       });
     }
   }, [companyData?.data?.def_unit, open, component?.code]);
-
-
-
 
   useEffect(() => {
     if (open && component) {
@@ -449,47 +568,85 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
           };
 
           const code = component.code?.trim().toLowerCase();
-          const isSpecialComp = ['pp', 'fd', 'an', 'cs', 'cl', 'cd', 'fa', 'hd', 'hm', 'vd', 'vm', 'hs', 'pl', 'pg', 'bb', 'sg', 'cu', 'cf', 'it', 'lg', 'wn', 'wp', 'rs', 'rg', 'rb', 'ct', 'gp', 'gs', 'bl', 'fv', 'ce', 'sd', 'yp', 'pv', 'pc', 'ss', 'pw'].includes(code || '');
+          const isSpecialComp = [
+            "pp",
+            "fd",
+            "an",
+            "cs",
+            "cl",
+            "cd",
+            "fa",
+            "hd",
+            "hm",
+            "vd",
+            "vm",
+            "hs",
+            "pl",
+            "pg",
+            "bb",
+            "sg",
+            "cu",
+            "cf",
+            "it",
+            "lg",
+            "wn",
+            "wp",
+            "rs",
+            "rg",
+            "rb",
+            "ct",
+            "gp",
+            "gs",
+            "bl",
+            "fv",
+            "ce",
+            "sd",
+            "yp",
+            "pv",
+            "pc",
+            "ss",
+            "pw",
+          ].includes(code || "");
 
           if (isSpecialComp) {
-            if (code === 'ct') {
+            if (code === "ct") {
               delete info.id_chk;
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
-            } else if (['fd', 'an', 'cs', 'fv'].includes(code || '')) {
+            } else if (["fd", "an", "cs", "fv"].includes(code || "")) {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
               delete info.id_chk;
-              if (code === 'fd') delete info.thetype;
-              if (code === 'an') {
+              if (code === "fd") delete info.thetype;
+              if (code === "an") {
                 delete info.last_inspno;
-                if (pageType === 'pipeline') {
+                if (pageType === "pipeline") {
                   delete info.x_cord;
                   delete info.y_cord;
                   delete info.fp;
                 }
               }
-              if (code === 'cs') delete info.thetype;
-            } else if (code === 'cl') {
+              if (code === "cs") delete info.thetype;
+            } else if (code === "cl") {
               delete info.depth;
               delete info.id_chk;
               delete info.thetype;
               delete info.material;
-            } else if (code === 'cd') {
+            } else if (code === "cd") {
               delete info.depth;
               delete info.diameter;
               delete info.id_chk;
               delete info.coating;
               info.wall_thk = component.metadata?.additionalInfo?.wall_thk ?? "";
-            } else if (code === 'fa') {
+            } else if (code === "fa") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
               delete info.position;
               delete info.id_chk;
-            } else if (code === 'cf') {
+            } else if (code === "cf") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
@@ -498,25 +655,25 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.attach_method;
               delete info.top_und;
               delete info.comp_group;
-            } else if (code === 'sd') {
+            } else if (code === "sd") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
               delete info.id_chk;
               delete info.dist_leg;
               delete info.stub_mat;
-            } else if (code === 'pp') {
+            } else if (code === "pp") {
               delete info.depth;
-            } else if (code === 'it') {
+            } else if (code === "it") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
               delete info.x_cord;
               delete info.y_cord;
               delete info.fp;
-            } else if (code === 'pl') {
+            } else if (code === "pl") {
               delete info.id_chk;
-            } else if (code === 'pg') {
+            } else if (code === "pg") {
               delete info.wall_thk;
               delete info.depth;
               delete info.id_chk;
@@ -525,16 +682,16 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.weight;
               delete info.no_undattach;
               delete info.no_topattach;
-            } else if (code === 'bb') {
+            } else if (code === "bb") {
               delete info.wall_thk;
               delete info.depth;
               delete info.id_chk;
               delete info.thetype;
-            } else if (code === 'lg') {
+            } else if (code === "lg") {
               delete info.thetype;
               delete info.id_chk;
               delete info.depth;
-            } else if (code === 'sg' || code === 'cu') {
+            } else if (code === "sg" || code === "cu") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
@@ -542,7 +699,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.riser_wt;
               delete info.id_chk;
               delete info.risg_typ;
-            } else if (['hd', 'hm', 'vd', 'vm'].includes(code || '')) {
+            } else if (["hd", "hm", "vd", "vm"].includes(code || "")) {
               delete info.depth;
               delete info.diameter;
               delete info.material;
@@ -562,7 +719,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.id_chk;
               delete info.coating;
               info.wall_thk = component.metadata?.additionalInfo?.wall_thk ?? "";
-            } else if (code === 'hs') {
+            } else if (code === "hs") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
@@ -571,7 +728,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.manufacturer;
               delete info.assoc_str;
               delete info.id_chk;
-            } else if (code === 'wn') {
+            } else if (code === "wn") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
@@ -580,7 +737,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.weld_type;
               delete info.desg_code;
               delete info.material;
-            } else if (code === 'wp') {
+            } else if (code === "wp") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
@@ -590,35 +747,35 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               delete info.desg_code;
               delete info.material;
               delete info.id_chk;
-            } else if (code === 'gs') {
+            } else if (code === "gs") {
               delete info.wall_thk;
-            } else if (code === 'gp') {
+            } else if (code === "gp") {
               delete info.wall_thk;
               delete info.diameter;
               delete info.depth;
-            } else if (code === 'bl') {
+            } else if (code === "bl") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
               delete info.thetype;
               delete info.id_chk;
               delete info.width;
-            } else if (code === 'ce') {
+            } else if (code === "ce") {
               delete info.wall_thk;
               delete info.id_chk;
-            } else if (code === 'pp') {
+            } else if (code === "pp") {
               delete info.depth;
-            } else if (code === 'pv') {
+            } else if (code === "pv") {
               delete info.wall_thk;
               delete info.depth;
-            } else if (code === 'pc') {
+            } else if (code === "pc") {
               delete info.wall_thk;
               delete info.depth;
-            } else if (code === 'ss') {
+            } else if (code === "ss") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
-            } else if (code === 'pw') {
+            } else if (code === "pw") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
@@ -630,7 +787,8 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
           }
 
           if (info.electrically_cont !== undefined) {
-            info.electrically_cont = info.electrically_cont === true || info.electrically_cont === "true";
+            info.electrically_cont =
+              info.electrically_cont === true || info.electrically_cont === "true";
           }
 
           return info;
@@ -644,12 +802,12 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
   };
 
   const handleAdditionalInfoChange = (field: string, value: any) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       additionalInfo: {
         ...prev.additionalInfo,
-        [field]: value
-      }
+        [field]: value,
+      },
     }));
   };
 
@@ -778,10 +936,30 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         <div className="flex-1 overflow-y-auto p-8 pt-6">
           <Tabs defaultValue="specifications" className="w-full">
             <TabsList className="grid w-full mb-8 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl grid-cols-4 h-12">
-              <TabsTrigger value="specifications" className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">Specifications</TabsTrigger>
-              <TabsTrigger value="specifications2" className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">Association</TabsTrigger>
-              <TabsTrigger value="comments" className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">Comments</TabsTrigger>
-              <TabsTrigger value="attachments" className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">Attachments</TabsTrigger>
+              <TabsTrigger
+                value="specifications"
+                className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm"
+              >
+                Specifications
+              </TabsTrigger>
+              <TabsTrigger
+                value="specifications2"
+                className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm"
+              >
+                Association
+              </TabsTrigger>
+              <TabsTrigger
+                value="comments"
+                className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm"
+              >
+                Comments
+              </TabsTrigger>
+              <TabsTrigger
+                value="attachments"
+                className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm"
+              >
+                Attachments
+              </TabsTrigger>
             </TabsList>
 
             {/* Specifications Tab */}
@@ -789,7 +967,12 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               <div className="grid grid-cols-12 gap-6 bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
                 {/* Row 1: Q ID, Description, Code */}
                 <div className="col-span-3 space-y-2">
-                  <Label htmlFor="edit-qId" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Q Id</Label>
+                  <Label
+                    htmlFor="edit-qId"
+                    className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                  >
+                    Q Id
+                  </Label>
                   <Input
                     id="edit-qId"
                     className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
@@ -802,7 +985,12 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                 </div>
 
                 <div className="col-span-7 space-y-2">
-                  <Label htmlFor="edit-description" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Description</Label>
+                  <Label
+                    htmlFor="edit-description"
+                    className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                  >
+                    Description
+                  </Label>
                   <Input
                     id="edit-description"
                     className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 h-11"
@@ -812,10 +1000,15 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                 </div>
 
                 <div className="col-span-2 space-y-2">
-                  <Label htmlFor="edit-code" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 text-center block">Code</Label>
+                  <Label
+                    htmlFor="edit-code"
+                    className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                  >
+                    Code
+                  </Label>
                   <Input
                     id="edit-code"
-                    className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 text-center font-black h-11"
+                    className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/20 font-black h-11"
                     value={formData.code}
                     onChange={(e) => handleChange("code", e.target.value)}
                   />
@@ -823,35 +1016,56 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
 
                 {pageType === "platform" && (
                   <>
-                    {/* Combined Row: Start Node, End Node, Start Leg, End Leg */}
-                    <div className="col-span-3 space-y-2">
-                      <Label htmlFor="edit-sNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Node</Label>
-                      <Input
-                        id="edit-sNode"
-                        className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
-                        value={formData.s_node}
-                        onChange={(e) => handleChange("s_node", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-span-3 space-y-2">
-                      <Label htmlFor="edit-eNode" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Node</Label>
-                      <Input
-                        id="edit-eNode"
-                        className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
-                        value={formData.f_node}
-                        onChange={(e) => handleChange("f_node", e.target.value)}
-                      />
+                    {/* Col 1: Start/End Node */}
+                    <div className="col-span-4 space-y-6">
+                      <div className="space-y-2 text-blue-600">
+                        <Label
+                          htmlFor="edit-sNode"
+                          className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                        >
+                          Start Node
+                        </Label>
+                        <Input
+                          id="edit-sNode"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
+                          value={formData.s_node}
+                          onChange={(e) => handleChange("s_node", e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label
+                          htmlFor="edit-eNode"
+                          className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                        >
+                          End Node
+                        </Label>
+                        <Input
+                          id="edit-eNode"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11"
+                          value={formData.f_node}
+                          onChange={(e) => handleChange("f_node", e.target.value)}
+                        />
+                      </div>
                     </div>
 
-                    <div className="col-span-3 space-y-2">
-                      <Label htmlFor="edit-sLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Start Leg</Label>
-                      {pageType === "platform" ? (
+                    {/* Col 2: Start/End Leg */}
+                    <div className="col-span-4 space-y-6">
+                      <div className="space-y-2">
+                        <Label
+                          htmlFor="edit-sLeg"
+                          className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                        >
+                          Start Leg
+                        </Label>
                         <Select
                           value={formData.s_leg}
                           onValueChange={(val) => handleChange("s_leg", val)}
                           disabled={legOptions.length === 0}
                         >
-                          <SelectTrigger id="edit-sLeg" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
+                          <SelectTrigger
+                            id="edit-sLeg"
+                            className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                          >
                             <SelectValue placeholder="Select start leg" />
                           </SelectTrigger>
                           <SelectContent className="rounded-xl">
@@ -862,19 +1076,23 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                             ))}
                           </SelectContent>
                         </Select>
-                      ) : (
-                        <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
-                      )}
-                    </div>
-                    <div className="col-span-3 space-y-2">
-                      <Label htmlFor="edit-eLeg" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">End Leg</Label>
-                      {pageType === "platform" ? (
+                      </div>
+                      <div className="space-y-2">
+                        <Label
+                          htmlFor="edit-eLeg"
+                          className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                        >
+                          End Leg
+                        </Label>
                         <Select
                           value={formData.f_leg}
                           onValueChange={(val) => handleChange("f_leg", val)}
                           disabled={legOptions.length === 0}
                         >
-                          <SelectTrigger id="edit-eLeg" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
+                          <SelectTrigger
+                            id="edit-eLeg"
+                            className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                          >
                             <SelectValue placeholder="Select end leg" />
                           </SelectTrigger>
                           <SelectContent className="rounded-xl">
@@ -885,410 +1103,773 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                             ))}
                           </SelectContent>
                         </Select>
-                      ) : (
-                        <Select disabled><SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger></Select>
-                      )}
+                      </div>
                     </div>
-                {/* Row 3: Distance, Elevation 1, Elevation 2 (Measurables) */}
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-dist" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Distance</Label>
-                  <div className="relative">
-                    <Input
-                      id="edit-dist"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                      value={formData.dist}
-                      onChange={(e) => handleChange("dist", e.target.value)}
-                    />
-                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                      <Select
-                        value={formData.dist_unit || getDefaultUnit("LENGTH", isImperial, "dist", component?.code || undefined)}
-                        onValueChange={(val) => handleChange("dist_unit", val)}
-                      >
-                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                          <SelectValue />
-                        </SelectTrigger>
 
+                    {/* Col 3: Elevation 1/2 */}
+                    <div className="col-span-4 space-y-6">
+                      <div className="space-y-2">
+                        <Label
+                          htmlFor="edit-elv1"
+                          className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                        >
+                          Elevation 1
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="edit-elv1"
+                            className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                            value={formData.elv_1}
+                            onChange={(e) => handleChange("elv_1", e.target.value)}
+                          />
+                          <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                            <Select
+                              value={
+                                formData.elv_1_unit ||
+                                getDefaultUnit(
+                                  "LENGTH",
+                                  isImperial,
+                                  "elv_1",
+                                  component?.code || undefined
+                                )
+                              }
+                              onValueChange={(val) => handleChange("elv_1_unit", val)}
+                            >
+                              <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="rounded-xl">
+                                {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                  <SelectItem key={u} value={u} className="lowercase">
+                                    {u}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label
+                          htmlFor="edit-elv2"
+                          className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                        >
+                          Elevation 2
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="edit-elv2"
+                            className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                            value={formData.elv_2}
+                            onChange={(e) => handleChange("elv_2", e.target.value)}
+                          />
+                          <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                            <Select
+                              value={
+                                formData.elv_2_unit ||
+                                getDefaultUnit(
+                                  "LENGTH",
+                                  isImperial,
+                                  "elv_2",
+                                  component?.code || undefined
+                                )
+                              }
+                              onValueChange={(val) => handleChange("elv_2_unit", val)}
+                            >
+                              <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="rounded-xl">
+                                {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                  <SelectItem key={u} value={u} className="lowercase">
+                                    {u}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+                {/* Row 3/4: Context & Measurables */}
+                {pageType === "platform" ? (
+                  <>
+                    {/* Platform Row: Distance, Clock Pos, Level, Face */}
+                    <div className="col-span-3 space-y-2">
+                      <Label
+                        htmlFor="edit-dist"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Distance
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="edit-dist"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                          value={formData.dist}
+                          onChange={(e) => handleChange("dist", e.target.value)}
+                        />
+                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                          <Select
+                            value={
+                              formData.dist_unit ||
+                              getDefaultUnit(
+                                "LENGTH",
+                                isImperial,
+                                "dist",
+                                component?.code || undefined
+                              ) || ""
+                            }
+                            onValueChange={(val) => handleChange("dist_unit", val)}
+                          >
+                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                <SelectItem key={u} value={u} className="lowercase">
+                                  {u}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="col-span-3 space-y-2">
+                      <Label
+                        htmlFor="edit-clockPos"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Clock Position
+                      </Label>
+                      <Select
+                        value={formData.clk_pos || ""}
+                        onValueChange={(val) => handleChange("clk_pos", val)}
+                        disabled={!positionLib}
+                      >
+                        <SelectTrigger
+                          id="edit-clockPos"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select position" />
+                        </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          {getUnitOptions("LENGTH", isImperial).map(u => (
-                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
-                          ))}
+                          {positionLib?.data
+                            ?.filter((x: any) => x.lib_code === "POSITION")
+                            .map((x: any) => (
+                              <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                                {x.lib_id}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                </div>
-
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-elv1" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Elevation 1</Label>
-                  <div className="relative">
-                    <Input
-                      id="edit-elv1"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                      value={formData.elv_1}
-                      onChange={(e) => handleChange("elv_1", e.target.value)}
-                    />
-                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                      <Select
-                        value={formData.elv_1_unit || getDefaultUnit("LENGTH", isImperial, "elv_1", component?.code || undefined)}
-                        onValueChange={(val) => handleChange("elv_1_unit", val)}
+                    <div className="col-span-3 space-y-2">
+                      <Label
+                        htmlFor="edit-level"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
                       >
-                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                          <SelectValue />
+                        Level
+                      </Label>
+                      <Select
+                        value={formData.lvl || ""}
+                        onValueChange={(val) => handleChange("lvl", val)}
+                        disabled={levelOptions.length === 0}
+                      >
+                        <SelectTrigger
+                          id="edit-level"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select level" />
                         </SelectTrigger>
-
                         <SelectContent className="rounded-xl">
-                          {getUnitOptions("LENGTH", isImperial).map(u => (
-                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          {levelOptions.map((opt: any) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                </div>
-
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-elv2" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Elevation 2</Label>
-                  <div className="relative">
-                    <Input
-                      id="edit-elv2"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                      value={formData.elv_2}
-                      onChange={(e) => handleChange("elv_2", e.target.value)}
-                    />
-                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                      <Select
-                        value={formData.elv_2_unit || getDefaultUnit("LENGTH", isImperial, "elv_2", component?.code || undefined)}
-                        onValueChange={(val) => handleChange("elv_2_unit", val)}
+                    <div className="col-span-3 space-y-2">
+                      <Label
+                        htmlFor="edit-face"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
                       >
-                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                          <SelectValue />
+                        Face
+                      </Label>
+                      <Select
+                        value={formData.face || ""}
+                        onValueChange={(val) => handleChange("face", val)}
+                        disabled={faceOptions.length === 0}
+                      >
+                        <SelectTrigger
+                          id="edit-face"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select face" />
                         </SelectTrigger>
-
                         <SelectContent className="rounded-xl">
-                          {getUnitOptions("LENGTH", isImperial).map(u => (
-                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                          {faceOptions.map((opt: any) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                </div>
-
-                {/* Row 4: Clock Position, Level, Face (Context) */}
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-clockPos" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Clock Position</Label>
-                  <Select
-                    value={formData.clk_pos}
-                    onValueChange={(val) => handleChange("clk_pos", val)}
-                    disabled={!positionLib}
-                  >
-                    <SelectTrigger id="edit-clockPos" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
-                      <SelectValue placeholder="Select position" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl">
-                      {positionLib?.data
-                        ?.filter((x: any) => x.lib_code === "POSITION")
-                        .map((x: any) => (
-                          <SelectItem key={x.lib_id} value={String(x.lib_id)}>
-                            {x.lib_id}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-level" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Level</Label>
-                  <Select
-                    value={formData.lvl}
-                    onValueChange={(val) => handleChange("lvl", val)}
-                  >
-                    <SelectTrigger id="edit-level" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
-                      <SelectValue placeholder="Select level" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl z-[9999]">
-                      {levelOptions.map((opt: any) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-face" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Face</Label>
-                  <Select
-                    value={formData.face}
-                    onValueChange={(val) => handleChange("face", val)}
-                  >
-                    <SelectTrigger id="edit-face" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
-                      <SelectValue placeholder="Select face" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl z-[9999]">
-                      {faceOptions.map((opt: any) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Row 5: Part, Structural Group (Identity) */}
-                <div className="col-span-6 space-y-2">
-                  <Label htmlFor="edit-part" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Part</Label>
-                  <Select
-                    value={formData.top_und}
-                    onValueChange={(val) => handleChange("top_und", val)}
-                  >
-                    <SelectTrigger id="edit-part" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
-                      <SelectValue placeholder="Select part" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl z-[9999]">
-                      <SelectItem value="TOPSIDE">TOPSIDE</SelectItem>
-                      <SelectItem value="SUBSEA">SUBSEA</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="col-span-6 space-y-2">
-                  <Label htmlFor="edit-group" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Structural Group</Label>
-                  <Select
-                    value={formData.comp_group}
-                    onValueChange={(val) => handleChange("comp_group", val)}
-                  >
-                    <SelectTrigger id="edit-group" className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold">
-                      <SelectValue placeholder="Select structural group" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl z-[9999]">
-                      {compGroupLib?.data
-                        ?.filter((x: any) => x.lib_code === "COMPGRP")
-                        .map((x: any) => (
-                          <SelectItem key={x.lib_id} value={String(x.lib_id)}>
-                            {x.lib_desc}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-
-            {pageType === "pipeline" && (
-              <>
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-kp" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">KP</Label>
-                  <div className="relative">
-                    <Input
-                      id="edit-kp"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                      value={formData.kp}
-                      onChange={(e) => handleChange("kp", e.target.value)}
-                    />
-                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                      <Select
-                        value={formData.kp_unit || getDefaultUnit("DISTANCE", isImperial, "kp", component?.code || undefined)}
-                        onValueChange={(val) => handleChange("kp_unit", val)}
+                  </>
+                ) : (
+                  <>
+                    {/* Non-Platform Row 3: Distance, Elevation 1, Elevation 2 */}
+                    <div className="col-span-4 space-y-2">
+                      <Label
+                        htmlFor="edit-dist"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
                       >
-                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                          <SelectValue />
-                        </SelectTrigger>
-
-                        <SelectContent className="rounded-xl z-[9999]">
-                          {getUnitOptions("DISTANCE", isImperial).map(u => (
-                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        Distance
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="edit-dist"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                          value={formData.dist}
+                          onChange={(e) => handleChange("dist", e.target.value)}
+                        />
+                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                          <Select
+                            value={
+                              formData.dist_unit ||
+                              getDefaultUnit(
+                                "LENGTH",
+                                isImperial,
+                                "dist",
+                                component?.code || undefined
+                              ) || ""
+                            }
+                            onValueChange={(val) => handleChange("dist_unit", val)}
+                          >
+                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                <SelectItem key={u} value={u} className="lowercase">
+                                  {u}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-
-
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-easting" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Easting</Label>
-                  <div className="relative">
-                    <Input
-                      id="edit-easting"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                      value={formData.easting}
-                      onChange={(e) => handleChange("easting", e.target.value)}
-                    />
-                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                      <Select
-                        value={formData.easting_unit || getDefaultUnit("LENGTH", isImperial, "easting", component?.code || undefined)}
-                        onValueChange={(val) => handleChange("easting_unit", val)}
+                    <div className="col-span-4 space-y-2">
+                      <Label
+                        htmlFor="edit-elv1"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
                       >
-                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                          <SelectValue />
-                        </SelectTrigger>
-
-                        <SelectContent className="rounded-xl z-[9999]">
-                          {getUnitOptions("LENGTH", isImperial).map(u => (
-                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        Elevation 1
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="edit-elv1"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                          value={formData.elv_1}
+                          onChange={(e) => handleChange("elv_1", e.target.value)}
+                        />
+                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                          <Select
+                            value={
+                              formData.elv_1_unit ||
+                              getDefaultUnit(
+                                "LENGTH",
+                                isImperial,
+                                "elv_1",
+                                component?.code || undefined
+                              ) || ""
+                            }
+                            onValueChange={(val) => handleChange("elv_1_unit", val)}
+                          >
+                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                <SelectItem key={u} value={u} className="lowercase">
+                                  {u}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-
-                <div className="col-span-4 space-y-2">
-                  <Label htmlFor="edit-northing" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Northing</Label>
-                  <div className="relative">
-                    <Input
-                      id="edit-northing"
-                      className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                      value={formData.northing}
-                      onChange={(e) => handleChange("northing", e.target.value)}
-                    />
-                    <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                      <Select
-                        value={formData.northing_unit || getDefaultUnit("LENGTH", isImperial, "northing", component?.code || undefined)}
-                        onValueChange={(val) => handleChange("northing_unit", val)}
+                    <div className="col-span-4 space-y-2">
+                      <Label
+                        htmlFor="edit-elv2"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
                       >
-                        <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                          <SelectValue />
-                        </SelectTrigger>
+                        Elevation 2
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="edit-elv2"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                          value={formData.elv_2}
+                          onChange={(e) => handleChange("elv_2", e.target.value)}
+                        />
+                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                          <Select
+                            value={
+                              formData.elv_2_unit ||
+                              getDefaultUnit(
+                                "LENGTH",
+                                isImperial,
+                                "elv_2",
+                                component?.code || undefined
+                              ) || ""
+                            }
+                            onValueChange={(val) => handleChange("elv_2_unit", val)}
+                          >
+                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                <SelectItem key={u} value={u} className="lowercase">
+                                  {u}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
 
-                        <SelectContent className="rounded-xl z-[9999]">
-                          {getUnitOptions("LENGTH", isImperial).map(u => (
-                            <SelectItem key={u} value={u} className="lowercase">{u}</SelectItem>
+                    {/* Non-Platform Row 4: Clock Position, Level, Face */}
+                    <div className="col-span-4 space-y-2">
+                      <Label
+                        htmlFor="edit-clockPos"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Clock Position
+                      </Label>
+                      <Select
+                        value={formData.clk_pos}
+                        onValueChange={(val) => handleChange("clk_pos", val)}
+                        disabled={!positionLib}
+                      >
+                        <SelectTrigger
+                          id="edit-clockPos"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select position" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                          {positionLib?.data
+                            ?.filter((x: any) => x.lib_code === "POSITION")
+                            .map((x: any) => (
+                              <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                                {x.lib_id}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-4 space-y-2">
+                      <Label
+                        htmlFor="edit-level"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Level
+                      </Label>
+                      <Select
+                        value={formData.lvl}
+                        onValueChange={(val) => handleChange("lvl", val)}
+                        disabled={levelOptions.length === 0}
+                      >
+                        <SelectTrigger
+                          id="edit-level"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select level" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                          {levelOptions.map((opt: any) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                </div>
-              </>
-            )}
+                    <div className="col-span-4 space-y-2">
+                      <Label
+                        htmlFor="edit-face"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Face
+                      </Label>
+                      <Select
+                        value={formData.face || ""}
+                        onValueChange={(val) => handleChange("face", val)}
+                        disabled={faceOptions.length === 0}
+                      >
+                        <SelectTrigger
+                          id="edit-face"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select face" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                          {faceOptions.map((opt: any) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-            {/* Additional Details */}
+                    {/* Row 5: Part, Structural Group (Identity) */}
+                    <div className="col-span-6 space-y-2">
+                      <Label
+                        htmlFor="edit-part"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Part
+                      </Label>
+                      <Select
+                        value={formData.top_und}
+                        onValueChange={(val) => handleChange("top_und", val)}
+                      >
+                        <SelectTrigger
+                          id="edit-part"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select part" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl z-[9999]">
+                          <SelectItem value="TOPSIDE">TOPSIDE</SelectItem>
+                          <SelectItem value="SUBSEA">SUBSEA</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="col-span-6 space-y-2">
+                      <Label
+                        htmlFor="edit-group"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Structural Group
+                      </Label>
+                      <Select
+                        value={formData.comp_group}
+                        onValueChange={(val) => handleChange("comp_group", val)}
+                      >
+                        <SelectTrigger
+                          id="edit-group"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select structural group" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl z-[9999]">
+                          {compGroupLib?.data
+                            ?.filter((x: any) => x.lib_code === "COMPGRP")
+                            .map((x: any) => (
+                              <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                                {x.lib_desc}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+
+                {pageType === "pipeline" && (
+                  <>
+                    <div className="col-span-4 space-y-2">
+                      <Label
+                        htmlFor="edit-kp"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        KP
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="edit-kp"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                          value={formData.kp}
+                          onChange={(e) => handleChange("kp", e.target.value)}
+                        />
+                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                          <Select
+                            value={
+                              formData.kp_unit ||
+                              getDefaultUnit(
+                                "DISTANCE",
+                                isImperial,
+                                "kp",
+                                component?.code || undefined
+                              ) || ""
+                            }
+                            onValueChange={(val) => handleChange("kp_unit", val)}
+                          >
+                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+
+                            <SelectContent className="rounded-xl z-[9999]">
+                              {getUnitOptions("DISTANCE", isImperial).map((u) => (
+                                <SelectItem key={u} value={u} className="lowercase">
+                                  {u}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-span-4 space-y-2">
+                      <Label
+                        htmlFor="edit-easting"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Easting
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="edit-easting"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                          value={formData.easting}
+                          onChange={(e) => handleChange("easting", e.target.value)}
+                        />
+                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                          <Select
+                            value={
+                              formData.easting_unit ||
+                              getDefaultUnit(
+                                "LENGTH",
+                                isImperial,
+                                "easting",
+                                component?.code || undefined
+                              ) || ""
+                            }
+                            onValueChange={(val) => handleChange("easting_unit", val)}
+                          >
+                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+
+                            <SelectContent className="rounded-xl z-[9999]">
+                              {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                <SelectItem key={u} value={u} className="lowercase">
+                                  {u}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-span-4 space-y-2">
+                      <Label
+                        htmlFor="edit-northing"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Northing
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="edit-northing"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                          value={formData.northing}
+                          onChange={(e) => handleChange("northing", e.target.value)}
+                        />
+                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                          <Select
+                            value={
+                              formData.northing_unit ||
+                              getDefaultUnit(
+                                "LENGTH",
+                                isImperial,
+                                "northing",
+                                component?.code || undefined
+                              ) || ""
+                            }
+                            onValueChange={(val) => handleChange("northing_unit", val)}
+                          >
+                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+
+                            <SelectContent className="rounded-xl z-[9999]">
+                              {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                <SelectItem key={u} value={u} className="lowercase">
+                                  {u}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Additional Details */}
                 {Object.keys(formData.additionalInfo).length > 0 && (
                   <div className="col-span-12 pt-8 border-t border-slate-200/60 dark:border-slate-800/60 space-y-6">
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                         <Settings2 className="h-4 w-4 text-slate-500" />
                       </div>
-                      <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Additional Specifications</h3>
+                      <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">
+                        Additional Specifications
+                      </h3>
                     </div>
                     <div className="grid grid-cols-2 gap-x-12 gap-y-6 px-1">
                       {Object.entries(formData.additionalInfo).map(([key, value]) => {
-                        if (key === 'del') return null;
-                        if (key === 'length_unit' || key === 'diameter_unit') return null;
-                        let label = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                        const lowerCode = (formData.code || component?.code || "").trim().toLowerCase();
+                        if (key === "del") return null;
+                        if (key === "length_unit" || key === "diameter_unit") return null;
+                        let label = key
+                          .split("_")
+                          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                          .join(" ");
+                        const lowerCode = (formData.code || component?.code || "")
+                          .trim()
+                          .toLowerCase();
 
-                        if (key === 'wall_thk') label = lowerCode === 'cl' ? "Attach Stub Length" : "Wall Thickness";
-                        if (key === 'fender_type') label = "Boat Fender Types";
-                        if (key === 'no_subsea') label = "No. Subsea Attachments";
-                        if (key === 'no_topside') label = "No. Topside Attachments";
-                        if (key === 'no_undattach') label = lowerCode === 'bb' ? "No. Subsea Attach." : "No Undattach";
-                        if (key === 'no_topattach') label = lowerCode === 'bb' ? "No. Subsea Attach." : "No Topattach";
-                        if (key === 'type' && lowerCode === 'an') label = "Installed Type";
-                        if (key === 'thetype' && lowerCode === 'an') label = "Anode Types";
-                        if (key === 'position' && lowerCode === 'an') label = "Anode Position";
-                        if (key === 'material' && lowerCode === 'an') label = "Anode Material Types";
-                        if (key === 'fitting' && lowerCode === 'an') label = "Anode Fitting Types";
-                        if (key === 'termination_p' && lowerCode === 'cs') label = "Termination Depth";
-                        if (key === 'injection_line' && lowerCode === 'cs') label = "Injection Line Fitted";
-                        if (key === 'bumper_type') label = "Boat Bumper Types";
-                        if (key === 'nc_wall_thk') label = "node can wall thickness";
-                        if (key === 'memb_wall_thk') label = "member wall thickness";
-                        if (key === 'node_diam') label = "node diameter";
-                        if (key === 'memb_diam') label = "member diameter";
-                        if (key === 'supp_wt') label = "support wall thickness";
-                        if (key === 'memb_wt') label = "member wall thickness";
-                        if (key === 'supp_diam') label = "support diameter";
-                        if (key === 'csum_typ') label = 'Caisson Type';
-                        if (key === 'cais_at') label = 'Caisson Attachment Type';
-                        if (key === 'corr_ctg') label = 'Corrosion Coating Type';
-                        if (key === 'clam_typ') label = 'Clamp Types';
-                        if (key === 'clam_mat') label = 'Clamp Materials';
-                        if (key === 'liner_reqd') label = 'Liner Required';
-                        if (key === 'bolt_diam') label = 'Bolt Diameter';
-                        if (key === 'out_diam') label = 'Outside Diameter';
-                        if (key === 'in_diam') label = 'Inside Diameter';
-                        if (key === 'coat_typ') label = 'Coating Type';
-                        if (key === 'cgud_typ') label = 'Conductor Guide Frame Types';
-                        if (key === 'fitg_typ') label = 'Fitting Type';
-                        if (key === 'no_caissons') label = 'No. Protected Caissons';
-                        if (key === 'no_conductors') label = 'No. Protected Conductor';
+                        if (key === "wall_thk")
+                          label = lowerCode === "cl" ? "Attach Stub Length" : "Wall Thickness";
+                        if (key === "fender_type") label = "Boat Fender Types";
+                        if (key === "no_subsea") label = "No. Subsea Attachments";
+                        if (key === "no_topside") label = "No. Topside Attachments";
+                        if (key === "no_undattach")
+                          label = lowerCode === "bb" ? "No. Subsea Attach." : "No Undattach";
+                        if (key === "no_topattach")
+                          label = lowerCode === "bb" ? "No. Subsea Attach." : "No Topattach";
+                        if (key === "type" && lowerCode === "an") label = "Installed Type";
+                        if (key === "thetype" && lowerCode === "an") label = "Anode Types";
+                        if (key === "position" && lowerCode === "an") label = "Anode Position";
+                        if (key === "material" && lowerCode === "an")
+                          label = "Anode Material Types";
+                        if (key === "fitting" && lowerCode === "an") label = "Anode Fitting Types";
+                        if (key === "termination_p" && lowerCode === "cs")
+                          label = "Termination Depth";
+                        if (key === "injection_line" && lowerCode === "cs")
+                          label = "Injection Line Fitted";
+                        if (key === "bumper_type") label = "Boat Bumper Types";
+                        if (key === "nc_wall_thk") label = "node can wall thickness";
+                        if (key === "memb_wall_thk") label = "member wall thickness";
+                        if (key === "node_diam") label = "node diameter";
+                        if (key === "memb_diam") label = "member diameter";
+                        if (key === "supp_wt") label = "support wall thickness";
+                        if (key === "memb_wt") label = "member wall thickness";
+                        if (key === "supp_diam") label = "support diameter";
+                        if (key === "csum_typ") label = "Caisson Type";
+                        if (key === "cais_at") label = "Caisson Attachment Type";
+                        if (key === "corr_ctg") label = "Corrosion Coating Type";
+                        if (key === "clam_typ") label = "Clamp Types";
+                        if (key === "clam_mat") label = "Clamp Materials";
+                        if (key === "liner_reqd") label = "Liner Required";
+                        if (key === "bolt_diam") label = "Bolt Diameter";
+                        if (key === "out_diam") label = "Outside Diameter";
+                        if (key === "in_diam") label = "Inside Diameter";
+                        if (key === "coat_typ") label = "Coating Type";
+                        if (key === "cgud_typ") label = "Conductor Guide Frame Types";
+                        if (key === "fitg_typ") label = "Fitting Type";
+                        if (key === "no_caissons") label = "No. Protected Caissons";
+                        if (key === "no_conductors") label = "No. Protected Conductor";
 
-                        if (key === 'pipe_mat') label = 'Pipeline Material';
-                        if (key === 'spool_piece') label = 'Spool Piece?';
-                        if (key === 'cons_span') label = 'Constructional Span';
-                        if (key === 'oper_span') label = 'Operational Span';
-                        if (key === 'coat_cond') label = 'Coating Condition';
-                        if (key === 'gen_cond') label = 'General Condition';
+                        if (key === "pipe_mat") label = "Pipeline Material";
+                        if (key === "spool_piece") label = "Spool Piece?";
+                        if (key === "cons_span") label = "Constructional Span";
+                        if (key === "oper_span") label = "Operational Span";
+                        if (key === "coat_cond") label = "Coating Condition";
+                        if (key === "gen_cond") label = "General Condition";
 
-                        if (key === 'easting') label = 'Easting';
-                        if (key === 'northing') label = 'Northing';
-                        if (key === 'equipment') label = 'Equipment';
-                        if (key === 'location_no') label = 'Location No.';
+                        if (key === "easting") label = "Easting";
+                        if (key === "northing") label = "Northing";
+                        if (key === "equipment") label = "Equipment";
+                        if (key === "location_no") label = "Location No.";
 
-                        if (key === 'int_stiff') label = 'Internal Stiffening';
-                        if (key === 'ext_stiff') label = 'External Stiffening';
+                        if (key === "int_stiff") label = "Internal Stiffening";
+                        if (key === "ext_stiff") label = "External Stiffening";
 
-                        if (key === 'nominal_diam') label = 'Nominal Diameter';
-                        if (key === 'purch_date') label = 'Purchase Date';
-                        if (key === 'electrically_cont') label = 'Electrically Continuous';
-                        if (key === 'pile_typ') label = 'Pile Types';
-                        if (key === 'pile_mat') label = 'Pile Materials';
-                        if (key === 'pgud_typ') label = 'Pile Guide Frame Types';
-                        if (key === 'pgud_mat') label = 'Pile Guide Materials';
-                        if (key === 'pgud_fas') label = 'Pile Guide Attachment Methods';
-                        if (key === 'pile_present') label = 'Pile Present in Guide Frame';
-                        if (key === 'thetype' && (lowerCode === 'hd' || lowerCode === 'hm' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'sg' || lowerCode === 'cu')) label = 'Type';
+                        if (key === "nominal_diam") label = "Nominal Diameter";
+                        if (key === "purch_date") label = "Purchase Date";
+                        if (key === "electrically_cont") label = "Electrically Continuous";
+                        if (key === "pile_typ") label = "Pile Types";
+                        if (key === "pile_mat") label = "Pile Materials";
+                        if (key === "pgud_typ") label = "Pile Guide Frame Types";
+                        if (key === "pgud_mat") label = "Pile Guide Materials";
+                        if (key === "pgud_fas") label = "Pile Guide Attachment Methods";
+                        if (key === "pile_present") label = "Pile Present in Guide Frame";
+                        if (
+                          key === "thetype" &&
+                          (lowerCode === "hd" ||
+                            lowerCode === "hm" ||
+                            lowerCode === "vd" ||
+                            lowerCode === "vm" ||
+                            lowerCode === "sg" ||
+                            lowerCode === "cu")
+                        )
+                          label = "Type";
 
-                        if (key === 'ctry_typ') label = 'Cable Tray Type';
-                        if (key === 'ctry_pos') label = 'Cable Tray Position';
-                        if (key === 'ctry_mat') label = 'Cable Tray Material';
-                        if (key === 'ctry_fas') label = 'Cable Tray Attachment';
-                        if (key === 'face_pos') label = 'Face Orientation/Position';
-                        if (key === 'memb_mat') label = 'Member Material';
-                        if (key === 'corr_ctg') label = 'Corrosion Coating Type';
-                        if (key === 'hose_typ') label = 'Hose Types';
-                        if (key === 'hose_man') label = 'Hose (all Hose types) Manuf.';
-                        if (key === 'flan_cls') label = 'Flange Classes';
-                        if (key === 'hose_cnt') label = 'Hose Contents';
-                        if (key === 'weld_typ') label = 'Weld Types';
-                        if (key === 'weld_des') label = 'Weld Design Code';
-                        if (key === 'weld_mat') label = 'Weld Materials';
-                        if (key === 'weld_cfg') label = 'Weld Configurations';
-                        if (key === 'risr_typ') label = 'Riser Type';
-                        if (key === 'risr_mat') label = 'Pipeline End/Riser Material';
-                        if (key === 'pipe_rtg') label = 'Pipeline/Riser/Clamp Rating';
-                        if (key === 'risg_typ') label = 'Riser Guard Types';
-                        if (key === 'risb_typ') label = 'Support Beam Types';
-                        if (key === 'stub_mat') label = 'Conical Stub Material';
-                        if (key === 'wsup_typ') label = 'Weld-Supported Component Types';
-                        if (key === 'has_gas_seepage') label = 'Has Gas Seepage?';
-                        if (key === 'qid_member_attached') label = 'QID Member Attached To';
-                        if (key === 'boatlanding_types') label = 'Boatlanding Types';
-                        if (key === 'valve_status') label = 'Status of the Valve';
-                        if (key === 'dist_from_legs') label = 'dist. from legs';
-                        if (key === 'tapv_typ') label = 'Pipeline Tap Valve Type';
-                        if (key === 'pipe_cls') label = 'Pipe Class';
-                        if (key === 'cage_typ') label = 'Cage Type';
-                        if (key === 'tapv_mat') label = 'Pipeline Tap Valve Material';
-                        if (key === 'tapv_ctg') label = 'Pipeline Tap Valve Coating';
-                        if (key === 'cage_atc') label = 'Cage Attachment Type';
-                        if (key === 'valv_man') label = 'Valve Manufacturers';
-                        if (key === 'blind_flange') label = 'Blind Flange?';
-                        if (key === 'diameter') label = 'Diameter';
-                        if (key === 'desg_press') label = 'Design Pressure';
-                        if (key === 'op_press') label = 'Operating Pressure';
-                        if (key === 'no_supports') label = 'No. of Supports';
-                        if (key === 'plid_typ') label = 'Repair Clamp Type';
-                        if (key === 'pipe_rtg') label = 'Pipeline/Riser/Clamp Rating';
-                        if (key === 'no_bolts') label = 'No. Bolts';
-                        if (key === 'bolt_tension') label = 'Bolt Tension';
-                        if (key === 'seal_welded') label = 'Seal Welded';
-                        if (key === 'perm_clamp') label = 'Permanent Clamp';
-                        if (key === 'supo_typ') label = 'Support Type';
-                        if (key === 'fj_typ') label = 'Field Joint Wrappings';
+                        if (key === "ctry_typ") label = "Cable Tray Type";
+                        if (key === "ctry_pos") label = "Cable Tray Position";
+                        if (key === "ctry_mat") label = "Cable Tray Material";
+                        if (key === "ctry_fas") label = "Cable Tray Attachment";
+                        if (key === "face_pos") label = "Face Orientation/Position";
+                        if (key === "memb_mat") label = "Member Material";
+                        if (key === "corr_ctg") label = "Corrosion Coating Type";
+                        if (key === "hose_typ") label = "Hose Types";
+                        if (key === "hose_man") label = "Hose (all Hose types) Manuf.";
+                        if (key === "flan_cls") label = "Flange Classes";
+                        if (key === "hose_cnt") label = "Hose Contents";
+                        if (key === "weld_typ") label = "Weld Types";
+                        if (key === "weld_des") label = "Weld Design Code";
+                        if (key === "weld_mat") label = "Weld Materials";
+                        if (key === "weld_cfg") label = "Weld Configurations";
+                        if (key === "risr_typ") label = "Riser Type";
+                        if (key === "risr_mat") label = "Pipeline End/Riser Material";
+                        if (key === "pipe_rtg") label = "Pipeline/Riser/Clamp Rating";
+                        if (key === "risg_typ") label = "Riser Guard Types";
+                        if (key === "risb_typ") label = "Support Beam Types";
+                        if (key === "stub_mat") label = "Conical Stub Material";
+                        if (key === "wsup_typ") label = "Weld-Supported Component Types";
+                        if (key === "has_gas_seepage") label = "Has Gas Seepage?";
+                        if (key === "qid_member_attached") label = "QID Member Attached To";
+                        if (key === "boatlanding_types") label = "Boatlanding Types";
+                        if (key === "valve_status") label = "Status of the Valve";
+                        if (key === "dist_from_legs") label = "dist. from legs";
+                        if (key === "tapv_typ") label = "Pipeline Tap Valve Type";
+                        if (key === "pipe_cls") label = "Pipe Class";
+                        if (key === "cage_typ") label = "Cage Type";
+                        if (key === "tapv_mat") label = "Pipeline Tap Valve Material";
+                        if (key === "tapv_ctg") label = "Pipeline Tap Valve Coating";
+                        if (key === "cage_atc") label = "Cage Attachment Type";
+                        if (key === "valv_man") label = "Valve Manufacturers";
+                        if (key === "blind_flange") label = "Blind Flange?";
+                        if (key === "diameter") label = "Diameter";
+                        if (key === "desg_press") label = "Design Pressure";
+                        if (key === "op_press") label = "Operating Pressure";
+                        if (key === "no_supports") label = "No. of Supports";
+                        if (key === "plid_typ") label = "Repair Clamp Type";
+                        if (key === "pipe_rtg") label = "Pipeline/Riser/Clamp Rating";
+                        if (key === "no_bolts") label = "No. Bolts";
+                        if (key === "bolt_tension") label = "Bolt Tension";
+                        if (key === "seal_welded") label = "Seal Welded";
+                        if (key === "perm_clamp") label = "Permanent Clamp";
+                        if (key === "supo_typ") label = "Support Type";
+                        if (key === "fj_typ") label = "Field Joint Wrappings";
 
                         let unit: string | null = null;
                         let unitOptions: string[] = [];
@@ -1296,23 +1877,49 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                         const isImperial = platformData?.data?.def_unit === "IMPERIAL";
 
                         // Get category from config
-                        const componentConfig = specUiConfig.components.find((c: any) => c.code?.toLowerCase() === lowerCode);
-                        const fieldConfig = componentConfig?.fields.find((f: any) => f.name === key);
+                        const componentConfig = specUiConfig.components.find(
+                          (c: any) => c.code?.toLowerCase() === lowerCode
+                        );
+                        const fieldConfig = componentConfig?.fields.find(
+                          (f: any) => f.name === key
+                        );
                         const category = fieldConfig?.unitcategory || null;
 
                         // Fallback logic if category is missing in config
-                        const resolvedCategory = category || (k.includes('weight') || k.includes('wt') ? 'weight' : (k.includes('length') || k.includes('width') || k.includes('diameter') || k.includes('depth') || k.includes('dim') || k.includes('span') ? 'length' : null));
+                        const resolvedCategory =
+                          category ||
+                          (k.includes("weight") || k.includes("wt")
+                            ? "weight"
+                            : k.includes("length") ||
+                                k.includes("width") ||
+                                k.includes("diameter") ||
+                                k.includes("depth") ||
+                                k.includes("dim") ||
+                                k.includes("span")
+                              ? "length"
+                              : null);
 
                         const options = getUnitOptions(resolvedCategory, isImperial);
                         if (options.length > 0) {
                           unitOptions = options;
-                          unit = formData.additionalInfo[`${key}_unit`] || getDefaultUnit(resolvedCategory, isImperial, key, lowerCode);
+                          unit =
+                            formData.additionalInfo[`${key}_unit`] ||
+                            getDefaultUnit(resolvedCategory, isImperial, key, lowerCode);
                         } else {
                           // Special cases for fields without a direct category in config
-                          if (key === 'angle' && lowerCode === 'yp') { unit = "deg."; unitOptions = ["deg."]; }
-                          else if (key === 'life' && lowerCode === 'an') { unit = "years"; unitOptions = ["years"]; }
-                          else if ((key === 'desg_press' || key === 'op_press') && lowerCode === 'rs') { unit = "bars"; unitOptions = ["bars", "psi"]; }
-                          else {
+                          if (key === "angle" && lowerCode === "yp") {
+                            unit = "deg.";
+                            unitOptions = ["deg."];
+                          } else if (key === "life" && lowerCode === "an") {
+                            unit = "years";
+                            unitOptions = ["years"];
+                          } else if (
+                            (key === "desg_press" || key === "op_press") &&
+                            lowerCode === "rs"
+                          ) {
+                            unit = "bars";
+                            unitOptions = ["bars", "psi"];
+                          } else {
                             // Default fallback - no unit
                             unit = null;
                             unitOptions = [];
@@ -1325,9 +1932,17 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           if (unit && !unitOptions.includes(unit)) unitOptions.push(unit);
                         }
 
-                        const renderSelect = (fieldKey: string, placeholder: string, data: any, extraLabel?: string) => (
+                        const renderSelect = (
+                          fieldKey: string,
+                          placeholder: string,
+                          data: any,
+                          extraLabel?: string
+                        ) => (
                           <div key={fieldKey} className="space-y-2">
-                            <Label htmlFor={`edit-${fieldKey}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                            <Label
+                              htmlFor={`edit-${fieldKey}`}
+                              className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                            >
                               {extraLabel || label}
                             </Label>
                             <Select
@@ -1335,7 +1950,10 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                               onValueChange={(val) => handleAdditionalInfoChange(fieldKey, val)}
                               disabled={!data}
                             >
-                              <SelectTrigger id={`edit-${fieldKey}`} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
+                              <SelectTrigger
+                                id={`edit-${fieldKey}`}
+                                className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold"
+                              >
                                 <SelectValue placeholder={placeholder} />
                               </SelectTrigger>
                               <SelectContent className="rounded-xl">
@@ -1349,71 +1967,115 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           </div>
                         );
 
-                        if (key === 'fender_type' && lowerCode === 'fd') return renderSelect(key, "Select boat fender type", fenderTypeData);
-                        if (key === 'bumper_type' && lowerCode === 'bb') return renderSelect(key, "Select boat bumper type", bumperTypeData);
-                        if (key === 'boatlanding_types' && lowerCode === 'bl') return renderSelect(key, "Select boatlanding type", fenderTypeData);
-                        if (key === 'valve_status' && lowerCode === 'fv') return (
-                          <div key={key} className="space-y-2">
-                            <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Status of the Valve</Label>
-                            <Select
-                              value={value || ""}
-                              onValueChange={(val) => handleAdditionalInfoChange(key, val)}
-                            >
-                              <SelectTrigger id={`edit-${key}`} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
-                                <SelectValue placeholder="Select valve status" />
-                              </SelectTrigger>
-                              <SelectContent className="rounded-xl">
-                                <SelectItem value="Open">Open</SelectItem>
-                                <SelectItem value="Close">Close</SelectItem>
-                                <SelectItem value="Unable to verify">Unable to verify</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        );
-                        if (key === 'valve_status' && lowerCode === 'fv') return (
-                          <div key={key} className="space-y-2">
-                            <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Status of the Valve</Label>
-                            <Select
-                              value={value || ""}
-                              onValueChange={(val) => handleAdditionalInfoChange(key, val)}
-                            >
-                              <SelectTrigger id={`edit-${key}`} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
-                                <SelectValue placeholder="Select valve status" />
-                              </SelectTrigger>
-                              <SelectContent className="rounded-xl">
-                                <SelectItem value="Open">Open</SelectItem>
-                                <SelectItem value="Close">Close</SelectItem>
-                                <SelectItem value="Unable to verify">Unable to verify</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        );
-                        if (key === 'csum_typ' && lowerCode === 'cs') return renderSelect(key, "Select caisson type", csumTypeData);
-                        if (key === 'cais_at' && lowerCode === 'cs') return renderSelect(key, "Select attachment type", caisAtData);
-                        if (key === 'pile_typ' && lowerCode === 'pl') return renderSelect(key, "Select pile type", pileTypeData);
-                        if (key === 'pile_mat' && lowerCode === 'pl') return renderSelect(key, "Select pile material", pileMatData);
-                        if (key === 'pipe_mat' && lowerCode === 'pp') return renderSelect(key, "Select material", pipeMatData);
-                        if (key === 'thetype' && lowerCode === 'an') return renderSelect(key, "Select anode type", anodeTypeData);
-                        if (key === 'position' && lowerCode === 'an') return renderSelect(key, "Select anode position", positionLib);
-                        if (key === 'material' && lowerCode === 'an') return renderSelect(key, "Select anode material type", anodeMatData);
-                        if (key === 'fitting' && lowerCode === 'an') return renderSelect(key, "Select anode fitting type", anodeFitData);
+                        if (key === "fender_type" && lowerCode === "fd")
+                          return renderSelect(key, "Select boat fender type", fenderTypeData);
+                        if (key === "bumper_type" && lowerCode === "bb")
+                          return renderSelect(key, "Select boat bumper type", bumperTypeData);
+                        if (key === "boatlanding_types" && lowerCode === "bl")
+                          return renderSelect(key, "Select boatlanding type", fenderTypeData);
+                        if (key === "valve_status" && lowerCode === "fv")
+                          return (
+                            <div key={key} className="space-y-2">
+                              <Label
+                                htmlFor={`edit-${key}`}
+                                className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                              >
+                                Status of the Valve
+                              </Label>
+                              <Select
+                                value={value || ""}
+                                onValueChange={(val) => handleAdditionalInfoChange(key, val)}
+                              >
+                                <SelectTrigger
+                                  id={`edit-${key}`}
+                                  className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold"
+                                >
+                                  <SelectValue placeholder="Select valve status" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl">
+                                  <SelectItem value="Open">Open</SelectItem>
+                                  <SelectItem value="Close">Close</SelectItem>
+                                  <SelectItem value="Unable to verify">Unable to verify</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          );
+                        if (key === "valve_status" && lowerCode === "fv")
+                          return (
+                            <div key={key} className="space-y-2">
+                              <Label
+                                htmlFor={`edit-${key}`}
+                                className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                              >
+                                Status of the Valve
+                              </Label>
+                              <Select
+                                value={value || ""}
+                                onValueChange={(val) => handleAdditionalInfoChange(key, val)}
+                              >
+                                <SelectTrigger
+                                  id={`edit-${key}`}
+                                  className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold"
+                                >
+                                  <SelectValue placeholder="Select valve status" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl">
+                                  <SelectItem value="Open">Open</SelectItem>
+                                  <SelectItem value="Close">Close</SelectItem>
+                                  <SelectItem value="Unable to verify">Unable to verify</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          );
+                        if (key === "csum_typ" && lowerCode === "cs")
+                          return renderSelect(key, "Select caisson type", csumTypeData);
+                        if (key === "cais_at" && lowerCode === "cs")
+                          return renderSelect(key, "Select attachment type", caisAtData);
+                        if (key === "pile_typ" && lowerCode === "pl")
+                          return renderSelect(key, "Select pile type", pileTypeData);
+                        if (key === "pile_mat" && lowerCode === "pl")
+                          return renderSelect(key, "Select pile material", pileMatData);
+                        if (key === "pipe_mat" && lowerCode === "pp")
+                          return renderSelect(key, "Select material", pipeMatData);
+                        if (key === "thetype" && lowerCode === "an")
+                          return renderSelect(key, "Select anode type", anodeTypeData);
+                        if (key === "position" && lowerCode === "an")
+                          return renderSelect(key, "Select anode position", positionLib);
+                        if (key === "material" && lowerCode === "an")
+                          return renderSelect(key, "Select anode material type", anodeMatData);
+                        if (key === "fitting" && lowerCode === "an")
+                          return renderSelect(key, "Select anode fitting type", anodeFitData);
 
-                        if (['pgud_typ', 'pgud_mat', 'pgud_fas'].includes(key) && lowerCode === 'pg') {
-                          const dataMap: Record<string, { data: any, placeholder: string }> = {
+                        if (
+                          ["pgud_typ", "pgud_mat", "pgud_fas"].includes(key) &&
+                          lowerCode === "pg"
+                        ) {
+                          const dataMap: Record<string, { data: any; placeholder: string }> = {
                             pgud_typ: { data: pgudTypData, placeholder: "Select guide type" },
                             pgud_mat: { data: pgudMatData, placeholder: "Select guide material" },
-                            pgud_fas: { data: pgudFasData, placeholder: "Select attachment method" }
+                            pgud_fas: {
+                              data: pgudFasData,
+                              placeholder: "Select attachment method",
+                            },
                           };
                           const { data, placeholder } = dataMap[key];
                           return (
                             <div key={key} className="space-y-2">
-                              <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
+                              <Label
+                                htmlFor={`edit-${key}`}
+                                className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                              >
+                                {label}
+                              </Label>
                               <Select
                                 value={value || ""}
                                 onValueChange={(val) => handleAdditionalInfoChange(key, val)}
                                 disabled={!data}
                               >
-                                <SelectTrigger id={`edit-${key}`} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
+                                <SelectTrigger
+                                  id={`edit-${key}`}
+                                  className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold"
+                                >
                                   <SelectValue placeholder={placeholder} />
                                 </SelectTrigger>
                                 <SelectContent className="rounded-xl">
@@ -1427,74 +2089,151 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                             </div>
                           );
                         }
-                        if (key === 'corr_ctg' && (lowerCode === 'pp' || lowerCode === 'cs' || lowerCode === 'hd' || lowerCode === 'vd' || lowerCode === 'vm' || lowerCode === 'hm' || lowerCode === 'rs')) return renderSelect(key, "Select coating type", corrCtgData);
-                        if (key === 'clam_typ' && lowerCode === 'cl') return renderSelect(key, "Select clamp type", clamTypeData);
-                        if (key === 'clam_mat' && lowerCode === 'cl') return renderSelect(key, "Select clamp material", clamMatData);
-                        if (key === 'coat_typ' && lowerCode === 'cd') return renderSelect(key, "Select coating type", coatTypData);
-                        if (key === 'cgud_typ' && lowerCode === 'cf') return renderSelect(key, "Select guide type", cgudTypData);
-                        if (key === 'fitg_typ' && lowerCode === 'cf') return renderSelect(key, "Select fitting type", fitgTypData);
-                        if (key === 'sgud_typ' && lowerCode === 'sg') return renderSelect(key, "Select guard type", sgudTypData);
-                        if (key === 'memb_mat' && ['hd', 'hm', 'vd', 'vm'].includes(lowerCode)) return renderSelect(key, "Select member material", stdMembMatData);
-                        if (key === 'memb_mat' && lowerCode === 'lg') return (
-                          <div key={key} className="space-y-2">
-                            <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
-                            <Select
-                              value={value || ""}
-                              onValueChange={(val) => handleAdditionalInfoChange(key, val)}
-                              disabled={!membMatData}
-                            >
-                              <SelectTrigger id={`edit-${key}`} className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold">
-                                <SelectValue placeholder="Select member material" />
-                              </SelectTrigger>
+                        if (
+                          key === "corr_ctg" &&
+                          (lowerCode === "pp" ||
+                            lowerCode === "cs" ||
+                            lowerCode === "hd" ||
+                            lowerCode === "vd" ||
+                            lowerCode === "vm" ||
+                            lowerCode === "hm" ||
+                            lowerCode === "rs")
+                        )
+                          return renderSelect(key, "Select coating type", corrCtgData);
+                        if (key === "clam_typ" && lowerCode === "cl")
+                          return renderSelect(key, "Select clamp type", clamTypeData);
+                        if (key === "clam_mat" && lowerCode === "cl")
+                          return renderSelect(key, "Select clamp material", clamMatData);
+                        if (key === "coat_typ" && lowerCode === "cd")
+                          return renderSelect(key, "Select coating type", coatTypData);
+                        if (key === "cgud_typ" && lowerCode === "cf")
+                          return renderSelect(key, "Select guide type", cgudTypData);
+                        if (key === "fitg_typ" && lowerCode === "cf")
+                          return renderSelect(key, "Select fitting type", fitgTypData);
+                        if (key === "sgud_typ" && lowerCode === "sg")
+                          return renderSelect(key, "Select guard type", sgudTypData);
+                        if (key === "memb_mat" && ["hd", "hm", "vd", "vm"].includes(lowerCode))
+                          return renderSelect(key, "Select member material", stdMembMatData);
+                        if (key === "memb_mat" && lowerCode === "lg")
+                          return (
+                            <div key={key} className="space-y-2">
+                              <Label
+                                htmlFor={`edit-${key}`}
+                                className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                              >
+                                {label}
+                              </Label>
+                              <Select
+                                value={value || ""}
+                                onValueChange={(val) => handleAdditionalInfoChange(key, val)}
+                                disabled={!membMatData}
+                              >
+                                <SelectTrigger
+                                  id={`edit-${key}`}
+                                  className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold"
+                                >
+                                  <SelectValue placeholder="Select member material" />
+                                </SelectTrigger>
                                 <SelectContent className="rounded-xl">
                                   {membMatData?.data?.map((x: any, index: number) => (
-                                    <SelectItem key={x.lib_id || x.lib_name || String(index)} value={x.lib_name}>
+                                    <SelectItem
+                                      key={x.lib_id || x.lib_name || String(index)}
+                                      value={x.lib_name}
+                                    >
                                       {x.lib_name}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
-                            </Select>
-                          </div>
-                        );
-                        if (key === 'nominal_diam' && lowerCode === 'an') return renderSelect(key, "Select diameter", nominalDiamData);
-                        if (key === 'ctry_typ' && lowerCode === 'ct') return renderSelect(key, "Select tray type", ctryTypData);
-                        if (key === 'ctry_pos' && lowerCode === 'ct') return renderSelect(key, "Select position", ctryPosData);
-                        if (key === 'ctry_mat' && lowerCode === 'ct') return renderSelect(key, "Select material", ctryMatData);
-                        if (key === 'ctry_fas' && lowerCode === 'ct') return renderSelect(key, "Select attachment", ctryFasData);
-                        if (key === 'hose_typ' && lowerCode === 'hs') return renderSelect(key, "Select hose type", hoseTypData);
-                        if (key === 'hose_cnt' && lowerCode === 'hs') return renderSelect(key, "Select contents", hoseCntData);
-                        if (key === 'flan_cls' && lowerCode === 'hs') return renderSelect(key, "Select flange class", flanClsData);
-                        if (key === 'weld_typ' && (lowerCode === 'wn' || lowerCode === 'wp' || lowerCode === 'pw')) return renderSelect(key, "Select weld type", weldTypData);
-                        if (key === 'weld_des' && (lowerCode === 'wn' || lowerCode === 'wp' || lowerCode === 'pw')) return renderSelect(key, "Select design code", weldDesData);
-                        if (key === 'weld_mat' && (lowerCode === 'wn' || lowerCode === 'wp' || lowerCode === 'pw')) return renderSelect(key, "Select material", weldMatData);
-                        if (key === 'weld_cfg' && (lowerCode === 'wn' || lowerCode === 'wp')) return renderSelect(key, "Select configuration", weldCfgData);
-                        if (key === 'risr_typ' && lowerCode === 'rs') return renderSelect(key, "Select riser type", risrTypData);
-                        if (key === 'risr_mat' && lowerCode === 'rs') return renderSelect(key, "Select material", risrMatData);
-                        if (key === 'pipe_rtg' && lowerCode === 'rs') return renderSelect(key, "Select rating", pipeRtgData);
-                        if (key === 'risg_typ' && lowerCode === 'rg') return renderSelect(key, "Select riser guard type", risgTypData);
-                        if (key === 'risb_typ' && lowerCode === 'rb') return renderSelect(key, "Select beam type", risbTypData);
-                        if (key === 'wsup_typ' && lowerCode === 'wp') return renderSelect(key, "Select component type", wsupTypData);
-                        if (key === 'tapv_typ' && lowerCode === 'pv') return renderSelect(key, "Select tap valve type", tapvTypData);
-                        if (key === 'pipe_cls' && lowerCode === 'pv') return renderSelect(key, "Select pipe class", pipeClsData);
-                        if (key === 'cage_typ' && lowerCode === 'pv') return renderSelect(key, "Select cage type", cageTypData);
-                        if (key === 'tapv_mat' && lowerCode === 'pv') return renderSelect(key, "Select material", tapvMatData);
-                        if (key === 'tapv_ctg' && lowerCode === 'pv') return renderSelect(key, "Select coating", tapvCtgData);
-                        if (key === 'cage_atc' && lowerCode === 'pv') return renderSelect(key, "Select attachment", cageAtcData);
-                        if (key === 'valv_man' && lowerCode === 'pv') return renderSelect(key, "Select manufacturer", valvManData);
-                        if (key === 'plid_typ' && lowerCode === 'pc') return renderSelect(key, "Select clamp type", plidTypData);
-                        if (key === 'pipe_rtg' && lowerCode === 'pc') return renderSelect(key, "Select rating", pipeRtgData);
-                        if (key === 'supo_typ' && lowerCode === 'ss') return renderSelect(key, "Select support type", supoTypData);
-                        if (key === 'fj_typ' && lowerCode === 'pw') return renderSelect(key, "Select field joint wrapping", fjTypData);
+                              </Select>
+                            </div>
+                          );
+                        if (key === "nominal_diam" && lowerCode === "an")
+                          return renderSelect(key, "Select diameter", nominalDiamData);
+                        if (key === "ctry_typ" && lowerCode === "ct")
+                          return renderSelect(key, "Select tray type", ctryTypData);
+                        if (key === "ctry_pos" && lowerCode === "ct")
+                          return renderSelect(key, "Select position", ctryPosData);
+                        if (key === "ctry_mat" && lowerCode === "ct")
+                          return renderSelect(key, "Select material", ctryMatData);
+                        if (key === "ctry_fas" && lowerCode === "ct")
+                          return renderSelect(key, "Select attachment", ctryFasData);
+                        if (key === "hose_typ" && lowerCode === "hs")
+                          return renderSelect(key, "Select hose type", hoseTypData);
+                        if (key === "hose_cnt" && lowerCode === "hs")
+                          return renderSelect(key, "Select contents", hoseCntData);
+                        if (key === "flan_cls" && lowerCode === "hs")
+                          return renderSelect(key, "Select flange class", flanClsData);
+                        if (
+                          key === "weld_typ" &&
+                          (lowerCode === "wn" || lowerCode === "wp" || lowerCode === "pw")
+                        )
+                          return renderSelect(key, "Select weld type", weldTypData);
+                        if (
+                          key === "weld_des" &&
+                          (lowerCode === "wn" || lowerCode === "wp" || lowerCode === "pw")
+                        )
+                          return renderSelect(key, "Select design code", weldDesData);
+                        if (
+                          key === "weld_mat" &&
+                          (lowerCode === "wn" || lowerCode === "wp" || lowerCode === "pw")
+                        )
+                          return renderSelect(key, "Select material", weldMatData);
+                        if (key === "weld_cfg" && (lowerCode === "wn" || lowerCode === "wp"))
+                          return renderSelect(key, "Select configuration", weldCfgData);
+                        if (key === "risr_typ" && lowerCode === "rs")
+                          return renderSelect(key, "Select riser type", risrTypData);
+                        if (key === "risr_mat" && lowerCode === "rs")
+                          return renderSelect(key, "Select material", risrMatData);
+                        if (key === "pipe_rtg" && lowerCode === "rs")
+                          return renderSelect(key, "Select rating", pipeRtgData);
+                        if (key === "risg_typ" && lowerCode === "rg")
+                          return renderSelect(key, "Select riser guard type", risgTypData);
+                        if (key === "risb_typ" && lowerCode === "rb")
+                          return renderSelect(key, "Select beam type", risbTypData);
+                        if (key === "wsup_typ" && lowerCode === "wp")
+                          return renderSelect(key, "Select component type", wsupTypData);
+                        if (key === "tapv_typ" && lowerCode === "pv")
+                          return renderSelect(key, "Select tap valve type", tapvTypData);
+                        if (key === "pipe_cls" && lowerCode === "pv")
+                          return renderSelect(key, "Select pipe class", pipeClsData);
+                        if (key === "cage_typ" && lowerCode === "pv")
+                          return renderSelect(key, "Select cage type", cageTypData);
+                        if (key === "tapv_mat" && lowerCode === "pv")
+                          return renderSelect(key, "Select material", tapvMatData);
+                        if (key === "tapv_ctg" && lowerCode === "pv")
+                          return renderSelect(key, "Select coating", tapvCtgData);
+                        if (key === "cage_atc" && lowerCode === "pv")
+                          return renderSelect(key, "Select attachment", cageAtcData);
+                        if (key === "valv_man" && lowerCode === "pv")
+                          return renderSelect(key, "Select manufacturer", valvManData);
+                        if (key === "plid_typ" && lowerCode === "pc")
+                          return renderSelect(key, "Select clamp type", plidTypData);
+                        if (key === "pipe_rtg" && lowerCode === "pc")
+                          return renderSelect(key, "Select rating", pipeRtgData);
+                        if (key === "supo_typ" && lowerCode === "ss")
+                          return renderSelect(key, "Select support type", supoTypData);
+                        if (key === "fj_typ" && lowerCode === "pw")
+                          return renderSelect(key, "Select field joint wrapping", fjTypData);
 
                         return (
-                          <div key={key} className={cn("space-y-2", key === 'has_gas_seepage' && "col-span-2")}>
-                            <Label htmlFor={`edit-${key}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{label}</Label>
-                            {typeof value === 'boolean' ? (
+                          <div
+                            key={key}
+                            className={cn("space-y-2", key === "has_gas_seepage" && "col-span-2")}
+                          >
+                            <Label
+                              htmlFor={`edit-${key}`}
+                              className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                            >
+                              {label}
+                            </Label>
+                            {typeof value === "boolean" ? (
                               <div className="flex items-center h-11">
                                 <Checkbox
                                   id={`edit-${key}`}
                                   checked={!!value}
-                                  onCheckedChange={(checked: boolean) => handleAdditionalInfoChange(key, checked)}
+                                  onCheckedChange={(checked: boolean) =>
+                                    handleAdditionalInfoChange(key, checked)
+                                  }
                                   className="h-5 w-5 rounded-md border-slate-300 dark:border-slate-700"
                                 />
                               </div>
@@ -1509,19 +2248,25 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                                     unit && (unitOptions.length > 0 ? "pr-20" : "pr-10")
                                   )}
                                 />
-                                {unit && (
-                                  unitOptions.length > 0 ? (
+                                {unit &&
+                                  (unitOptions.length > 0 ? (
                                     <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
                                       <Select
                                         value={unit}
-                                        onValueChange={(val) => handleAdditionalInfoChange(`${key}_unit`, val)}
+                                        onValueChange={(val) =>
+                                          handleAdditionalInfoChange(`${key}_unit`, val)
+                                        }
                                       >
                                         <SelectTrigger className="h-8 w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-bold lowercase rounded-lg">
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent className="rounded-xl">
                                           {unitOptions.map((opt) => (
-                                            <SelectItem key={opt} value={opt} className="text-[10px] font-medium lowercase">
+                                            <SelectItem
+                                              key={opt}
+                                              value={opt}
+                                              className="text-[10px] font-medium lowercase"
+                                            >
                                               {opt}
                                             </SelectItem>
                                           ))}
@@ -1532,8 +2277,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 tracking-tighter lowercase">
                                       {unit}
                                     </span>
-                                  )
-                                )}
+                                  ))}
                               </div>
                             )}
                           </div>
@@ -1546,7 +2290,12 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                 {/* Metadata */}
                 {component?.metadata && (
                   <div className="col-span-12 space-y-2 mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-800/60">
-                    <Label htmlFor="metadata" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Metadata RAW</Label>
+                    <Label
+                      htmlFor="metadata"
+                      className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                    >
+                      Metadata RAW
+                    </Label>
                     <textarea
                       id="metadata"
                       value={JSON.stringify(component.metadata, null, 2)}
@@ -1566,11 +2315,15 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                   </h3>
 
                   <div className="flex items-center space-x-4">
-                    <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider min-w-[120px]">Associated to:</Label>
+                    <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider min-w-[120px]">
+                      Associated to:
+                    </Label>
                     <div className="flex items-center space-x-2 flex-1">
                       <div className="min-w-[200px] h-11 px-4 flex items-center bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
                         <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
-                          {allComponents?.data?.find((c: any) => c.id === formData.associated_comp_id)?.id_no || "None"}
+                          {allComponents?.data?.find(
+                            (c: any) => c.id === formData.associated_comp_id
+                          )?.id_no || "None"}
                         </span>
                       </div>
                       <Button
@@ -1588,7 +2341,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               <Dialog open={selectorOpen} onOpenChange={setSelectorOpen}>
                 <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
                   <DialogHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/50 border-b">
-                    <DialogTitle className="text-xl font-black uppercase tracking-tight">Select Component</DialogTitle>
+                    <DialogTitle className="text-xl font-black uppercase tracking-tight">
+                      Select Component
+                    </DialogTitle>
                     <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
                       Associate with structure ({structureId})
                     </DialogDescription>
@@ -1630,7 +2385,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
             <TabsContent value="comments" className="mt-0 outline-none">
               <div className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
                 {commentsLoading ? (
-                  <div className="h-[200px] flex items-center justify-center text-slate-400 font-bold animate-pulse uppercase tracking-widest text-xs">Loading comments...</div>
+                  <div className="h-[200px] flex items-center justify-center text-slate-400 font-bold animate-pulse uppercase tracking-widest text-xs">
+                    Loading comments...
+                  </div>
                 ) : (
                   <div className="border border-slate-200/60 dark:border-slate-800/60 rounded-2xl overflow-hidden shadow-sm">
                     <DataTable
@@ -1647,14 +2404,18 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
             <TabsContent value="attachments" className="mt-0 outline-none">
               <div className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
                 {attachmentsLoading ? (
-                  <div className="h-[200px] flex items-center justify-center text-slate-400 font-bold animate-pulse uppercase tracking-widest text-xs">Loading attachments...</div>
+                  <div className="h-[200px] flex items-center justify-center text-slate-400 font-bold animate-pulse uppercase tracking-widest text-xs">
+                    Loading attachments...
+                  </div>
                 ) : (
                   <div className="border border-slate-200/60 dark:border-slate-800/60 rounded-2xl overflow-hidden shadow-sm">
                     <DataTable
                       columns={attachments}
                       data={attachmentsData?.data || []}
                       disableRowClick={true}
-                      toolbarActions={<ComponentAttachmentDialog componentId={component?.id || 0} />}
+                      toolbarActions={
+                        <ComponentAttachmentDialog componentId={component?.id || 0} />
+                      }
                     />
                   </div>
                 )}
@@ -1688,6 +2449,6 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
           </div>
         </DialogFooter>
       </DialogContent>
-    </Dialog >
+    </Dialog>
   );
 }

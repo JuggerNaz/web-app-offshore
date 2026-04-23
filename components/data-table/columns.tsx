@@ -197,7 +197,8 @@ export const pipelines: ColumnDef<Pipeline>[] = [
 export const comments: ColumnDef<Comment>[] = [
   {
     accessorKey: "created_at",
-    header: "Created At",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Created At" />,
+    enableSorting: true,
     cell: ({ row }) => {
       const date: string = row.getValue("created_at");
       const isDeleted = (row.original as any).is_deleted;
@@ -210,11 +211,13 @@ export const comments: ColumnDef<Comment>[] = [
   },
   {
     accessorKey: "text",
-    header: "Comments",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Comments" />,
+    enableSorting: true,
   },
   {
     accessorKey: "user_name",
-    header: "User",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="User" />,
+    enableSorting: true,
   },
   {
     id: "actions",
@@ -821,7 +824,8 @@ export const extendStructureColumn = ({
 export const attachments: ColumnDef<Attachment>[] = [
   {
     accessorKey: "created_at",
-    header: "Created At",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Created At" />,
+    enableSorting: true,
     cell: ({ row }) => {
       const date: string = row.getValue("created_at");
       return <div>{moment(date).format("MMMM Do, YYYY")}</div>;
@@ -829,15 +833,18 @@ export const attachments: ColumnDef<Attachment>[] = [
   },
   {
     accessorKey: "name",
-    header: "Name",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+    enableSorting: true,
   },
   {
     accessorKey: "user_name",
-    header: "User",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="User" />,
+    enableSorting: true,
   },
   {
     accessorKey: "path",
-    header: "Url",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Url" />,
+    enableSorting: true,
     cell: ({ row }) => {
       const attachment: Attachment = row.original;
       return <AttachmentUrlCell attachment={attachment} />
@@ -852,7 +859,8 @@ export const attachments: ColumnDef<Attachment>[] = [
 export const globalAttachments: ColumnDef<ExtendedAttachment>[] = [
   {
     accessorKey: "created_at",
-    header: "Created At",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Created At" />,
+    enableSorting: true,
     cell: ({ row }) => {
       const date: string = row.getValue("created_at");
       return <div>{moment(date).format("MMMM Do, YYYY")}</div>;
@@ -860,7 +868,8 @@ export const globalAttachments: ColumnDef<ExtendedAttachment>[] = [
   },
   {
     accessorKey: "source_name",
-    header: "Source (Platform)",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Source (Platform)" />,
+    enableSorting: true,
     cell: ({ row }) => {
       const name = row.original.source_name || "Unknown";
       const type = row.original.source_type || "N/A";
@@ -874,15 +883,18 @@ export const globalAttachments: ColumnDef<ExtendedAttachment>[] = [
   },
   {
     accessorKey: "name",
-    header: "Name",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+    enableSorting: true,
   },
   {
     accessorKey: "user_name",
-    header: "User",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="User" />,
+    enableSorting: true,
   },
   {
     accessorKey: "path",
-    header: "Url",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Url" />,
+    enableSorting: true,
     cell: ({ row }) => {
       const attachment: Attachment = row.original;
       return <AttachmentUrlCell attachment={attachment} />
