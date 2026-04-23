@@ -38,6 +38,8 @@ import { fetcher } from "@/utils/utils";
 import { generateWorkScopeReport } from "@/utils/report-generators/work-scope-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
+import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
+import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 
 // Types
 type WizardStep = "template" | "context" | "configuration" | "preview";
@@ -56,6 +58,7 @@ interface ReportConfig {
     showContractorLogo: boolean;
     showPageNumbers: boolean;
     printFriendly: boolean;
+    showSignatures: boolean;
 }
 
 interface SelectionState {
@@ -111,6 +114,8 @@ const REPORT_TEMPLATES = {
         { id: "rov-anode-report", name: "ROV Anode Inspection Report", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "ROV CP Survey Report",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rgvi-report",  name: "ROV GVI Report (RGVI)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcasn-report", name: "ROV Caisson Survey Report",    icon: FileBarChart, description: "Portrait Caisson Survey report — grouped by Caisson with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", icon: FileBarChart, description: "Detailed ROV Caisson inspection with graphical elevation profiles and terminator sketch", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -141,6 +146,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         showContractorLogo: true,
         showPageNumbers: true,
         printFriendly: false,
+        showSignatures: true,
     });
 
     // Data Fetching
@@ -772,6 +778,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 </div>
                             </div>
                             <div className="flex items-center justify-between pt-2">
+                                <Label className="cursor-pointer" htmlFor="contractor-logo">Show Contractor Logo</Label>
+                                <Switch
+                                    id="contractor-logo"
+                                    checked={config.showContractorLogo}
+                                    onCheckedChange={(c: boolean) => setConfig({ ...config, showContractorLogo: c })}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between pt-2">
                                 <Label className="cursor-pointer" htmlFor="page-numbers">Show Page Numbers</Label>
                                 <Switch
                                     id="page-numbers"
@@ -832,31 +846,21 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         </CardContent>
                     </Card>
 
-                    {selections.jobPackId && (
-                        <Card>
-                            <CardContent className="pt-6">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-1">
-                                        <Label className="text-base">Contractor Logo</Label>
-                                        <p className="text-xs text-muted-foreground">Show contractor logo on report cover</p>
-                                    </div>
-                                    <Switch
-                                        checked={config.showContractorLogo}
-                                        onCheckedChange={(c: boolean) => setConfig({ ...config, showContractorLogo: c })}
-                                    />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
                 </div>
 
                 {/* Right Column: Signatures */}
                 <div className="space-y-6">
                     <Card>
                         <CardContent className="pt-6 space-y-6">
-                            <div className="flex items-center gap-2 mb-2 text-slate-800 font-semibold">
-                                <User className="w-5 h-5 text-green-500" />
-                                <h3>Signatures</h3>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2 text-slate-800 font-semibold">
+                                    <User className="w-5 h-5 text-green-500" />
+                                    <h3>Signatures</h3>
+                                </div>
+                                <Switch
+                                    checked={config.showSignatures}
+                                    onCheckedChange={(c: boolean) => setConfig({ ...config, showSignatures: c })}
+                                />
                             </div>
 
                             <div className="space-y-4">
@@ -1816,6 +1820,144 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
+        // ROV Caisson Survey Report
+        if (selections.templateId === "rov-rcasn-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(
+                        id,
+                        q_id, 
+                        code,
+                        metadata
+                    ),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const rcasnRecords = (records || []).filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isRCASN = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RCASN";
+                return sowMatches && jobPackMatches && isRCASN;
+            });
+
+            if (!rcasnRecords || rcasnRecords.length === 0) {
+                alert(`No RCASN records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel:           jobPack.metadata?.vessel || "N/A",
+            };
+
+            try {
+                return await generateROVCasnReport(
+                    rcasnRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("RCASN Report Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Caisson Survey (Sketch) Report
+        if (selections.templateId === "rov-rcasn-sketch-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id(id, code, name),
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            const caissonRecords = records || [];
+
+            if (caissonRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: jobPack.metadata?.vessel || "N/A"
+            };
+
+            try {
+                return await generateROVCasnSketchReport(
+                    caissonRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                );
+            } catch (error) {
+                console.error("RCASN Sketch Generator Error:", error);
+                throw error;
+            }
+        }
+
         // Work Scope Status Summary (New)
         if (selections.templateId === "work-scope-status") {
             const jobPack = await fetchJobPackData();
@@ -1901,9 +2043,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     sowData = json.data;
                 } catch (e) { console.error(e); }
             }
-
             if (!sowData) sowData = { items: [], report_numbers: [] };
-            return await generateWorkScopeIncompleteReport(jobPack, structure, sowData, companySettings, reportConfig as any);
+            return await generateWorkScopeIncompleteReport(jobPack, structure, sowData, companySettings, { ...reportConfig, showSignatures: reportConfig.showSignatures } as any);
         }
 
         // Work Scope Report (Job Pack + Structure)

@@ -19,11 +19,13 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
-    reportType?: 'R' | 'J' | 'I'; // 'R' = Riser, 'J' = J-Tube, 'I' = I-Tube
     showSignatures?: boolean;
 }
 
-export const generateROVRRISIReport = async (
+/**
+ * ROV Caisson Survey (Sketch) Report
+ */
+export const generateROVCasnSketchReport = async (
     records: any[],
     headerData: any,
     companySettings: CompanySettings,
@@ -35,14 +37,6 @@ export const generateROVRRISIReport = async (
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 12;
         const contentWidth = pageWidth - (margin * 2);
-
-        // Determine Report Type & Filter
-        const rType = config.reportType || 'R';
-        const typeConfig = {
-            'R': { title: 'ROV Riser Survey Report', prefix: 'R', label: 'RISER', file: 'ROV_Riser_Survey_Report' },
-            'J': { title: 'ROV J-Tube Inspection Report', prefix: 'J', label: 'J-TUBE', file: 'ROV_JTube_Inspection_Report' },
-            'I': { title: 'ROV I-Tube Inspection Report', prefix: 'I', label: 'I-TUBE', file: 'ROV_ITube_Inspection_Report' }
-        }[rType];
 
         const colors = {
             navy: [31, 55, 93] as [number, number, number],
@@ -58,19 +52,16 @@ export const generateROVRRISIReport = async (
 
         const supabase = createClient();
 
-        // ── 1. Context ──────────────────────────────────────────────────────────
+        // 1. Context & Grouping
         const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
 
-        // Filter records by QID prefix
+        // Filter records by inspection code RCASN and component code CS
         const filteredRecords = records.filter(r => {
-            const qid = (r.structure_components?.q_id || '').toUpperCase();
-            return qid.startsWith(typeConfig.prefix);
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase();
+            const compCode = (r.structure_components?.code || '').toUpperCase();
+            return typeCode === 'RCASN' || compCode === 'CS';
         });
-
-        if (filteredRecords.length === 0) {
-            console.warn(`No records found for ${typeConfig.title} (Prefix: ${typeConfig.prefix})`);
-        }
 
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
         const compRegistry = new Map<number, any>();
@@ -79,42 +70,71 @@ export const generateROVRRISIReport = async (
             allComps.forEach(c => {
                 compRegistry.set(c.id, c);
                 qidToId.set(c.q_id.toUpperCase(), c.id);
-                const m = c.q_id.match(/R[IS-]*(\d+)/i) || c.q_id.match(/J[IS-]*(\d+)/i) || c.q_id.match(/I[IS-]*(\d+)/i);
-                if (m) qidToId.set(m[1], c.id);
             });
         }
 
-        const risersMap = new Map<number, { riserComp: any, records: any[] }>();
-        const unassigned: any[] = [];
-        filteredRecords.forEach(r => {
-            const comp = r.structure_components;
-            if (!comp) return;
-            let rid: number | null = null;
-            if (comp.code === 'RS') rid = comp.id;
-            else if (comp.metadata?.associated_comp_id) rid = Number(comp.metadata.associated_comp_id);
-            else {
-                const q = (comp.q_id || '').toUpperCase(); 
-                const m = q.match(/R[IS-]*(\d+)/i) || q.match(/J[IS-]*(\d+)/i) || q.match(/I[IS-]*(\d+)/i);
-                if (m && qidToId.has(m[1])) rid = qidToId.get(m[1])!;
-                else if (qidToId.has(q)) rid = qidToId.get(q)!;
+        // 1. Map all records to their parent Caisson QID if possible
+        const caissonGroups: Record<string, any[]> = {};
+        const caissonObjects: Record<string, any> = {};
+        const idToQidMap: Record<number, string> = {};
+
+        allComps?.forEach(c => {
+            if ((c.code || "").toUpperCase() === "CS") {
+                idToQidMap[c.id] = c.q_id;
+                caissonObjects[c.q_id.toUpperCase()] = c;
             }
-            if (rid) {
-                if (!risersMap.has(rid)) risersMap.set(rid, { riserComp: compRegistry.get(rid) || comp, records: [] });
-                risersMap.get(rid)!.records.push(r);
-            } else unassigned.push(r);
         });
 
-        if (unassigned.length > 0) {
-            if (risersMap.size === 1) Array.from(risersMap.values())[0].records.push(...unassigned);
-            else risersMap.set(0, { riserComp: { q_id: 'Miscellaneous' }, records: unassigned });
-        }
-
-        const groups = Array.from(risersMap.values()).sort((a, b) => {
-            const qA = a.riserComp?.q_id || ''; const qB = b.riserComp?.q_id || '';
-            return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
+        filteredRecords.forEach(r => {
+            const comp = r.structure_components || {};
+            const metadata = comp.metadata || {};
+            const typeCode = (comp.code || "").toUpperCase();
+            const qid = (comp.q_id || "Unknown").trim();
+            
+            let parentQid = metadata.parent_qid || metadata.parent_q_id;
+            const parentId = metadata.parent_id || metadata.comp_id_parent || metadata.associated_comp_id;
+            
+            if (!parentQid && parentId && idToQidMap[parentId]) {
+                parentQid = idToQidMap[parentId];
+            }
+            
+            let groupKey = "General";
+            if (typeCode === "CS") {
+                groupKey = qid;
+            } else if (parentQid) {
+                groupKey = parentQid;
+            } else {
+                const match = qid.match(/^(CS-[^-_ ]+)/i);
+                if (match) groupKey = match[1];
+                else if (qid.toUpperCase().startsWith("CS")) groupKey = qid;
+            }
+            
+            const upperKey = groupKey.toUpperCase();
+            if (!caissonGroups[upperKey]) caissonGroups[upperKey] = [];
+            caissonGroups[upperKey].push(r);
+            
+            // If this record is for the caisson itself, store it as the representative object
+            if (typeCode === "CS" && !caissonObjects[upperKey]) {
+                caissonObjects[upperKey] = comp;
+            }
         });
 
-        // ── 2. Rendering ────────────────────────────────────────────────────────
+        const sortedGroupKeys = Object.keys(caissonGroups).sort((a, b) => {
+            if (a === "GENERAL") return 1;
+            if (b === "GENERAL") return -1;
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        const groups = sortedGroupKeys.map(key => {
+            // Find the actual CS component for this key to get metadata
+            const caissonComp = caissonObjects[key] || allComps?.find(c => 
+                c.q_id.toUpperCase() === key || 
+                (key !== "GENERAL" && c.q_id.toUpperCase().startsWith(key))
+            ) || { q_id: key };
+            return { caissonComp, records: caissonGroups[key] };
+        });
+
+        // 2. Assets
         let coLogo: any = null; let ctLogo: any = null;
         if (companySettings.logo_url) { try { coLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {} }
         if (headerData.contractorLogoUrl) { try { ctLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {} }
@@ -127,7 +147,7 @@ export const generateROVRRISIReport = async (
             if (ctLogo) drawLogo(d, ctLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
             d.setFontSize(9); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
             d.setFontSize(7); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10, { align: 'center' });
-            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text(typeConfig.title, margin + contentWidth/2, margin + 17, { align: 'center' });
+            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text("ROV Caisson Survey (Sketch) Report", margin + contentWidth/2, margin + 17, { align: 'center' });
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
@@ -163,7 +183,7 @@ export const generateROVRRISIReport = async (
 
         for (let i = 0; i < groups.length; i++) {
             const group = groups[i];
-            const riser = group.riserComp;
+            const caisson = group.caissonComp;
             const recordsInGroup = group.records;
             if (i > 0) doc.addPage();
             drawHeader(doc);
@@ -172,117 +192,125 @@ export const generateROVRRISIReport = async (
             // Sub-header
             doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 7, 'F');
             doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont("helvetica", "bold");
-            doc.text(`${typeConfig.label} QID: ${riser?.q_id || 'Unknown'}`, margin + 5, currentY + 5);
+            doc.text(`Caisson QID: ${caisson?.q_id || 'Unknown'}`, margin + 5, currentY + 5);
             currentY += 10;
 
             const gW = contentWidth * 0.40; const dW = contentWidth * 0.60;
             const gX = margin; const dX = margin + gW;
 
             // --- Elev Processing ---
-            const rMeta = riser?.metadata || {};
-            const designStart = parseFloat(rMeta.start_elevation ?? rMeta.start_elev ?? 5);
-            const designEnd = parseFloat(rMeta.end_elevation ?? rMeta.end_elev ?? platformDepth);
+            const rMeta = caisson?.metadata || {};
+            const rAdd = rMeta.additionalInfo || {};
             
-            const suspRec = recordsInGroup.find(r => r.inspection_data?.suspension_gap || r.description?.toLowerCase().includes('suspension'));
-            const suspGap = suspRec ? parseFloat(suspRec.inspection_data?.suspension_gap || 0) : 0;
-            const mudTouchDist = suspRec ? parseFloat(suspRec.inspection_data?.mud_touch_distance || 15) : 0;
+            // Priority list for Elevation 1 (Top)
+            const designStart = parseFloat(
+                rMeta.elv_1 ?? 
+                rMeta.elevation_1 ?? 
+                rAdd.elv_1 ?? 
+                rAdd.elevation_1 ?? 
+                rMeta.start_elevation ?? 
+                rMeta.start_elev ?? 
+                5
+            );
 
-            const rWidth = 8; const bRadius = 10;
-            const bottomElev = designEnd;
-            const mudlineElev = designEnd - suspGap;
-
+            // Priority list for Elevation 2 (Bottom / Terminator)
+            const designEnd = parseFloat(
+                rMeta.elv_2 ?? 
+                rMeta.elevation_2 ?? 
+                rAdd.elv_2 ?? 
+                rAdd.elevation_2 ?? 
+                rMeta.end_elevation ?? 
+                rMeta.end_elev ?? 
+                platformDepth
+            );
+            
+            const rWidth = 12;
             const gTopY = currentY + 15;
-            const gMudlineY = gTopY + 140;
+            const gBottomY = gTopY + 140;
 
-            const sMax = Math.max(designStart + 2, 5);
-            const sMin = Math.min(mudlineElev - 10, -40);
+            // Calculate a nice scale range
+            const sMax = Math.ceil((designStart + 2) / 5) * 5;
+            const sMin = Math.floor((designEnd - 5) / 5) * 5;
             const eRange = sMax - sMin;
-            const eToY = (e: number) => gTopY + ((sMax - e) / eRange) * (gMudlineY - gTopY);
+            const eToY = (e: number) => gTopY + ((sMax - e) / eRange) * (gBottomY - gTopY);
 
-            const cX = gX + (gW / 2) - 10;
-            const pipeY = eToY(bottomElev); 
-            const mudY = eToY(mudlineElev) + (rWidth / 2);
-            const isStraight = rType === 'I';
-            const bY = isStraight ? pipeY : eToY(bottomElev + bRadius);
+            const cX = gX + (gW / 2);
+            const pipeStartY = eToY(designStart);
+            const pipeEndY = eToY(designEnd);
 
-            // --- Draw Mudline ---
-            doc.setDrawColor(...colors.mudline); doc.setLineWidth(1.2);
-            if (suspGap === 0) {
-                doc.line(gX, mudY, gX + gW, mudY);
-                doc.setFontSize(7); doc.setTextColor(...colors.mudline); 
-                doc.text("SEABED / MUDLINE", gX + 2, mudY - 3, { align: 'left' });
-            } else {
-                const startMudY = mudY;
-                const endMudY = pipeY + (rWidth / 2);
-                const touchMudX = cX + bRadius + (mudTouchDist * (gW / 60));
-                doc.line(gX, startMudY, cX - 10, startMudY);
-                let lx = cX - 10; let ly = startMudY;
-                const segs = 20;
-                for (let j = 1; j <= segs; j++) {
-                    const t = j / segs;
-                    const tx = Math.pow(1 - t, 2) * (cX - 10) + 2 * (1 - t) * t * cX + Math.pow(t, 2) * touchMudX;
-                    const ty = Math.pow(1 - t, 2) * startMudY + 2 * (1 - t) * t * endMudY + Math.pow(t, 2) * endMudY;
-                    doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
-                }
-                doc.line(lx, ly, gX + gW, ly);
-                doc.setFontSize(7); doc.setTextColor(...colors.mudline); 
-                doc.text(`SUSPENSION (${suspGap}m)`, cX, startMudY + 5, { align: 'center' });
-                doc.text("SEABED", gX + 2, startMudY - 3, { align: 'left' });
-            }
-
-            // --- Draw Riser ---
-            const drawP = (x1: number, y1: number, x2: number, y2: number, isV: boolean) => {
-                doc.setLineWidth(rWidth); doc.setDrawColor(50, 60, 80); doc.line(x1, y1, x2, y2);
-                doc.setLineWidth(rWidth * 0.7); doc.setDrawColor(71, 85, 105); doc.line(x1, y1, x2, y2);
-                doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(148, 163, 184); 
-                const o = -rWidth * 0.15; if (isV) doc.line(x1 + o, y1, x2 + o, y2); else doc.line(x1, y1 + o, x2, y2 + o);
+            // --- Graphics Area ---
+            // 1. Draw Caisson Pipe (Vertical)
+            const drawP = (x: number, y1: number, y2: number) => {
+                doc.setLineWidth(rWidth); doc.setDrawColor(60, 70, 90); doc.line(x, y1, x, y2);
+                doc.setLineWidth(rWidth * 0.8); doc.setDrawColor(80, 95, 115); doc.line(x, y1, x, y2);
+                doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(180, 190, 210); doc.line(x - rWidth * 0.2, y1, x - rWidth * 0.2, y2);
             };
-            drawP(cX, eToY(designStart), cX, bY, true);
-            const endX = cX + bRadius; 
-            if (!isStraight) {
-                const drawC = (color: [number, number, number], width: number, off: number) => {
-                    const segs = 20; let lx = cX + off; let ly = bY;
-                    const cx = cX + off; const cy = bY; const ex = endX; const ey = pipeY + off;
-                    doc.setDrawColor(...color); doc.setLineWidth(width);
-                    for (let j = 1; j <= segs; j++) {
-                        const t = j / segs;
-                        const tx = Math.pow(1 - t, 2) * cx + 2 * (1 - t) * t * cx + Math.pow(t, 2) * ex;
-                        const ty = Math.pow(1 - t, 2) * cy + 2 * (1 - t) * t * ey + Math.pow(t, 2) * ey;
-                        doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
-                    }
-                };
-                drawC([50, 60, 80], rWidth, 0); drawC([71, 85, 105], rWidth * 0.7, 0); drawC([148, 163, 184], rWidth * 0.2, -rWidth * 0.15);
-            }
-            if (rType !== 'J' && rType !== 'I') {
-                drawP(endX, pipeY, gX + gW - 5, pipeY, false);
-                doc.setFontSize(6); doc.setTextColor(71, 85, 105); doc.text("PIPELINE", endX + 10, pipeY + 8);
-            }
+            drawP(cX, pipeStartY, pipeEndY);
+
+            // 2. Draw Circular Terminator at the bottom
+            const termRadius = rWidth / 2;
+            const termY = pipeEndY; // Center exactly at the end to overlap/connect
+            
+            doc.setDrawColor(50, 50, 50); doc.setLineWidth(0.8);
+            doc.setFillColor(80, 95, 115); // Match pipe color
+            doc.circle(cX, termY, termRadius, 'FD');
+            
+            // Grill lines inside the circular terminator
+            doc.setLineWidth(0.2);
+            doc.setDrawColor(40, 40, 40);
+            // Horizontal lines
+            doc.line(cX - termRadius * 0.6, termY + termRadius * 0.4, cX + termRadius * 0.6, termY + termRadius * 0.4);
+            doc.line(cX - termRadius * 0.8, termY + termRadius * 0.7, cX + termRadius * 0.8, termY + termRadius * 0.7);
+            
+            // Vertical lines (downward only from pipe end)
+            doc.line(cX, pipeEndY, cX, pipeEndY + termRadius);
+            doc.line(cX - termRadius * 0.4, termY, cX - termRadius * 0.4, termY + termRadius * 0.9);
+            doc.line(cX + termRadius * 0.4, termY, cX + termRadius * 0.4, termY + termRadius * 0.9);
+            
+            doc.setFontSize(6); doc.setTextColor(50, 50, 50);
+            doc.text("CAISSON TERMINATOR", cX + termRadius + 2, termY + termRadius);
 
             // Scale
             doc.setLineWidth(0.1); doc.setDrawColor(200, 200, 200);
-            for (let e = Math.floor(sMax); e >= sMin; e -= 5) {
+            for (let e = sMax; e >= sMin; e -= 5) {
                 const ey = eToY(e);
-                if (ey <= gMudlineY + 15) {
-                    doc.line(cX - 12, ey, cX - 5, ey);
-                    doc.setFontSize(6); doc.setTextColor(150, 150, 150); doc.text(`${e}m`, cX - 18, ey + 1);
+                if (ey <= gBottomY + 15) {
+                    doc.line(cX - 15, ey, cX - 8, ey);
+                    doc.setFontSize(6); doc.setTextColor(150, 150, 150); doc.text(`${e}m`, cX - 22, ey + 1);
                 }
             }
 
-            // Mark Points
+            // Mark Points and Draw Component Graphics
             recordsInGroup.forEach(r => {
                 const c = r.structure_components || {}; const d = r.inspection_data || {};
                 const el = parseFloat(r.elevation ?? d.elevation); if (isNaN(el)) return;
                 const py = eToY(el);
                 const isA = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0);
                 const col = isA ? colors.anomaly : colors.navy;
-                if (c.code === 'CL' || d.clamp_type || c.q_id?.includes('SUPP') || c.q_id?.includes('CLP')) {
-                    const cw = rWidth + 8; const ch = 4.5; const fw = 3;
+                
+                const cName = (c.name || '').toLowerCase();
+                const cQid = (c.q_id || '').toLowerCase();
+                const isClamp = cName.includes('clamp') || cQid.includes('clp') || cQid.includes('supp');
+                const isGuide = cName.includes('guide') || cName.includes('frame') || cQid.includes('gf');
+
+                if (isClamp) {
+                    const cw = rWidth + 8; const ch = 4;
                     doc.setFillColor(255, 255, 255); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'F');
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.8); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
-                    doc.rect(cX - cw/2 - fw, py - 1, fw, 2, 'S'); doc.rect(cX + cw/2, py - 1, fw, 2, 'S');
-                    doc.setFillColor(...colors.navy); doc.circle(cX - cw/2 - fw/2, py, 0.5, 'F'); doc.circle(cX + cw/2 + fw/2, py, 0.5, 'F');
-                    doc.setLineWidth(0.3); doc.line(cX + cw/2 + fw, py, dX - 5, py);
+                    // Bolts/Ears
+                    doc.rect(cX - cw/2 - 2, py - 1, 2, 2, 'S'); doc.rect(cX + cw/2, py - 1, 2, 2, 'S');
+                    doc.setLineWidth(0.2); doc.line(cX + cw/2 + 2, py, dX - 5, py);
                     doc.setFontSize(6); doc.setTextColor(...colors.navy); doc.text(c.q_id || 'Clamp', dX - 3, py + 1.5, { align: 'right' });
+                } else if (isGuide) {
+                    const gw = rWidth + 14; const gh = 6;
+                    doc.setFillColor(230, 235, 245); doc.rect(cX - gw/2, py - gh/2, gw, gh, 'F');
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(1); doc.rect(cX - gw/2, py - gh/2, gw, gh, 'S');
+                    // Structural lines inside guide frame
+                    doc.setLineWidth(0.3);
+                    doc.line(cX - gw/2, py - gh/2, cX + gw/2, py + gh/2);
+                    doc.line(cX - gw/2, py + gh/2, cX + gw/2, py - gh/2);
+                    doc.setLineWidth(0.2); doc.line(cX + gw/2, py, dX - 5, py);
+                    doc.setFontSize(6); doc.setTextColor(...colors.navy); doc.text(c.q_id || 'Guide Frame', dX - 3, py + 1.5, { align: 'right' });
                 } else {
                     doc.setFillColor(...col); doc.circle(cX, py, 1.8, 'F');
                     doc.setDrawColor(...col); doc.setLineWidth(0.1); doc.line(cX + 2, py, dX - 5, py);
@@ -295,21 +323,19 @@ export const generateROVRRISIReport = async (
                 startY: currentY,
                 margin: { left: dX, right: margin },
                 tableWidth: dW,
-                head: [['Loc / Elev', 'CP (mV)', 'Findings / Anomalies']],
+                head: [['Elev (m)', 'CP (mV)', 'Findings / Anomalies']],
                 body: sortedR.map(r => {
                     const rd = r.inspection_data || {};
                     const anoms = r.insp_anomalies || [];
                     const isAnom = r.has_anomaly || anoms.length > 0;
                     const c = r.structure_components || {};
-                    const isClamp = c.code === 'CL' || rd.clamp_type || c.q_id?.includes('SUPP') || c.q_id?.includes('CLP');
                     let findings = r.description || 'No significant findings';
-                    if (isClamp) findings = `Clamp: ${c.q_id || 'N/A'}\n${findings}`;
                     if (isAnom && anoms.length > 0) {
                         findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`).join('\n');
                     }
                     if (r.insp_rov_jobs?.job_no) findings += `\n[Dive: ${r.insp_rov_jobs.job_no}]`;
                     return [
-                        { content: r.elevation ? `${r.elevation}m` : (rd.riser_item || 'N/A'), styles: { fontStyle: 'bold' } },
+                        { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: { fontStyle: 'bold' } },
                         { content: rd.cp_rdg ?? rd.cp ?? '-', styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
@@ -317,9 +343,10 @@ export const generateROVRRISIReport = async (
                 theme: 'grid',
                 headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8 },
                 styles: { fontSize: 7, cellPadding: 2 },
-                columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } }
+                columnStyles: { 0: { cellWidth: 15 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } }
             });
 
+            // Signatures
             const sigY = pageHeight - 32; const sigW = contentWidth / 3;
             const drawS = (l: string, lx: number) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 4, 15, 'S');
@@ -330,14 +357,13 @@ export const generateROVRRISIReport = async (
             drawS('PREPARED BY', margin); drawS('REVIEWED BY', margin + sigW); drawS('APPROVED BY', margin + (sigW * 2));
         }
 
-        // --- Finalize Page Numbers ---
-        const totalPages = (doc as any).internal.getNumberOfPages();
+        const totalPages = doc.getNumberOfPages();
         for (let j = 1; j <= totalPages; j++) {
             doc.setPage(j);
             drawFooter(doc, j, totalPages);
         }
 
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`${typeConfig.file}_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
-    } catch (e) { console.error("ROV Tube Report Error", e); throw e; }
+        doc.save(`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+    } catch (e) { console.error("ROV Caisson Sketch Report Error", e); throw e; }
 };

@@ -90,6 +90,8 @@ import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-repo
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
+import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
+import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -735,6 +737,8 @@ function V10PreviewLayout() {
     const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
     const [cpPreviewOpen,    setCpPreviewOpen]    = useState(false);
     const [rgviPreviewOpen,  setRgviPreviewOpen]  = useState(false);
+    const [rcasnPreviewOpen, setRcasnPreviewOpen] = useState(false);
+    const [rcasnSketchPreviewOpen, setRcasnSketchPreviewOpen] = useState(false);
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -2047,7 +2051,12 @@ function V10PreviewLayout() {
             let inspsQuery = supabase.from('insp_records').select(`
                 *,
                 inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (q_id, code),
+                structure_components:component_id!left (
+                    id,
+                    q_id, 
+                    code,
+                    metadata
+                ),
                 insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                 insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                 insp_video_tapes:tape_id!left(tape_no),
@@ -4449,6 +4458,27 @@ function V10PreviewLayout() {
         setCpPreviewOpen(true);
     };
 
+    const generateRCASNReport = async () => {
+        const rcasnRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN');
+        if (rcasnRecords.length === 0) {
+            toast.error("No RCASN records found to generate report.");
+            return;
+        }
+        setRcasnPreviewOpen(true);
+    };
+
+    const generateRCASNSketchReport = async () => {
+        const caissonRecords = currentRecords.filter(r => 
+            (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN' ||
+            (r.structure_components?.code || '').toUpperCase() === 'CS'
+        );
+        if (caissonRecords.length === 0) {
+            toast.error("No RCASN or Caisson records found to generate sketch report.");
+            return;
+        }
+        setRcasnSketchPreviewOpen(true);
+    };
+
     const generateRGVIReport = async () => {
         const rgviRecords = currentRecords.filter(r =>
             (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI'
@@ -4607,7 +4637,7 @@ function V10PreviewLayout() {
             <ReportPreviewDialog 
                 open={rrisiPreviewOpen} 
                 onOpenChange={setRrisiPreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
                     const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
                     
@@ -4657,7 +4687,7 @@ function V10PreviewLayout() {
             <ReportPreviewDialog 
                 open={jtisiPreviewOpen} 
                 onOpenChange={setJtisiPreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
                     const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
 
@@ -4707,7 +4737,7 @@ function V10PreviewLayout() {
             <ReportPreviewDialog 
                 open={itisiPreviewOpen} 
                 onOpenChange={setItisiPreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
                     const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
 
@@ -4757,7 +4787,7 @@ function V10PreviewLayout() {
             <ReportPreviewDialog 
                 open={anodePreviewOpen} 
                 onOpenChange={setAnodePreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const anodeRecords = currentRecords.filter(r => {
                         const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
                         const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
@@ -4792,11 +4822,71 @@ function V10PreviewLayout() {
             <ReportPreviewDialog 
                 open={seabedPreviewOpen} 
                 onOpenChange={setSeabedPreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     return await generateSeabedReportBlob(seabedTemplateType, isPrintFriendly);
                 }}
                 title={`Seabed Survey Report - ${seabedTemplateType === 'seabed-survey-debris' ? 'Debris' : seabedTemplateType === 'seabed-survey-gas' ? 'Gas Seepage' : 'Crater'}`}
                 fileName={`Seabed_Survey_${seabedTemplateType.replace('seabed-survey-', '')}_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={rcasnPreviewOpen} 
+                onOpenChange={setRcasnPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const rcasnRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN');
+                    const settings = await getReportHeaderData();
+                    const headerDataObj = {
+                        ...headerData,
+                        contractorLogoUrl: settings.companyLogo 
+                    };
+                    return await generateROVCasnReport(
+                        rcasnRecords,
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures }
+                    );
+                }}
+                title="ROV Caisson Survey Report"
+                fileName={`ROV_Caisson_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={rcasnSketchPreviewOpen} 
+                onOpenChange={setRcasnSketchPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const caissonRecords = currentRecords.filter(r => 
+                        (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN' ||
+                        (r.structure_components?.code || '').toUpperCase() === 'CS'
+                    );
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.lib_path || '';
+                    }
+
+                    return await generateROVCasnSketchReport(
+                        caissonRecords,
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showSignatures
+                        }
+                    );
+                }}
+                title="ROV Caisson Survey (Sketch) Report"
+                fileName={`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             <InspectionHeader 
@@ -4820,6 +4910,8 @@ function V10PreviewLayout() {
                 generateAnodeReport={generateAnodeReport}
                 generateCPReport={generateCPReport}
                 generateRGVIReport={generateRGVIReport}
+                generateRCASNReport={generateRCASNReport}
+                generateRCASNSketchReport={generateRCASNSketchReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -6928,7 +7020,7 @@ function V10PreviewLayout() {
             <ReportPreviewDialog 
                 open={rscorPreviewOpen} 
                 onOpenChange={setRscorPreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
                     const settings = await getReportHeaderData();
                     const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
@@ -6952,7 +7044,8 @@ function V10PreviewLayout() {
                             sowReportNo: headerData.sowReportNo,
                             preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                             returnBlob: true,
-                            printFriendly: isPrintFriendly
+                            printFriendly: isPrintFriendly,
+                            showSignatures
                         }
                     );
                 }}
@@ -6963,7 +7056,7 @@ function V10PreviewLayout() {
             <ReportPreviewDialog 
                 open={anodePreviewOpen} 
                 onOpenChange={setAnodePreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const anodeRecords = currentRecords.filter(r => {
                         const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
                         const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
@@ -6988,7 +7081,7 @@ function V10PreviewLayout() {
                         anodeRecords,
                         headerDataObj,
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        { printFriendly: isPrintFriendly, returnBlob: true }
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures }
                     );
                 }}
                 title="ROV Anode Inspection Report"
@@ -6998,7 +7091,7 @@ function V10PreviewLayout() {
             <ReportPreviewDialog
                 open={cpPreviewOpen}
                 onOpenChange={setCpPreviewOpen}
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const cpRecords = currentRecords.filter(r => {
                         const d = r.inspection_data || {};
                         return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
@@ -7027,6 +7120,7 @@ function V10PreviewLayout() {
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
                             showPageNumbers: true,
+                            showSignatures
                         }
                     );
                 }}
@@ -7037,7 +7131,7 @@ function V10PreviewLayout() {
             <ReportPreviewDialog
                 open={rgviPreviewOpen}
                 onOpenChange={setRgviPreviewOpen}
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const rgviRecords = currentRecords.filter(r =>
                         (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI'
                     );
@@ -7065,6 +7159,7 @@ function V10PreviewLayout() {
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
                             showPageNumbers: true,
+                            showSignatures
                         }
                     );
                 }}

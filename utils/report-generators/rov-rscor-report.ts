@@ -18,6 +18,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    showSignatures?: boolean;
 }
 
 export const generateROVRSCORReport = async (

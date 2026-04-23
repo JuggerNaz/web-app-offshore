@@ -188,6 +188,7 @@ export interface ReportConfig {
   showPageNumbers: boolean;
   returnBlob?: boolean;
   printFriendly?: boolean;
+  showSignatures?: boolean;
 }
 
 export const generateStructureReport = async (

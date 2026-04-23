@@ -47,6 +47,8 @@ interface InspectionHeaderProps {
     generateAnodeReport: () => void;
     generateCPReport: () => void;
     generateRGVIReport: () => void;
+    generateRCASNReport: () => void;
+    generateRCASNSketchReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -74,6 +76,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateAnodeReport,
     generateCPReport,
     generateRGVIReport,
+    generateRCASNReport,
+    generateRCASNSketchReport,
     generateFullInspectionReport,
     jobPackId,
     structureId,
@@ -265,6 +269,17 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             <DropdownMenuItem onClick={() => generateRGVIReport()} className="text-xs py-2 cursor-pointer font-bold text-emerald-600 border-t border-slate-50 mt-1">
                                 <Activity className="w-3.5 h-3.5 mr-2" /> ROV GVI Report (RGVI)
                             </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN') && (
+                            <>
+                                <DropdownMenuItem onClick={() => generateRCASNReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Caisson Survey Report
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => generateRCASNSketchReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-800 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Caisson Survey (Sketch) Report
+                                </DropdownMenuItem>
+                            </>
                         )}
 
                         <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600">
