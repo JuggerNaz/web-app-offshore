@@ -8,19 +8,20 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-async function checkColumns() {
+async function checkConductors() {
     const { data, error } = await supabase
         .from('structure_components')
-        .select('*')
-        .limit(1);
+        .select('q_id, code, metadata')
+        .or('q_id.ilike.CD%,q_id.ilike.CON%,code.eq.CD')
+        .limit(20);
 
     if (error) {
         console.error(error);
         return;
     }
 
-    console.log('Columns in structure_components:');
-    console.log(Object.keys(data[0] || {}));
+    console.log('Sample Conductors:');
+    console.table(data);
 }
 
-checkColumns();
+checkConductors();

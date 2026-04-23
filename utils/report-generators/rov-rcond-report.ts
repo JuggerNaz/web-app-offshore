@@ -24,13 +24,13 @@ interface ReportConfig {
 }
 
 /**
- * ROV Caisson Survey Report (Portrait)
+ * ROV Conductor Survey Report (Portrait)
  * Columns: Item No. | QID | Elevation | Dive No. | CP | Component Condition | Coating Condition | Findings
  *
- * Data is grouped by Caisson (CS). Each CS group starts on a new page.
- * Associated components are clubbed with their parent CS QID.
+ * Data is grouped by Conductor (CD). Each CD group starts on a new page.
+ * Associated components are clubbed with their parent CD QID.
  */
-export const generateROVCasnReport = async (
+export const generateROVCondReport = async (
     records: any[],
     headerData: any,
     companySettings: CompanySettings,
@@ -68,7 +68,7 @@ export const generateROVCasnReport = async (
 
         const HEADER_H = 24;
 
-        const drawPageHeader = (d: jsPDF, caissonQid?: string) => {
+        const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
             if (isPF) {
                 d.setDrawColor(...colors.navy);
@@ -89,7 +89,7 @@ export const generateROVCasnReport = async (
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("ROV Caisson Survey Report",                                margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("ROV Conductor Survey Report",                                margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`SOW Report No: ${headerData.sowReportNo || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
         };
@@ -99,7 +99,6 @@ export const generateROVCasnReport = async (
             const isPF = config.printFriendly;
             const half = contentWidth / 2;
             
-            // Date range for this group
             let startDate: Date | null = null;
             let endDate:   Date | null = null;
             if (groupRecords.length > 0) {
@@ -133,71 +132,91 @@ export const generateROVCasnReport = async (
         };
 
         // ── Grouping Logic ──────────────────────────────────────────────────────
-        // 1. Map all records to their parent Caisson QID if possible
-        // 2. Fallback to component's own QID if it's a Caisson
+        const idToComp: Record<number, { q_id: string, parent_id: number | null, is_cond: boolean }> = {};
         
-        const caissonGroups: Record<string, any[]> = {};
-        const idToQidMap: Record<number, string> = {};
+        const addCompToMap = (c: any) => {
+            if (!c || !c.id) return;
+            const qid = (c.q_id || "").toUpperCase();
+            const typeCode = (c.code || c.metadata?.type || "").toUpperCase();
+            const isCond = qid.startsWith("CD") || qid.startsWith("CON") || typeCode === "CD";
+            
+            idToComp[c.id] = {
+                q_id: c.q_id || `ID: ${c.id}`,
+                parent_id: c.metadata?.parent_id || c.metadata?.comp_id_parent || c.metadata?.parent_comp_id || null,
+                is_cond: isCond
+            };
+        };
+
+        // 1a. Build initial map from records (immediate availability)
+        records.forEach(r => {
+            addCompToMap(r.structure_components);
+            addCompToMap(r.component);
+        });
+
+        // 1b. Load all components for the structure
+        const effectiveStructureId = config.structureId || records.find(r => r.structure_id)?.structure_id;
+        if (effectiveStructureId) {
+            try {
+                const { data: allComps } = await supabase
+                    .from('structure_components')
+                    .select('*')
+                    .eq('structure_id', effectiveStructureId);
+                allComps?.forEach(addCompToMap);
+            } catch (e) {}
+        }
+
+        // 1c. Targeted fetch for any missing 'Associated' component IDs
+        const missingIds = new Set<number>();
         records.forEach(r => {
             const comp = r.structure_components || r.component || {};
             const metadata = comp.metadata || {};
-            const typeCode = (comp.code || metadata.type || "").toUpperCase();
-            if (typeCode === "CS" && comp.id && comp.q_id) {
-                idToQidMap[comp.id] = comp.q_id;
+            const aid = metadata.associated_comp_qid || metadata.associated_comp_id || metadata.parent_id || 
+                        metadata.comp_id_parent || metadata.parent_comp_id || 
+                        metadata.associated_id;
+            if (aid && !idToComp[Number(aid)]) missingIds.add(Number(aid));
+        });
+
+        if (missingIds.size > 0) {
+            try {
+                const { data: extraComps } = await supabase
+                    .from('structure_components')
+                    .select('*')
+                    .in('id', Array.from(missingIds));
+                extraComps?.forEach(addCompToMap);
+            } catch (e) {}
+        }
+
+        // Pass 3: Grouping by Numeric Parent ID
+        const condGroups: Record<number, any[]> = {};
+        records.forEach(r => {
+            const comp = r.structure_components || r.component || {};
+            const metadata = comp.metadata || {};
+            
+            // Identify the numeric 'Parent ID'
+            const associateId = metadata.associated_comp_qid || metadata.associated_comp_id || metadata.parent_id || 
+                               metadata.comp_id_parent || metadata.parent_comp_id || 
+                               metadata.associated_id || null;
+            
+            const groupId = associateId ? Number(associateId) : comp.id;
+            
+            if (groupId) {
+                if (!condGroups[groupId]) condGroups[groupId] = [];
+                condGroups[groupId].push(r);
             }
         });
 
-        records.forEach(r => {
-            const comp = r.structure_components || r.component || {};
-            const metadata = comp.metadata || {};
-            const typeCode = (comp.code || metadata.type || "").toUpperCase();
-            const qid = comp.q_id || "Unknown";
-            
-            // Try to find parent QID
-            let parentQid = metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id;
-            const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
-            
-            if (!parentQid && parentId && idToQidMap[parentId]) {
-                parentQid = idToQidMap[parentId];
-            }
-            
-            let groupKey = "General";
-            
-            if (typeCode === "CS") {
-                groupKey = qid;
-            } else if (parentQid) {
-                groupKey = parentQid;
-            } else {
-                // If it starts with CS, it's likely a caisson or part of one
-                const match = qid.match(/^(CS-[^-_ ]+)/);
-                if (match) {
-                    groupKey = match[1];
-                } else if (qid.startsWith("CS")) {
-                    groupKey = qid;
-                }
-            }
-            
-            if (!caissonGroups[groupKey]) caissonGroups[groupKey] = [];
-            caissonGroups[groupKey].push(r);
+        // Filter and Sort by Parent QID for logical order
+        const sortedParentIds = Object.keys(condGroups).map(Number).sort((a, b) => {
+            const qidA = idToComp[a]?.q_id || "";
+            const qidB = idToComp[b]?.q_id || "";
+            return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: 'base' });
         });
-        
-        const sortedCaissonQids = Object.keys(caissonGroups).sort((a, b) => {
-            if (a === "General") return 1;
-            if (b === "General") return -1;
-            return a.localeCompare(b);
-        });
-        
-        if (sortedCaissonQids.length === 0 && records.length > 0) {
-            // Fallback for records not explicitly grouped
-            caissonGroups["General"] = records;
-            sortedCaissonQids.push("General");
-        }
 
         const buildRow = (r: any, idx: number): string[] => {
             const d   = r.inspection_data || {};
             const qid = r.structure_components?.q_id || r.component?.q_id || "N/A";
-            const elevation = r.elevation ?? d.elevation ?? "—";
-
+            const elevation = r.elevation ?? d.elevation ?? d.verification_depth ?? "—";
+            
             const diveNo =
                 r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.name  ||
                 r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
@@ -213,7 +232,8 @@ export const generateROVCasnReport = async (
 
             const findingsParts: string[] = [];
 
-            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
+            // CP Additional
+            const additionals = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
             additionals.forEach((a: any) => {
                 const val = a.reading ?? a.cp_rdg ?? "";
                 if (val !== "" && val !== null && val !== undefined) {
@@ -222,21 +242,26 @@ export const generateROVCasnReport = async (
                 }
             });
 
+            // Findings / Description
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
+            } else if (d.findings && d.findings.trim()) {
+                findingsParts.push(d.findings.trim());
             }
 
+            // Anomaly Reference
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
 
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
+            // Rectification
+            const isRectified = linkedAnom?.is_rectified || r.rectified || linkedAnom?.status === 'CLOSED';
             if (isRectified) {
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
                 findingsParts.push(`Rectified: ${rectRem}`);
             }
 
-            const row = [
+            return [
                 String(idx + 1),
                 qid,
                 String(elevation),
@@ -246,50 +271,50 @@ export const generateROVCasnReport = async (
                 String(coatCond),
                 findingsParts.length > 0 ? findingsParts.join("\n") : "—",
             ];
-            return row;
         };
 
-        // ── Generate Pages for each Caisson Group ───────────────────────────────
-        sortedCaissonQids.forEach((caissonQid, groupIdx) => {
+        // ── Generation ──────────────────────────────────────────────────────────
+        sortedParentIds.forEach((parentId, groupIdx) => {
             if (groupIdx > 0) doc.addPage();
             
-            const groupRecords = caissonGroups[caissonQid].sort((a, b) => {
+            const groupRecords = condGroups[parentId].sort((a, b) => {
                 const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
                 const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
                 return elB - elA;
             });
 
+            // Get display QID for the Parent ID from our mapped components
+            const parentComp = idToComp[parentId];
+            const rawParentQid = parentComp?.q_id || `ID: ${parentId}`;
+            const displayQid = rawParentQid.replace(/[.\s,;]+$/, "").trim();
+
             drawPageHeader(doc);
             const startY = drawContextRow(doc, margin + HEADER_H + 2, groupRecords);
 
-            // Sub-header for Caisson QID
-            if (caissonQid && caissonQid !== "General") {
-                const subH = 6;
-                const subY = startY;
-                doc.setFillColor(...colors.navy);
-                doc.rect(margin, subY, contentWidth, subH, "F");
-                doc.setTextColor(255);
-                doc.setFontSize(8); doc.setFont("helvetica", "bold");
-                doc.text(`CAISSON QID: ${caissonQid}`, margin + 4, subY + 4.2);
-                
-                // Adjust table startY
-                (doc as any)._tableStartY = subY + subH + 2;
-            } else {
-                (doc as any)._tableStartY = startY;
-            }
+            // CD Section Label
+            const subH = 6;
+            const subY = startY;
+            doc.setFillColor(...colors.navy);
+            doc.rect(margin, subY, contentWidth, subH, "F");
+            doc.setTextColor(255);
+            doc.setFontSize(8); doc.setFont("helvetica", "bold");
+            const labelText = `CONDUCTOR QID: ${displayQid || "N/A"}`;
+            doc.text(labelText, margin + 4, subY + 4.2);
+            
+            (doc as any)._tableStartY = subY + subH + 2;
 
             autoTable(doc, {
                 startY: (doc as any)._tableStartY,
-                margin: { left: margin, right: margin, bottom: config.showSignatures !== false ? 35 : 15 },
+                margin: { left: margin, right: margin, bottom: 35 },
                 head: [[
-                    { content: "Item\nNo.",       styles: { halign: "center", valign: "middle" } },
-                    { content: "QID",             styles: { halign: "center", valign: "middle" } },
-                    { content: "Elevation\n(m)",  styles: { halign: "center", valign: "middle" } },
-                    { content: "Dive No.",        styles: { halign: "center", valign: "middle" } },
-                    { content: "CP\n(mV)",        styles: { halign: "center", valign: "middle" } },
-                    { content: "Component\nCondition", styles: { halign: "center", valign: "middle" } },
-                    { content: "Coating\nCondition",   styles: { halign: "center", valign: "middle" } },
-                    { content: "Findings",        styles: { halign: "center", valign: "middle" } }
+                    { content: "Item No.",       styles: { halign: "center" } },
+                    { content: "QID",             styles: { halign: "center" } },
+                    { content: "Elevation\n(m)",  styles: { halign: "center" } },
+                    { content: "Dive No.",        styles: { halign: "center" } },
+                    { content: "CP\n(mV)",        styles: { halign: "center" } },
+                    { content: "Component\nCondition", styles: { halign: "center" } },
+                    { content: "Coating\nCondition",   styles: { halign: "center" } },
+                    { content: "Findings",        styles: { halign: "center" } }
                 ]],
                 body: groupRecords.map(buildRow),
                 theme: "grid",
@@ -298,60 +323,51 @@ export const generateROVCasnReport = async (
                     textColor: config.printFriendly ? colors.navy : [255, 255, 255],
                     fontSize: 8,
                     fontStyle: "bold",
-                    halign: "center",
-                    valign: "middle",
                     minCellHeight: 10,
+                    valign: "middle"
                 },
                 styles: {
                     fontSize: 7,
                     cellPadding: 2,
                     textColor: colors.text,
                     lineColor: colors.border,
-                    overflow: "linebreak",
                 },
                 columnStyles: {
-                    0: { cellWidth: 8,   halign: "center" },
-                    1: { cellWidth: 18 },
-                    2: { cellWidth: 14,   halign: "center" },
-                    3: { cellWidth: 14,   halign: "center" },
-                    4: { cellWidth: 14,   halign: "center" },
-                    5: { cellWidth: 18 },
-                    6: { cellWidth: 18 },
+                    0: { cellWidth: 12,   halign: "center" },
+                    1: { cellWidth: 20 },
+                    2: { cellWidth: 15,   halign: "center" },
+                    3: { cellWidth: 15,   halign: "center" },
+                    4: { cellWidth: 15,   halign: "center" },
+                    5: { cellWidth: 20 },
+                    6: { cellWidth: 20 },
                     7: { cellWidth: "auto" },
                 },
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
                     const r = groupRecords[data.row.index];
-                    const linkedAnom = r.insp_anomalies?.[0] ?? null;
                     const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                    const isFinding  = metaStatus === "finding";
-                    const isAnom     = r.has_anomaly && !isFinding;
-                    const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                    if (isFinding) {
+                    const linkedAnom = r.insp_anomalies?.[0] ?? null;
+                    
+                    if (metaStatus === "finding") {
                         data.cell.styles.textColor = colors.finding;
-                        data.cell.styles.fontStyle  = "bold";
-                    } else if (isAnom) {
+                        data.cell.styles.fontStyle = "bold";
+                    } else if (r.has_anomaly && metaStatus !== "finding") {
                         data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle  = "bold";
-                    } else if (isRect) {
+                        data.cell.styles.fontStyle = "bold";
+                    } else if (linkedAnom?.is_rectified || r.rectified || linkedAnom?.status === 'CLOSED') {
                         data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle  = "bold";
+                        data.cell.styles.fontStyle = "bold";
                     }
                 },
-                didDrawCell: (data) => {
-                },
                 didDrawPage: (data) => {
-                    // Footer Signatures
+                    // Signatures
                     if (config.showSignatures !== false) {
                         const sigY = pageHeight - 32;
                         const sigW = contentWidth / 3;
-                        const isPF = config.printFriendly;
-
                         const drawSigFooter = (label: string, lx: number) => {
                             doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                             doc.rect(lx, sigY, sigW - 4, 18);
-                            if (!isPF) {
+                            if (!config.printFriendly) {
                                 doc.setFillColor(...colors.navy);
                                 doc.rect(lx, sigY, sigW - 4, 4.5, "F");
                                 doc.setTextColor(255);
@@ -360,37 +376,37 @@ export const generateROVCasnReport = async (
                             }
                             doc.setFontSize(7); doc.setFont("helvetica", "bold");
                             doc.text(label, lx + 2, sigY + 3.5);
-                            doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                            doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                             doc.text("Name:", lx + 2, sigY + 10);
                             doc.text("Date:", lx + 2, sigY + 13.5);
                             doc.text("Signature:", lx + 2, sigY + 17);
                         };
-
                         drawSigFooter("PREPARED BY", margin);
                         drawSigFooter("REVIEWED BY", margin + sigW);
                         drawSigFooter("APPROVED BY", margin + sigW * 2);
                     }
 
-                    // Footer Bottom Text
+                    // Bottom bar
                     doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                     doc.setTextColor(...colors.text);
                     doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                     doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                     doc.text(
-                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Caisson Survey Report  |  SOW: ${headerData.sowReportNo || "N/A"}`,
+                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Conductor Survey Report  |  SOW: ${headerData.sowReportNo || "N/A"}`,
                         margin, pageHeight - 6
                     );
                     if (config.showPageNumbers !== false) {
                         doc.text(`Page ${data.pageNumber}`, margin + contentWidth, pageHeight - 6, { align: "right" });
                     }
-                },
+                }
             });
         });
 
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`ROV_Caisson_Survey_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`ROV_Conductor_Survey_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
-        console.error("[ROV Caisson Report] Error:", err);
+        console.error("[ROV Conductor Report] Error:", err);
         throw err;
     }
 };
+

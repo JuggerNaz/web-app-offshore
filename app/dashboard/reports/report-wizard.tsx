@@ -115,7 +115,9 @@ const REPORT_TEMPLATES = {
         { id: "rov-cp-report",    name: "ROV CP Survey Report",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rgvi-report",  name: "ROV GVI Report (RGVI)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcasn-report", name: "ROV Caisson Survey Report",    icon: FileBarChart, description: "Portrait Caisson Survey report — grouped by Caisson with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcond-report", name: "ROV Conductor Survey Report",  icon: FileBarChart, description: "Portrait Conductor Survey report — grouped by Conductor (CD) with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", icon: FileBarChart, description: "Detailed ROV Caisson inspection with graphical elevation profiles and terminator sketch", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", icon: FileBarChart, description: "Detailed ROV Conductor inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -998,6 +1000,15 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         };
     };
 
+    const resolveVessel = (jobPack: any) => {
+        if (!jobPack?.metadata) return "N/A";
+        const history = jobPack.metadata.vessel_history;
+        if (Array.isArray(history) && history.length > 0) {
+            return history.map((v: any) => v.name || v).join(", ");
+        }
+        return jobPack.metadata.vessel || "N/A";
+    };
+
     const generateReportAction = async (returnBlob: boolean = false) => {
         const {
             generateStructureReport,
@@ -1024,6 +1035,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
         const { generateROVCPReport }    = await import("@/utils/report-generators/rov-cp-report");
         const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
+        const { generateROVCondReport }  = await import("@/utils/report-generators/rov-rcond-report");
+        const { generateROVCondSketchReport } = await import("@/utils/report-generators/rov-rcond-sketch-report");
 
 
 
@@ -1216,7 +1229,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 platformName: structure.str_name || structure.title || "N/A",
                 waterDepth: Math.abs(structure.water_depth || structure.depth || structure.lowest_elevation || 0),
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1290,7 +1303,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1363,7 +1376,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1436,7 +1449,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1505,7 +1518,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1584,7 +1597,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1663,7 +1676,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1735,7 +1748,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo:      selections.sowReportNo || "N/A",
                 platformName:     structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel:           jobPack.metadata?.vessel || "N/A",
+                vessel: resolveVessel(jobPack),
             };
 
             try {
@@ -1804,7 +1817,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo:      selections.sowReportNo || "N/A",
                 platformName:     structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel:           jobPack.metadata?.vessel || "N/A",
+                vessel: resolveVessel(jobPack),
             };
 
             try {
@@ -1878,7 +1891,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo:      selections.sowReportNo || "N/A",
                 platformName:     structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel:           jobPack.metadata?.vessel || "N/A",
+                vessel: resolveVessel(jobPack),
             };
 
             try {
@@ -1890,6 +1903,88 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("RCASN Report Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Conductor Survey Report (RCOND)
+        if (selections.templateId === "rov-rcond-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(
+                        id,
+                        q_id, 
+                        code,
+                        metadata
+                    ),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const rcondRecords = (records || []).filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                
+                // For Conductor report, we fetch all records for this SOW/Structure 
+                // and let the generator's hierarchy logic group them by CD.
+                // This ensures associated items (Anodes, Clamps) are included.
+                return sowMatches && jobPackMatches;
+            });
+
+            if (!rcondRecords || rcondRecords.length === 0) {
+                alert(`No RCOND records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVCondReport(
+                    rcondRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { 
+                        ...reportConfig, 
+                        returnBlob,
+                        structureId: Number(selections.structureId),
+                        jobPackId: Number(selections.jobPackId)
+                    } as any
+                );
+            } catch (error) {
+                console.error("RCOND Generator Error:", error);
                 throw error;
             }
         }
@@ -1942,7 +2037,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1954,6 +2049,70 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("RCASN Sketch Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Conductor Survey (Sketch) Report
+        if (selections.templateId === "rov-rcond-sketch-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id(id, code, name),
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            const condRecords = records || [];
+
+            if (condRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVCondSketchReport(
+                    condRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                );
+            } catch (error) {
+                console.error("RCOND Sketch Generator Error:", error);
                 throw error;
             }
         }

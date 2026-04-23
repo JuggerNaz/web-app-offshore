@@ -8,19 +8,20 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-async function checkColumns() {
+async function checkComponent(id) {
     const { data, error } = await supabase
         .from('structure_components')
-        .select('*')
-        .limit(1);
+        .select('id, q_id, structure_id, code')
+        .eq('id', id)
+        .single();
 
     if (error) {
         console.error(error);
         return;
     }
 
-    console.log('Columns in structure_components:');
-    console.log(Object.keys(data[0] || {}));
+    console.log(`Component ${id}:`);
+    console.log(data);
 }
 
-checkColumns();
+checkComponent(1799);

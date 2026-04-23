@@ -49,6 +49,8 @@ interface InspectionHeaderProps {
     generateRGVIReport: () => void;
     generateRCASNReport: () => void;
     generateRCASNSketchReport: () => void;
+    generateRCONDReport: () => void;
+    generateRCONDSketchReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -78,6 +80,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateRGVIReport,
     generateRCASNReport,
     generateRCASNSketchReport,
+    generateRCONDReport,
+    generateRCONDSketchReport,
     generateFullInspectionReport,
     jobPackId,
     structureId,
@@ -161,7 +165,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             const filteredReports = allInspectionTypes.filter(t => 
                                 t.code !== 'RGVI' && 
                                 t.code !== 'RSEAB' && t.code !== 'RMGI' && t.code !== 'RFMD' && t.code !== 'RSZCI' && 
-                                t.code !== 'RUTWT' && t.code !== 'RSCOR' && t.code !== 'RRISI' && 
+                                t.code !== 'RUTWT' && t.code !== 'RSCOR' && t.code !== 'RRISI' && t.code !== 'RCOND' && t.code !== 'RCON' &&
                                 currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))
                             );
 
@@ -278,6 +282,17 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => generateRCASNSketchReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-800 border-t border-slate-50 mt-1">
                                     <Activity className="w-3.5 h-3.5 mr-2" /> ROV Caisson Survey (Sketch) Report
+                                </DropdownMenuItem>
+                            </>
+                        )}
+
+                        {currentRecords.some(r => ['RCOND', 'RCON'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase())) && (
+                            <>
+                                <DropdownMenuItem onClick={() => generateRCONDReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Conductor Survey Report
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => generateRCONDSketchReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-800 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Conductor Survey (Sketch) Report
                                 </DropdownMenuItem>
                             </>
                         )}

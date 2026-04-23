@@ -8,19 +8,21 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-async function checkColumns() {
+async function checkJobPackMetadata() {
     const { data, error } = await supabase
-        .from('structure_components')
-        .select('*')
-        .limit(1);
+        .from('jobpack')
+        .select('name, metadata')
+        .limit(10);
 
     if (error) {
         console.error(error);
         return;
     }
 
-    console.log('Columns in structure_components:');
-    console.log(Object.keys(data[0] || {}));
+    console.log('JobPack Metadata:');
+    data.forEach(jp => {
+        console.log(`- ${jp.name}:`, jp.metadata);
+    });
 }
 
-checkColumns();
+checkJobPackMetadata();
