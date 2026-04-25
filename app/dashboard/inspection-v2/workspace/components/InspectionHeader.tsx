@@ -52,6 +52,7 @@ interface InspectionHeaderProps {
     generateRCONDReport: () => void;
     generateRCONDSketchReport: () => void;
     generateBLReport: () => void;
+    generatePhotographyReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -84,6 +85,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateRCONDReport,
     generateRCONDSketchReport,
     generateBLReport,
+    generatePhotographyReport,
     generateFullInspectionReport,
     jobPackId,
     structureId,
@@ -317,6 +319,10 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 <Activity className="w-3.5 h-3.5 mr-2" /> ROV Boatlanding Survey Report
                             </DropdownMenuItem>
                         )}
+
+                        <DropdownMenuItem onClick={() => generatePhotographyReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                            <Activity className="w-3.5 h-3.5 mr-2" /> ROV Photography Report
+                        </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600">
                             <Layout className="w-3.5 h-3.5 mr-2" /> All Captured Records

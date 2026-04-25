@@ -95,6 +95,7 @@ import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn
 import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
+import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -746,6 +747,7 @@ function V10PreviewLayout() {
     const [rcondSketchPreviewOpen, setRcondSketchPreviewOpen] = useState(false);
     const [blPreviewOpen, setBlPreviewOpen] = useState(false);
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
+    const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
@@ -1001,6 +1003,11 @@ function V10PreviewLayout() {
                     sowReportNo = sowIdFull.split('-').slice(1).join('-');
                 } else {
                     sowReportNo = sowIdFull || `SOW-${sowId}`;
+                }
+
+                // Sanitize if it's a filter string from a malformed link
+                if (sowReportNo && sowReportNo.includes('=')) {
+                    sowReportNo = sowReportNo.split('=').pop() || sowReportNo;
                 }
             }
 
@@ -4582,6 +4589,14 @@ function V10PreviewLayout() {
         setRgviPreviewOpen(true);
     };
 
+    const generatePhotographyReport = async () => {
+        if (currentRecords.length === 0) {
+            toast.error("No records found to search for photos.");
+            return;
+        }
+        setPhotographyPreviewOpen(true);
+    };
+
     const handleAddNewInspectionSpec = async (typeIdStr: string) => {
         if (!typeIdStr) return;
 
@@ -5303,6 +5318,80 @@ function V10PreviewLayout() {
                 fileName={`ROV_Boatlanding_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
+            <ReportPreviewDialog 
+                open={photographyPreviewOpen} 
+                onOpenChange={setPhotographyPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: records } = await supabase
+                        .from('insp_records')
+                        .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
+                        .eq('structure_id', Number(structureId))
+                        .eq('jobpack_id', Number(jobPackId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    if (!records || records.length === 0) {
+                        return await generateROVPhotographyReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
+                    }
+
+                    const recordIds = records.map(r => r.insp_id);
+
+                    const { data: attachments } = await supabase
+                        .from('attachment')
+                        .select('*')
+                        .in('source_id', recordIds)
+                        .ilike('source_type', 'inspection')
+                        .order('created_at', { ascending: true });
+
+                    const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
+                        const record = records?.find(r => r.insp_id === a.source_id);
+                        return {
+                            ...a,
+                            anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
+                        };
+                    });
+
+                    if (photoData.length === 0) {
+                        return await generateROVPhotographyReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
+                    }
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: resolveVessel(jobPack),
+                        contractorLogoUrl
+                    };
+                    return await generateROVPhotographyReport(
+                        photoData,
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
+                    );
+                }}
+                title="ROV Photography Report"
+                fileName={`ROV_Photography_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
             <InspectionHeader 
                 headerData={headerData}
                 inspMethod={inspMethod}
@@ -5329,6 +5418,7 @@ function V10PreviewLayout() {
                 generateRCONDReport={generateRCONDReport}
                 generateRCONDSketchReport={generateRCONDSketchReport}
                 generateBLReport={() => setBlPreviewOpen(true)}
+                generatePhotographyReport={generatePhotographyReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
