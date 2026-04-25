@@ -94,6 +94,7 @@ import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-repor
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
+import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -743,6 +744,7 @@ function V10PreviewLayout() {
     const [rcasnSketchPreviewOpen, setRcasnSketchPreviewOpen] = useState(false);
     const [rcondPreviewOpen, setRcondPreviewOpen] = useState(false);
     const [rcondSketchPreviewOpen, setRcondSketchPreviewOpen] = useState(false);
+    const [blPreviewOpen, setBlPreviewOpen] = useState(false);
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -753,13 +755,22 @@ function V10PreviewLayout() {
     const jtParam = searchParams.get('jobType');
 
     // Header Data
-    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, jobType: string, structureType: 'platform' | 'pipeline', waterDepth: number }>({
+    const [headerData, setHeaderData] = useState<{ 
+        jobpackName: string, 
+        platformName: string, 
+        sowReportNo: string, 
+        jobType: string, 
+        structureType: 'platform' | 'pipeline', 
+        waterDepth: number,
+        vessel: string
+    }>({
         jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
         platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
         sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
         jobType: jtParam || "",
         structureType: 'platform',
-        waterDepth: 0
+        waterDepth: 0,
+        vessel: "N/A"
     });
 
     /**
@@ -993,7 +1004,27 @@ function V10PreviewLayout() {
                 }
             }
 
-            setHeaderData({ jobpackName, platformName, sowReportNo, jobType: jtParam || "", structureType: detectedStructureType, waterDepth });
+            // Fetch Vessel from Jobpack
+            let vessel = "N/A";
+            const { data: jpMetadata } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            if (jpMetadata?.metadata) {
+                const meta = jpMetadata.metadata as any;
+                if (meta.vessel_history && Array.isArray(meta.vessel_history) && meta.vessel_history.length > 0) {
+                    vessel = meta.vessel_history.map((v: any) => v.name || v).join(", ");
+                } else if (meta.vessel) {
+                    vessel = meta.vessel;
+                }
+            }
+
+            setHeaderData({ 
+                jobpackName, 
+                platformName, 
+                sowReportNo, 
+                jobType: jtParam || "", 
+                structureType: detectedStructureType, 
+                waterDepth,
+                vessel
+            });
             setGlobalUrlType(detectedStructureType);
         }
         fetchHeaderInfo();
@@ -5210,6 +5241,68 @@ function V10PreviewLayout() {
                 fileName={`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
+            <ReportPreviewDialog 
+                open={blPreviewOpen} 
+                onOpenChange={setBlPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_video_tapes:tape_id!left(tape_no),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const blRecords = (allRecords || []).filter(r => {
+                        const sowMatches = !headerData.sowReportNo || 
+                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+                        return sowMatches;
+                    });
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: resolveVessel(jobPack),
+                        contractorLogoUrl
+                    };
+                    return await generateROVBoatlandingReport(
+                        blRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
+                    );
+                }}
+                title="ROV Boatlanding Survey Report"
+                fileName={`ROV_Boatlanding_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
             <InspectionHeader 
                 headerData={headerData}
                 inspMethod={inspMethod}
@@ -5235,6 +5328,7 @@ function V10PreviewLayout() {
                 generateRCASNSketchReport={generateRCASNSketchReport}
                 generateRCONDReport={generateRCONDReport}
                 generateRCONDSketchReport={generateRCONDSketchReport}
+                generateBLReport={() => setBlPreviewOpen(true)}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}

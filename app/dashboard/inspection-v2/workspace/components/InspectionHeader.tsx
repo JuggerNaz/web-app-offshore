@@ -51,6 +51,7 @@ interface InspectionHeaderProps {
     generateRCASNSketchReport: () => void;
     generateRCONDReport: () => void;
     generateRCONDSketchReport: () => void;
+    generateBLReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -82,6 +83,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateRCASNSketchReport,
     generateRCONDReport,
     generateRCONDSketchReport,
+    generateBLReport,
     generateFullInspectionReport,
     jobPackId,
     structureId,
@@ -140,6 +142,10 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 </Badge>
                             </>
                         )}
+                    </div>
+                    <div className="flex items-center gap-1.5 ml-2 border-l border-slate-700 pl-3">
+                        <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Vessel:</span>
+                        <span className="font-mono font-bold text-blue-300">{headerData.vessel || "N/A"}</span>
                     </div>
                 </div>
             </div>
@@ -301,6 +307,15 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                     <Activity className="w-3.5 h-3.5 mr-2" /> ROV Conductor Survey (Sketch) Report
                                 </DropdownMenuItem>
                             </>
+                        )}
+                        
+                        {currentRecords.some(r => 
+                            ['RGVI'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()) &&
+                            ['BL'].includes((r.structure_components?.code || '').toUpperCase())
+                        ) && (
+                            <DropdownMenuItem onClick={() => generateBLReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV Boatlanding Survey Report
+                            </DropdownMenuItem>
                         )}
 
                         <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600">
