@@ -15,6 +15,7 @@ import {
   Database,
   LayoutDashboard,
   ClipboardCheck,
+  Crown,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -59,6 +60,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             label="Analytics"
             icon={<LayoutDashboard className="h-[18px] w-[18px]" />}
             text="Analytics"
+          />
+          <MenuLink
+            href="/dashboard/manager-overview"
+            isCollapsed={isCollapsed}
+            label="Manager Overview"
+            icon={<Crown className="h-[18px] w-[18px]" />}
+            text="Manager Overview"
           />
 
         </div>

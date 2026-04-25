@@ -275,7 +275,10 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             </DropdownMenuItem>
                         )}
 
-                        {currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN') && (
+                        {currentRecords.some(r => 
+                            (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN' ||
+                            (r.structure_components?.code || '').toUpperCase() === 'CS'
+                        ) && (
                             <>
                                 <DropdownMenuItem onClick={() => generateRCASNReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
                                     <Activity className="w-3.5 h-3.5 mr-2" /> ROV Caisson Survey Report
@@ -286,7 +289,10 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             </>
                         )}
 
-                        {currentRecords.some(r => ['RCOND', 'RCON'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase())) && (
+                        {currentRecords.some(r => 
+                            ['RCOND', 'RCON'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()) ||
+                            ['CD', 'CON'].includes((r.structure_components?.code || '').toUpperCase())
+                        ) && (
                             <>
                                 <DropdownMenuItem onClick={() => generateRCONDReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
                                     <Activity className="w-3.5 h-3.5 mr-2" /> ROV Conductor Survey Report

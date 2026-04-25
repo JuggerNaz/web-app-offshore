@@ -92,6 +92,7 @@ import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
+import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
@@ -4506,42 +4507,34 @@ function V10PreviewLayout() {
     };
 
     const generateRCASNReport = async () => {
-        const rcasnRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN');
-        if (rcasnRecords.length === 0) {
-            toast.error("No RCASN records found to generate report.");
+        if (currentRecords.length === 0) {
+            toast.error("No records found to generate report.");
             return;
         }
         setRcasnPreviewOpen(true);
     };
 
     const generateRCASNSketchReport = async () => {
-        const caissonRecords = currentRecords.filter(r => 
-            (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN' ||
-            (r.structure_components?.code || '').toUpperCase() === 'CS'
-        );
-        if (caissonRecords.length === 0) {
-            toast.error("No RCASN or Caisson records found to generate sketch report.");
+        if (currentRecords.length === 0) {
+            toast.error("No records found to generate sketch report.");
             return;
         }
         setRcasnSketchPreviewOpen(true);
     };
 
     const generateRCONDReport = async () => {
-        const rcondRecords = currentRecords.filter(r => ['RCOND', 'RCON'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
-        if (rcondRecords.length === 0) {
-            toast.error("No RCOND records found to generate report.");
+        // Broaden the check to open the dialog if any records exist in the current scope
+        // The generator handles specific filtering
+        if (currentRecords.length === 0) {
+            toast.error("No records found to generate report.");
             return;
         }
         setRcondPreviewOpen(true);
     };
 
     const generateRCONDSketchReport = async () => {
-        const condRecords = currentRecords.filter(r => 
-            ['RCOND', 'RCON'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()) ||
-            (r.structure_components?.code || '').toUpperCase() === 'CD'
-        );
-        if (condRecords.length === 0) {
-            toast.error("No RCOND or Conductor records found to generate sketch report.");
+        if (currentRecords.length === 0) {
+            toast.error("No records found to generate sketch report.");
             return;
         }
         setRcondSketchPreviewOpen(true);
@@ -5040,7 +5033,14 @@ function V10PreviewLayout() {
                         .eq('structure_id', Number(structureId))
                         .eq('sow_report_no', headerData.sowReportNo);
 
-                    const rcasnRecords = (allRecords || []).filter(r => (r.inspection_type?.code || '').toUpperCase() === 'RCASN' || (r.inspection_type?.code || '').toUpperCase() === 'RCA');
+                    const rcasnRecords = (allRecords || []).filter(r => {
+                        const sowMatches = !headerData.sowReportNo || 
+                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+                        
+                        // For Caisson report, we fetch all records for this SOW/Structure 
+                        // and let the generator's hierarchy logic group them by CS.
+                        return sowMatches;
+                    });
 
                     let contractorLogoUrl = '';
                     if (jobPack?.contrac) {
@@ -5066,7 +5066,6 @@ function V10PreviewLayout() {
                         vessel: resolveVessel(jobPack),
                         contractorLogoUrl
                     };
-                    const { generateROVCasnReport } = await import("@/utils/report-generators/rov-rcasn-report");
                     return await generateROVCasnReport(
                         rcasnRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                         headerDataObj,
@@ -5100,8 +5099,12 @@ function V10PreviewLayout() {
                         .eq('sow_report_no', headerData.sowReportNo);
 
                     const rcondRecords = (allRecords || []).filter(r => {
-                        const code = (r.inspection_type?.code || '').toUpperCase();
-                        return code === 'RCOND' || code === 'RCON' || code === 'CD' || code === 'CON';
+                        const sowMatches = !headerData.sowReportNo || 
+                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+                        
+                        // For Conductor report, we fetch all records for this SOW/Structure 
+                        // and let the generator's hierarchy logic group them by CD.
+                        return sowMatches;
                     });
                     
                     let contractorLogoUrl = '';
@@ -5128,7 +5131,6 @@ function V10PreviewLayout() {
                         vessel: resolveVessel(jobPack),
                         contractorLogoUrl
                     };
-                    const { generateROVCondReport } = await import("@/utils/report-generators/rov-rcond-report");
                     return await generateROVCondReport(
                         rcondRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                         headerDataObj,
@@ -5160,10 +5162,11 @@ function V10PreviewLayout() {
                         .eq('structure_id', Number(structureId))
                         .eq('sow_report_no', headerData.sowReportNo);
 
-                    const caissonRecords = (allRecords || []).filter(r => 
-                        (r.inspection_type?.code || '').toUpperCase() === 'RCASN' ||
-                        (r.structure_components?.code || '').toUpperCase() === 'CS'
-                    );
+                    const caissonRecords = (allRecords || []).filter(r => {
+                        const sowMatches = !headerData.sowReportNo || 
+                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+                        return sowMatches;
+                    });
 
                     let contractorLogoUrl = '';
                     if (jobPack?.contrac) {
