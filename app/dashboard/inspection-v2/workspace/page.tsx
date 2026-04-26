@@ -96,6 +96,7 @@ import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-repor
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
+import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -748,6 +749,7 @@ function V10PreviewLayout() {
     const [blPreviewOpen, setBlPreviewOpen] = useState(false);
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
+    const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
@@ -4267,10 +4269,10 @@ function V10PreviewLayout() {
         }
 
         // Fetch Contractor Logo URL for the report header
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
@@ -4280,7 +4282,7 @@ function V10PreviewLayout() {
             { 
                 ...headerData, 
                 contractorLogoUrl,
-                vessel: jobPack?.metadata?.vessel || 'N/A'
+                vessel: headerData.vessel
             },
             { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
             {
@@ -4309,10 +4311,10 @@ function V10PreviewLayout() {
         const settings = await getReportHeaderData();
 
         // Fetch Contractor Logo URL and Vessel for the report header
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
@@ -4321,7 +4323,7 @@ function V10PreviewLayout() {
             { 
                 ...headerData, 
                 contractorLogoUrl,
-                vessel: jobPack?.metadata?.vessel || 'N/A'
+                vessel: headerData.vessel
             },
             { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
             {
@@ -4350,10 +4352,10 @@ function V10PreviewLayout() {
         const settings = await getReportHeaderData();
         
         // Fetch Contractor Logo URL
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
@@ -4362,7 +4364,7 @@ function V10PreviewLayout() {
             { 
                 ...headerData, 
                 contractorLogoUrl,
-                vessel: jobPack?.metadata?.vessel || 'N/A'
+                vessel: headerData.vessel
             },
             { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
             {
@@ -4391,10 +4393,10 @@ function V10PreviewLayout() {
         const settings = await getReportHeaderData();
         
         // Fetch Contractor Logo URL
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
@@ -4403,7 +4405,7 @@ function V10PreviewLayout() {
             { 
                 ...headerData, 
                 contractorLogoUrl,
-                vessel: jobPack?.metadata?.vessel || 'N/A'
+                vessel: headerData.vessel
             },
             { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
             {
@@ -4425,10 +4427,10 @@ function V10PreviewLayout() {
 
         const type = allInspectionTypes.find(t => t.id === typeId);
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
@@ -4457,10 +4459,10 @@ function V10PreviewLayout() {
         }
 
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
@@ -4595,6 +4597,14 @@ function V10PreviewLayout() {
             return;
         }
         setPhotographyPreviewOpen(true);
+    };
+
+    const generatePhotographyLogReport = async () => {
+        if (currentRecords.length === 0) {
+            toast.error("No records found to search for photos.");
+            return;
+        }
+        setPhotographyLogPreviewOpen(true);
     };
 
     const handleAddNewInspectionSpec = async (typeIdStr: string) => {
@@ -4815,7 +4825,7 @@ function V10PreviewLayout() {
                 onOpenChange={setRrisiPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     const { data: allRecords } = await supabase
                         .from('insp_records')
@@ -4836,11 +4846,11 @@ function V10PreviewLayout() {
                     );
                     
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -4859,7 +4869,7 @@ function V10PreviewLayout() {
                         { 
                             ...headerData, 
                             contractorLogoUrl,
-                            vessel: resolveVessel(jobPack)
+                            vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                         {
@@ -4883,7 +4893,7 @@ function V10PreviewLayout() {
                 onOpenChange={setJtisiPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
 
                     const { data: allRecords } = await supabase
                         .from('insp_records')
@@ -4904,11 +4914,11 @@ function V10PreviewLayout() {
                     );
                     
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -4927,7 +4937,7 @@ function V10PreviewLayout() {
                         { 
                             ...headerData, 
                             contractorLogoUrl,
-                            vessel: resolveVessel(jobPack)
+                            vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                         {
@@ -4951,7 +4961,7 @@ function V10PreviewLayout() {
                 onOpenChange={setItisiPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
 
                     const { data: allRecords } = await supabase
                         .from('insp_records')
@@ -4972,11 +4982,11 @@ function V10PreviewLayout() {
                     );
                     
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -4995,7 +5005,7 @@ function V10PreviewLayout() {
                         { 
                             ...headerData, 
                             contractorLogoUrl,
-                            vessel: resolveVessel(jobPack)
+                            vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                         {
@@ -5025,16 +5035,16 @@ function V10PreviewLayout() {
                         return isRGVI && isAN;
                     });
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                    if (jobPack?.metadata?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
                         contractorLogoUrl = contrData?.lib_path || '';
                     }
 
                     const headerDataObj = {
                         ...headerData,
-                        vessel: jobPack?.metadata?.vessel || 'N/A',
+                        vessel: headerData.vessel,
                         contractorLogoUrl
                     };
 
@@ -5064,7 +5074,7 @@ function V10PreviewLayout() {
                 onOpenChange={setRcasnPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     const { data: allRecords } = await supabase
                         .from('insp_records')
@@ -5089,11 +5099,11 @@ function V10PreviewLayout() {
                     });
 
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -5109,7 +5119,7 @@ function V10PreviewLayout() {
 
                     const headerDataObj = {
                         ...headerData,
-                        vessel: resolveVessel(jobPack),
+                        vessel: headerData.vessel,
                         contractorLogoUrl
                     };
                     return await generateROVCasnReport(
@@ -5128,7 +5138,7 @@ function V10PreviewLayout() {
                 onOpenChange={setRcondPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     const { data: allRecords } = await supabase
                         .from('insp_records')
@@ -5154,11 +5164,11 @@ function V10PreviewLayout() {
                     });
                     
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -5174,7 +5184,7 @@ function V10PreviewLayout() {
 
                     const headerDataObj = {
                         ...headerData,
-                        vessel: resolveVessel(jobPack),
+                        vessel: headerData.vessel,
                         contractorLogoUrl
                     };
                     return await generateROVCondReport(
@@ -5193,7 +5203,7 @@ function V10PreviewLayout() {
                 onOpenChange={setRcasnSketchPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     // Separate fetch for caisson records
                     const { data: allRecords } = await supabase
@@ -5215,11 +5225,11 @@ function V10PreviewLayout() {
                     });
 
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -5238,7 +5248,7 @@ function V10PreviewLayout() {
                         {
                             ...headerData,
                             contractorLogoUrl,
-                            vessel: resolveVessel(jobPack)
+                            vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                         {
@@ -5261,7 +5271,7 @@ function V10PreviewLayout() {
                 onOpenChange={setBlPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     const { data: allRecords } = await supabase
                         .from('insp_records')
@@ -5284,11 +5294,11 @@ function V10PreviewLayout() {
                     });
                     
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -5304,7 +5314,7 @@ function V10PreviewLayout() {
 
                     const headerDataObj = {
                         ...headerData,
-                        vessel: resolveVessel(jobPack),
+                        vessel: headerData.vessel,
                         contractorLogoUrl
                     };
                     return await generateROVBoatlandingReport(
@@ -5323,7 +5333,7 @@ function V10PreviewLayout() {
                 onOpenChange={setPhotographyPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     const { data: records } = await supabase
                         .from('insp_records')
@@ -5358,11 +5368,11 @@ function V10PreviewLayout() {
                     }
                     
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -5378,7 +5388,7 @@ function V10PreviewLayout() {
 
                     const headerDataObj = {
                         ...headerData,
-                        vessel: resolveVessel(jobPack),
+                        vessel: headerData.vessel,
                         contractorLogoUrl
                     };
                     return await generateROVPhotographyReport(
@@ -5390,6 +5400,71 @@ function V10PreviewLayout() {
                 }}
                 title="ROV Photography Report"
                 fileName={`ROV_Photography_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={photographyLogPreviewOpen} 
+                onOpenChange={setPhotographyLogPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: records } = await supabase
+                        .from('insp_records')
+                        .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
+                        .eq('structure_id', Number(structureId))
+                        .eq('jobpack_id', Number(jobPackId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    if (!records || records.length === 0) {
+                        return await generateROVPhotographyLogReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
+                    }
+
+                    const recordIds = records.map(r => r.insp_id);
+
+                    const { data: attachments } = await supabase
+                        .from('attachment')
+                        .select('*')
+                        .in('source_id', recordIds)
+                        .ilike('source_type', 'inspection')
+                        .order('created_at', { ascending: true });
+
+                    const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
+                        const record = records?.find(r => r.insp_id === a.source_id);
+                        return {
+                            ...a,
+                            anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
+                        };
+                    });
+
+                    if (photoData.length === 0) {
+                        return await generateROVPhotographyLogReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
+                    }
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: headerData.vessel,
+                        contractorLogoUrl
+                    };
+                    return await generateROVPhotographyLogReport(
+                        photoData,
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
+                    );
+                }}
+                title="ROV Photography Log Report"
+                fileName={`ROV_Photography_Log_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             <InspectionHeader 
@@ -5419,6 +5494,7 @@ function V10PreviewLayout() {
                 generateRCONDSketchReport={generateRCONDSketchReport}
                 generateBLReport={() => setBlPreviewOpen(true)}
                 generatePhotographyReport={generatePhotographyReport}
+                generatePhotographyLogReport={generatePhotographyLogReport}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -7530,10 +7606,10 @@ function V10PreviewLayout() {
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                    if (jobPack?.metadata?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
                         contractorLogoUrl = contrData?.lib_path || '';
                     }
 
@@ -7542,7 +7618,7 @@ function V10PreviewLayout() {
                         { 
                             ...headerData, 
                             contractorLogoUrl,
-                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                            vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                         {
@@ -7565,7 +7641,7 @@ function V10PreviewLayout() {
                 onOpenChange={setAnodePreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     const { data: allRecords } = await supabase
                         .from('insp_records')
@@ -7588,11 +7664,11 @@ function V10PreviewLayout() {
                     });
 
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -7608,7 +7684,7 @@ function V10PreviewLayout() {
 
                     const headerDataObj = {
                         ...headerData,
-                        vessel: resolveVessel(jobPack),
+                        vessel: headerData.vessel,
                         contractorLogoUrl
                     };
 
@@ -7628,7 +7704,7 @@ function V10PreviewLayout() {
                 onOpenChange={setCpPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     const { data: allRecords } = await supabase
                         .from('insp_records')
@@ -7649,11 +7725,11 @@ function V10PreviewLayout() {
                     });
 
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -7672,7 +7748,7 @@ function V10PreviewLayout() {
                         {
                             ...headerData,
                             contractorLogoUrl,
-                            vessel: resolveVessel(jobPack)
+                            vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                         {
@@ -7696,7 +7772,7 @@ function V10PreviewLayout() {
                 onOpenChange={setRgviPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     const { data: allRecords } = await supabase
                         .from('insp_records')
@@ -7716,11 +7792,11 @@ function V10PreviewLayout() {
                     );
 
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -7739,7 +7815,7 @@ function V10PreviewLayout() {
                         {
                             ...headerData,
                             contractorLogoUrl,
-                            vessel: resolveVessel(jobPack)
+                            vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                         {
@@ -7763,7 +7839,7 @@ function V10PreviewLayout() {
                 onOpenChange={setRcondSketchPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     
                     // Separate fetch to match Report Wizard logic
                     const { data: allRecords } = await supabase
@@ -7782,11 +7858,11 @@ function V10PreviewLayout() {
                     const condRecords = (allRecords || []); 
 
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
+                    if (jobPack?.metadata?.contrac) {
                         try {
                             const cRes = await fetch(`/api/library/CONTR_NAM`);
                             const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.contrac));
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
                             if (found?.logo_url) contractorLogoUrl = found.logo_url;
                         } catch (e) { console.error("Logo fetch error", e); }
                     }
@@ -7802,7 +7878,7 @@ function V10PreviewLayout() {
 
                     const headerDataObj = {
                         ...headerData,
-                        vessel: resolveVessel(jobPack),
+                        vessel: headerData.vessel,
                         contractorLogoUrl
                     };
 

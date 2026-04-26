@@ -41,6 +41,7 @@ import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-repo
 import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
+import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
 
 // Types
 type WizardStep = "template" | "context" | "configuration" | "preview";
@@ -121,6 +122,7 @@ const REPORT_TEMPLATES = {
         { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", icon: FileBarChart, description: "Detailed ROV Conductor inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", icon: FileBarChart, description: "Portrait Boatlanding Survey report — grouped by Boatlanding (BL) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-photo-report", name: "ROV Photography Report", icon: Eye, description: "Portrait report displaying all photos attached to inspections in a 2x3 grid with descriptions", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-photo-log-report", name: "ROV Photography Log Report", icon: Eye, description: "Portrait report displaying a tabular log of all photos attached to inspections", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
@@ -2134,6 +2136,76 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             return await generateROVPhotographyReport(
+                photoData,
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob } as any
+            );
+        }
+        
+        // ROV Photography Log Report
+        if (selections.templateId === "rov-photo-log-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let targetSowNo = selections.sowReportNo;
+            if (targetSowNo && targetSowNo.includes('=')) {
+                targetSowNo = targetSowNo.split('=').pop() || targetSowNo;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      targetSowNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel ? resolveVessel(jobPack) : (jobPack.metadata?.vessel || "N/A")
+            };
+
+            const { data: records } = await supabase
+                .from("insp_records")
+                .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
+                .eq("structure_id", Number(selections.structureId))
+                .eq("jobpack_id", Number(selections.jobPackId))
+                .eq("sow_report_no", targetSowNo);
+
+            if (!records || records.length === 0) {
+                return await generateROVPhotographyLogReport([], headerData, companySettings, { ...reportConfig, returnBlob } as any);
+            }
+
+            const recordIds = records.map(r => r.insp_id);
+
+            const { data: attachments } = await supabase
+                .from("attachment")
+                .select("*")
+                .in("source_id", recordIds)
+                .ilike("source_type", "inspection")
+                .order("created_at", { ascending: true });
+
+            const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
+                const record = records?.find(r => r.insp_id === a.source_id);
+                return {
+                    ...a,
+                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
+                };
+            });
+
+            if (photoData.length === 0) {
+                return await generateROVPhotographyLogReport([], headerData, companySettings, { ...reportConfig, returnBlob } as any);
+            }
+
+            return await generateROVPhotographyLogReport(
                 photoData,
                 headerData,
                 companySettings,

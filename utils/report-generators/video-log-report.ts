@@ -194,6 +194,29 @@ export const generateVideoLogReport = async (
     // ── Per-Tape Groups ──────────────────────────────────────────────────────
     // Sort tapes by tape_no ascending
     const sortedTapes = [...tapes].sort((a, b) => {
+        const aLogs = a.logs || [];
+        const bLogs = b.logs || [];
+        
+        let aTime = Infinity;
+        for (const log of aLogs) {
+            if (log.event_time) {
+                const t = new Date(log.event_time).getTime();
+                if (t < aTime) aTime = t;
+            }
+        }
+        
+        let bTime = Infinity;
+        for (const log of bLogs) {
+            if (log.event_time) {
+                const t = new Date(log.event_time).getTime();
+                if (t < bTime) bTime = t;
+            }
+        }
+        
+        if (aTime !== bTime && aTime !== Infinity && bTime !== Infinity) {
+            return aTime - bTime;
+        }
+        
         const an = String(a.tape_no ?? "").toLowerCase();
         const bn = String(b.tape_no ?? "").toLowerCase();
         return an < bn ? -1 : an > bn ? 1 : 0;
@@ -201,7 +224,11 @@ export const generateVideoLogReport = async (
 
     for (let i = 0; i < sortedTapes.length; i++) {
         const tape = sortedTapes[i];
-        const logs = tape.logs || [];
+        const logs = [...(tape.logs || [])].sort((a: any, b: any) => {
+            const aT = a.event_time ? new Date(a.event_time).getTime() : 0;
+            const bT = b.event_time ? new Date(b.event_time).getTime() : 0;
+            return aT - bT;
+        });
 
         // Ensure there is space for the section header + at least a few rows
         if (!isFirstPage && currentY > pageHeight - margin - FOOTER_Y_OFFSET - 30) {
