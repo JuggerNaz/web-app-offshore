@@ -19,6 +19,7 @@ import { SOW, SOWItem, ReportNumber, InspectionStatus } from "@/types/sow";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 interface SOWDialogProps {
     open: boolean;
@@ -74,6 +75,7 @@ export function SOWDialog({
     readOnly = false,
     returnTo,
 }: SOWDialogProps) {
+    const router = useRouter();
     // ── STATE ──
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -416,20 +418,45 @@ export function SOWDialog({
                 const gKey = `${rpt}:${itm.component_id}:${itm.inspection_type_id}`;
                 if (!grouped[gKey]) { await fetch(`/api/sow/items?id=${itm.id}`, { method: "DELETE" }); }
             }
-            alert("SOW Portfolio Updated!"); loadSOW(); onSave?.();
+            if (returnTo) {
+                router.push(returnTo);
+            } else {
+                alert("SOW Portfolio Updated!"); 
+                loadSOW(); 
+                onSave?.();
+            }
         } catch (e) { console.error(e); } finally { setSaving(false); }
     };
 
     // ── RENDER ──
     return (
         <>
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog 
+            open={open} 
+            onOpenChange={(isOpen) => {
+                if (!isOpen && returnTo) {
+                    router.push(returnTo);
+                } else {
+                    onOpenChange(isOpen);
+                }
+            }}
+        >
             <DialogContent className={cn(
                 "flex flex-col p-0 bg-[#fbfcff] overflow-hidden border-none",
                 isFullScreen ? "max-w-[100vw] max-h-[100vh] h-screen w-screen rounded-none" : "max-w-[98vw] max-h-[96vh] h-[96vh] w-[98vw] rounded-[32px]"
             )}>
                 <DialogHeader className="px-6 py-2.5 bg-white border-b border-slate-100 flex items-center justify-between gap-4 shrink-0 z-50 shadow-sm flex-row space-y-0 text-slate-900">
                     <div className="flex items-center gap-3 shrink-0">
+                        {returnTo && (
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-9 px-2 text-slate-600 hover:text-slate-900 flex items-center gap-1 font-bold text-xs mr-2 bg-slate-50 rounded-xl hover:bg-slate-100 border border-slate-100"
+                                onClick={() => router.push(returnTo)}
+                            >
+                                <ArrowLeft className="h-4 w-4" /> Back
+                            </Button>
+                        )}
                         <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg"><ShieldCheck className="h-5 w-5 text-white" /></div>
                         <div className="flex flex-col">
                             <DialogTitle className="text-sm font-black leading-tight text-slate-900">
@@ -838,7 +865,16 @@ export function SOWDialog({
                 <div className="px-10 py-6 bg-white border-t border-slate-100 flex items-center justify-between shrink-0 shadow-lg">
                     <div className="text-[10px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2"><BarChart className="h-4 w-4 text-blue-500"/> MISSION STRATEGY ENGINE ONLINE</div>
                     <div className="flex items-center gap-4">
-                        <Button variant="ghost" className="h-12 px-10 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-400" onClick={() => onOpenChange(false)}>Cancel Session</Button>
+                        <Button 
+                            variant="ghost" 
+                            className="h-12 px-10 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-400" 
+                            onClick={() => {
+                                if (returnTo) router.push(returnTo);
+                                else onOpenChange(false);
+                            }}
+                        >
+                            {returnTo ? "Back" : "Cancel Session"}
+                        </Button>
                         <Button onClick={handleSave} disabled={saving || readOnly} className="h-14 px-16 rounded-[24px] bg-blue-600 border-none text-white font-black text-[11px] uppercase tracking-[0.2em] shadow-2xl shadow-blue-200 transition-all hover:translate-y-[-3px] active:scale-95">{saving ? <Activity className="h-4 w-4 animate-spin mr-2"/> : "Finalize Scope Matrix"}</Button>
                     </div>
                 </div>

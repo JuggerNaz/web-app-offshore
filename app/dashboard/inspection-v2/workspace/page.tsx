@@ -189,6 +189,13 @@ function V10PreviewLayout() {
         }
     }, [structureId, setGlobalUrlId, setGlobalUrlType]);
 
+    // Force-refresh SOW and Component lists upon entering/returning to this screen
+    useEffect(() => {
+        if (queryClient && (structureId || sowIdFull)) {
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+        }
+    }, [queryClient, structureId, sowIdFull]);
+
     // Mode
     const [inspMethod, setInspMethod] = useState<"DIVING" | "ROV">(initialMode || "DIVING");
     const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
@@ -4667,22 +4674,35 @@ function V10PreviewLayout() {
             return;
         }
 
-        const { error } = await supabase.from('u_sow_items').insert({
-            sow_id: targetSowId,
-            component_id: selectedComp.id,
-            component_qid: selectedComp.name || selectedComp.q_id || selectedComp.raw?.name || null,
-            component_type: selectedComp.raw?.type || null,
-            inspection_type_id: it.id,
-            status: 'pending',
-            report_number: sowReportNo,
-            inspection_code: it.code,
-            inspection_name: it.name,
-            elevation_required: false,
-            created_by: userId
-        });
+        // Check if combination already exists
+        const { data: existingItem } = await supabase.from('u_sow_items')
+            .select('id')
+            .eq('sow_id', targetSowId)
+            .eq('component_id', selectedComp.id)
+            .eq('inspection_type_id', it.id)
+            .eq('report_number', sowReportNo)
+            .maybeSingle();
 
-        if (!error) {
-            // "also refer the u_sow table" -> keep totals synchronized
+        let error = null;
+        if (!existingItem) {
+            const { error: insertError } = await supabase.from('u_sow_items').insert({
+                sow_id: targetSowId,
+                component_id: selectedComp.id,
+                component_qid: selectedComp.name || selectedComp.q_id || selectedComp.raw?.name || null,
+                component_type: selectedComp.raw?.type || null,
+                inspection_type_id: it.id,
+                status: 'pending',
+                report_number: sowReportNo,
+                inspection_code: it.code,
+                inspection_name: it.name,
+                elevation_required: false,
+                created_by: userId
+            });
+            error = insertError;
+        }
+
+        if (!error && !existingItem) {
+            // Keep totals synchronized (only for NEW items)
             const { data: sowData } = await supabase.from('u_sow')
                 .select('total_items, pending_items, report_numbers')
                 .eq('id', targetSowId)
@@ -4736,10 +4756,19 @@ function V10PreviewLayout() {
                     }).eq('id', Number(jobPackId));
                 }
             }
+        }
 
+        if (!error) {
             const specName = it.code || it.name;
+            const currentTasks = selectedComp.tasks || [];
+            
+            if (currentTasks.includes(specName)) {
+                toast.info(`The inspection type ${it.name} is already in the UI scope.`);
+                return;
+            }
+
             const newTaskStatus = { code: specName, status: 'pending' };
-            const newTasks = [...(selectedComp.tasks || []), specName];
+            const newTasks = [...currentTasks, specName];
             const newStatuses = [...(selectedComp.taskStatuses || []), newTaskStatus];
 
             // Optimistically update the main component lists (SOW vs Non-SOW)
@@ -4763,8 +4792,97 @@ function V10PreviewLayout() {
             // CRITICAL: Refresh the component list to show the new scope
             queryClient.invalidateQueries({ queryKey: ['sow-data'] });
         } else {
-            console.error("Failed to insert u_sow_item:", error);
-            toast.error("Failed to add inspection type: " + (error.message || "Unknown anomaly"));
+            console.error("Failed to insert u_sow_item:", error.message, error.details, error.hint, error);
+            toast.error("Failed to add inspection type: " + (error.message || error.details || JSON.stringify(error)));
+        }
+    };
+
+    const handleDeleteInspectionSpec = async (specCode: string) => {
+        if (!specCode || !selectedComp) return;
+
+        try {
+            // 1. Database-level check: ensure no records exist for this component and inspection type across ALL scopes
+            const { data: existingRecords, error: recordError } = await supabase
+                .from('insp_records')
+                .select('insp_id')
+                .eq('component_id', Number(selectedComp.id))
+                .or(`inspection_type_code.eq.${specCode},inspection_type_code.eq.${specCode.toUpperCase()}`)
+                .limit(1);
+
+            if (recordError) {
+                toast.error("Error verifying inspection data integrity.");
+                return;
+            }
+
+            if (existingRecords && existingRecords.length > 0) {
+                toast.error(`Cannot delete ${specCode} because inspection data exists.`);
+                return;
+            }
+
+            // 2. Resolve active SOW entry
+            let targetSowId = sowId && !isNaN(parseInt(sowId)) ? parseInt(sowId) : null;
+            if (!targetSowId && jobPackId && structureId) {
+                const { data: existingSow } = await supabase.from('u_sow')
+                    .select('id')
+                    .eq('jobpack_id', Number(jobPackId))
+                    .eq('structure_id', Number(structureId))
+                    .limit(1)
+                    .maybeSingle();
+
+                if (existingSow) targetSowId = existingSow.id;
+            }
+
+            if (!targetSowId) {
+                toast.error("Error determining active SOW.");
+                return;
+            }
+
+            // 3. Delete from u_sow_items
+            const { error: deleteError } = await supabase
+                .from('u_sow_items')
+                .delete()
+                .eq('sow_id', targetSowId)
+                .eq('component_id', selectedComp.id)
+                .or(`inspection_code.eq.${specCode},inspection_code.eq.${specCode.toUpperCase()}`);
+
+            if (deleteError) {
+                console.error("Failed to delete u_sow_item:", deleteError);
+                toast.error("Failed to delete from SOW items.");
+                return;
+            }
+
+            // 4. Decrement u_sow counters (total_items, pending_items)
+            const { data: sowData } = await supabase.from('u_sow')
+                .select('total_items, pending_items')
+                .eq('id', targetSowId)
+                .maybeSingle();
+
+            if (sowData) {
+                const updatePayload: any = {
+                    total_items: Math.max(0, (sowData.total_items || 0) - 1),
+                    pending_items: Math.max(0, (sowData.pending_items || 0) - 1),
+                    updated_by: (await supabase.auth.getUser()).data.user?.id || 'system',
+                    updated_at: new Date().toISOString()
+                };
+                await supabase.from('u_sow').update(updatePayload).eq('id', targetSowId);
+            }
+
+            // 5. Update local component state
+            const newTasks = (selectedComp.tasks || []).filter((t: string) => t !== specCode);
+            const newStatuses = (selectedComp.taskStatuses || []).filter((ts: any) => ts.code !== specCode);
+
+            const updatedComp = { ...selectedComp, tasks: newTasks, taskStatuses: newStatuses };
+            
+            setComponentsSow(prev => prev.map(comp => comp.id === selectedComp.id ? updatedComp : comp));
+            setAllComps(prev => prev.map(comp => comp.id === selectedComp.id ? updatedComp : comp));
+            setSelectedComp(updatedComp);
+
+            toast.success(`Successfully removed ${specCode} from scope.`);
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+
+        } catch (err) {
+            console.error("Error executing scope deletion:", err);
+            toast.error("An error occurred while deleting the inspection type.");
         }
     };
 
@@ -5970,142 +6088,161 @@ function V10PreviewLayout() {
                                                                        isCompleted ? 'Completed' :
                                                                        isIncomplete ? 'Incomplete' : 'Pending';
                                                     
+
                                                     return (
-                                                        <Button key={t} onClick={() => {
-                                                            setActiveSpec(t);
-                                                            const now = new Date();
-                                                            const newProps: Record<string, any> = {
-                                                                inspection_date: format(now, 'yyyy-MM-dd'),
-                                                                inspection_time: format(now, 'HH:mm:ss')
-                                                            };
-                                                            
-                                                            // 2. Resolve field definitions (from registry or DB)
-                                                            const specProps = it?.default_properties || [];
-                                                            let propsList: any[] = [];
-                                                            if (typeof specProps === 'string') {
-                                                                try {
-                                                                    const parsed = JSON.parse(specProps);
+                                                        <div key={t} className="flex gap-2 items-center w-full relative group/item">
+                                                            <Button onClick={() => {
+                                                                setActiveSpec(t);
+                                                                const now = new Date();
+                                                                const newProps: Record<string, any> = {
+                                                                    inspection_date: format(now, 'yyyy-MM-dd'),
+                                                                    inspection_time: format(now, 'HH:mm:ss')
+                                                                };
+                                                                
+                                                                // 2. Resolve field definitions (from registry or DB)
+                                                                const specProps = it?.default_properties || [];
+                                                                let propsList: any[] = [];
+                                                                if (typeof specProps === 'string') {
+                                                                    try {
+                                                                        const parsed = JSON.parse(specProps);
+                                                                        propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
+                                                                    } catch (e) { }
+                                                                } else {
+                                                                    const parsed = specProps as any;
                                                                     propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
-                                                                } catch (e) { }
-                                                            } else {
-                                                                const parsed = specProps as any;
-                                                                propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
-                                                            }
-
-                                                            // 3. Apply JSON Defaults
-                                                            propsList.forEach((p: any) => {
-                                                                if (p.default !== undefined) {
-                                                                    newProps[p.name || p.label] = p.default;
                                                                 }
-                                                            });
 
-                                                            // 4. Auto-insert current tape counter for LIVE entry mode
-                                                            if (!manualOverride) {
-                                                                newProps.tape_count_no = formatTime(vidTimer);
-                                                            }
-
-                                                            // 5. Auto-fill Nominal Thickness from Component Data
-                                                            if (selectedComp.nominalThk && selectedComp.nominalThk !== '-') {
-                                                                const ntField = propsList.find((p: any) => 
-                                                                    String(p.label || p.name || '').toLowerCase().includes('nominal thickness') ||
-                                                                    String(p.label || p.name || '').toLowerCase() === 'nt'
-                                                                );
-                                                                if (ntField) {
-                                                                    newProps[ntField.name || ntField.label] = selectedComp.nominalThk;
-                                                                }
-                                                            }
-
-                                                            // 6. Populate from ROV Data Acquisition if connected
-                                                            if (inspMethod === 'ROV' && dataAcqConnected) {
-                                                                dataAcqFields.forEach(f => {
-                                                                    if (f.value && f.value !== '--' && f.targetField) {
-                                                                        newProps[f.targetField] = f.value;
+                                                                // 3. Apply JSON Defaults
+                                                                propsList.forEach((p: any) => {
+                                                                    if (p.default !== undefined) {
+                                                                        newProps[p.name || p.label] = p.default;
                                                                     }
                                                                 });
-                                                            }
 
-                                                            // 7. Default elevation for underwater types to negative
-                                                            if (inspMethod === 'ROV' || inspMethod === 'DIVING') {
-                                                                const depthVal = selectedComp.depth || (selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : null);
-                                                                if (depthVal) {
-                                                                    const numericDepth = parseFloat(String(depthVal).replace(/[^\d.-]/g, ''));
-                                                                    if (!isNaN(numericDepth)) {
-                                                                        newProps.verification_depth = -Math.abs(numericDepth);
+                                                                // 4. Auto-insert current tape counter for LIVE entry mode
+                                                                if (!manualOverride) {
+                                                                    newProps.tape_count_no = formatTime(vidTimer);
+                                                                }
+
+                                                                // 5. Auto-fill Nominal Thickness from Component Data
+                                                                if (selectedComp.nominalThk && selectedComp.nominalThk !== '-') {
+                                                                    const ntField = propsList.find((p: any) => 
+                                                                        String(p.label || p.name || '').toLowerCase().includes('nominal thickness') ||
+                                                                        String(p.label || p.name || '').toLowerCase() === 'nt'
+                                                                    );
+                                                                    if (ntField) {
+                                                                        newProps[ntField.name || ntField.label] = selectedComp.nominalThk;
                                                                     }
                                                                 }
-                                                            }
-                                                            
-                                                            setDynamicProps(newProps);
-                                                            setFindingType("Pass");
-                                                            setRecordNotes("");
-                                                            setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
-                                                                rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
-                                                            setIsManualOverride(false);
-                                                            setIsUserInteraction(false);
-                                                        }} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${
-                                                            statusColor === 'green' ? 'border-green-200 hover:bg-green-50/50' :
-                                                            statusColor === 'red' ? 'border-red-200 hover:bg-red-50/30' :
-                                                            statusColor === 'orange' ? 'border-orange-200 hover:bg-orange-50/30' :
-                                                            statusColor === 'teal' ? 'border-teal-200 hover:bg-teal-50/30' :
-                                                            statusColor === 'amber' ? 'border-amber-200 hover:bg-amber-50/30' :
-                                                            'border-blue-200 hover:bg-blue-50'
-                                                        }`}>
-                                                            <div className="flex items-center gap-2.5">
-                                                                {/* Status indicator dot */}
-                                                                <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${
-                                                                    statusColor === 'green' ? 'bg-green-500' :
-                                                                    statusColor === 'red' ? 'bg-red-500 animate-pulse' :
-                                                                    statusColor === 'orange' ? 'bg-orange-500' :
-                                                                    statusColor === 'teal' ? 'bg-teal-500' :
-                                                                    statusColor === 'amber' ? 'bg-amber-500' :
-                                                                    'bg-slate-300'
-                                                                }`}>
-                                                                    {statusColor === 'green' && <Check className="w-2 h-2 text-white" />}
-                                                                    {(statusColor === 'red' || statusColor === 'orange') && <AlertTriangle className="w-2 h-2 text-white" />}
-                                                                </div>
-                                                                <div className="flex flex-col items-start overflow-hidden flex-1 max-w-[170px]">
-                                                                    <div className="flex items-baseline gap-1.5 w-full text-left truncate">
-                                                                        <span className={`text-sm font-bold truncate ${
-                                                                            statusColor === 'green' ? 'text-green-700' :
-                                                                            statusColor === 'red' ? 'text-red-700' :
-                                                                            statusColor === 'orange' ? 'text-orange-700' :
-                                                                            statusColor === 'teal' ? 'text-teal-700' :
-                                                                            statusColor === 'amber' ? 'text-amber-700' :
-                                                                            'text-blue-700'
-                                                                        }`} title={it?.name || t}>
-                                                                            {it?.name || t}
-                                                                        </span>
-                                                                        <span className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${
-                                                                            statusColor === 'green' ? 'bg-green-50 border-green-200 text-green-700' :
-                                                                            statusColor === 'red' ? 'bg-red-50 border-red-200 text-red-700' :
-                                                                            statusColor === 'orange' ? 'bg-orange-50 border-orange-200 text-orange-700' :
-                                                                            statusColor === 'teal' ? 'bg-teal-50 border-teal-200 text-teal-700' :
-                                                                            statusColor === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                                                                            'bg-blue-50 border-blue-200 text-blue-700'
+
+                                                                // 6. Populate from ROV Data Acquisition if connected
+                                                                if (inspMethod === 'ROV' && dataAcqConnected) {
+                                                                    dataAcqFields.forEach(f => {
+                                                                        if (f.value && f.value !== '--' && f.targetField) {
+                                                                            newProps[f.targetField] = f.value;
+                                                                        }
+                                                                    });
+                                                                }
+
+                                                                // 7. Default elevation for underwater types to negative
+                                                                if (inspMethod === 'ROV' || inspMethod === 'DIVING') {
+                                                                    const depthVal = selectedComp.depth || (selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : null);
+                                                                    if (depthVal) {
+                                                                        const numericDepth = parseFloat(String(depthVal).replace(/[^\d.-]/g, ''));
+                                                                        if (!isNaN(numericDepth)) {
+                                                                            newProps.verification_depth = -Math.abs(numericDepth);
+                                                                        }
+                                                                    }
+                                                                }
+                                                                
+                                                                setDynamicProps(newProps);
+                                                                setFindingType("Pass");
+                                                                setRecordNotes("");
+                                                                setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
+                                                                    rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
+                                                                setIsManualOverride(false);
+                                                                setIsUserInteraction(false);
+                                                            }} className={`flex-1 h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${
+                                                                statusColor === 'green' ? 'border-green-200 hover:bg-green-50/50' :
+                                                                statusColor === 'red' ? 'border-red-200 hover:bg-red-50/30' :
+                                                                statusColor === 'orange' ? 'border-orange-200 hover:bg-orange-50/30' :
+                                                                statusColor === 'teal' ? 'border-teal-200 hover:bg-teal-50/30' :
+                                                                statusColor === 'amber' ? 'border-amber-200 hover:bg-amber-50/30' :
+                                                                'border-blue-200 hover:bg-blue-50'
+                                                            }`}>
+                                                                <div className="flex items-center gap-2.5">
+                                                                    {/* Status indicator dot */}
+                                                                    <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${
+                                                                        statusColor === 'green' ? 'bg-green-500' :
+                                                                        statusColor === 'red' ? 'bg-red-500 animate-pulse' :
+                                                                        statusColor === 'orange' ? 'bg-orange-500' :
+                                                                        statusColor === 'teal' ? 'bg-teal-500' :
+                                                                        statusColor === 'amber' ? 'bg-amber-500' :
+                                                                        'bg-slate-300'
+                                                                    }`}>
+                                                                        {statusColor === 'green' && <Check className="w-2 h-2 text-white" />}
+                                                                        {(statusColor === 'red' || statusColor === 'orange') && <AlertTriangle className="w-2 h-2 text-white" />}
+                                                                    </div>
+                                                                    <div className="flex flex-col items-start overflow-hidden flex-1 max-w-[170px]">
+                                                                        <div className="flex items-baseline gap-1.5 w-full text-left truncate">
+                                                                            <span className={`text-sm font-bold truncate ${
+                                                                                statusColor === 'green' ? 'text-green-700' :
+                                                                                statusColor === 'red' ? 'text-red-700' :
+                                                                                statusColor === 'orange' ? 'text-orange-700' :
+                                                                                statusColor === 'teal' ? 'text-teal-700' :
+                                                                                statusColor === 'amber' ? 'text-amber-700' :
+                                                                                'text-blue-700'
+                                                                            }`} title={it?.name || t}>
+                                                                                {it?.name || t}
+                                                                            </span>
+                                                                            <span className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${
+                                                                                statusColor === 'green' ? 'bg-green-50 border-green-200 text-green-700' :
+                                                                                statusColor === 'red' ? 'bg-red-50 border-red-200 text-red-700' :
+                                                                                statusColor === 'orange' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                                                                                statusColor === 'teal' ? 'bg-teal-50 border-teal-200 text-teal-700' :
+                                                                                statusColor === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                                                                'bg-blue-50 border-blue-200 text-blue-700'
+                                                                            }`}>
+                                                                                {it?.code || t}
+                                                                            </span>
+                                                                        </div>
+                                                                        <span className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${
+                                                                            statusColor === 'green' ? 'text-green-500' :
+                                                                            statusColor === 'red' ? 'text-red-500' :
+                                                                            statusColor === 'orange' ? 'text-orange-500' :
+                                                                            statusColor === 'teal' ? 'text-teal-500' :
+                                                                            statusColor === 'amber' ? 'text-amber-500' :
+                                                                            'text-slate-400'
                                                                         }`}>
-                                                                            {it?.code || t}
+                                                                            {statusLabel}
                                                                         </span>
                                                                     </div>
-                                                                    <span className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${
-                                                                        statusColor === 'green' ? 'text-green-500' :
-                                                                        statusColor === 'red' ? 'text-red-500' :
-                                                                        statusColor === 'orange' ? 'text-orange-500' :
-                                                                        statusColor === 'teal' ? 'text-teal-500' :
-                                                                        statusColor === 'amber' ? 'text-amber-500' :
-                                                                        'text-slate-400'
-                                                                    }`}>
-                                                                        {statusLabel}
-                                                                    </span>
                                                                 </div>
-                                                            </div>
-                                                            <ArrowRight className={`w-4 h-4 ${
-                                                                statusColor === 'green' ? 'text-green-300' :
-                                                                statusColor === 'red' ? 'text-red-300' :
-                                                                statusColor === 'orange' ? 'text-orange-300' :
-                                                                statusColor === 'amber' ? 'text-amber-300' :
-                                                                'text-blue-300'
-                                                            }`} />
-                                                        </Button>
+                                                                <ArrowRight className={`w-4 h-4 ${
+                                                                    statusColor === 'green' ? 'text-green-300' :
+                                                                    statusColor === 'red' ? 'text-red-300' :
+                                                                    statusColor === 'orange' ? 'text-orange-300' :
+                                                                    statusColor === 'amber' ? 'text-amber-300' :
+                                                                    'text-blue-300'
+                                                                }`} />
+                                                            </Button>
+
+                                                            {taskRecords.length === 0 && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className="h-14 w-10 shrink-0 text-slate-400 border-dashed hover:text-red-600 hover:border-red-200 hover:bg-red-50/50"
+                                                                    title={`Remove ${t}`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        e.preventDefault();
+                                                                        handleDeleteInspectionSpec(t);
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
                                                     );
                                                 })}
                                             </div>
@@ -6123,8 +6260,8 @@ function V10PreviewLayout() {
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-[350px] p-0 shadow-2xl border-slate-200" align="center" side="top">
                                                         <div className="flex flex-col">
-                                                            <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-                                                                <div className="relative">
+                                                            <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex gap-2 items-center">
+                                                                <div className="relative flex-1">
                                                                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                                                                     <Input
                                                                         placeholder="Search type name or code..."
@@ -6134,6 +6271,14 @@ function V10PreviewLayout() {
                                                                         autoFocus
                                                                     />
                                                                 </div>
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="sm" 
+                                                                    onClick={() => setIsAddInspOpen(false)} 
+                                                                    className="h-9 px-2 text-xs font-bold text-slate-500 hover:text-slate-700 shrink-0"
+                                                                >
+                                                                    Cancel
+                                                                </Button>
                                                             </div>
                                                             <ScrollArea className="h-[300px]">
                                                                 <div className="p-1.5 space-y-1">
@@ -6425,12 +6570,7 @@ function V10PreviewLayout() {
                                                                 <DropdownMenuItem onClick={() => {
                                                                     const comp = (allComps || []).find((c: any) => c.id === r.component_id);
                                                                     if (comp) {
-                                                                        const obj = {
-                                                                            id: comp.id,
-                                                                            name: comp.q_id || comp.name || `Node ${comp.id}`,
-                                                                            raw: comp
-                                                                        };
-                                                                        setSelectedComp(obj);
+                                                                        setSelectedComp(comp);
                                                                         setCompSpecDialogOpen(true);
                                                                     }
                                                                 }} className="text-xs py-2 cursor-pointer">
@@ -6675,12 +6815,7 @@ function V10PreviewLayout() {
                                                                     <DropdownMenuItem onClick={() => {
                                                                         const comp = (allComps || []).find((c: any) => c.id === r.component_id);
                                                                         if (comp) {
-                                                                            const obj = {
-                                                                                id: comp.id,
-                                                                                name: comp.q_id || comp.name || `Node ${comp.id}`,
-                                                                                raw: comp
-                                                                            };
-                                                                            setSelectedComp(obj);
+                                                                            setSelectedComp(comp);
                                                                             setCompSpecDialogOpen(true);
                                                                         }
                                                                     }} className="text-xs py-2 cursor-pointer">
