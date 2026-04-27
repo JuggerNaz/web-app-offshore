@@ -11,6 +11,7 @@ import {
   MapPin,
   Settings,
   FileText,
+  FileSpreadsheet,
   Compass,
   Database,
   LayoutDashboard,
@@ -131,13 +132,6 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             </p>
           )}
           <MenuLink
-            href="/dashboard/jobpack"
-            isCollapsed={isCollapsed}
-            label="Work Packages"
-            icon={<Package className="h-[18px] w-[18px]" />}
-            text="Work Packages"
-          />
-          <MenuLink
             href="/dashboard/planning"
             isCollapsed={isCollapsed}
             label="Planning"
@@ -146,11 +140,11 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             actionHref="/dashboard/planning/form"
           />
           <MenuLink
-            href="/dashboard/reports"
+            href="/dashboard/jobpack"
             isCollapsed={isCollapsed}
-            label="Reports"
-            icon={<FileText className="h-[18px] w-[18px]" />}
-            text="Reports"
+            label="Work Packages"
+            icon={<Package className="h-[18px] w-[18px]" />}
+            text="Work Packages"
           />
           <MenuLink
             href="/dashboard/inspection-v2"
@@ -158,6 +152,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             label="Inspection"
             icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
             text="Inspection"
+          />
+          <MenuLink
+            href="/dashboard/reports"
+            isCollapsed={isCollapsed}
+            label="Reports"
+            icon={<FileSpreadsheet className="h-[18px] w-[18px]" />}
+            text="Reports"
           />
         </div>
 
