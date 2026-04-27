@@ -74,7 +74,7 @@ const InspectionField = ({
         ? Array.from(new Set([...(categoryUnits.metric || []), ...(categoryUnits.imperial || [])])) 
         : [];
         
-    const defaultUnit = p.defaultUnit || (categoryUnits 
+    const defaultUnit = (unitSystem === "IMPERIAL" ? p.defaultImperial : p.defaultMetric) || p.defaultUnit || (categoryUnits 
         ? (unitSystem === "IMPERIAL" ? categoryUnits.defaultImperial : categoryUnits.defaultMetric) 
         : null);
 

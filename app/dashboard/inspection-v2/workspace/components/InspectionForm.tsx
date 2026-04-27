@@ -618,28 +618,186 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         )}
 
                                         {/* Other (non-specialized) fields in normal 2-col grid */}
-                                        <div className="grid grid-cols-2 gap-4">
-                                            {otherFields.map((p: any, idx: number) => {
-                                                if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
+                                        {activeSpec?.toUpperCase() === 'MGROW' ? (() => {
+                                            const circFields = otherFields.filter((p: any) => 
+                                                p.name === 'circumferential_measurement_5m_above' || 
+                                                p.name === 'circumferential_measurement_0m' || 
+                                                p.name === 'circumferential_measurement_5m_below'
+                                            );
+                                            const boolFields = otherFields.filter((p: any) => p.type === 'boolean');
+                                            const restFields = otherFields.filter((p: any) => 
+                                                !circFields.includes(p) && !boolFields.includes(p)
+                                            );
 
-                                                return (
-                                                    <motion.div 
-                                                        layout
-                                                        key={`${p.name || p.label}-${idx}`} 
-                                                        className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}
-                                                        initial={{ opacity: 0 }}
-                                                        animate={{ opacity: 1 }}
-                                                        transition={{ delay: idx * 0.05 }}
-                                                    >
-                                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
-                                                            {p.label || p.name}
-                                                            {p.isLegacy && <span className="ml-2 text-amber-500 lowercase">(legacy)</span>}
-                                                        </label>
-                                                        {renderInspectionField(p, 'primary')}
-                                                    </motion.div>
-                                                );
-                                            })}
-                                        </div>
+                                            return (
+                                                <div className="space-y-4">
+                                                    {restFields.length > 0 && (
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            {restFields.map((p: any) => (
+                                                                <div key={p.name} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
+                                                                        {p.label || p.name}
+                                                                    </label>
+                                                                    {renderInspectionField(p, 'primary')}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {circFields.length > 0 && (
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                                Circumference
+                                                            </label>
+                                                            <div className="grid grid-cols-3 gap-3">
+                                                                {['circumferential_measurement_5m_above', 'circumferential_measurement_0m', 'circumferential_measurement_5m_below'].map((name) => {
+                                                                    const p = circFields.find(f => f.name === name);
+                                                                    if (!p) return null;
+                                                                    const customLabel = name === 'circumferential_measurement_5m_above' ? '-5m' : 
+                                                                                        name === 'circumferential_measurement_0m' ? '0m' : '+5m';
+                                                                    return (
+                                                                        <div key={name} className="space-y-1">
+                                                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block text-center">
+                                                                                {customLabel}
+                                                                            </label>
+                                                                            {renderInspectionField({...p, label: customLabel}, 'primary')}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {boolFields.length > 0 && (
+                                                        <div className="grid grid-cols-3 gap-3">
+                                                            {boolFields.map((p: any) => (
+                                                                <div key={p.name} className="space-y-1.5">
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
+                                                                        {p.label || p.name}
+                                                                    </label>
+                                                                    {renderInspectionField(p, 'primary')}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })() : activeSpec?.toUpperCase() === 'PL_AN' ? (() => {
+                                            const cpFields = otherFields.filter((p: any) => 
+                                                p.name === 'member_cp' || 
+                                                p.name === 'anode_cp' || 
+                                                p.name === 'topstub_cp' || 
+                                                p.name === 'bottomstub_cp'
+                                            );
+                                            const pittingFields = otherFields.filter((p: any) => 
+                                                p.name === 'max_pitting_depth' || 
+                                                p.name === 'avg_pitting_depth' || 
+                                                p.name === 'max_pitting_diameter' || 
+                                                p.name === 'avg_pitting_diameter'
+                                            );
+                                            const circFields = otherFields.filter((p: any) => 
+                                                p.name === 'circumference_c1' || 
+                                                p.name === 'circumference_c2' || 
+                                                p.name === 'circumference_c3'
+                                            );
+                                            const restFields = otherFields.filter((p: any) => 
+                                                !cpFields.includes(p) && !pittingFields.includes(p) && !circFields.includes(p)
+                                            );
+
+                                            return (
+                                                <div className="space-y-4">
+                                                    {restFields.length > 0 && (
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            {restFields.map((p: any) => (
+                                                                <div key={p.name} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
+                                                                        {p.label || p.name}
+                                                                    </label>
+                                                                    {renderInspectionField(p, 'primary')}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {cpFields.length > 0 && (
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                                CP Readings
+                                                            </label>
+                                                            <div className="grid grid-cols-3 gap-3">
+                                                                {cpFields.map((p: any) => (
+                                                                    <div key={p.name} className="space-y-1">
+                                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                                                                            {p.label || p.name}
+                                                                        </label>
+                                                                        {renderInspectionField(p, 'primary')}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {pittingFields.length > 0 && (
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                                Pitting
+                                                            </label>
+                                                            <div className="grid grid-cols-3 gap-3">
+                                                                {pittingFields.map((p: any) => (
+                                                                    <div key={p.name} className="space-y-1">
+                                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                                                                            {p.label || p.name}
+                                                                        </label>
+                                                                        {renderInspectionField(p, 'primary')}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {circFields.length > 0 && (
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                                Circumference
+                                                            </label>
+                                                            <div className="grid grid-cols-3 gap-3">
+                                                                {circFields.map((p: any) => (
+                                                                    <div key={p.name} className="space-y-1">
+                                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                                                                            {p.label || p.name}
+                                                                        </label>
+                                                                        {renderInspectionField(p, 'primary')}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })() : (
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {otherFields.map((p: any, idx: number) => {
+                                                    if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
+
+                                                    return (
+                                                        <motion.div 
+                                                            layout
+                                                            key={`${p.name || p.label}-${idx}`} 
+                                                            className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}
+                                                            initial={{ opacity: 0 }}
+                                                            animate={{ opacity: 1 }}
+                                                            transition={{ delay: idx * 0.05 }}
+                                                        >
+                                                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
+                                                                {p.label || p.name}
+                                                                {p.isLegacy && <span className="ml-2 text-amber-500 lowercase">(legacy)</span>}
+                                                            </label>
+                                                            {renderInspectionField(p, 'primary')}
+                                                        </motion.div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </>
                                 );
                             })()}

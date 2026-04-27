@@ -264,16 +264,18 @@
                     "label": "Width",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "length",
                     "label": "Length",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 }
             ]
         },
@@ -310,8 +312,9 @@
                     "label": "Cleaning Pressure",
                     "type": "number",
                     "unitCategory": "PRESSURE",
-                    "defaultUnit": "bar",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "bar",
+                    "defaultImperial": "psi"
                 }
             ]
         },
@@ -327,8 +330,9 @@
                     "label": "Nominal Diameter",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "$ref": "mgi_hard_thickness_at_12"
@@ -362,32 +366,36 @@
                     "label": "Circumferential Measurement 5m above",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "circumferential_measurement_0m",
                     "label": "Circumferential Measurement 0m",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "circumferential_measurement_5m_below",
                     "label": "Circumferential Measurement 5m below",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "effective_thickness",
                     "label": "Effective Thickness",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "hard_mgi",
@@ -468,8 +476,9 @@
                     "label": "Scour Depth",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "Exposed_pile",
@@ -545,12 +554,13 @@
                     "label": "Anode Length",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "anode_depletion_percent",
-                    "label": "Anode Diameter",
+                    "label": "Anode Depletion",
                     "type": "number",
                     "unitCategory": "PERCENTAGE",
                     "required": false
@@ -560,94 +570,104 @@
                     "label": "Member CP",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
-                    "defaultUnit": "mV",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV"
                 },
                 {
                     "name": "anode_cp",
                     "label": "Anode CP",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
-                    "defaultUnit": "mV",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV"
                 },
                 {
                     "name": "topstub_cp",
                     "label": "Top stub CP",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
-                    "defaultUnit": "mV",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV"
                 },
                 {
                     "name": "bottomstub_cp",
                     "label": "Bottom stub CP",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
-                    "defaultUnit": "mV",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV"
                 },
                 {
                     "name": "max_pitting_depth",
                     "label": "Max Pitting Depth",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "avg_pitting_depth",
                     "label": "Avg Pitting Depth",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "max_pitting_diameter",
                     "label": "Max Pitting Diameter",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "avg_pitting_diameter",
                     "label": "Avg Pitting Diameter",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "circumference_c1",
                     "label": "Circumference C1",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "circumference_c2",
                     "label": "Circumference C2",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "circumference_c3",
                     "label": "Circumference C3",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "anode_secured_to_structure",
                     "label": "Anode Secured to Structure",
-                    "type": "combo",
-                    "lib_code": "Yes/No",
+                    "type": "boolean",
                     "required": false
                 }
             ]
@@ -679,41 +699,46 @@
                     "label": "Avg Thickness",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "min_reading",
                     "label": "Min Thickness",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "max_reading",
                     "label": "Max Thickness",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "wall_thickness_loss",
                     "label": "Wall Thickness Loss",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": true
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "%_wall_thickness_loss",
                     "label": "% Wall Thickness Loss",
                     "type": "number",
                     "unitCategory": "PERCENTAGE",
-                    "defaultUnit": "%",
                     "disabled": true,
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "%",
+                    "defaultImperial": "%"
                 },
                 {
                     "name": "size_of_area_tested",
@@ -890,8 +915,9 @@
                     "label": "Scour Depth",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "mm",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
                 },
                 {
                     "name": "Exposed_pile",
@@ -992,16 +1018,18 @@
                     "label": "Distance From Member",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "m",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
                 },
                 {
                     "name": "suspention_height",
                     "label": "Suspention Height",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "m",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
                 },
                 {
                     "$ref": "cp_rdg_additional"
@@ -1166,30 +1194,33 @@
                     "label": "Crater Diameter",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "m",
                     "condition": {
                         "field": "category",
                         "value": "Crater"
-                    }
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
                 },
                 {
                     "name": "crater_depth",
                     "label": "Crater Depth",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "m",
                     "condition": {
                         "field": "category",
                         "value": "Crater"
-                    }
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
                 },
                 {
                     "name": "distance_from_leg",
                     "label": "Distance From Leg",
                     "type": "number",
                     "unitCategory": "LENGTH",
-                    "defaultUnit": "m",
-                    "required": false
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
                 },
                 {
                     "name": "x",
