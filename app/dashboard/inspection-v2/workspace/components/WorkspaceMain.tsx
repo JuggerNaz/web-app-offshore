@@ -25,6 +25,7 @@ import {
   Edit,
   Trash2,
 } from "lucide-react";
+import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -234,9 +235,19 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                     {selectedComp.tasks &&
                       selectedComp.tasks.filter((t: string) => {
                         const it = (allInspectionTypes || []).find((type: any) => type.code === t || type.name === t);
-                        if (!it) return true;
-                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                        const localIt = (inspectionRegistry as any).inspectionTypes?.find((type: any) => type.code === t || type.name === t);
+                        
+                        const methods = it?.default_properties?.methods || it?.methods || localIt?.methods || [];
+                        const isRov = methods.includes("ROV") || it?.metadata?.rov === 1 || it?.metadata?.rov === "1" || it?.metadata?.rov === true || (it?.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                        const isDiving = methods.includes("DIVING") || it?.metadata?.diving === 1 || it?.metadata?.diving === "1" || it?.metadata?.diving === true || (it?.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+
+                        if (!it && !localIt) {
+                          const isCodeRov = String(t).startsWith("R") || String(t).startsWith("ROV") || String(t).toLowerCase().includes("rov");
+                          if (inspMethod === "DIVING" && isCodeRov) return false;
+                          if (inspMethod === "ROV" && !isCodeRov) return false;
+                          return true;
+                        }
+
                         if (inspMethod === "DIVING" && !isDiving) return false;
                         if (inspMethod === "ROV" && !isRov) return false;
                         return true;
@@ -490,12 +501,15 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                             <div className="p-1.5 space-y-1">
                               {allInspectionTypes
                                 .filter((it) => {
+                                  const methods = it.default_properties?.methods || it.methods || [];
                                   const isRov =
+                                    methods.includes("ROV") ||
                                     it.metadata?.rov === 1 ||
                                     it.metadata?.rov === "1" ||
                                     it.metadata?.rov === true ||
                                     it.metadata?.job_type?.includes("ROV");
                                   const isDiving =
+                                    methods.includes("DIVING") ||
                                     it.metadata?.diving === 1 ||
                                     it.metadata?.diving === "1" ||
                                     it.metadata?.diving === true ||

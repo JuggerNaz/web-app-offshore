@@ -5632,7 +5632,25 @@ function V10PreviewLayout() {
                                         <div className="w-full max-w-2xl flex flex-col items-center">
                                             <div className="text-[11px] font-bold uppercase text-slate-400 tracking-widest mb-4">Select Scope to Inspect ({selectedComp.name})</div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
-                                                {selectedComp.tasks && selectedComp.tasks.map((t: string) => {
+                                                {selectedComp.tasks && selectedComp.tasks.filter((t: string) => {
+                                                    const it = (allInspectionTypes || []).find((type: any) => type.code === t || type.name === t);
+                                                    const localIt = (inspectionRegistry as any).inspectionTypes?.find((type: any) => type.code === t || type.name === t);
+                                                    
+                                                    const methods = it?.default_properties?.methods || it?.methods || localIt?.methods || [];
+                                                    const isRov = methods.includes("ROV") || it?.metadata?.rov === 1 || it?.metadata?.rov === "1" || it?.metadata?.rov === true || (it?.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                    const isDiving = methods.includes("DIVING") || it?.metadata?.diving === 1 || it?.metadata?.diving === "1" || it?.metadata?.diving === true || (it?.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+
+                                                    if (!it && !localIt) {
+                                                        const isCodeRov = String(t).startsWith("R") || String(t).startsWith("ROV") || String(t).toLowerCase().includes("rov");
+                                                        if (inspMethod === "DIVING" && isCodeRov) return false;
+                                                        if (inspMethod === "ROV" && !isCodeRov) return false;
+                                                        return true;
+                                                    }
+
+                                                    if (inspMethod === "DIVING" && !isDiving) return false;
+                                                    if (inspMethod === "ROV" && !isRov) return false;
+                                                    return true;
+                                                }).map((t: string) => {
                                                     const taskStatus = selectedComp.taskStatuses?.find((ts: any) => ts.code === t);
                                                     const status = taskStatus?.status || 'pending';
                                                     const isCompleted = status === 'completed';
@@ -5862,8 +5880,9 @@ function V10PreviewLayout() {
                                                                     {allInspectionTypes
                                                                         .filter(it => {
                                                                             // Filter by mode
-                                                                            const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || it.metadata?.job_type?.includes('ROV');
-                                                                            const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || it.metadata?.job_type?.includes('DIVING');
+                                                                            const methods = it.default_properties?.methods || it.methods || [];
+                                                                            const isRov = methods.includes("ROV") || it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || it.metadata?.job_type?.includes('ROV');
+                                                                            const isDiving = methods.includes("DIVING") || it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || it.metadata?.job_type?.includes('DIVING');
                                                                             if (inspMethod === 'DIVING' && !isDiving) return false;
                                                                             if (inspMethod === 'ROV' && !isRov) return false;
 
