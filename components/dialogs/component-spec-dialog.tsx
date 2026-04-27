@@ -23,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import useSWR, { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { DataTable } from "@/components/data-table/data-table";
-import { comments, attachments } from "@/components/data-table/columns";
+import { comments, attachments, globalAttachments } from "@/components/data-table/columns";
 import { ComponentCommentDialog } from "./component-comment-dialog";
 import { ComponentAttachmentDialog } from "./component-attachment-dialog";
 import { useState, useEffect } from "react";
@@ -2907,7 +2907,7 @@ export function ComponentSpecDialog({
                     ) : (
                       <div className="border border-slate-200/60 dark:border-slate-800/60 rounded-2xl overflow-hidden shadow-sm">
                         <DataTable
-                          columns={attachments}
+                          columns={globalAttachments}
                           data={attachmentsData?.data || []}
                           disableRowClick={true}
                           toolbarActions={

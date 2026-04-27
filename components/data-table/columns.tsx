@@ -868,7 +868,7 @@ export const globalAttachments: ColumnDef<ExtendedAttachment>[] = [
   },
   {
     accessorKey: "source_name",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Source (Platform)" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Source" />,
     enableSorting: true,
     cell: ({ row }) => {
       const name = row.original.source_name || "Unknown";
