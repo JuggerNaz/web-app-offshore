@@ -232,7 +232,15 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
                     {selectedComp.tasks &&
-                      selectedComp.tasks.map((t: string) => {
+                      selectedComp.tasks.filter((t: string) => {
+                        const it = (allInspectionTypes || []).find((type: any) => type.code === t || type.name === t);
+                        if (!it) return true;
+                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                        if (inspMethod === "DIVING" && !isDiving) return false;
+                        if (inspMethod === "ROV" && !isRov) return false;
+                        return true;
+                      }).map((t: string) => {
                         const taskStatus = selectedComp.taskStatuses?.find(
                           (ts: any) => ts.code === t
                         );
@@ -291,7 +299,9 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                             onClick={() => {
                               setActiveSpec(t);
                               const newProps: Record<string, any> = {};
-                              if (selectedComp.nominalThk && selectedComp.nominalThk !== "-") {
+                              const compNT = selectedComp.nominalThk && selectedComp.nominalThk !== "-" ? selectedComp.nominalThk : 
+                                             (selectedComp.wallThickness && selectedComp.wallThickness !== "-" ? selectedComp.wallThickness : null);
+                              if (compNT) {
                                 const specProps = it?.default_properties || [];
                                 let propsList: any[] = [];
                                 if (typeof specProps === "string") {
@@ -313,7 +323,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                     String(p.label || p.name || "").toLowerCase() === "nt"
                                 );
                                 if (ntField) {
-                                  newProps[ntField.name || ntField.label] = selectedComp.nominalThk;
+                                  newProps[ntField.name || ntField.label] = compNT;
                                 }
                               }
                               setDynamicProps(newProps);

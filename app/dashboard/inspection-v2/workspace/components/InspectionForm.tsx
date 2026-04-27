@@ -247,6 +247,81 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         dynamicProps?.verification_depth, dynamicProps?.verification_depth_unit, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev
     ]);
 
+    // UT Thickness Auto-Calculations
+    React.useEffect(() => {
+        if (!activeSpec || activeSpec.toUpperCase() !== 'UTWTK') return;
+        
+        const readings: number[] = [];
+        
+        const r3 = parseFloat(dynamicProps?.ut_3_o_clock);
+        if (!isNaN(r3)) readings.push(r3);
+        
+        const r6 = parseFloat(dynamicProps?.ut_6_o_clock);
+        if (!isNaN(r6)) readings.push(r6);
+        
+        const r9 = parseFloat(dynamicProps?.ut_9_o_clock);
+        if (!isNaN(r9)) readings.push(r9);
+        
+        const r12 = parseFloat(dynamicProps?.ut_12_o_clock);
+        if (!isNaN(r12)) readings.push(r12);
+        
+        if (Array.isArray(dynamicProps?.ut_readings_additional)) {
+            dynamicProps.ut_readings_additional.forEach((item: any) => {
+                const addR = parseFloat(item.reading);
+                if (!isNaN(addR)) readings.push(addR);
+            });
+        }
+        
+        if (readings.length === 0) return;
+        
+        const sum = readings.reduce((a, b) => a + b, 0);
+        const avg = sum / readings.length;
+        const min = Math.min(...readings);
+        const max = Math.max(...readings);
+        
+        const nt = parseFloat(dynamicProps?.nominal_thickness);
+        let loss: number | null = null;
+        let pctLoss: number | null = null;
+        if (!isNaN(nt) && nt > 0) {
+            loss = nt - min;
+            pctLoss = (loss / nt) * 100;
+        }
+        
+        if (handleDynamicPropChange) {
+            const currentAvg = parseFloat(dynamicProps?.avg_reading);
+            const currentMin = parseFloat(dynamicProps?.min_reading);
+            const currentMax = parseFloat(dynamicProps?.max_reading);
+            const currentLoss = parseFloat(dynamicProps?.wall_thickness_loss);
+            const currentPctLoss = parseFloat(dynamicProps?.['%_wall_thickness_loss']);
+            
+            const fmtAvg = parseFloat(avg.toFixed(2));
+            const fmtMin = parseFloat(min.toFixed(2));
+            const fmtMax = parseFloat(max.toFixed(2));
+            const fmtLoss = loss !== null ? parseFloat(loss.toFixed(2)) : null;
+            const fmtPctLoss = pctLoss !== null ? parseFloat(pctLoss.toFixed(2)) : null;
+            
+            if (currentAvg !== fmtAvg) handleDynamicPropChange('avg_reading', fmtAvg);
+            if (currentMin !== fmtMin) handleDynamicPropChange('min_reading', fmtMin);
+            if (currentMax !== fmtMax) handleDynamicPropChange('max_reading', fmtMax);
+            
+            if (fmtLoss !== null && currentLoss !== fmtLoss) {
+                handleDynamicPropChange('wall_thickness_loss', fmtLoss);
+            }
+            if (fmtPctLoss !== null && currentPctLoss !== fmtPctLoss) {
+                handleDynamicPropChange('%_wall_thickness_loss', fmtPctLoss);
+            }
+        }
+        
+    }, [
+        dynamicProps?.ut_3_o_clock,
+        dynamicProps?.ut_6_o_clock,
+        dynamicProps?.ut_9_o_clock,
+        dynamicProps?.ut_12_o_clock,
+        dynamicProps?.nominal_thickness,
+        dynamicProps?.ut_readings_additional,
+        activeSpec
+    ]);
+
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white z-10">
             <div className="p-3 bg-blue-600 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700">
@@ -291,18 +366,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><MapPinIcon className="w-3 h-3" /> Verification Depth / Elevation</label>
                             <div className="flex items-center gap-1">
                                 <Input 
-                                    type="number"
-                                    value={dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || ''} 
+                                    type="text"
+                                    value={dynamicProps?.verification_depth ?? (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : (selectedComp.depth || ''))} 
                                     onChange={(e) => {
-                                        let val = e.target.value;
-                                        const isUnderwater = headerData.inspMethod === 'ROV' || headerData.inspMethod === 'DIVING';
-                                        if (isUnderwater && val && val !== '-') {
-                                            const num = parseFloat(val);
-                                            if (!isNaN(num) && num > 0) {
-                                                val = String(-num);
-                                            }
-                                        }
-                                        handleDynamicPropChange?.('verification_depth', val);
+                                        handleDynamicPropChange?.('verification_depth', e.target.value);
                                     }}
                                     placeholder="Enter depth"
                                     className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500 flex-1" 

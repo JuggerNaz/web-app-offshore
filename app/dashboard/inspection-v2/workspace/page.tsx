@@ -6125,13 +6125,15 @@ function V10PreviewLayout() {
                                                                 }
 
                                                                 // 5. Auto-fill Nominal Thickness from Component Data
-                                                                if (selectedComp.nominalThk && selectedComp.nominalThk !== '-') {
+                                                                const compNT = selectedComp.nominalThk && selectedComp.nominalThk !== '-' ? selectedComp.nominalThk : 
+                                                                               (selectedComp.wallThickness && selectedComp.wallThickness !== '-' ? selectedComp.wallThickness : null);
+                                                                if (compNT) {
                                                                     const ntField = propsList.find((p: any) => 
                                                                         String(p.label || p.name || '').toLowerCase().includes('nominal thickness') ||
                                                                         String(p.label || p.name || '').toLowerCase() === 'nt'
                                                                     );
                                                                     if (ntField) {
-                                                                        newProps[ntField.name || ntField.label] = selectedComp.nominalThk;
+                                                                        newProps[ntField.name || ntField.label] = compNT;
                                                                     }
                                                                 }
 
@@ -6895,6 +6897,18 @@ function V10PreviewLayout() {
                                             <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
                                             <div className="space-y-1">
                                                 {componentsSow.filter((c: any) => {
+                                                    let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
+                                                    const hasValidTask = tasksToFilter.some((tCode: string) => {
+                                                        const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                                                        if (!it) return true;
+                                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                        if (inspMethod === "DIVING" && isDiving) return true;
+                                                        if (inspMethod === "ROV" && isRov) return true;
+                                                        return false;
+                                                    });
+                                                    if (!hasValidTask) return false;
+
                                                     const term = compSearchTerm.toLowerCase().trim();
                                                     if (!term) return true;
                                                     const qid = (c.name || '').toLowerCase();
@@ -6923,7 +6937,15 @@ function V10PreviewLayout() {
                                                                 <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} â†’ {c.endNode}</div>
                                                             )}
                                                             <div className="flex flex-wrap gap-1 mt-1.5">
-                                                                {c.taskStatuses?.length > 0 ? c.taskStatuses.map((ts: any, idx: number) => {
+                                                                {c.taskStatuses?.length > 0 ? c.taskStatuses.filter((ts: any) => {
+                                                                    const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
+                                                                    if (!it) return true;
+                                                                    const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                                    const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                                    if (inspMethod === "DIVING" && !isDiving) return false;
+                                                                    if (inspMethod === "ROV" && !isRov) return false;
+                                                                    return true;
+                                                                }).map((ts: any, idx: number) => {
                                                                     const s = ts.status || 'pending';
                                                                     const hasAnom = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === ts.code || r.inspection_type_code === ts.code) && r.component_id === c.id);
                                                                     return (
@@ -6948,7 +6970,15 @@ function V10PreviewLayout() {
                                                                         </span>
                                                                     );
                                                                 }) : (
-                                                                    <span className={`text-[10px] font-mono ${isSelected ? 'opacity-85' : 'opacity-85'}`}>Tasks: {c.tasks?.join(', ')}</span>
+                                                                    <span className={`text-[10px] font-mono ${isSelected ? 'opacity-85' : 'opacity-85'}`}>Tasks: {c.tasks?.filter((t: string) => {
+                                                                        const it = (allInspectionTypes || []).find((type: any) => type.code === t || type.name === t);
+                                                                        if (!it) return true;
+                                                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                                        if (inspMethod === "DIVING" && !isDiving) return false;
+                                                                        if (inspMethod === "ROV" && !isRov) return false;
+                                                                        return true;
+                                                                    }).join(', ')}</span>
                                                                 )}
                                                             </div>
                                                         </button>
@@ -8273,7 +8303,20 @@ function V10PreviewLayout() {
                         {/* SOW COMPONENTS GROUP */}
                         <div className="px-2 py-1 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 mb-1 rounded">SOW Items</div>
                         {componentsSow
-                            .filter(c => JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase()))
+                            .filter(c => {
+                                let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
+                                const hasValidTask = tasksToFilter.some((tCode: string) => {
+                                    const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                                    if (!it) return true;
+                                    const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                    const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                    if (inspMethod === "DIVING" && isDiving) return true;
+                                    if (inspMethod === "ROV" && isRov) return true;
+                                    return false;
+                                });
+                                if (!hasValidTask) return false;
+                                return JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
+                            })
                             .map((c: any) => (
                                 <button 
                                     key={c.id} 
