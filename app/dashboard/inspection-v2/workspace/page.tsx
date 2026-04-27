@@ -206,6 +206,7 @@ function V10PreviewLayout() {
 
     const [deployments, setDeployments] = useState<any[]>([]);
     const [activeDep, setActiveDep] = useState<{ id: string, jobNo?: string, name: string, raw?: any } | null>(null);
+    const [isReadyForComps, setIsReadyForComps] = useState(false);
 
     // Live session records
     const [currentRecords, setCurrentRecords] = useState<any[]>([]);
@@ -2259,6 +2260,7 @@ function V10PreviewLayout() {
             setIsDeploymentValid(false);
         } finally {
             setSyncLoading(false);
+            setIsReadyForComps(true);
         }
     }, [activeDep, inspMethod, supabase, parseDbDate, structureId, headerData.sowReportNo]);
 
@@ -2775,6 +2777,7 @@ function V10PreviewLayout() {
     useEffect(() => {
         async function fetchDeps() {
             setIsFetchingDeps(true);
+            setIsReadyForComps(false);
             // Clear current states when switching modes
             setDeployments([]);
             setActiveDep(null);
@@ -2889,6 +2892,7 @@ function V10PreviewLayout() {
                 console.warn("[fetchDeps] No deployment records found.");
                 setDeployments([]);
                 setActiveDep(null);
+                setIsReadyForComps(true);
             }
             setIsFetchingDeps(false);
         }
@@ -2899,7 +2903,7 @@ function V10PreviewLayout() {
     // Replacement: useQuery for SOW and Component Data
     const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
         queryKey: ['sow-data', structureId, sowId, inspMethod],
-        enabled: !!(sowId && structureId && !isNaN(Number(structureId))),
+        enabled: !!(sowId && structureId && !isNaN(Number(structureId)) && isReadyForComps),
         queryFn: async () => {
             if (!sowId || !structureId) return { assigned: [], unassigned: [], all: [] };
 
@@ -3474,7 +3478,7 @@ function V10PreviewLayout() {
 
     useEffect(() => {
         const runCheck = async () => {
-            if (isManualOverride || !criteriaRules.length || !isUserInteraction) return;
+            if (isManualOverride || !criteriaRules.length || !isUserInteraction || editingRecordId) return;
 
             const hasAnomaly = findingType === 'Anomaly';
             let bestMatchedRule: any = null;
@@ -3547,7 +3551,7 @@ function V10PreviewLayout() {
         };
 
         runCheck();
-    }, [debouncedProps, selectedComp, activeSpec, criteriaRules, findingType, anomalyData.defectCode, lastAutoMatchedRuleId, isManualOverride]);
+    }, [debouncedProps, selectedComp, activeSpec, criteriaRules, findingType, anomalyData.defectCode, lastAutoMatchedRuleId, isManualOverride, editingRecordId]);
 
     const handleCommitRecord = async () => {
         if (!selectedComp || !activeSpec || !activeDep?.id) return;
