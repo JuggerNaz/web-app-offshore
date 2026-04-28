@@ -586,6 +586,561 @@
             ]
         },
         {
+            "code": "BSINS",
+            "name": "Bolted Support Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "no_bolts_pres_memb",
+                    "label": "No of Bolts Present at Member",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_loose_memb",
+                    "label": "No of Bolts Loose at Member",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_miss_memb",
+                    "label": "No of Bolts Missing at Member",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_pres_brace",
+                    "label": "No of Bolts Present at Brace",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_loose_brace",
+                    "label": "No of Bolts Loose at Brace",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_miss_brace",
+                    "label": "No of Bolts Missing at Brace",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "max_gap_top_member",
+                    "label": "Max Gap Top Member",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "max_gap_top_brace",
+                    "label": "Max Gap Top Brace",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "max_gap_bottom_member",
+                    "label": "Max Gap Bottom Member",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "max_gap_bottom_brace",
+                    "label": "Max Gap Bottom Brace",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "max_flange_misalign_member",
+                    "label": "Max Flange Misalign - Member",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "max_flange_misalign_brace",
+                    "label": "Max Flange Misalign - Brace",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "appurtenance_clamp_type",
+                    "label": "Appurtenance Clamp Type",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "appurtenance_cp",
+                    "label": "Appurtenance CP Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "appurtenance_clamp_cp",
+                    "label": "Appurtenance CP Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "stub_cp",
+                    "label": "Appurtenance CP Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "member_clamp_cp",
+                    "label": "Member Clamp CP Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "member_cp",
+                    "label": "Member CP Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "member_cp",
+                    "label": "Member CP Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "clamp_coating_satisfactory",
+                    "label": "Clamp Coating Satisfactory",
+                    "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "all_bolts_double_nutted",
+                    "label": "All Bolts Double Nutted",
+                    "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "liner_present_member_end",
+                    "label": "Liner Present @ Member End",
+                    "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "earthing_wire_or_bolt_present",
+                    "label": "Earthing Wire or Bolt Present",
+                    "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "liner_present_component_end",
+                    "label": "Liner Present @ Component End",
+                    "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "washers_present_all_bolts",
+                    "label": "Washers Present @ All Bolts",
+                    "type": "boolean",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "MPINS",
+            "name": "Magenetic Particle Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "$ref": "surface_condition"
+                },
+                {
+                    "$ref": "cleaning_method"
+                },
+                {
+                    "name": "magnetic_ink",
+                    "label": "Magnetic Ink",
+                    "type": "combo",
+                    "lib_code": "MP_INK_TYPE",
+                    "required": true
+                },
+                {
+                    "name": "magnetic_method",
+                    "label": "Magnetic Method",
+                    "type": "combo",
+                    "lib_code": "MP_TESTING_METHOD",
+                    "required": true
+                },
+                {
+                    "name": "background_condition",
+                    "label": "Background Condition",
+                    "type": "combo",
+                    "lib_code": "MP_BACKGROUND_CONDITION",
+                    "required": true
+                },
+                {
+                    "name": "lighting_method",
+                    "label": "Lighting Method",
+                    "type": "combo",
+                    "lib_code": "MP_LIGHTING_METHOD",
+                    "required": true
+                },
+                {
+                    "name": "calib_block",
+                    "label": "Calibration Block",
+                    "type": "combo",
+                    "lib_code": "MP_CALIB_BLOCK",
+                    "required": true
+                },
+                {
+                    "name": "magnetic_lifting_power",
+                    "label": "Magnetic Lifting Power",
+                    "type": "number",
+                    "unitCategory": "MAG",
+                    "defaultMetric": "lb",
+                    "defaultImperial": "lb",
+                    "required": true
+                },
+                {
+                    "name": "orientation",
+                    "label": "Orientation",
+                    "type": "combo",
+                    "lib_code": "MP_ORIENTATION",
+                    "required": true
+                },
+                {
+                    "name": "indication",
+                    "label": "Indication Strength",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "probe",
+                    "label": "Probe",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "burmah_c_strip",
+                    "label": "Burmah C Strip",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "nominal_thickness",
+                    "label": "Nominal Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_3clk",
+                    "label": "Brace Thick @ 3 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_9clk",
+                    "label": "Brace Thick @ 9 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_12clk",
+                    "label": "Brace Thick @ 12 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_6clk",
+                    "label": "Brace Thick @ 6 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_3clk",
+                    "label": "Chord Thick @ 3 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_9clk",
+                    "label": "Chord Thick @ 9 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_12clk",
+                    "label": "Chord Thick @ 12 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_6clk",
+                    "label": "Chord Thick @ 6 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "cp_at_3clk",
+                    "label": "CP @ 3 Clocks",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "cp_at_9clk",
+                    "label": "CP @ 9 Clocks",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "cp_at_12clk",
+                    "label": "CP @ 12 Clocks",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "cp_at_6clk",
+                    "label": "CP @ 6 Clocks",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "current_in_coil_magnet",
+                    "label": "Current in Coil / Magnet",
+                    "type": "number",
+                    "unitCategory": "AMPERE",
+                    "defaultMetric": "mA",
+                    "defaultImperial": "mA",
+                    "required": true
+                },
+                {
+                    "name": "voltage_in_coil_magnet",
+                    "label": "Voltage in Coil / Magnet",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "volts",
+                    "defaultImperial": "volts",
+                    "required": true
+                },
+                {
+                    "name": "current_pole_spacing",
+                    "label": "Current Pole Spacing",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "probe_size",
+                    "label": "Probe Size",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "toe_chord_6_9",
+                    "label": "Toe Chord 6-9",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "toe_chord_9_12",
+                    "label": "Toe Chord 9-12",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "toe_chord_12_3",
+                    "label": "Toe Chord 12-3",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "toe_chord_3_6",
+                    "label": "Toe Chord 3-6",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "weld_6_9",
+                    "label": "Weld 6-9",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "weld_9_12",
+                    "label": "Weld 9-12",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "weld_12_3",
+                    "label": "Weld 12-3",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "weld_3_6",
+                    "label": "Weld 3-6",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "toe_brace_6_9",
+                    "label": "Toe Brace 6-9",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "toe_brace_9_12",
+                    "label": "Toe Brace 9-12",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "toe_brace_12_3",
+                    "label": "Toe Brace 12-3",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "toe_brace_3_6",
+                    "label": "Toe Brace 3-6",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "demagnetised",
+                    "label": "Demagnetised",
+                    "type": "boolean",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "RISER",
+            "name": "Riser Survey",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "$ref": "marine_growth"
+                },
+                {
+                    "name": "wall_thickness",
+                    "label": "Wall Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "riserbend_elevation",
+                    "label": "Riserbend Elevation",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "span_height",
+                    "label": "Span Height",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                },
+                {
+                    "$ref": "ut_readings_additional"
+                }
+            ]
+        },
+        {
             "code": "MGROW",
             "name": "Marine Growth Removal",
             "methods": [
