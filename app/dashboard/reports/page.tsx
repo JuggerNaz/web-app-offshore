@@ -18,6 +18,7 @@ import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ReportWizard } from "./report-wizard";
+import { FinalDatasheetBuilder } from "./final-datasheet-builder";
 
 // Dynamically import generators for legacy/direct access
 // (Ideally this logic should move into ReportWizard over time)
@@ -28,6 +29,7 @@ const getGenerators = async () => {
 
 export default function ReportsPage() {
     // Component Spec State (Legacy/Direct Dialog)
+    const [activeTab, setActiveTab] = useState<"wizard" | "datasheet">("wizard");
     const [componentSpecOpen, setComponentSpecOpen] = useState(false);
     const [selectedType, setSelectedType] = useState("ALL");
     const [selectedComponent, setSelectedComponent] = useState<string>("");
@@ -82,7 +84,7 @@ export default function ReportsPage() {
                     </div>
                 </div>
 
-                {/* WIZARD EMBEDDED DIRECTLY */}
+                {/* CONTENT AREA */}
                 <div className="flex-1 min-h-0 bg-white dark:bg-slate-950 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
                     <ReportWizard onClose={() => { }} />
                 </div>

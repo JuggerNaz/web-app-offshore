@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Printer, Download, Share2, FileText, Eye, Leaf } from "lucide-react";
+import { Loader2, Printer, Download, Share2, FileText, Eye, Leaf, User } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ interface ReportPreviewDialogProps {
     onOpenChange: (open: boolean) => void;
     title: string;
     fileName: string;
-    generateReport: (printFriendly?: boolean) => Promise<Blob | void>;
+    generateReport: (printFriendly: boolean, showSignatures: boolean) => Promise<Blob | void>;
 }
 
 export function ReportPreviewDialog({
@@ -27,10 +27,11 @@ export function ReportPreviewDialog({
     const [isGenerating, setIsGenerating] = useState(false);
     const [blob, setBlob] = useState<Blob | null>(null);
     const [printFriendly, setPrintFriendly] = useState(false);
+    const [showSignatures, setShowSignatures] = useState(true);
 
     useEffect(() => {
         if (open) {
-            loadPreview(printFriendly);
+            loadPreview(printFriendly, showSignatures);
         } else {
             // Cleanup on close
             if (previewUrl) {
@@ -41,7 +42,7 @@ export function ReportPreviewDialog({
         }
     }, [open]);
 
-    const loadPreview = async (isPrintFriendly: boolean) => {
+    const loadPreview = async (isPrintFriendly: boolean, isShowSignatures: boolean) => {
         setIsGenerating(true);
         // Revoke previous URL to avoid memory leaks
         if (previewUrl) {
@@ -50,7 +51,7 @@ export function ReportPreviewDialog({
             setBlob(null);
         }
         try {
-            const result = await generateReport(isPrintFriendly);
+            const result = await generateReport(isPrintFriendly, isShowSignatures);
             if (result instanceof Blob) {
                 setBlob(result);
                 const url = URL.createObjectURL(result);
@@ -68,8 +69,12 @@ export function ReportPreviewDialog({
 
     const handleTogglePrintFriendly = (checked: boolean) => {
         setPrintFriendly(checked);
-        // Regenerate the report with the new setting
-        loadPreview(checked);
+        loadPreview(checked, showSignatures);
+    };
+
+    const handleToggleSignatures = (checked: boolean) => {
+        setShowSignatures(checked);
+        loadPreview(printFriendly, checked);
     };
 
     const handlePrint = () => {
@@ -137,8 +142,35 @@ export function ReportPreviewDialog({
                         {title}
                     </DialogTitle>
 
-                    {/* Print Friendly Toggle */}
-                    <div className="flex items-center gap-2">
+                    {/* Toggles */}
+                    <div className="flex items-center gap-3">
+                        {/* Signatures Toggle */}
+                        <div
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer select-none ${showSignatures
+                                    ? 'bg-blue-50 border-blue-300 dark:bg-blue-950/30 dark:border-blue-700'
+                                    : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'
+                                }`}
+                            onClick={() => handleToggleSignatures(!showSignatures)}
+                        >
+                            <User className={`w-3.5 h-3.5 transition-colors ${showSignatures ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'
+                                }`} />
+                            <Label
+                                htmlFor="signatures-toggle"
+                                className={`text-xs font-medium cursor-pointer transition-colors ${showSignatures ? 'text-blue-700 dark:text-blue-300' : 'text-slate-500'
+                                    }`}
+                            >
+                                Signatures
+                            </Label>
+                            <Switch
+                                id="signatures-toggle"
+                                checked={showSignatures}
+                                onCheckedChange={handleToggleSignatures}
+                                className="scale-75"
+                                disabled={isGenerating}
+                            />
+                        </div>
+
+                        {/* Print Friendly Toggle */}
                         <div
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer select-none ${printFriendly
                                     ? 'bg-green-50 border-green-300 dark:bg-green-950/30 dark:border-green-700'

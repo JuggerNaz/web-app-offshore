@@ -560,7 +560,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2">
           <div className="flex items-center gap-5">
-            <Link href="/dashboard/jobpack">
+            <Link href={searchParams.get('returnTo') ? decodeURIComponent(searchParams.get('returnTo')!) : "/dashboard/jobpack"}>
               <Button variant="ghost" size="icon" className="h-12 w-12 rounded-2xl bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800">
                 <ChevronLeft className="h-6 w-6" />
               </Button>

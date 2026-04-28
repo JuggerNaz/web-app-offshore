@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+// Trigger recompile
 const nextConfig = {
   experimental: {},
   turbopack: {

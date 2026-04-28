@@ -19,6 +19,7 @@ interface ReportConfig {
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
     showPageNumbers?: boolean;
+    showSignatures?: boolean;
 }
 
 /**

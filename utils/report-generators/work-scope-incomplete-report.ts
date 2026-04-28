@@ -34,6 +34,7 @@ interface ReportConfig {
     showPageNumbers: boolean;
     returnBlob?: boolean;
     printFriendly?: boolean;
+    showSignatures?: boolean;
 }
 
 // Helpers

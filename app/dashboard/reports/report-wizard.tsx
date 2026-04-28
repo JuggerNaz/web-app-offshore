@@ -33,14 +33,21 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { jsPDF } from "jspdf";
+import { PDFDocument } from "pdf-lib";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { generateWorkScopeReport } from "@/utils/report-generators/work-scope-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
+import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
+import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
+import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
+import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
+import { FinalDatasheetBuilder } from "./final-datasheet-builder";
 
 // Types
-type WizardStep = "template" | "context" | "configuration" | "preview";
+type WizardStep = "template" | "context" | "toc" | "configuration" | "preview";
 
 interface ReportWizardProps {
     onClose: () => void;
@@ -56,6 +63,7 @@ interface ReportConfig {
     showContractorLogo: boolean;
     showPageNumbers: boolean;
     printFriendly: boolean;
+    showSignatures: boolean;
 }
 
 interface SelectionState {
@@ -104,16 +112,94 @@ const REPORT_TEMPLATES = {
         { id: "fmd-report", name: "ROV FMD Survey Report", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
         { id: "szci-report", name: "ROV Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "utwt-report", name: "ROV UT Thickness Report", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rrisi-report", name: "ROV Riser Inspection Report", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rrisi-report", name: "ROV Riser Survey Report", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-report", name: "ROV Scour Survey Report", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-report", name: "ROV Anode Inspection Report", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "ROV CP Survey Report",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rgvi-report",  name: "ROV GVI Report (RGVI)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcasn-report", name: "ROV Caisson Survey Report",    icon: FileBarChart, description: "Portrait Caisson Survey report — grouped by Caisson with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcond-report", name: "ROV Conductor Survey Report",  icon: FileBarChart, description: "Portrait Conductor Survey report — grouped by Conductor (CD) with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", icon: FileBarChart, description: "Detailed ROV Caisson inspection with graphical elevation profiles and terminator sketch", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", icon: FileBarChart, description: "Detailed ROV Conductor inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", icon: FileBarChart, description: "Portrait Boatlanding Survey report — grouped by Boatlanding (BL) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-photo-report", name: "ROV Photography Report", icon: Eye, description: "Portrait report displaying all photos attached to inspections in a 2x3 grid with descriptions", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-photo-log-report", name: "ROV Photography Log Report", icon: Eye, description: "Portrait report displaying a tabular log of all photos attached to inspections", requires: ["jobpack", "structure", "sow_report"] },
+    ],
+    final_report: [
+        { id: "final-inspection-datasheet", name: "Final Inspection Datasheet", icon: FileCheck, description: "Generate comprehensive technical inspection datasheet compilation packages", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
         { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
     ],
 };
+
+const TOC_SECTIONS = [
+  { id: 1, name: "Structure Configuration", templates: [
+      { id: "structure-summary", name: "Structure Summary Report", mode: "General" },
+      { id: "technical-specs", name: "Technical Specifications", mode: "General" }
+  ]},
+  { id: 2, name: "General Visual Inspection", templates: [
+      { id: "rov-rgvi-report", name: "ROV GVI Report (RGVI)", mode: "ROV" },
+      { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
+  ]},
+  { id: 3, name: "Cathodic Protection Potential Survey", templates: [
+      { id: "rov-cp-report", name: "ROV CP Survey Report", mode: "ROV" }
+  ]},
+  { id: 4, name: "Flooded Member Detection", templates: [
+      { id: "fmd-report", name: "ROV FMD Survey Report", mode: "ROV" }
+  ]},
+  { id: 5, name: "Attachment Inspection (Conductor, Caisson, Boatlanding)", templates: [
+      { id: "rov-rcond-report", name: "ROV Conductor Survey Report", mode: "ROV" },
+      { id: "rov-rcasn-report", name: "ROV Caisson Survey Report", mode: "ROV" },
+      { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", mode: "ROV" },
+      { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", mode: "ROV" },
+      { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" }
+  ]},
+  { id: 6, name: "Riser Inspection", templates: [
+      { id: "rrisi-report", name: "ROV Riser Survey Report", mode: "ROV" },
+      { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", mode: "ROV" },
+      { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", mode: "ROV" }
+  ]},
+  { id: 7, name: "Splashzone Inspection", templates: [
+      { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" }
+  ]},
+  { id: 8, name: "Anode Inspection", templates: [
+      { id: "rov-anode-report", name: "ROV Anode Inspection Report", mode: "ROV" }
+  ]},
+  { id: 9, name: "Marine Growth Survey", templates: [
+      { id: "mgi-report", name: "ROV MGI Survey Report", mode: "ROV" }
+  ]},
+  { id: 10, name: "Base Level Survey (Scour Survey)", templates: [
+      { id: "rov-scour-report", name: "ROV Scour Survey Report", mode: "ROV" }
+  ]},
+  { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
+      { id: "seabed-survey-debris", name: "Seabed Survey For Debris", mode: "General" },
+      { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", mode: "General" },
+      { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" }
+  ]},
+  { id: 12, name: "Specified Node Inspection", templates: [] },
+  { id: 13, name: "Additional Wall Thickness Inspection", templates: [
+      { id: "utwt-report", name: "ROV UT Thickness Report", mode: "ROV" }
+  ]},
+  { id: 14, name: "Maintenance", templates: [] },
+  { id: 15, name: "Cleaning Inspection", templates: [] },
+  { id: 16, name: "Photography", templates: [
+      { id: "rov-photo-report", name: "ROV Photography Report", mode: "ROV" },
+      { id: "rov-photo-log-report", name: "ROV Photography Log Report", mode: "ROV" }
+  ]},
+  { id: 17, name: "Video", templates: [
+      { id: "video-log-report", name: "Video Log Report", mode: "General" },
+      { id: "diver-log-report", name: "Diver Log Report", mode: "Diving" }
+  ]},
+  { id: 18, name: "Anomaly", templates: [
+      { id: "defect-summary", name: "Defect Summary Report", mode: "General" },
+      { id: "findings-summary", name: "Findings Summary Report", mode: "General" },
+      { id: "defect-anomaly-report", name: "Defect / Anomaly Report", mode: "General" },
+      { id: "findings-report", name: "Findings Report", mode: "General" }
+  ]}
+];
 
 export function ReportWizard({ onClose }: ReportWizardProps) {
     const [step, setStep] = useState<WizardStep>("template");
@@ -128,6 +214,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         sowReportNo: "",
     });
 
+    const [selectedTemplates, setSelectedTemplates] = useState<string[]>(() => {
+        const allIds: string[] = [];
+        TOC_SECTIONS.forEach(sec => sec.templates.forEach(t => allIds.push(t.id)));
+        return allIds;
+    });
+    const [activePreviewTemplate, setActivePreviewTemplate] = useState<string>("");
+    const [previewMode, setPreviewMode] = useState<"all" | "individual">("all");
+
     // Default Configuration
     const [config, setConfig] = useState<ReportConfig>({
         reportNoPrefix: "RPT",
@@ -139,6 +233,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         showContractorLogo: true,
         showPageNumbers: true,
         printFriendly: false,
+        showSignatures: true,
     });
 
     // Data Fetching
@@ -146,7 +241,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const structures = structuresData?.data || [];
 
     // Inspection-specific categories that should only show jobpacks with inspection data
-    const INSPECTION_CATEGORIES = ["inspection"];
+    const INSPECTION_CATEGORIES = ["inspection", "final_report"];
     const isInspectionTemplate = INSPECTION_CATEGORIES.includes(selections.category);
 
     // Data Fetching for JobPacks - two variants
@@ -252,9 +347,22 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         return (REPORT_TEMPLATES as any)[selections.category]?.find((t: any) => t.id === selections.templateId);
     };
 
+    useEffect(() => {
+        if (step === "preview") {
+            generatePreview();
+        }
+    }, [step, previewMode, activePreviewTemplate, selectedTemplates]);
+
     const handleNext = () => {
         if (step === "template") setStep("context");
-        else if (step === "context") setStep("configuration");
+        else if (step === "context") {
+            if (selections.templateId === "final-inspection-datasheet") {
+                setStep("toc");
+            } else {
+                setStep("configuration");
+            }
+        }
+        else if (step === "toc") setStep("configuration");
         else if (step === "configuration") setStep("preview");
     };
 
@@ -263,7 +371,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             setStep("configuration");
             setPreviewUrl(null);
         }
-        else if (step === "configuration") setStep("context");
+        else if (step === "configuration") {
+            if (selections.templateId === "final-inspection-datasheet") {
+                setStep("toc");
+            } else {
+                setStep("context");
+            }
+        }
+        else if (step === "toc") setStep("context");
         else if (step === "context") setStep("template");
     };
 
@@ -281,6 +396,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (template.requires.includes("sow_report") && !selections.sowReportNo) valid = false;
             return valid;
         }
+        if (step === "toc") return selectedTemplates.length > 0;
         return true;
     };
 
@@ -347,6 +463,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             "Job Pack": REPORT_TEMPLATES.jobpack || [],
             "Planning": REPORT_TEMPLATES.planning || [],
             "Inspection": REPORT_TEMPLATES.inspection || [],
+            "Final Report": (REPORT_TEMPLATES as any).final_report || [],
             "Others": (REPORT_TEMPLATES as any).others || []
         };
 
@@ -368,7 +485,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                         : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"}
                                 `}
                             >
-                                {cat} Reports
+                                {cat} {cat === "Final Report" ? "" : "Reports"}
                             </button>
                         ))}
                     </div>
@@ -384,6 +501,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     "Job Pack": "jobpack",
                                     "Planning": "planning",
                                     "Inspection": "inspection",
+                                    "Final Report": "final_report",
                                     "Others": "others"
                                 };
                                 setSelections({ ...selections, category: categoryMap[activeCategory] || "structure", templateId: template.id });
@@ -727,6 +845,83 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         );
     };
 
+    const toggleTemplate = (id: string) => {
+        setSelectedTemplates(prev => 
+            prev.includes(id) ? prev.filter(tId => tId !== id) : [...prev, id]
+        );
+    };
+
+    const toggleSectionAll = (sectionIndex: number, checked: boolean) => {
+        const secTemplates = TOC_SECTIONS[sectionIndex].templates.map(t => t.id);
+        if (checked) {
+            setSelectedTemplates(prev => Array.from(new Set([...prev, ...secTemplates])));
+        } else {
+            setSelectedTemplates(prev => prev.filter(id => !secTemplates.includes(id)));
+        }
+    };
+
+    const renderTocSelection = () => {
+        return (
+            <div className="space-y-6 max-w-4xl mx-auto">
+                <div className="text-center mb-4">
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Table of Contents Checklist</h2>
+                    <p className="text-slate-500">Pick relevant documentation sequences.</p>
+                </div>
+
+                <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl divide-y overflow-hidden shadow-sm">
+                    {TOC_SECTIONS.map((sec, secIdx) => {
+                        const secTemplates = sec.templates.map(t => t.id);
+                        const allSelected = secTemplates.every(id => selectedTemplates.includes(id)) && secTemplates.length > 0;
+                        const someSelected = secTemplates.some(id => selectedTemplates.includes(id)) && !allSelected;
+
+                        return (
+                            <div key={sec.id} className="p-4 flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                            checked={allSelected}
+                                            ref={el => {
+                                                if (el) el.indeterminate = someSelected;
+                                            }}
+                                            onChange={(e) => toggleSectionAll(secIdx, e.target.checked)}
+                                            disabled={sec.templates.length === 0}
+                                        />
+                                        <span className="font-semibold text-slate-900 dark:text-slate-100">{sec.name}</span>
+                                    </div>
+                                    {sec.templates.length === 0 && <span className="text-xs text-muted-foreground italic">No templates available yet</span>}
+                                </div>
+
+                                {sec.templates.length > 0 && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pl-6 mt-2">
+                                        {sec.templates.map((t) => {
+                                            const isSelected = selectedTemplates.includes(t.id);
+                                            return (
+                                                <label key={t.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition-all ${isSelected ? "border-blue-200 bg-blue-50/30" : "border-slate-100 hover:border-slate-200"}`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => toggleTemplate(t.id)}
+                                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{t.name}</span>
+                                                        <span className={`text-[10px] w-fit px-1 rounded uppercase ${t.mode === 'ROV' ? 'bg-amber-100 text-amber-800' : t.mode === 'Diving' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-800'}`}>{t.mode}</span>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
     const renderConfiguration = () => (
         <div className="space-y-8 max-w-4xl mx-auto">
             <div className="text-center mb-4">
@@ -768,6 +963,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                            </div>
+                            <div className="flex items-center justify-between pt-2">
+                                <Label className="cursor-pointer" htmlFor="contractor-logo">Show Contractor Logo</Label>
+                                <Switch
+                                    id="contractor-logo"
+                                    checked={config.showContractorLogo}
+                                    onCheckedChange={(c: boolean) => setConfig({ ...config, showContractorLogo: c })}
+                                />
                             </div>
                             <div className="flex items-center justify-between pt-2">
                                 <Label className="cursor-pointer" htmlFor="page-numbers">Show Page Numbers</Label>
@@ -830,31 +1033,21 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         </CardContent>
                     </Card>
 
-                    {selections.jobPackId && (
-                        <Card>
-                            <CardContent className="pt-6">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-1">
-                                        <Label className="text-base">Contractor Logo</Label>
-                                        <p className="text-xs text-muted-foreground">Show contractor logo on report cover</p>
-                                    </div>
-                                    <Switch
-                                        checked={config.showContractorLogo}
-                                        onCheckedChange={(c: boolean) => setConfig({ ...config, showContractorLogo: c })}
-                                    />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
                 </div>
 
                 {/* Right Column: Signatures */}
                 <div className="space-y-6">
                     <Card>
                         <CardContent className="pt-6 space-y-6">
-                            <div className="flex items-center gap-2 mb-2 text-slate-800 font-semibold">
-                                <User className="w-5 h-5 text-green-500" />
-                                <h3>Signatures</h3>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2 text-slate-800 font-semibold">
+                                    <User className="w-5 h-5 text-green-500" />
+                                    <h3>Signatures</h3>
+                                </div>
+                                <Switch
+                                    checked={config.showSignatures}
+                                    onCheckedChange={(c: boolean) => setConfig({ ...config, showSignatures: c })}
+                                />
                             </div>
 
                             <div className="space-y-4">
@@ -921,6 +1114,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     );
 
     const [isGenerating, setIsGenerating] = useState(false);
+    const [generationProgress, setGenerationProgress] = useState<number>(0);
+    const [currentGeneratingTemplate, setCurrentGeneratingTemplate] = useState<string>("");
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
     // Invalidate preview when selections or config change
@@ -992,39 +1187,86 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         };
     };
 
-    const generateReportAction = async (returnBlob: boolean = false) => {
-        const {
-            generateStructureReport,
-            generateComponentSummaryReport,
-            generateComponentSpecReport,
-            generateTechnicalSpecsReport
-        } = await import("@/utils/pdf-generator");
+    const resolveVessel = (jobPack: any) => {
+        if (!jobPack?.metadata) return "N/A";
+        const history = jobPack.metadata.vessel_history;
+        if (Array.isArray(history) && history.length > 0) {
+            return history.map((v: any) => v.name || v).join(", ");
+        }
+        return jobPack.metadata.vessel || "N/A";
+    };
 
-        // Dynamic import for new generators
-        // Dynamic import for new generators
-        const { generateDefectCriteriaReport } = await import("@/utils/report-generators/defect-criteria-report");
-        const { generateJobPackSummaryReport } = await import("@/utils/report-generators/jobpack-summary-report");
-        const { generateWorkScopeStatusReport } = await import("@/utils/report-generators/work-scope-status-report");
-        const { generateWorkScopeIncompleteReport } = await import("@/utils/report-generators/work-scope-incomplete-report");
-        const { generateDefectAnomalyReport } = await import("@/utils/report-generators/defect-anomaly-report");
-        const { generateDiverLogReport } = await import("@/utils/report-generators/diver-log-report");
-        const { generateVideoLogReport } = await import("@/utils/report-generators/video-log-report");
-        const { generateDefectSummaryReport } = await import("@/utils/report-generators/defect-summary-report");
-        const { generateROVMGIReport } = await import("@/utils/report-generators/rov-mgi-report");
-        const { generateROVFMDReport } = await import("@/utils/report-generators/rov-fmd-report");
-        const { generateROVSZCIReport } = await import("@/utils/report-generators/rov-szci-report");
-        const { generateROVUTWTReport } = await import("@/utils/report-generators/rov-utwt-report");
-        const { generateROVRRISIReport } = await import("@/utils/report-generators/rov-rrisi-report");
-        const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
-        const { generateROVCPReport }    = await import("@/utils/report-generators/rov-cp-report");
-        const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
+    const generateCoverPage = async (templateName: string): Promise<Blob> => {
+        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+        const width = doc.internal.pageSize.getWidth();
+        const height = doc.internal.pageSize.getHeight();
+
+        // Background / Border
+        doc.setDrawColor(226, 232, 240); // slate-200
+        doc.setLineWidth(1);
+        doc.rect(10, 10, width - 20, height - 20);
+        
+        doc.setDrawColor(37, 99, 235); // blue-600
+        doc.setLineWidth(2);
+        doc.rect(15, 15, width - 30, height - 30);
+
+        // Header Gradient Bar
+        doc.setFillColor(37, 99, 235);
+        doc.rect(16, 16, width - 32, 20, 'F');
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text("FINAL INSPECTION DATASHEET", width / 2, 28, { align: "center" });
+
+        // Main Title
+        doc.setTextColor(30, 41, 59); // slate-800
+        doc.setFontSize(28);
+        
+        // Wrap text if too long
+        const splitTitle = doc.splitTextToSize(templateName.toUpperCase(), width - 60);
+        doc.text(splitTitle, width / 2, height / 2 - 20, { align: "center" });
 
 
 
+        return doc.output('blob');
+    };
 
+    const generateReportAction = async (returnBlob: boolean = false, templateIdOverride?: string): Promise<any> => {
+        const currentTemplateId = templateIdOverride || selections.templateId;
+        const originalTemplateId = selections.templateId;
 
-        // Fetch real company settings from API
-        let companySettings: any = { company_name: "NasQuest Resources Sdn Bhd" };
+        try {
+            const {
+                generateStructureReport,
+                generateComponentSummaryReport,
+                generateComponentSpecReport,
+                generateTechnicalSpecsReport
+            } = await import("@/utils/pdf-generator");
+
+            // Dynamic import for new generators
+            const { generateDefectCriteriaReport } = await import("@/utils/report-generators/defect-criteria-report");
+            const { generateJobPackSummaryReport } = await import("@/utils/report-generators/jobpack-summary-report");
+            const { generateWorkScopeStatusReport } = await import("@/utils/report-generators/work-scope-status-report");
+            const { generateWorkScopeIncompleteReport } = await import("@/utils/report-generators/work-scope-incomplete-report");
+            const { generateDefectAnomalyReport } = await import("@/utils/report-generators/defect-anomaly-report");
+            const { generateDiverLogReport } = await import("@/utils/report-generators/diver-log-report");
+            const { generateVideoLogReport } = await import("@/utils/report-generators/video-log-report");
+            const { generateDefectSummaryReport } = await import("@/utils/report-generators/defect-summary-report");
+            const { generateROVMGIReport } = await import("@/utils/report-generators/rov-mgi-report");
+            const { generateROVFMDReport } = await import("@/utils/report-generators/rov-fmd-report");
+            const { generateROVSZCIReport } = await import("@/utils/report-generators/rov-szci-report");
+            const { generateROVUTWTReport } = await import("@/utils/report-generators/rov-utwt-report");
+            const { generateROVRRISIReport } = await import("@/utils/report-generators/rov-rrisi-report");
+            const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
+            const { generateROVCPReport }    = await import("@/utils/report-generators/rov-cp-report");
+            const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
+            const { generateROVCondReport }  = await import("@/utils/report-generators/rov-rcond-report");
+            const { generateROVCondSketchReport } = await import("@/utils/report-generators/rov-rcond-sketch-report");
+            const { generateROVBoatlandingReport } = await import("@/utils/report-generators/rov-boatlanding-report");
+
+            // Fetch real company settings from API
+            let companySettings: any = { company_name: "NasQuest Resources Sdn Bhd" };
         try {
             const response = await fetch("/api/company-settings");
             if (response.ok) {
@@ -1044,37 +1286,138 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         const reportConfig = { ...config, returnBlob };
 
+        // Final Inspection Datasheet Interceptor
+        if (currentTemplateId === "final-inspection-datasheet") {
+            const selectedTOC = TOC_SECTIONS.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
+
+            if (previewMode === "individual") {
+                const targetId = activePreviewTemplate || (selectedTOC[0]?.id || "");
+                if (!targetId) return null;
+
+                try {
+                    const result = await generateReportAction(returnBlob, targetId);
+                    return result;
+                } catch (err) {
+                    console.error("Error executing dynamic sub-template generation:", err);
+                    return null;
+                }
+            } else {
+                // All-in-One: Combine all selected templates with cover sheets!
+                if (selectedTOC.length === 0) return null;
+
+                const originalAlert = window.alert;
+                window.alert = () => {}; 
+                try {
+                    const mergedPdf = await PDFDocument.create();
+
+                    let count = 0;
+                    for (const s of TOC_SECTIONS) {
+                        const sectionTemplates = s.templates.filter(t => selectedTemplates.includes(t.id));
+                        if (sectionTemplates.length === 0) continue;
+
+                        const sectionReportBlobs: Blob[] = [];
+
+                        for (const t of sectionTemplates) {
+                            count++;
+                            setCurrentGeneratingTemplate(t.name);
+                            setGenerationProgress(Math.min(95, 5 + Math.round(((count - 1) / selectedTOC.length) * 90)));
+                            await new Promise(resolve => setTimeout(resolve, 400));
+
+                            try {
+                                let sectionResult = await generateReportAction(true, t.id); // Must ask for Blob
+                                if (sectionResult && !(sectionResult instanceof Blob) && (sectionResult as any).output) {
+                                    sectionResult = (sectionResult as any).output('blob');
+                                }
+                                if (sectionResult instanceof Blob) {
+                                    sectionReportBlobs.push(sectionResult);
+                                } else {
+                                    console.warn(`Skipping template ${t.name} as it yielded no records.`);
+                                }
+                            } catch (err) {
+                                console.error(`Error generating template report for ${t.name}:`, err);
+                            }
+                        }
+
+                        if (sectionReportBlobs.length > 0) {
+                            try {
+                                // Section generated! NOW add cover page for the entire SECTION
+                                const coverBlob = await generateCoverPage(s.name);
+                                const coverArrayBuffer = await coverBlob.arrayBuffer();
+                                const donorCoverPdf = await PDFDocument.load(coverArrayBuffer);
+                                const copiedCoverPages = await mergedPdf.copyPages(donorCoverPdf, donorCoverPdf.getPageIndices());
+                                copiedCoverPages.forEach((page) => mergedPdf.addPage(page));
+
+                                // Add section pages
+                                for (const blob of sectionReportBlobs) {
+                                    const sectionArrayBuffer = await blob.arrayBuffer();
+                                    const donorSectionPdf = await PDFDocument.load(sectionArrayBuffer);
+                                    const copiedSectionPages = await mergedPdf.copyPages(donorSectionPdf, donorSectionPdf.getPageIndices());
+                                    copiedSectionPages.forEach((page) => mergedPdf.addPage(page));
+                                }
+                            } catch (coverErr) {
+                                console.error(`Error appending section ${s.name} cover and pages:`, coverErr);
+                            }
+                        }
+                    }
+
+                    setGenerationProgress(100);
+                    setCurrentGeneratingTemplate("Finalizing combined PDF package...");
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    const mergedPdfBytes = await mergedPdf.save();
+                    const finalBlob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+
+                    if (returnBlob) {
+                        return finalBlob;
+                    } else {
+                        // Trigger standard save
+                        const downloadUrl = URL.createObjectURL(finalBlob);
+                        const a = document.createElement('a');
+                        a.href = downloadUrl;
+                        a.download = `Final_Inspection_Datasheet_All_In_One.pdf`;
+                        a.click();
+                        setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
+                        return null;
+                    }
+                } catch (err) {
+                    console.error("Error creating All-In-One merged dataset:", err);
+                    return null;
+                } finally {
+                    window.alert = originalAlert;
+                }
+            }
+        }
+
         // Defect Criteria Report (No Structure Data Required)
-        if (selections.templateId === "defect-criteria-report") {
+        if (currentTemplateId === "defect-criteria-report") {
             return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId } as any);
         }
 
         // Defect Summary Report / Findings Summary Report
-        if (selections.templateId === "defect-summary" || selections.templateId === "findings-summary") {
+        if (currentTemplateId === "defect-summary" || currentTemplateId === "findings-summary") {
             const jobPack = await fetchJobPackData();
             const structure = selections.structureId ? await fetchStructureData() : null;
             if (!jobPack) return null;
 
-            const isFindingsReport = selections.templateId === "findings-summary";
+            const isFindingsReport = currentTemplateId === "findings-summary";
             const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
 
             return await generateDefectSummaryReport(jobPack, structure, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
         // Defect / Anomaly Report / Findings Report
-        if (selections.templateId === "defect-anomaly-report" || selections.templateId === "findings-report") {
+        if (currentTemplateId === "defect-anomaly-report" || currentTemplateId === "findings-report") {
             const jobPack = await fetchJobPackData();
             const structure = await fetchStructureData();
             if (!jobPack || !structure) return null;
 
-            const isFindingsReport = selections.templateId === "findings-report";
+            const isFindingsReport = currentTemplateId === "findings-report";
             const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
 
             return await generateDefectAnomalyReport(jobPack, structure, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
         // Diver Log Report
-        if (selections.templateId === "diver-log-report") {
+        if (currentTemplateId === "diver-log-report") {
             const jobPack = await fetchJobPackData();
             const structure = await fetchStructureData();
             if (!jobPack || !structure) return null;
@@ -1083,7 +1426,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // Video Log Report
-        if (selections.templateId === "video-log-report") {
+        if (currentTemplateId === "video-log-report") {
             const jobPack = await fetchJobPackData();
             const structure = await fetchStructureData();
             if (!jobPack || !structure) return null;
@@ -1092,7 +1435,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // Seabed Survey Reports
-        if (selections.templateId === "seabed-survey-debris" || selections.templateId === "seabed-survey-gas" || selections.templateId === "seabed-survey-crater") {
+        if (currentTemplateId === "seabed-survey-debris" || currentTemplateId === "seabed-survey-gas" || currentTemplateId === "seabed-survey-crater") {
             const jobPack = await fetchJobPackData();
             const structure = await fetchStructureData();
             if (!jobPack || !structure) return null;
@@ -1103,11 +1446,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 "seabed-survey-crater": "Crater"
             };
             
-            return await generateSeabedSurveyReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig, filterMap[selections.templateId]);
+            return await generateSeabedSurveyReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig, filterMap[currentTemplateId]);
         }
 
         // Job Pack Summary Report
-        if (selections.templateId === "jobpack-summary") {
+        if (currentTemplateId === "jobpack-summary") {
             const jobPack = await fetchJobPackData();
             if (!jobPack) return null;
             // Map returnBlob to config if needed or pass directly. The generator expects config.returnBlob
@@ -1115,7 +1458,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // ROV MGI Report
-        if (selections.templateId === "mgi-report") {
+        if (currentTemplateId === "mgi-report") {
             const jobPack = await fetchJobPackData();
             const structure = await fetchStructureData();
             if (!jobPack || !structure) return null;
@@ -1131,6 +1474,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             const rmgiTypeId = typeData?.id || 79; // Fallback to 79 from screenshot if not found
 
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this report.");
+                return null;
+            }
+
             // 2. Fetch records for the structure
             let { data: records, error: fetchError } = await supabase
                 .from('insp_records')
@@ -1139,7 +1488,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     inspection_type:inspection_type_id!left(id, code, name),
                     structure_components:component_id!left(q_id, code)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -1161,13 +1510,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const recordData = r.inspection_data || r.inspection_dat;
                 const isRMGI = 
                     r.inspection_type_id === rmgiTypeId ||
-                    String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RMGI' ||
-                    String(r.inspection_type?.name || '').toLowerCase().includes('marine growth') ||
-                    (recordData && (
-                        recordData.mgi_hard_thickness_at_12 !== undefined || 
-                        recordData.mgi_hard_thickness !== undefined || 
-                        recordData._mgi_profile_id !== undefined
-                    ));
+                    String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RMGI';
 
                 return sowMatches && jobPackMatches && isRMGI;
             });
@@ -1204,7 +1547,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 platformName: structure.str_name || structure.title || "N/A",
                 waterDepth: Math.abs(structure.water_depth || structure.depth || structure.lowest_elevation || 0),
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1222,7 +1565,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // ROV FMD Survey Report (New)
-        if (selections.templateId === "fmd-report") {
+        if (currentTemplateId === "fmd-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
@@ -1278,7 +1621,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1295,7 +1638,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // ROV SZCI Survey Report (New)
-        if (selections.templateId === "szci-report") {
+        if (currentTemplateId === "szci-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
@@ -1351,7 +1694,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1368,7 +1711,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // ROV UTWT Survey Report (New)
-        if (selections.templateId === "utwt-report") {
+        if (currentTemplateId === "utwt-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
@@ -1424,7 +1767,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1440,47 +1783,42 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
-        // ROV RRISI Survey Report (New)
-        if (selections.templateId === "rrisi-report") {
+
+        // ROV RRISI/JTISI/ITISI Survey Report (Unified)
+        if (["rrisi-report", "rov-jtisi-report", "rov-itisi-report"].includes(currentTemplateId)) {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            // 1. Fetch records with all necessary joins for RRISI
-            let { data: records, error: fetchError } = await supabase
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+            const { data: records, error } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no),
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
 
-            if (fetchError) {
-                console.error("Fetch Error:", fetchError);
-                alert(`Database error: ${fetchError.message}`);
+            if (error) throw error;
+            const tubeRecords = records || [];
+
+            if (tubeRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
 
-            // FILTER MANUALLY
-            const rrisiRecords = records?.filter(r => {
-                const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isRRISI = String(r.inspection_type?.code || r.inspection_type_code || r.inspection_type?.name || '').toUpperCase().includes('RRISI') || 
-                               String(r.inspection_type?.name || '').toLowerCase().includes('riser');
-                return sowMatches && jobPackMatches && isRRISI;
-            });
-
-            if (!rrisiRecords || rrisiRecords.length === 0) {
-                alert(`No ROV Riser records (RRISI) found for structure "${structure.str_name}" in this SOW.`);
-                return null;
-            }
+            // Determine Report Type based on Template ID
+            let reportType: 'R' | 'J' | 'I' = 'R';
+            if (currentTemplateId === "rov-jtisi-report") reportType = 'J';
+            else if (currentTemplateId === "rov-itisi-report") reportType = 'I';
 
             // Fetch Contractor Logo if available
             let contractorLogoUrl = "";
@@ -1498,15 +1836,15 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
                 return await generateROVRRISIReport(
-                    rrisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, returnBlob } as any
+                    { ...reportConfig, returnBlob, reportType, structureId: structId, sowReportNo: selections.sowReportNo } as any
                 );
             } catch (error) {
                 console.error("RRISI Generator Error:", error);
@@ -1515,7 +1853,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // ROV Scour Survey Report (New)
-        if (selections.templateId === "rov-scour-report") {
+        if (currentTemplateId === "rov-scour-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
@@ -1577,7 +1915,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1594,7 +1932,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // ROV Anode Inspection Report (New)
-        if (selections.templateId === "rov-anode-report") {
+        if (currentTemplateId === "rov-anode-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
@@ -1656,7 +1994,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel: jobPack.metadata?.vessel || "N/A"
+                vessel: resolveVessel(jobPack)
             };
 
             try {
@@ -1673,7 +2011,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // ROV CP Survey Report
-        if (selections.templateId === "rov-cp-report") {
+        if (currentTemplateId === "rov-cp-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack  = await fetchJobPackData();
@@ -1728,7 +2066,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo:      selections.sowReportNo || "N/A",
                 platformName:     structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel:           jobPack.metadata?.vessel || "N/A",
+                vessel: resolveVessel(jobPack),
             };
 
             try {
@@ -1745,7 +2083,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // ROV GVI Report (RGVI)
-        if (selections.templateId === "rov-rgvi-report") {
+        if (currentTemplateId === "rov-rgvi-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack   = await fetchJobPackData();
@@ -1797,7 +2135,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo:      selections.sowReportNo || "N/A",
                 platformName:     structure.str_name || structure.title || "N/A",
                 contractorLogoUrl,
-                vessel:           jobPack.metadata?.vessel || "N/A",
+                vessel: resolveVessel(jobPack),
             };
 
             try {
@@ -1813,8 +2151,514 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
+        // ROV Caisson Survey Report
+        if (currentTemplateId === "rov-rcasn-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(
+                        id,
+                        q_id, 
+                        code,
+                        metadata
+                    ),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const rcasnRecords = (records || []).filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isRCASN = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RCASN";
+                return sowMatches && jobPackMatches && isRCASN;
+            });
+
+            if (!rcasnRecords || rcasnRecords.length === 0) {
+                alert(`No RCASN records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack),
+            };
+
+            try {
+                return await generateROVCasnReport(
+                    rcasnRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("RCASN Report Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Conductor Survey Report (RCOND)
+        if (currentTemplateId === "rov-rcond-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(
+                        id,
+                        q_id, 
+                        code,
+                        metadata
+                    ),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const rcondRecords = (records || []).filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isRCOND = ['RCOND', 'RCON'].includes(String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase());
+                
+                return sowMatches && jobPackMatches && isRCOND;
+            });
+
+            if (!rcondRecords || rcondRecords.length === 0) {
+                alert(`No RCOND records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVCondReport(
+                    rcondRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { 
+                        ...reportConfig, 
+                        returnBlob,
+                        structureId: Number(selections.structureId),
+                        jobPackId: Number(selections.jobPackId)
+                    } as any
+                );
+            } catch (error) {
+                console.error("RCOND Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Boatlanding Survey Report (New)
+        if (currentTemplateId === "rov-bl-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(
+                        id,
+                        q_id, 
+                        code,
+                        metadata
+                    ),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const blRecords = (records || []).filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                return sowMatches && jobPackMatches;
+            });
+
+            if (!blRecords || blRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVBoatlandingReport(
+                    blRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { 
+                        ...reportConfig, 
+                        returnBlob,
+                        structureId: Number(selections.structureId),
+                        jobPackId: Number(selections.jobPackId)
+                    } as any
+                );
+            } catch (error) {
+                console.error("Boatlanding Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Photography Report
+        if (currentTemplateId === "rov-photo-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let targetSowNo = selections.sowReportNo;
+            if (targetSowNo && targetSowNo.includes('=')) {
+                targetSowNo = targetSowNo.split('=').pop() || targetSowNo;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      targetSowNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel ? resolveVessel(jobPack) : (jobPack.metadata?.vessel || "N/A")
+            };
+
+            const { data: records } = await supabase
+                .from("insp_records")
+                .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
+                .eq("structure_id", Number(selections.structureId))
+                .eq("jobpack_id", Number(selections.jobPackId))
+                .eq("sow_report_no", targetSowNo);
+
+            if (!records || records.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            const recordIds = records.map(r => r.insp_id);
+
+            const { data: attachments } = await supabase
+                .from("attachment")
+                .select("*")
+                .in("source_id", recordIds)
+                .ilike("source_type", "inspection")
+                .order("created_at", { ascending: true });
+
+            const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
+                const record = records?.find(r => r.insp_id === a.source_id);
+                return {
+                    ...a,
+                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
+                };
+            });
+
+            if (photoData.length === 0) {
+                alert(`No photo attachments found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            return await generateROVPhotographyReport(
+                photoData,
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob } as any
+            );
+        }
+        
+        // ROV Photography Log Report
+        if (currentTemplateId === "rov-photo-log-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let targetSowNo = selections.sowReportNo;
+            if (targetSowNo && targetSowNo.includes('=')) {
+                targetSowNo = targetSowNo.split('=').pop() || targetSowNo;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      targetSowNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel ? resolveVessel(jobPack) : (jobPack.metadata?.vessel || "N/A")
+            };
+
+            const { data: records } = await supabase
+                .from("insp_records")
+                .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
+                .eq("structure_id", Number(selections.structureId))
+                .eq("jobpack_id", Number(selections.jobPackId))
+                .eq("sow_report_no", targetSowNo);
+
+            if (!records || records.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            const recordIds = records.map(r => r.insp_id);
+
+            const { data: attachments } = await supabase
+                .from("attachment")
+                .select("*")
+                .in("source_id", recordIds)
+                .ilike("source_type", "inspection")
+                .order("created_at", { ascending: true });
+
+            const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
+                const record = records?.find(r => r.insp_id === a.source_id);
+                return {
+                    ...a,
+                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
+                };
+            });
+
+            if (photoData.length === 0) {
+                alert(`No photo attachments found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            return await generateROVPhotographyLogReport(
+                photoData,
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob } as any
+            );
+        }
+
+        // ROV Caisson Survey (Sketch) Report
+        if (currentTemplateId === "rov-rcasn-sketch-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id(id, code, name),
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            const caissonRecords = records || [];
+
+            if (caissonRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVCasnSketchReport(
+                    caissonRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                );
+            } catch (error) {
+                console.error("RCASN Sketch Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Conductor Survey (Sketch) Report
+        if (currentTemplateId === "rov-rcond-sketch-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id(id, code, name),
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            const condRecords = (records || []).filter((r: any) => 
+                ['RCOND', 'RCON'].includes(String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase())
+            );
+
+            if (condRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVCondSketchReport(
+                    condRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                );
+            } catch (error) {
+                console.error("RCOND Sketch Generator Error:", error);
+                throw error;
+            }
+        }
+
         // Work Scope Status Summary (New)
-        if (selections.templateId === "work-scope-status") {
+        if (currentTemplateId === "work-scope-status") {
             const jobPack = await fetchJobPackData();
             if (!jobPack) return null;
 
@@ -1859,7 +2703,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // Work Scope Incomplete Status (New)
-        if (selections.templateId === "work-scope-incomplete") {
+        if (currentTemplateId === "work-scope-incomplete") {
             const jobPack = await fetchJobPackData();
             if (!jobPack) return null;
 
@@ -1898,13 +2742,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     sowData = json.data;
                 } catch (e) { console.error(e); }
             }
-
             if (!sowData) sowData = { items: [], report_numbers: [] };
-            return await generateWorkScopeIncompleteReport(jobPack, structure, sowData, companySettings, reportConfig as any);
+            return await generateWorkScopeIncompleteReport(jobPack, structure, sowData, companySettings, { ...reportConfig, showSignatures: reportConfig.showSignatures } as any);
         }
 
         // Work Scope Report (Job Pack + Structure)
-        if (selections.templateId === "work-scope-report") {
+        if (currentTemplateId === "work-scope-report") {
             const jobPack = await fetchJobPackData();
             if (!jobPack) return null;
 
@@ -1974,7 +2817,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const typeMap = await fetchComponentTypes();
         // const reportConfig = { ...config, returnBlob }; // Already declared above
 
-        switch (selections.templateId) {
+        switch (currentTemplateId) {
             case "structure-summary":
                 return await generateStructureReport(data, companySettings, reportConfig);
 
@@ -1999,10 +2842,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 // Fallback to structure report
                 return await generateStructureReport(data, companySettings, reportConfig);
         }
-    };
+    } finally {
+        // selections.templateId = originalTemplateId;
+    }
+};
 
     const generatePreview = async () => {
         setIsGenerating(true);
+        setPreviewUrl(null);
+        setGenerationProgress(5);
+        setCurrentGeneratingTemplate("Assembling report preview layout...");
         try {
             const result = await generateReportAction(true); // Return Blob
 
@@ -2031,15 +2880,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const handleDownload = async () => {
-        // For download, we can either re-generate asking for save, or just save the blob we have.
-        // If we have a previewUrl, we can download it.
         if (previewUrl) {
             const a = document.createElement('a');
             a.href = previewUrl;
             a.download = `${selections.templateId}_${selections.structureId}.pdf`;
             a.click();
         } else {
-            // Fallback generate
             await generateReportAction(false);
         }
     };
@@ -2104,50 +2950,82 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
     };
 
-    const renderPreview = () => (
-        <div className="h-full flex flex-col space-y-4">
-            <div className="text-center space-y-1 mb-2">
-                <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100">Report Preview</h2>
-                <p className="text-sm text-slate-500">
-                    Review your <strong>{getCurrentTemplate()?.name}</strong> before downloading.
-                </p>
-            </div>
+    const renderPreview = () => {
+        const isFinalDatasheet = selections.templateId === "final-inspection-datasheet";
+        const selectedTOC = TOC_SECTIONS.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
 
-            <div className="flex-1 w-full bg-slate-100 dark:bg-slate-900 rounded-lg overflow-hidden border shadow-inner relative min-h-[400px]">
-                {isGenerating ? (
-                    <div className="absolute inset-0 flex items-center justify-center flex-col gap-3">
-                        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                        <p className="text-sm text-muted-foreground animate-pulse">Generating preview...</p>
-                    </div>
-                ) : previewUrl ? (
-                    <iframe
-                        src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-                        className="w-full h-full"
-                        title="Report Preview"
-                    />
-                ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                        Preview not available (Check if generator supports blob)
-                    </div>
-                )}
-            </div>
+        return (
+            <div className="h-full flex flex-col space-y-4">
+                <div className="text-center space-y-1 mb-2">
+                    <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100">Report Preview</h2>
+                    <p className="text-sm text-slate-500">
+                        {isFinalDatasheet 
+                            ? "Review compiled tech sheets or individual templates."
+                            : <>Review your <strong>{getCurrentTemplate()?.name}</strong> before downloading.</>
+                        }
+                    </p>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm px-4">
-                <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded border">
-                    <span className="text-muted-foreground">Format</span>
-                    <span className="font-medium">PDF Document</span>
+                {/* All-in-one preview only for final datasheet */}
+
+                <div className="flex-1 w-full bg-slate-100 dark:bg-slate-900 rounded-lg overflow-hidden border shadow-inner relative min-h-[400px]">
+                    {isGenerating ? (
+                        <div className="absolute inset-0 flex items-center justify-center flex-col gap-5 bg-slate-50/90 dark:bg-slate-950/90 backdrop-blur-sm z-50">
+                            <div className="relative flex items-center justify-center">
+                                <div className="w-14 h-14 rounded-full border-2 border-dashed border-blue-500 animate-[spin_6s_linear_infinite]"></div>
+                                <span className="absolute text-2xl animate-bounce">⏳</span>
+                            </div>
+
+                            <div className="w-72 bg-slate-200 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden shadow-inner border border-slate-300/20">
+                                <div 
+                                    className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2.5 rounded-full transition-all duration-500 ease-out shadow-md shadow-blue-500/20" 
+                                    style={{ width: `${generationProgress > 0 ? generationProgress : 12}%` }}
+                                ></div>
+                            </div>
+                            
+                            <div className="flex flex-col items-center gap-1.5 text-center px-6">
+                                <p className="text-sm font-bold text-slate-800 dark:text-slate-200 tracking-wide">
+                                    {currentGeneratingTemplate || "Generating report package..."}
+                                </p>
+                                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/40">
+                                    {generationProgress > 0 ? `${generationProgress}% Complete` : 'Processing...'}
+                                </span>
+                            </div>
+                        </div>
+                    ) : previewUrl ? (
+                        <iframe
+                            src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                            className="w-full h-full"
+                            title="Report Preview"
+                        />
+                    ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                            Preview not available (Check if generator supports blob)
+                        </div>
+                    )}
                 </div>
-                <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded border">
-                    <span className="text-muted-foreground">Watermark</span>
-                    <span className="font-medium">{config.watermark.enabled ? config.watermark.text : "None"}</span>
-                </div>
-                <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded border">
-                    <span className="text-muted-foreground">Signatures</span>
-                    <span className="font-medium">{[config.preparedBy.name, config.reviewedBy.name, config.approvedBy.name].filter(Boolean).length} / 3</span>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm px-4">
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded border">
+                        <span className="text-muted-foreground">Format</span>
+                        <span className="font-medium">PDF Document</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded border">
+                        <span className="text-muted-foreground">Watermark</span>
+                        <span className="font-medium">{config.watermark.enabled ? config.watermark.text : "None"}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded border">
+                        <span className="text-muted-foreground">Signatures</span>
+                        <span className="font-medium">{[config.preparedBy.name, config.reviewedBy.name, config.approvedBy.name].filter(Boolean).length} / 3</span>
+                    </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
+
+    const wizardSteps: WizardStep[] = selections.templateId === "final-inspection-datasheet"
+        ? ["template", "context", "toc", "configuration", "preview"]
+        : ["template", "context", "configuration", "preview"];
 
     return (
         <div className="w-full h-full flex flex-col bg-white dark:bg-slate-950 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -2175,23 +3053,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     <div
                         className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-blue-600 transition-all duration-500 z-0"
                         style={{
-                            width: step === "template" ? "16%" :
-                                step === "context" ? "50%" :
-                                    step === "configuration" ? "82%" : "100%"
+                            width: `${wizardSteps.indexOf(step) / (wizardSteps.length - 1) * 100}%`
                         }}
                     ></div>
 
                     {/* Steps */}
-                    {(["template", "context", "configuration", "preview"] as WizardStep[]).map((s, i) => {
-                        const isActive = (
-                            (step === "template" && i === 0) ||
-                            (step === "context" && i <= 1) ||
-                            (step === "configuration" && i <= 2) ||
-                            (step === "preview" && i <= 3)
-                        );
+                    {wizardSteps.map((s, i) => {
+                        const isActive = wizardSteps.indexOf(step) >= i;
                         const isCurrent = step === s;
 
-                        const currentIndex = ["template", "context", "configuration", "preview"].indexOf(step);
+                        const currentIndex = wizardSteps.indexOf(step);
                         const isClickable = i < currentIndex;
 
                         return (
@@ -2232,6 +3103,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     >
                         {step === "template" && renderTemplateSelection()}
                         {step === "context" && renderContextSelection()}
+                        {step === "toc" && renderTocSelection()}
                         {step === "configuration" && renderConfiguration()}
                         {step === "preview" && renderPreview()}
                     </motion.div>

@@ -60,8 +60,10 @@ const InspectionField = ({
 
     const isAnodeType = fieldName === 'anode type' || fieldName === 'anode_type';
     const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
+    const isCpField = fieldName.includes('cp');
 
     const isTimeField = fieldName.includes('time') || fieldName.includes('counter') || p.type === 'time' || p.name === 'tape_count_no' || p.name === 'inspection_time';
+
     const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code;
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
@@ -74,7 +76,7 @@ const InspectionField = ({
         ? Array.from(new Set([...(categoryUnits.metric || []), ...(categoryUnits.imperial || [])])) 
         : [];
         
-    const defaultUnit = p.defaultUnit || (categoryUnits 
+    const defaultUnit = (unitSystem === "IMPERIAL" ? p.defaultImperial : p.defaultMetric) || p.defaultUnit || (categoryUnits 
         ? (unitSystem === "IMPERIAL" ? categoryUnits.defaultImperial : categoryUnits.defaultMetric) 
         : null);
 
@@ -149,10 +151,19 @@ const InspectionField = ({
                                 value={currentValue}
                                 onChange={(e) => handler(p.name || p.label, e.target.value)}
                                 onBlur={(e) => {
+                                    let val = e.target.value;
+                                    if (isCpField && val) {
+                                        const num = Number(val);
+                                        if (!isNaN(num) && num > 0) {
+                                            val = (-num).toString();
+                                            handler(p.name || p.label, val);
+                                        }
+                                    }
                                     if (type === 'primary') {
-                                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
+                                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: val }));
                                     }
                                 }}
+
                             />
                             <div className="absolute right-1 top-1 flex items-center gap-0.5">
                                 {currentValue && (
@@ -456,10 +467,19 @@ const InspectionField = ({
                 value={currentValue || ""}
                 onChange={isTimeField ? handleTimeChange : (e) => handler(p.name || p.label, e.target.value)}
                 onBlur={isTimeField ? handleTimeBlur : (e) => {
+                    let val = e.target.value;
+                    if (isCpField && val) {
+                        const num = Number(val);
+                        if (!isNaN(num) && num > 0) {
+                            val = (-num).toString();
+                            handler(p.name || p.label, val);
+                        }
+                    }
                     if (type === 'primary') {
-                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
+                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: val }));
                     }
                 }}
+
                 placeholder={isTimeField ? "HH:MM:SS" : `Enter ${p.label || p.name}`}
                 maxLength={isTimeField ? 8 : undefined}
                 className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass} flex-1`}
