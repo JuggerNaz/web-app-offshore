@@ -2223,15 +2223,61 @@ export function ComponentSpecDialog({
                         })
                         .map(([key, value]) => {
                           if (key === "del") return null;
+                          if (key.endsWith("_unit")) return null;
                           if (key === "length_unit" || key === "diameter_unit") return null;
+
+                          const structuralFields = [
+                            "desig",
+                            "beam_desig",
+                            "chan_desig",
+                            "ang_desig",
+                            "v_chan_desig",
+                            "h_chan_desig",
+                            "nom_size",
+                            "wall_thk",
+                            "out_diam",
+                            "flan_wid",
+                            "flan_thk",
+                            "flan_avg_thk",
+                            "depth",
+                            "web_thk",
+                            "stem_thk",
+                          ];
+
+                          const lowerCode = (formData.code || defaultCode || component?.code || "")
+                            .trim()
+                            .toLowerCase();
+
+                          if (
+                            ["hd", "hm", "vd", "vm"].includes(lowerCode) &&
+                            structuralFields.includes(key)
+                          ) {
+                            const selectedType = formData.additionalInfo.thetype;
+                            const allowedFields: Record<string, string[]> = {
+                              "Steel Pipe": ["nom_size", "wall_thk", "out_diam"],
+                              "I Beam": ["desig", "flan_wid", "flan_thk", "depth", "web_thk"],
+                              "H Column": ["desig", "flan_wid", "flan_thk", "depth", "web_thk"],
+                              Channel: ["desig", "flan_wid", "flan_avg_thk", "depth", "web_thk"],
+                              "Equal Angle": ["desig"],
+                              "Unequal Angle": ["desig"],
+                              "Double Angles": ["desig"],
+                              "Structural Tee": ["desig", "flan_wid", "flan_thk", "depth", "stem_thk"],
+                              "Beam and ChannelIn": ["beam_desig", "chan_desig"],
+                              "Two Channels": ["v_chan_desig", "h_chan_desig"],
+                              "Channel and Angle": ["chan_desig", "ang_desig"],
+                              "Box Section": ["nom_size", "wall_thk"],
+                              "Rectangular Section": ["nom_size", "wall_thk"],
+                              "Welded Plate Girders": ["desig", "flan_wid", "flan_thk", "depth", "web_thk"],
+                            };
+                            if (!selectedType || !allowedFields[selectedType]?.includes(key)) {
+                              return null;
+                            }
+                          }
 
                           let label = key
                             .split("_")
                             .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                             .join(" ");
-                          const lowerCode = (formData.code || defaultCode || component?.code || "")
-                            .trim()
-                            .toLowerCase();
 
                           if (key === "wall_thk")
                             label = lowerCode === "cl" ? "Attach Stub Length" : "Wall Thickness";
@@ -2300,6 +2346,19 @@ export function ComponentSpecDialog({
                           if (key === "pgud_mat") label = "Pile Guide Materials";
                           if (key === "pgud_fas") label = "Pile Guide Attachment Methods";
                           if (key === "pile_present") label = "Pile Present in Guide Frame";
+                          if (key === "desig") label = "Designation";
+                          if (key === "beam_desig") label = "Beam Designation";
+                          if (key === "chan_desig") label = "Channel Designation";
+                          if (key === "ang_desig") label = "Angle Designation";
+                          if (key === "v_chan_desig") label = "Vertical Channel Designation";
+                          if (key === "h_chan_desig") label = "Horizontal Channel Designation";
+                          if (key === "nom_size") label = "Nominal Size";
+                          if (key === "flan_wid") label = "Flange Width";
+                          if (key === "flan_thk") label = "Flange Thickness";
+                          if (key === "flan_avg_thk") label = "Flange Avg. Thickness";
+                          if (key === "web_thk") label = "Web Thickness";
+                          if (key === "stem_thk") label = "Stem Thickness";
+                          if (key === "depth") label = "Depth";
                           if (
                             key === "thetype" &&
                             (lowerCode === "hd" ||
@@ -2513,6 +2572,51 @@ export function ComponentSpecDialog({
                             return renderSelect(key, "Select material", pipeMatData);
                           if (key === "thetype" && lowerCode === "an")
                             return renderSelect(key, "Select anode type", anodeTypeData);
+                          if (key === "thetype" && (lowerCode === "hd" || lowerCode === "hm" || lowerCode === "vd" || lowerCode === "vm"))
+                            return (
+                              <div key={key} className="space-y-2">
+                                <Label
+                                  htmlFor={key}
+                                  className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                                >
+                                  {label}
+                                </Label>
+                                <Select
+                                  value={value || ""}
+                                  onValueChange={(val) => handleAdditionalInfoChange(key, val)}
+                                  disabled={!(isCreateMode || isEditMode)}
+                                >
+                                  <SelectTrigger
+                                    id={key}
+                                    className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold"
+                                  >
+                                    <SelectValue placeholder="Select type" />
+                                  </SelectTrigger>
+                                  <SelectContent className="rounded-xl">
+                                    {[
+                                      "Steel Pipe",
+                                      "I Beam",
+                                      "H Column",
+                                      "Channel",
+                                      "Equal Angle",
+                                      "Unequal Angle",
+                                      "Double Angles",
+                                      "Structural Tee",
+                                      "Beam and ChannelIn",
+                                      "Two Channels",
+                                      "Channel and Angle",
+                                      "Box Section",
+                                      "Rectangular Section",
+                                      "Welded Plate Girders",
+                                    ].map((opt) => (
+                                      <SelectItem key={opt} value={opt}>
+                                        {opt}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            );
                           if (key === "position" && lowerCode === "an")
                             return renderSelect(key, "Select anode position", positionLib);
                           if (key === "material" && lowerCode === "an")
