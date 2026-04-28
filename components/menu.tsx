@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   ClipboardCheck,
   Crown,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -190,6 +191,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             label="Attachments"
             icon={<FileText className="h-[18px] w-[18px]" />}
             text="Attachments"
+          />
+          <MenuLink
+            href="/dashboard/utilities/anomalies-findings"
+            isCollapsed={isCollapsed}
+            label="Anomalies & Findings"
+            icon={<AlertTriangle className="h-[18px] w-[18px]" />}
+            text="Anomalies & Findings"
           />
         </div>
 
