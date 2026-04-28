@@ -322,7 +322,41 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         activeSpec
     ]);
 
+    // Pre-fill Nominal Diameter and Nominal Wall Thickness from assigned component if empty
+    React.useEffect(() => {
+        if (!isEditing && selectedComp && handleDynamicPropChange && Array.isArray(activeFormProps)) {
+            const hasNominalDiameter = activeFormProps.some((p: any) => {
+                const nameStr = String(p.name || p.label || '').toLowerCase().replace(/[\s_]+/g, '');
+                return nameStr.includes('nominaldiameter');
+            });
+            const hasNominalThickness = activeFormProps.some((p: any) => {
+                const nameStr = String(p.name || p.label || '').toLowerCase().replace(/[\s_]+/g, '');
+                return nameStr.includes('nominalwallthickness') || nameStr.includes('nominalthickness');
+            });
+
+            if (hasNominalDiameter && (dynamicProps?.nominal_diameter === undefined || dynamicProps?.nominal_diameter === null || dynamicProps?.nominal_diameter === "")) {
+                const compDia = selectedComp?.nominal_diameter || selectedComp?.raw?.nominal_diameter || selectedComp?.diameter || selectedComp?.raw?.diameter;
+                if (compDia !== undefined && compDia !== null && compDia !== "" && compDia !== "-") {
+                    handleDynamicPropChange('nominal_diameter', compDia);
+                }
+            }
+
+            if (hasNominalThickness) {
+                const compThk = selectedComp?.nominal_thickness || selectedComp?.nominal_wall_thickness || selectedComp?.raw?.nominal_thickness || selectedComp?.raw?.nominal_wall_thickness || selectedComp?.wall_thickness || selectedComp?.raw?.wall_thickness || selectedComp?.thickness;
+                if (compThk !== undefined && compThk !== null && compThk !== "" && compThk !== "-") {
+                    if (dynamicProps?.nominal_thickness === undefined || dynamicProps?.nominal_thickness === null || dynamicProps?.nominal_thickness === "") {
+                        handleDynamicPropChange('nominal_thickness', compThk);
+                    }
+                    if (dynamicProps?.nominal_wall_thickness === undefined || dynamicProps?.nominal_wall_thickness === null || dynamicProps?.nominal_wall_thickness === "") {
+                        handleDynamicPropChange('nominal_wall_thickness', compThk);
+                    }
+                }
+            }
+        }
+    }, [selectedComp, activeSpec, activeFormProps, isEditing]);
+
     return (
+
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white z-10">
             <div className="p-3 bg-blue-600 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700">
                 <span className="font-black tracking-wide text-sm flex items-center gap-2">
@@ -631,19 +665,6 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                                             return (
                                                 <div className="space-y-4">
-                                                    {restFields.length > 0 && (
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            {restFields.map((p: any) => (
-                                                                <div key={p.name} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
-                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
-                                                                        {p.label || p.name}
-                                                                    </label>
-                                                                    {renderInspectionField(p, 'primary')}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-
                                                     {circFields.length > 0 && (
                                                         <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
                                                             <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">
@@ -667,6 +688,20 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                             </div>
                                                         </div>
                                                     )}
+
+                                                    {restFields.length > 0 && (
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            {restFields.map((p: any) => (
+                                                                <div key={p.name} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-2' : ''}>
+                                                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">
+                                                                        {p.label || p.name}
+                                                                    </label>
+                                                                    {renderInspectionField(p, 'primary')}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
 
                                                     {boolFields.length > 0 && (
                                                         <div className="grid grid-cols-3 gap-3">

@@ -34,7 +34,11 @@ import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 
 import DiveJobSetupDialog from "@/app/dashboard/inspection/dive/components/DiveJobSetupDialog";
+import DiveCalibrationDialog from "@/app/dashboard/inspection/dive/components/DiveCalibrationDialog";
+import RovCalibrationDialog from "@/app/dashboard/inspection/dive/components/RovCalibrationDialog";
+
 import DiveMovementLog from "@/app/dashboard/inspection/dive/components/DiveMovementLog";
+
 import ROVJobSetupDialog from "@/app/dashboard/inspection/rov/components/ROVJobSetupDialog";
 import ROVMovementLog from "@/app/dashboard/inspection/rov/components/ROVMovementLog";
 
@@ -126,7 +130,11 @@ interface WorkspaceDialogsProps {
         rrisiPreviewOpen: boolean;
         jtisiPreviewOpen: boolean;
         itisiPreviewOpen: boolean;
+        calibrationDialogOpen: boolean;
+        rovCalibrationDialogOpen: boolean;
     };
+
+
     
     // Setters
     setters: {
@@ -176,7 +184,11 @@ interface WorkspaceDialogsProps {
         setRrisiPreviewOpen: (open: boolean) => void;
         setJtisiPreviewOpen: (open: boolean) => void;
         setItisiPreviewOpen: (open: boolean) => void;
+        setCalibrationDialogOpen: (open: boolean) => void;
+        setRovCalibrationDialogOpen: (open: boolean) => void;
     };
+
+
     
     // Handlers
     handlers: {
@@ -1706,6 +1718,27 @@ export function WorkspaceDialogs({
                     // Placeholder or actual generator
                 }} 
             />
+
+            <DiveCalibrationDialog
+                open={states.calibrationDialogOpen}
+                onOpenChange={setters.setCalibrationDialogOpen}
+                diveJob={states.activeDep?.raw}
+                jobpackId={jobPackId || null}
+                structureId={structureId ? Number(structureId) : null}
+                sowReportNo={headerData?.sowReportNo || null}
+            />
+
+            <RovCalibrationDialog
+                open={states.rovCalibrationDialogOpen}
+                onOpenChange={setters.setRovCalibrationDialogOpen}
+                diveJob={states.activeDep?.raw}
+                jobpackId={jobPackId || null}
+                structureId={structureId ? Number(structureId) : null}
+                sowReportNo={headerData?.sowReportNo || null}
+            />
+
+
         </>
+
     );
 }

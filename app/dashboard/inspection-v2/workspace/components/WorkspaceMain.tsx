@@ -688,11 +688,14 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                     </td>
                     <td className="px-3 py-3 font-bold text-slate-800 align-top">
                       <div className="truncate max-w-[200px] text-sm">
-                        {r.inspection_type?.name}
+                        {r.inspection_type?.name || (r.inspection_type_code === 'CPCLB' ? 'CP Calibration' : r.inspection_type_code === 'UTCLB' ? 'UT Calibration' : r.inspection_type_code)}
                       </div>
                     </td>
                     <td className="px-3 py-3 align-top text-slate-700">
-                      <div className="font-bold text-sm">{r.structure_components?.q_id || "-"}</div>
+                      <div className="font-bold text-sm">
+                        {r.inspection_type_code === 'CPCLB' || r.inspection_type_code === 'UTCLB' ? "N/A" : (r.structure_components?.q_id || "-")}
+                      </div>
+
                     </td>
                     <td className="px-3 py-3 text-center text-sm font-medium align-top">
                       {r.elevation || "-"}
@@ -779,11 +782,14 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                         </td>
                         <td className="px-3 py-3 font-bold text-slate-800 align-top">
                           <div className="truncate max-w-[200px] text-sm">
-                            {r.inspection_type?.name}
+                            {r.inspection_type?.name || (r.inspection_type_code === 'CPCLB' ? 'CP Calibration' : r.inspection_type_code === 'UTCLB' ? 'UT Calibration' : r.inspection_type_code)}
                           </div>
                         </td>
                         <td className="px-3 py-3 align-top text-slate-700">
-                          <div className="font-bold text-sm">{r.structure_components?.q_id || "-"}</div>
+                          <div className="font-bold text-sm">
+                            {r.inspection_type_code === 'CPCLB' || r.inspection_type_code === 'UTCLB' ? "N/A" : (r.structure_components?.q_id || "-")}
+                          </div>
+
                         </td>
                         <td className="px-3 py-3 text-center text-sm font-medium align-top">
                           {r.elevation || "-"}

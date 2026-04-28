@@ -319,21 +319,279 @@
             ]
         },
         {
+            "code": "CPCLB",
+            "name": "CP Calibration",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "calib_equipment_type",
+                    "label": "Equipment Type",
+                    "type": "combo",
+                    "lib_code": "EQUP_TYP",
+                    "required": true
+                },
+                {
+                    "name": "serial_number",
+                    "label": "Serial Number",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "calib_block",
+                    "label": "Calibration Block",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "pre_dive_cp_rdg",
+                    "label": "Pre-Dive CP Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "in_water1",
+                    "label": "In Water 1",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "in_water2",
+                    "label": "In Water 2",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "in_water3",
+                    "label": "In Water 3",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "post_dive_cp_rdg",
+                    "label": "Post-Dive CP Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "ROVCPCLB",
+            "name": "ROV CP Calibration",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "calib_equipment_type",
+                    "label": "Equipment Type",
+                    "type": "combo",
+                    "lib_code": "EQUP_TYP",
+                    "required": true
+                },
+                {
+                    "name": "serial_number",
+                    "label": "Serial Number",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "probe_type",
+                    "label": "Probe Type",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "probe_number",
+                    "label": "Probe Number",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "calib_number",
+                    "label": "Calib Number",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "test_value",
+                    "label": "Test Value",
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "pre_dive_reading",
+                    "label": "Pre-Dive Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "post_dive_reading",
+                    "label": "Post-Dive Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "required": true
+                },
+                {
+                    "name": "pre_dive_calib_acceptable",
+                    "label": "Pre-Dive Calib Acceptable",
+                    "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "post_dive_calib_acceptable",
+                    "label": "Post-Dive Calib Acceptable",
+                    "type": "boolean",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "UTCLB",
+            "name": "UT Calibration",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "calib_equipment_type",
+                    "label": "Equipment Type",
+                    "type": "combo",
+                    "lib_code": "EQUP_TYP",
+                    "required": true
+                },
+                {
+                    "name": "serial_number",
+                    "label": "Serial Number",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "probe",
+                    "label": "Probe",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "probe_size",
+                    "label": "Probe Size",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "probe_frequency",
+                    "label": "Probe Frequency",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "calib_block",
+                    "label": "Calibration Block",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "label01",
+                    "label": "Label 01",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "label02",
+                    "label": "Label 02",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "label03",
+                    "label": "Label 03",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "label04",
+                    "label": "Label 04",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "label05",
+                    "label": "Label 05",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "label06",
+                    "label": "Label 06",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "reading01",
+                    "label": "Reading 01",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "reading02",
+                    "label": "Reading 02",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "reading03",
+                    "label": "Reading 03",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "reading04",
+                    "label": "Reading 04",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "reading05",
+                    "label": "Reading 05",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "reading06",
+                    "label": "Reading 06",
+                    "type": "number",
+                    "required": true
+                }
+            ]
+        },
+        {
             "code": "MGROW",
             "name": "Marine Growth Removal",
             "methods": [
                 "DIVING"
             ],
             "fields": [
-                {
-                    "name": "nominal_diameter",
-                    "label": "Nominal Diameter",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
-                    "required": true,
-                    "defaultMetric": "mm",
-                    "defaultImperial": "in"
-                },
                 {
                     "$ref": "mgi_hard_thickness_at_12"
                 },
@@ -357,9 +615,6 @@
                 },
                 {
                     "$ref": "mgi_soft_thickness_at_9"
-                },
-                {
-                    "$ref": "marine_growth"
                 },
                 {
                     "name": "circumferential_measurement_5m_above",
@@ -414,6 +669,18 @@
                     "label": "Coating Damage",
                     "type": "boolean",
                     "required": true
+                },
+                {
+                    "name": "nominal_diameter",
+                    "label": "Nominal Diameter",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "$ref": "marine_growth"
                 },
                 {
                     "$ref": "mgi_profile"

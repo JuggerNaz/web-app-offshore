@@ -73,8 +73,10 @@ import {
     Waves,
     Wifi,
     X,
-    ArrowUpDown
+    ArrowUpDown,
+    Wrench
 } from "lucide-react";
+
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -357,6 +359,12 @@ function V10PreviewLayout() {
     const [newTapeNo, setNewTapeNo] = useState("");
     const [newTapeChapter, setNewTapeChapter] = useState("");
     const [newTapeRemarks, setNewTapeRemarks] = useState("");
+    const [calibrationDialogOpen, setCalibrationDialogOpen] = useState(false);
+    const [rovCalibrationDialogOpen, setRovCalibrationDialogOpen] = useState(false);
+
+
+
+
 
     // Synchronize recording duration and vidState upon changing active tape
     useEffect(() => {
@@ -564,7 +572,29 @@ function V10PreviewLayout() {
 
     // Helper to handle prop changes and track user interaction
     const handleDynamicPropChange = (name: string, value: any) => {
-        setDynamicProps(prev => ({ ...prev, [name]: value }));
+        setDynamicProps(prev => {
+            const updated = { ...prev, [name]: value };
+            
+            if (activeSpec === 'MGROW') {
+                const c5Above = parseFloat(updated.circumferential_measurement_5m_above) || 0;
+                const c0m = parseFloat(updated.circumferential_measurement_0m) || 0;
+                const c5Below = parseFloat(updated.circumferential_measurement_5m_below) || 0;
+
+                const hasAnyCirc = updated.circumferential_measurement_5m_above || 
+                                   updated.circumferential_measurement_0m || 
+                                   updated.circumferential_measurement_5m_below;
+
+                if (hasAnyCirc) {
+                    const avgCirc = (c5Above + c0m + c5Below) / 3;
+                    const md = (typeof selectedComp?.raw?.metadata === 'string' ? JSON.parse(selectedComp.raw.metadata) : selectedComp?.raw?.metadata) || {};
+                    const nominalDiameter = parseFloat(md.outer_diameter || md.diameter || md.nominal_diameter || md.od || md.nominal_od || md.nominal_diameter_mm || selectedComp?.raw?.outer_diameter || selectedComp?.raw?.diameter || selectedComp?.raw?.nominal_diameter || "0") || 0;
+                    
+                    const calc = Math.sqrt(avgCirc / 3.142) - nominalDiameter;
+                    updated.effective_thickness = parseFloat(calc.toFixed(2));
+                }
+            }
+            return updated;
+        });
         setIsUserInteraction(true);
     };
 
@@ -5286,7 +5316,33 @@ function V10PreviewLayout() {
                     </DropdownMenu>
                 )}
 
+                {inspMethod === 'DIVING' && activeDep && (
+                    <Button
+                        onClick={() => setCalibrationDialogOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 h-7"
+                    >
+                        <Wrench className="h-3.5 w-3.5" />
+                        Calibration
+                    </Button>
+                )}
+
+                {inspMethod === 'ROV' && activeDep && (
+                    <Button
+                        onClick={() => setRovCalibrationDialogOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 h-7"
+                    >
+                        <Wrench className="h-3.5 w-3.5" />
+                        Calibration
+                    </Button>
+                )}
+
+
                 {/* Inspection Readiness Traffic Light */}
+
                 {(() => {
                     const isDepActive = !!activeDep && activeDep.raw?.status !== 'COMPLETED';
                     const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
@@ -6742,7 +6798,11 @@ function V10PreviewLayout() {
                     newTapeChapter,
                     newTapeRemarks,
                     isCommitting,
+                    calibrationDialogOpen,
+                    rovCalibrationDialogOpen,
                     specDialogOpen: false,
+
+
                     compSpecDialogOpen,
                     selectedComp,
                     previewOpen,
@@ -6806,7 +6866,11 @@ function V10PreviewLayout() {
                     setNewTapeNo,
                     setNewTapeChapter,
                     setNewTapeRemarks,
+                    setCalibrationDialogOpen,
+                    setRovCalibrationDialogOpen,
                     setCompSpecDialogOpen,
+
+
                     setPreviewOpen,
                     setMPreviewOpen,
                     setFmdPreviewOpen,
