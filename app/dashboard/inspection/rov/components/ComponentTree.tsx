@@ -49,6 +49,7 @@ export default function ComponentTree({
                 .from("structure_components")
                 .select("id, component_name, code, parent_id")
                 .eq("structure_id", structureId)
+                .limit(10000)
                 .order("code")
                 .order("component_name");
 

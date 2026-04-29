@@ -81,6 +81,7 @@ export const loadLogoWithTransparency = (url: string): Promise<{ data: string; w
     });
 };
 
+
 export const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y: number, alignX = 'left', alignY = 'center') => {
     if (!logo || !logo.data) return;
     const ratio = Math.min(maxW / logo.width, maxH / logo.height);

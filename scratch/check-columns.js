@@ -1,32 +1,20 @@
+
 const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
-const path = require('path');
+const supabaseUrl = 'https://zpsmxtdqlpbdwfzctqzd.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpwc214dGRxbHBiZHdmemN0cXpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjY4NDIzODIsImV4cCI6MjA0MjQxODM4Mn0.t3uO7vnabDlwaz5iM6i8A-ya9cc6X20ZTn0bcR3zzs4';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-const envPath = path.resolve(process.cwd(), '.env.local');
-const envConfig = fs.readFileSync(envPath, 'utf8')
-  .split('\n')
-  .reduce((acc, line) => {
-    const [key, ...value] = line.split('=');
-    if (key && value) acc[key.trim()] = value.join('=').trim();
-    return acc;
-  }, {});
-
-const supabase = createClient(
-  envConfig.NEXT_PUBLIC_SUPABASE_URL,
-  envConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-async function checkPkey() {
-  const { data, error } = await supabase
-    .from('inspection_type')
-    .select('*')
-    .limit(1);
-
-  if (data && data.length > 0) {
-    console.log('Sample Row:', data[0]);
-  } else {
-    console.log('Table empty or no access');
-  }
+async function checkColumns() {
+    const { data, error } = await supabase.from('jobpack').select('*').limit(1);
+    if (error) {
+        console.error(error);
+        return;
+    }
+    if (data && data.length > 0) {
+        console.log("Columns in jobpack:", Object.keys(data[0]));
+    } else {
+        console.log("No data in jobpack to check columns.");
+    }
 }
 
-checkPkey();
+checkColumns();

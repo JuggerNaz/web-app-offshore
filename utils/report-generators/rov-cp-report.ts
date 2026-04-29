@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
     company_name?: string;
@@ -16,9 +17,9 @@ interface ReportConfig {
     sowReportNo?: string;
     preparedBy?: { name: string; date: string };
     reviewedBy?: { name: string; date: string };
-    approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
     showPageNumbers?: boolean;
+    showSignatures?: boolean;
 }
 
 /**
@@ -41,6 +42,8 @@ export const generateROVCPReport = async (
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 12;
         const contentWidth = pageWidth - margin * 2;
+
+        const supabase = createClient();
 
         const colors = {
             navy:      [31,  55,  93]  as [number, number, number],
@@ -208,7 +211,7 @@ export const generateROVCPReport = async (
                 { content: "Dive No.",         styles: { halign: "center", valign: "middle" } },
                 { content: "Tape No.",         styles: { halign: "center", valign: "middle" } },
                 { content: "CP (mV)",          styles: { halign: "center", valign: "middle" } },
-                { content: "Findings",         styles: { halign: "center", valign: "middle" } },
+                { content: "Findings",         styles: { halign: "center", valign: "middle" } }
             ]],
             body: sorted.map(buildRow),
             theme: "grid",
@@ -257,7 +260,8 @@ export const generateROVCPReport = async (
                     data.cell.styles.fontStyle  = "bold";
                 }
             },
-            // Sync callback — logos already preloaded above
+            didDrawCell: (data) => {
+            },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) {
                     drawPageHeader(doc);
@@ -276,33 +280,33 @@ export const generateROVCPReport = async (
                 }
             },
         });
+        const finalY = (doc as any).lastAutoTable.finalY || startY;
+        if (config.showSignatures !== false) {
+            const sigY   = Math.min(finalY + 8, pageHeight - 38);
+            const sigW   = contentWidth / 3;
 
-        // ── Signature block ─────────────────────────────────────────────────────
-        const finalY = (doc as any).lastAutoTable?.finalY ?? (pageHeight - 50);
-        const sigY   = Math.min(finalY + 8, pageHeight - 38);
-        const sigW   = contentWidth / 3;
+            const drawSig = (label: string, lx: number) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                doc.rect(lx, sigY, sigW - 4, 18);
+                if (!isPF) {
+                    doc.setFillColor(...colors.navy);
+                    doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                    doc.setTextColor(255);
+                } else {
+                    doc.setTextColor(...colors.navy);
+                }
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.5);
+                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.text("Name:", lx + 2, sigY + 10);
+                doc.text("Date:", lx + 2, sigY + 13.5);
+                doc.text("Signature:", lx + 2, sigY + 17);
+            };
 
-        const drawSig = (label: string, lx: number) => {
-            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
-            doc.rect(lx, sigY, sigW - 4, 18);
-            if (!isPF) {
-                doc.setFillColor(...colors.navy);
-                doc.rect(lx, sigY, sigW - 4, 4.5, "F");
-                doc.setTextColor(255);
-            } else {
-                doc.setTextColor(...colors.navy);
-            }
-            doc.setFontSize(7); doc.setFont("helvetica", "bold");
-            doc.text(label, lx + 2, sigY + 3.5);
-            doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
-            doc.text("Name:", lx + 2, sigY + 10);
-            doc.text("Date:", lx + 2, sigY + 13.5);
-            doc.text("Signature:", lx + 2, sigY + 17);
-        };
-
-        drawSig("PREPARED BY",  margin);
-        drawSig("REVIEWED BY",  margin + sigW);
-        drawSig("APPROVED BY",  margin + sigW * 2);
+            drawSig("PREPARED BY",  margin);
+            drawSig("REVIEWED BY",  margin + sigW);
+            drawSig("APPROVED BY",  margin + sigW * 2);
+        }
 
         if (config.returnBlob) return doc.output("blob");
         doc.save(`ROV_CP_Survey_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);

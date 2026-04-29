@@ -27,6 +27,7 @@ export interface ReportConfig {
     printFriendly?: boolean;
     prefix?: string;
     isFindingsReport?: boolean;
+    showSignatures?: boolean;
 }
 
 const loadImage = (url: string): Promise<string> => {

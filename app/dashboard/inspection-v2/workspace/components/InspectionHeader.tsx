@@ -42,9 +42,18 @@ interface InspectionHeaderProps {
     generateUTWTReport: () => void;
     generateRSCORReport: () => void;
     generateRRISIReport: () => void;
+    generateJTISIReport: () => void;
+    generateITISIReport: () => void;
     generateAnodeReport: () => void;
     generateCPReport: () => void;
     generateRGVIReport: () => void;
+    generateRCASNReport: () => void;
+    generateRCASNSketchReport: () => void;
+    generateRCONDReport: () => void;
+    generateRCONDSketchReport: () => void;
+    generateBLReport: () => void;
+    generatePhotographyReport: () => void;
+    generatePhotographyLogReport: () => void;
     generateFullInspectionReport: () => void;
     jobPackId?: string | null;
     structureId?: string | null;
@@ -67,9 +76,18 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateUTWTReport,
     generateRSCORReport,
     generateRRISIReport,
+    generateJTISIReport,
+    generateITISIReport,
     generateAnodeReport,
     generateCPReport,
     generateRGVIReport,
+    generateRCASNReport,
+    generateRCASNSketchReport,
+    generateRCONDReport,
+    generateRCONDSketchReport,
+    generateBLReport,
+    generatePhotographyReport,
+    generatePhotographyLogReport,
     generateFullInspectionReport,
     jobPackId,
     structureId,
@@ -129,6 +147,10 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             </>
                         )}
                     </div>
+                    <div className="flex items-center gap-1.5 ml-2 border-l border-slate-700 pl-3">
+                        <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Vessel:</span>
+                        <span className="font-mono font-bold text-blue-300">{headerData.vessel || "N/A"}</span>
+                    </div>
                 </div>
             </div>
 
@@ -153,7 +175,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             const filteredReports = allInspectionTypes.filter(t => 
                                 t.code !== 'RGVI' && 
                                 t.code !== 'RSEAB' && t.code !== 'RMGI' && t.code !== 'RFMD' && t.code !== 'RSZCI' && 
-                                t.code !== 'RUTWT' && t.code !== 'RSCOR' && t.code !== 'RRISI' && 
+                                t.code !== 'RUTWT' && t.code !== 'RSCOR' && t.code !== 'RRISI' && t.code !== 'RCOND' && t.code !== 'RCON' &&
                                 currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))
                             );
 
@@ -229,9 +251,17 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         )}
 
                         {currentRecords.some(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI') && (
-                            <DropdownMenuItem onClick={() => generateRRISIReport()} className="text-xs py-2 cursor-pointer font-bold text-pink-600 border-t border-slate-50 mt-1">
-                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV Riser Survey Report
-                            </DropdownMenuItem>
+                            <>
+                                <DropdownMenuItem onClick={() => generateRRISIReport()} className="text-xs py-2 cursor-pointer font-bold text-pink-600 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Riser Survey Report
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => generateJTISIReport()} className="text-xs py-2 cursor-pointer font-bold text-pink-600 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV J-Tube Inspection Report
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => generateITISIReport()} className="text-xs py-2 cursor-pointer font-bold text-pink-600 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV I-Tube Inspection Report
+                                </DropdownMenuItem>
+                            </>
                         )}
 
                         {currentRecords.some(r => ((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI') && ((r.structure_components?.code || '').toUpperCase() === 'AN' || (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE')) && (
@@ -254,6 +284,51 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 <Activity className="w-3.5 h-3.5 mr-2" /> ROV GVI Report (RGVI)
                             </DropdownMenuItem>
                         )}
+
+                        {currentRecords.some(r => 
+                            (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RCASN' ||
+                            (r.structure_components?.code || '').toUpperCase() === 'CS'
+                        ) && (
+                            <>
+                                <DropdownMenuItem onClick={() => generateRCASNReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Caisson Survey Report
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => generateRCASNSketchReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-800 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Caisson Survey (Sketch) Report
+                                </DropdownMenuItem>
+                            </>
+                        )}
+
+                        {currentRecords.some(r => 
+                            ['RCOND', 'RCON'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()) ||
+                            ['CD', 'CON'].includes((r.structure_components?.code || '').toUpperCase())
+                        ) && (
+                            <>
+                                <DropdownMenuItem onClick={() => generateRCONDReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Conductor Survey Report
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => generateRCONDSketchReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-800 border-t border-slate-50 mt-1">
+                                    <Activity className="w-3.5 h-3.5 mr-2" /> ROV Conductor Survey (Sketch) Report
+                                </DropdownMenuItem>
+                            </>
+                        )}
+                        
+                        {currentRecords.some(r => 
+                            ['RGVI'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()) &&
+                            ['BL'].includes((r.structure_components?.code || '').toUpperCase())
+                        ) && (
+                            <DropdownMenuItem onClick={() => generateBLReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV Boatlanding Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        <DropdownMenuItem onClick={() => generatePhotographyReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                            <Activity className="w-3.5 h-3.5 mr-2" /> ROV Photography Report
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem onClick={() => generatePhotographyLogReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                            <Activity className="w-3.5 h-3.5 mr-2" /> ROV Photography Log Report
+                        </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600">
                             <Layout className="w-3.5 h-3.5 mr-2" /> All Captured Records

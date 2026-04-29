@@ -9,6 +9,7 @@ import {
   ClipboardCheck, 
   AlertTriangle, 
   FileImage, 
+  Layers,
   Command,
   ArrowRight,
   Loader2
@@ -65,6 +66,7 @@ export function GlobalSearch() {
       case "platform": return <Building2 className="mr-3 h-4 w-4 text-blue-500" />;
       case "pipeline": return <Wind className="mr-3 h-4 w-4 text-cyan-500" />;
       case "jobpack": return <Briefcase className="mr-3 h-4 w-4 text-amber-500" />;
+      case "component": return <Layers className="mr-3 h-4 w-4 text-indigo-500" />;
       case "inspection": return <ClipboardCheck className="mr-3 h-4 w-4 text-emerald-500" />;
       case "anomaly": return <AlertTriangle className="mr-3 h-4 w-4 text-rose-500" />;
       case "media": return <FileImage className="mr-3 h-4 w-4 text-purple-500" />;

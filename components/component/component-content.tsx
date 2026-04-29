@@ -9,7 +9,11 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+<<<<<<< HEAD
 import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+=======
+import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, Link2 } from "lucide-react";
+>>>>>>> origin/main
 import { DeleteConfirmDialog } from "../dialogs/delete-confirm-dialog";
 import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
@@ -113,6 +117,18 @@ export default function ComponentContent() {
   } = useSWR(apiUrl, fetcher);
 
   const components = componentsData?.data || [];
+
+  // Full unfiltered component list for resolving associated Q IDs
+  const { data: allComponentsData } = useSWR(
+    structureId ? `/api/structure-components/${structureId}` : null,
+    fetcher
+  );
+  const allComponentsLookup: Component[] = allComponentsData?.data || [];
+
+  const getLinkedQId = (associated_comp_id: number | null | undefined): string | null => {
+    if (!associated_comp_id) return null;
+    return allComponentsLookup.find((c) => c.id === associated_comp_id)?.q_id || null;
+  };
 
   // Filter components by search query and type relevancy
   const filteredComponents = components.filter((comp: Component) => {
@@ -349,6 +365,7 @@ export default function ComponentContent() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+<<<<<<< HEAD
                                     <TableTh className="w-[200px]" onClick={() => handleSort('id_no')} sortDirection={sortConfig?.key === 'id_no' ? sortConfig.direction : null}>{pageType === "pipeline" ? "ID No" : "System ID No"}</TableTh>
                   <TableTh className="w-[140px]" onClick={() => handleSort('q_id')} sortDirection={sortConfig?.key === 'q_id' ? sortConfig.direction : null}>Q ID</TableTh>
                   <TableTh className="w-[100px]" onClick={() => handleSort('code')} sortDirection={sortConfig?.key === 'code' ? sortConfig.direction : null}>Type</TableTh>
@@ -356,17 +373,25 @@ export default function ComponentContent() {
                   <TableTh className="w-[160px]" onClick={() => handleSort('depth_leg')} sortDirection={sortConfig?.key === 'depth_leg' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Depth" : "Platform Leg (S/E)"}</TableTh>
                   <TableTh className="w-[160px]" onClick={() => handleSort('easting_elv')} sortDirection={sortConfig?.key === 'easting_elv' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Easting Northing" : "Elevation (1/2)"}</TableTh>
                   <TableTh className="w-[120px]" onClick={() => handleSort('created_at')} sortDirection={sortConfig?.key === 'created_at' ? sortConfig.direction : null}>Timestamp</TableTh>
+=======
+                  <TableTh className="w-[200px]">{pageType === "pipeline" ? "ID No" : "System ID No"}</TableTh>
+                  <TableTh className="w-[220px]">Q ID</TableTh>
+                  <TableTh className="w-[100px]">Type</TableTh>
+                  <TableTh className="w-[180px]">{pageType === "pipeline" ? "KP" : "Node Path (S/E)"}</TableTh>
+                  <TableTh className="w-[160px]">{pageType === "pipeline" ? "Depth" : "Platform Leg (S/E)"}</TableTh>
+                  <TableTh className="w-[160px]">{pageType === "pipeline" ? "Easting Northing" : "Elevation (1/2)"}</TableTh>
+>>>>>>> origin/main
                   <TableTh className="w-[80px] text-center">Actions</TableTh>
                 </tr>
               </thead>
               <tbody>
                 {isLoadingComponents ? (
                   <tr className="animate-pulse">
-                    <td colSpan={8} className="p-20 text-center text-slate-400 font-bold uppercase tracking-widest">Initialising Database...</td>
+                    <td colSpan={7} className="p-20 text-center text-slate-400 font-bold uppercase tracking-widest">Initialising Database...</td>
                   </tr>
                 ) : sortedComponents.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-20 text-center">
+                    <td colSpan={7} className="p-20 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <Activity className="h-8 w-8 text-slate-200 mb-2" />
                         <p className="font-black text-slate-400 uppercase tracking-widest text-xs">No Records Found</p>
@@ -395,7 +420,18 @@ export default function ComponentContent() {
                         </div>
                       </td>
                       <td className="px-4 py-4 align-middle">
-                        <span className="font-black text-slate-900 dark:text-white tracking-tight">{comp.q_id}</span>
+                        <div className="flex flex-col gap-1.5">
+                          <span className="font-black text-slate-900 dark:text-white tracking-tight">{comp.q_id}</span>
+                          {comp.metadata?.associated_comp_id && (() => {
+                            const linkedQId = getLinkedQId(comp.metadata.associated_comp_id);
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200/70 dark:border-teal-700/50 w-fit">
+                                <Link2 className="h-3.5 w-3.5 shrink-0" />
+                                {linkedQId || "Linked"}
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </td>
                       <td className="px-4 py-4 align-middle">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
@@ -446,12 +482,6 @@ export default function ComponentContent() {
                               {pageType === "pipeline" ? (comp.metadata?.northing || "0") : (comp.metadata?.elv_2 || "0")}
                             </span>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 align-middle">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-900 dark:text-white text-xs">{comp.created_at ? new Date(comp.created_at).toLocaleDateString() : "-"}</span>
-                          <span className="text-[10px] text-slate-400 font-medium uppercase">{comp.created_at ? new Date(comp.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}</span>
                         </div>
                       </td>
                       <td className="px-4 py-4 align-middle text-center">

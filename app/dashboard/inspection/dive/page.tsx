@@ -32,7 +32,9 @@ import {
   Disc,
   Film,
   ChevronDown,
+  Wrench,
 } from "lucide-react";
+
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
@@ -63,6 +65,8 @@ import InspectionRecordingDialog from "./components/InspectionRecordingDialog";
 import DiveMovementDialog from "./components/DiveMovementDialog";
 import DiveInspectionTypeCard from "./components/DiveInspectionTypeCard";
 import DiveInspectionList from "./components/DiveInspectionList";
+import DiveCalibrationDialog from "./components/DiveCalibrationDialog";
+
 import ComponentTreeDialog from "../rov/components/ComponentTreeDialog";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { useSetAtom } from "jotai";
@@ -306,6 +310,8 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
   const [specDialogOpen, setSpecDialogOpen] = useState(false);
   const [specMode, setSpecMode] = useState<'view' | 'create'>('view');
   const [createDefaultCode, setCreateDefaultCode] = useState<string>("");
+  const [calibrationDialogOpen, setCalibrationDialogOpen] = useState(false);
+
 
   // Global state
   const setUrlId = useSetAtom(urlId);
@@ -1232,18 +1238,30 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
                     </div>
                   </div>
                 </div>
-                <Button
-                  onClick={() => {
-                    setIsEditing(true);
-                    setSetupDialogOpen(true);
-                  }}
-                  variant="ghost"
-                  size="sm"
-                  className="gap-2"
-                >
-                  <Settings className="h-4 w-4" />
-                  Details
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setCalibrationDialogOpen(true)}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300"
+                  >
+                    <Wrench className="h-4 w-4" />
+                    Calibration
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setIsEditing(true);
+                      setSetupDialogOpen(true);
+                    }}
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Details
+                  </Button>
+                </div>
+
               </div>
 
               {/* Row 2: Video Session Record Strip */}
@@ -1917,7 +1935,16 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
                 defaultCode={createDefaultCode}
                 createdFrom="diving_inspection"
               />
+
+              <DiveCalibrationDialog
+                open={calibrationDialogOpen}
+                onOpenChange={setCalibrationDialogOpen}
+                diveJob={selectedDiveJob}
+                jobpackId={jobpackId}
+                structureId={effectiveStructureId}
+              />
             </>
+
           )
         }
       </div >

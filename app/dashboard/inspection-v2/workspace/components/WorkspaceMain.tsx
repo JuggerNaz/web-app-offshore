@@ -25,6 +25,7 @@ import {
   Edit,
   Trash2,
 } from "lucide-react";
+import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -232,7 +233,25 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
                     {selectedComp.tasks &&
-                      selectedComp.tasks.map((t: string) => {
+                      selectedComp.tasks.filter((t: string) => {
+                        const it = (allInspectionTypes || []).find((type: any) => type.code === t || type.name === t);
+                        const localIt = (inspectionRegistry as any).inspectionTypes?.find((type: any) => type.code === t || type.name === t);
+                        
+                        const methods = it?.default_properties?.methods || it?.methods || localIt?.methods || [];
+                        const isRov = methods.includes("ROV") || it?.metadata?.rov === 1 || it?.metadata?.rov === "1" || it?.metadata?.rov === true || (it?.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                        const isDiving = methods.includes("DIVING") || it?.metadata?.diving === 1 || it?.metadata?.diving === "1" || it?.metadata?.diving === true || (it?.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+
+                        if (!it && !localIt) {
+                          const isCodeRov = String(t).startsWith("R") || String(t).startsWith("ROV") || String(t).toLowerCase().includes("rov");
+                          if (inspMethod === "DIVING" && isCodeRov) return false;
+                          if (inspMethod === "ROV" && !isCodeRov) return false;
+                          return true;
+                        }
+
+                        if (inspMethod === "DIVING" && !isDiving) return false;
+                        if (inspMethod === "ROV" && !isRov) return false;
+                        return true;
+                      }).map((t: string) => {
                         const taskStatus = selectedComp.taskStatuses?.find(
                           (ts: any) => ts.code === t
                         );
@@ -291,7 +310,9 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                             onClick={() => {
                               setActiveSpec(t);
                               const newProps: Record<string, any> = {};
-                              if (selectedComp.nominalThk && selectedComp.nominalThk !== "-") {
+                              const compNT = selectedComp.nominalThk && selectedComp.nominalThk !== "-" ? selectedComp.nominalThk : 
+                                             (selectedComp.wallThickness && selectedComp.wallThickness !== "-" ? selectedComp.wallThickness : null);
+                              if (compNT) {
                                 const specProps = it?.default_properties || [];
                                 let propsList: any[] = [];
                                 if (typeof specProps === "string") {
@@ -313,7 +334,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                     String(p.label || p.name || "").toLowerCase() === "nt"
                                 );
                                 if (ntField) {
-                                  newProps[ntField.name || ntField.label] = selectedComp.nominalThk;
+                                  newProps[ntField.name || ntField.label] = compNT;
                                 }
                               }
                               setDynamicProps(newProps);
@@ -480,12 +501,15 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                             <div className="p-1.5 space-y-1">
                               {allInspectionTypes
                                 .filter((it) => {
+                                  const methods = it.default_properties?.methods || it.methods || [];
                                   const isRov =
+                                    methods.includes("ROV") ||
                                     it.metadata?.rov === 1 ||
                                     it.metadata?.rov === "1" ||
                                     it.metadata?.rov === true ||
                                     it.metadata?.job_type?.includes("ROV");
                                   const isDiving =
+                                    methods.includes("DIVING") ||
                                     it.metadata?.diving === 1 ||
                                     it.metadata?.diving === "1" ||
                                     it.metadata?.diving === true ||
@@ -664,11 +688,14 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                     </td>
                     <td className="px-3 py-3 font-bold text-slate-800 align-top">
                       <div className="truncate max-w-[200px] text-sm">
-                        {r.inspection_type?.name}
+                        {r.inspection_type?.name || (r.inspection_type_code === 'CPCLB' ? 'CP Calibration' : r.inspection_type_code === 'UTCLB' ? 'UT Calibration' : r.inspection_type_code)}
                       </div>
                     </td>
                     <td className="px-3 py-3 align-top text-slate-700">
-                      <div className="font-bold text-sm">{r.structure_components?.q_id || "-"}</div>
+                      <div className="font-bold text-sm">
+                        {r.inspection_type_code === 'CPCLB' || r.inspection_type_code === 'UTCLB' ? "N/A" : (r.structure_components?.q_id || "-")}
+                      </div>
+
                     </td>
                     <td className="px-3 py-3 text-center text-sm font-medium align-top">
                       {r.elevation || "-"}
@@ -755,11 +782,14 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                         </td>
                         <td className="px-3 py-3 font-bold text-slate-800 align-top">
                           <div className="truncate max-w-[200px] text-sm">
-                            {r.inspection_type?.name}
+                            {r.inspection_type?.name || (r.inspection_type_code === 'CPCLB' ? 'CP Calibration' : r.inspection_type_code === 'UTCLB' ? 'UT Calibration' : r.inspection_type_code)}
                           </div>
                         </td>
                         <td className="px-3 py-3 align-top text-slate-700">
-                          <div className="font-bold text-sm">{r.structure_components?.q_id || "-"}</div>
+                          <div className="font-bold text-sm">
+                            {r.inspection_type_code === 'CPCLB' || r.inspection_type_code === 'UTCLB' ? "N/A" : (r.structure_components?.q_id || "-")}
+                          </div>
+
                         </td>
                         <td className="px-3 py-3 text-center text-sm font-medium align-top">
                           {r.elevation || "-"}

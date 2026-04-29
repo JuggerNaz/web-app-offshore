@@ -126,7 +126,7 @@ export default function InspectionLanding() {
         }
     }, [selectedJobPack]);
 
-    // Load SOW reports when structure is selected
+    // Load SOW reports when structure is selected OR jobpack changes
     useEffect(() => {
         if (selectedStructure && selectedJobPack) {
             loadSOWReports(selectedJobPack, selectedStructure);
@@ -135,7 +135,7 @@ export default function InspectionLanding() {
             setSelectedSOW("");
             setSelectedMode("");
         }
-    }, [selectedStructure]);
+    }, [selectedStructure, selectedJobPack]);
 
     async function loadJobPacks() {
         try {
@@ -230,6 +230,13 @@ export default function InspectionLanding() {
             // Auto-select if only one structure
             if (jobPack.structures.length === 1) {
                 setSelectedStructure(jobPack.structures[0].id.toString());
+            } else {
+                // Clear selected structure if it's not in the new job pack's structure list
+                setSelectedStructure(prev => {
+                    if (!prev) return "";
+                    const stillValid = jobPack.structures.some((s: any) => s.id.toString() === prev);
+                    return stillValid ? prev : "";
+                });
             }
         }
     }

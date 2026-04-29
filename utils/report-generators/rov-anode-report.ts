@@ -16,8 +16,9 @@ interface ReportConfig {
     sowReportNo?: string;
     preparedBy?: { name: string; date: string };
     reviewedBy?: { name: string; date: string };
-    approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    showPageNumbers?: boolean;
+    showSignatures?: boolean;
 }
 
 /**
@@ -227,30 +228,31 @@ export const generateROVAnodeReport = async (
                     }
                 }
             }
-        });
+            });
 
-        // Signatures
-        const sigY = pageHeight - 35;
-        const sigW = contentWidth / 3;
-        const drawSig = (label: string, lx: number) => {
-            const da = doc as any;
-            const isPF = config.printFriendly;
-            da.setDrawColor(...colors.navy); da.setLineWidth(0.1); da.rect(lx, sigY, sigW - 5, 15, 'S');
-            if (!isPF) {
-                da.setFillColor(...colors.navy); da.rect(lx, sigY, sigW - 5, 4, 'F');
-                da.setTextColor(255);
-            } else {
-                da.setTextColor(...colors.navy);
-            }
-            da.setFontSize(7); da.text(label, lx + 2, sigY + 3);
-            da.setTextColor(...colors.text); da.setFontSize(6); 
-            da.text('Name:', lx + 2, sigY + 10);
-            da.text('Date:', lx + 2, sigY + 13);
-        };
+        if (config.showSignatures !== false) {
+            const sigY = pageHeight - 35;
+            const sigW = contentWidth / 3;
+            const drawSig = (label: string, lx: number) => {
+                const da = doc as any;
+                const isPF = config.printFriendly;
+                da.setDrawColor(...colors.navy); da.setLineWidth(0.1); da.rect(lx, sigY, sigW - 5, 15, 'S');
+                if (!isPF) {
+                    da.setFillColor(...colors.navy); da.rect(lx, sigY, sigW - 5, 4, 'F');
+                    da.setTextColor(255);
+                } else {
+                    da.setTextColor(...colors.navy);
+                }
+                da.setFontSize(7); da.text(label, lx + 2, sigY + 3);
+                da.setTextColor(...colors.text); da.setFontSize(6); 
+                da.text('Name:', lx + 2, sigY + 10);
+                da.text('Date:', lx + 2, sigY + 13);
+            };
 
-        drawSig('PREPARED BY', margin);
-        drawSig('REVIEWED BY', margin + sigW);
-        drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig('PREPARED BY', margin);
+            drawSig('REVIEWED BY', margin + sigW);
+            drawSig('APPROVED BY', margin + (sigW * 2));
+        }
 
         if (config.returnBlob) return doc.output("blob");
         doc.save(`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);

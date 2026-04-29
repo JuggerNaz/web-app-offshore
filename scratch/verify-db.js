@@ -17,29 +17,29 @@ const supabase = createClient(
 );
 
 async function verify() {
-  console.log('Testing connection to:', envConfig.NEXT_PUBLIC_SUPABASE_URL);
+  console.log('Fetching columns for u_sow_items...');
+  const { data, error } = await supabase.rpc('get_table_columns', { table_name: 'u_sow_items' });
   
-  // Try fetching count of inspection_type
-  const { count, error: countErr } = await supabase
-    .from('inspection_type')
-    .select('*', { count: 'exact', head: true });
-
-  if (countErr) {
-    console.error('Error fetching count:', countErr);
+  if (error) {
+    console.error('Error with RPC:', error);
+    
+    // Fallback: Just read one item from u_sow_items
+    console.log('Falling back to reading one row from u_sow_items...');
+    const { data: rowData, error: rowErr } = await supabase
+      .from('u_sow_items')
+      .select('*')
+      .limit(1);
+      
+    if (rowErr) {
+      console.error('Error reading u_sow_items:', rowErr);
+    } else {
+      console.log('Sample u_sow_items row keys:', rowData.length > 0 ? Object.keys(rowData[0]) : 'Table is empty');
+      if (rowData.length > 0) {
+        console.log('Sample data:', rowData[0]);
+      }
+    }
   } else {
-    console.log('Count of inspection_type:', count);
-  }
-
-  // List first 5 names
-  const { data, error: dataErr } = await supabase
-    .from('inspection_type')
-    .select('code, name')
-    .limit(5);
-
-  if (dataErr) {
-    console.error('Error fetching data:', dataErr);
-  } else {
-    console.log('Sample Data:', data);
+    console.log('Columns:', data);
   }
 }
 

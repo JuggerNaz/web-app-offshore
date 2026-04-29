@@ -73,8 +73,10 @@ import {
     Waves,
     Wifi,
     X,
-    ArrowUpDown
+    ArrowUpDown,
+    Wrench
 } from "lucide-react";
+
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -90,6 +92,13 @@ import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-repo
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
+import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
+import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
+import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-report";
+import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
+import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
+import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
+import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 
 import { loadSettings, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
@@ -150,6 +159,9 @@ import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { resolveInspectionType } from "@/utils/inspection-schema";
 import { getReportHeaderData } from "@/utils/company-settings";
 
+import { useWorkspaceReports } from "./hooks/useWorkspaceReports";
+import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
+
 export default function WorkspaceV2Page() {
     return (
         <Suspense fallback={<div className="p-10 flex min-h-screen items-center justify-center font-bold text-slate-500">Loading Cockpit...</div>}>
@@ -168,6 +180,7 @@ function V10PreviewLayout() {
     const structureId = searchParams.get('structure');
     const sowIdFull = searchParams.get('sow');
     const sowId = sowIdFull?.split('-')[0];
+    const targetReportNumber = searchParams.get('sowReport');
     const initialMode = searchParams.get('mode') as "DIVING" | "ROV" | null;
 
     // Jotai State Sync for Dialog
@@ -177,9 +190,16 @@ function V10PreviewLayout() {
     useEffect(() => {
         if (structureId) {
             setGlobalUrlId(Number(structureId));
-            setGlobalUrlType("platform");
+            setGlobalUrlType("platform"); // Default; corrected in fetchHeaderInfo once structureType resolves
         }
     }, [structureId, setGlobalUrlId, setGlobalUrlType]);
+
+    // Force-refresh SOW and Component lists upon entering/returning to this screen
+    useEffect(() => {
+        if (queryClient && (structureId || sowIdFull)) {
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+        }
+    }, [queryClient, structureId, sowIdFull]);
 
     // Mode
     const [inspMethod, setInspMethod] = useState<"DIVING" | "ROV">(initialMode || "DIVING");
@@ -188,6 +208,7 @@ function V10PreviewLayout() {
 
     const [deployments, setDeployments] = useState<any[]>([]);
     const [activeDep, setActiveDep] = useState<{ id: string, jobNo?: string, name: string, raw?: any } | null>(null);
+    const [isReadyForComps, setIsReadyForComps] = useState(false);
 
     // Live session records
     const [currentRecords, setCurrentRecords] = useState<any[]>([]);
@@ -304,7 +325,7 @@ function V10PreviewLayout() {
     const [syncLoading, setSyncLoading] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [componentsSow, setComponentsSow] = useState<any[]>([]);
-    const [componentsNonSow, setComponentsNonSow] = useState<any[]>(COMPONENTS_NON_SOW);
+    const [componentsNonSow, setComponentsNonSow] = useState<any[]>([]);
     const [allComps, setAllComps] = useState<any[]>([]);
 
     // Operations State
@@ -338,6 +359,12 @@ function V10PreviewLayout() {
     const [newTapeNo, setNewTapeNo] = useState("");
     const [newTapeChapter, setNewTapeChapter] = useState("");
     const [newTapeRemarks, setNewTapeRemarks] = useState("");
+    const [calibrationDialogOpen, setCalibrationDialogOpen] = useState(false);
+    const [rovCalibrationDialogOpen, setRovCalibrationDialogOpen] = useState(false);
+
+
+
+
 
     // Synchronize recording duration and vidState upon changing active tape
     useEffect(() => {
@@ -545,7 +572,29 @@ function V10PreviewLayout() {
 
     // Helper to handle prop changes and track user interaction
     const handleDynamicPropChange = (name: string, value: any) => {
-        setDynamicProps(prev => ({ ...prev, [name]: value }));
+        setDynamicProps(prev => {
+            const updated = { ...prev, [name]: value };
+            
+            if (activeSpec === 'MGROW') {
+                const c5Above = parseFloat(updated.circumferential_measurement_5m_above) || 0;
+                const c0m = parseFloat(updated.circumferential_measurement_0m) || 0;
+                const c5Below = parseFloat(updated.circumferential_measurement_5m_below) || 0;
+
+                const hasAnyCirc = updated.circumferential_measurement_5m_above || 
+                                   updated.circumferential_measurement_0m || 
+                                   updated.circumferential_measurement_5m_below;
+
+                if (hasAnyCirc) {
+                    const avgCirc = (c5Above + c0m + c5Below) / 3;
+                    const md = (typeof selectedComp?.raw?.metadata === 'string' ? JSON.parse(selectedComp.raw.metadata) : selectedComp?.raw?.metadata) || {};
+                    const nominalDiameter = parseFloat(md.outer_diameter || md.diameter || md.nominal_diameter || md.od || md.nominal_od || md.nominal_diameter_mm || selectedComp?.raw?.outer_diameter || selectedComp?.raw?.diameter || selectedComp?.raw?.nominal_diameter || "0") || 0;
+                    
+                    const calc = Math.sqrt(avgCirc / 3.142) - nominalDiameter;
+                    updated.effective_thickness = parseFloat(calc.toFixed(2));
+                }
+            }
+            return updated;
+        });
         setIsUserInteraction(true);
     };
 
@@ -722,34 +771,74 @@ function V10PreviewLayout() {
     }, [anomalyData.defectCode, defectCodes, allDefectTypes, supabase]);
 
     const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
-    const [previewOpen, setPreviewOpen] = useState(false);
-    const [mPreviewOpen, setMPreviewOpen] = useState(false);
-    const [fmdPreviewOpen, setFmdPreviewOpen] = useState(false);
-    const [szciPreviewOpen, setSzciPreviewOpen] = useState(false);
-    const [utwtPreviewOpen, setUtwtPreviewOpen] = useState(false);
-    const [rscorPreviewOpen, setRscorPreviewOpen] = useState(false);
-    const [rrisiPreviewOpen, setRrisiPreviewOpen] = useState(false);
-    const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
-    const [cpPreviewOpen,    setCpPreviewOpen]    = useState(false);
-    const [rgviPreviewOpen,  setRgviPreviewOpen]  = useState(false);
-    const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
-    const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
-    const [previewRecord, setPreviewRecord] = useState<any>(null);
-
     const jpParam = searchParams.get('jpName');
     const strParam = searchParams.get('structName');
     const sowParam = searchParams.get('sowReport');
     const jtParam = searchParams.get('jobType');
 
     // Header Data
-    const [headerData, setHeaderData] = useState<{ jobpackName: string, platformName: string, sowReportNo: string, jobType: string, structureType: 'platform' | 'pipeline', waterDepth: number }>({
+    const [headerData, setHeaderData] = useState<{ 
+        jobpackName: string, 
+        platformName: string, 
+        sowReportNo: string, 
+        jobType: string, 
+        structureType: 'platform' | 'pipeline', 
+        waterDepth: number,
+        vessel: string
+    }>({
         jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
         platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
         sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
         jobType: jtParam || "",
         structureType: 'platform',
-        waterDepth: 0
+        waterDepth: 0,
+        vessel: "N/A"
     });
+
+    const {
+        previewOpen, setPreviewOpen,
+        mPreviewOpen, setMPreviewOpen,
+        fmdPreviewOpen, setFmdPreviewOpen,
+        utwtPreviewOpen, setUtwtPreviewOpen,
+        szciPreviewOpen, setSzciPreviewOpen,
+        rscorPreviewOpen, setRscorPreviewOpen,
+        rrisiPreviewOpen, setRrisiPreviewOpen,
+        jtisiPreviewOpen, setJtisiPreviewOpen,
+        itisiPreviewOpen, setItisiPreviewOpen,
+        anodePreviewOpen, setAnodePreviewOpen,
+        cpPreviewOpen, setCpPreviewOpen,
+        rgviPreviewOpen, setRgviPreviewOpen,
+        rcasnPreviewOpen, setRcasnPreviewOpen,
+        rcasnSketchPreviewOpen, setRcasnSketchPreviewOpen,
+        rcondPreviewOpen, setRcondPreviewOpen,
+        rcondSketchPreviewOpen, setRcondSketchPreviewOpen,
+        blPreviewOpen, setBlPreviewOpen,
+        seabedPreviewOpen, setSeabedPreviewOpen,
+        photographyPreviewOpen, setPhotographyPreviewOpen,
+        photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
+        seabedTemplateType, setSeabedTemplateType,
+        previewRecord, setPreviewRecord,
+        generateAnomalyReportBlob,
+        generateSeabedReport,
+        generateSeabedReportBlob,
+        generateMGIReport,
+        generateMGIReportBlob,
+        generateFMDReport,
+        generateFMDReportBlob,
+        generateSZCIReport,
+        generateSZCIReportBlob,
+        generateUTWTReport,
+        generateUTWTReportBlob,
+        generateInspectionReportByType,
+        generateFullInspectionReport
+    } = useWorkspaceReports(
+        supabase,
+        jobPackId,
+        structureId,
+        headerData,
+        currentRecords,
+        allInspectionTypes
+    );
 
     /**
      * Robust SOW Status Synchronization
@@ -868,16 +957,56 @@ function V10PreviewLayout() {
                 
                 // Keep totals synchronized
                 const { data: sowData } = await supabase.from('u_sow')
-                    .select('total_items, pending_items')
+                    .select('total_items, pending_items, report_numbers')
                     .eq('id', Number(sowId))
                     .maybeSingle();
 
                 if (sowData) {
-                    await supabase.from('u_sow').update({
+                    const currentReports = sowData.report_numbers || [];
+                    const hasReport = currentReports.some((r: any) => r.number === headerData.sowReportNo);
+                    
+                    const updatePayload: any = {
                         total_items: (sowData.total_items || 0) + 1,
                         updated_by: userName,
                         updated_at: new Date().toISOString()
-                    }).eq('id', Number(sowId));
+                    };
+
+                    if (!hasReport && headerData.sowReportNo && headerData.sowReportNo !== 'N/A') {
+                        updatePayload.report_numbers = [
+                            ...currentReports,
+                            { 
+                                number: headerData.sowReportNo, 
+                                job_type: headerData.jobType || 'Unassigned',
+                                date: new Date().toISOString()
+                            }
+                        ];
+                    }
+
+                    await supabase.from('u_sow').update(updatePayload).eq('id', Number(sowId));
+                }
+
+                // Sync to Jobpack Metadata to ensure badges show up in modify screen
+                const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                if (jobPack) {
+                    const metadata = jobPack.metadata || {};
+                    const inspections = metadata.inspections || {};
+                    const structType = headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM';
+                    const key = `${structType}-${structureId}`;
+                    
+                    const currentList = inspections[key] || [];
+                    if (!currentList.some((item: any) => item.code === it.code)) {
+                        inspections[key] = [...currentList, { id: it.id, code: it.code, name: it.name, metadata: it.metadata }];
+                        
+                        // Ensure structure is also in the list
+                        const structures = metadata.structures || [];
+                        if (!structures.some((s: any) => s.id == structureId && s.type === structType)) {
+                            structures.push({ id: Number(structureId), type: structType, title: headerData.platformName });
+                        }
+
+                        await supabase.from('jobpack').update({
+                            metadata: { ...metadata, inspections, structures }
+                        }).eq('id', Number(jobPackId));
+                    }
                 }
             } else {
                 console.error("[SOW Sync] Auto-add SOW failed:", insertError);
@@ -886,7 +1015,7 @@ function V10PreviewLayout() {
 
         // 5. Invalidate query to refresh UI (including sidebar)
         queryClient.invalidateQueries({ queryKey: ['sow-data'] });
-    }, [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData]);
+    }, [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData, jobPackId, structureId]);
 
     useEffect(() => {
         async function fetchHeaderInfo() {
@@ -940,9 +1069,35 @@ function V10PreviewLayout() {
                 } else {
                     sowReportNo = sowIdFull || `SOW-${sowId}`;
                 }
+
+                // Sanitize if it's a filter string from a malformed link
+                if (sowReportNo && sowReportNo.includes('=')) {
+                    sowReportNo = sowReportNo.split('=').pop() || sowReportNo;
+                }
             }
 
-            setHeaderData({ jobpackName, platformName, sowReportNo, jobType: jtParam || "", structureType: detectedStructureType, waterDepth });
+            // Fetch Vessel from Jobpack
+            let vessel = "N/A";
+            const { data: jpMetadata } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            if (jpMetadata?.metadata) {
+                const meta = jpMetadata.metadata as any;
+                if (meta.vessel_history && Array.isArray(meta.vessel_history) && meta.vessel_history.length > 0) {
+                    vessel = meta.vessel_history.map((v: any) => v.name || v).join(", ");
+                } else if (meta.vessel) {
+                    vessel = meta.vessel;
+                }
+            }
+
+            setHeaderData({ 
+                jobpackName, 
+                platformName, 
+                sowReportNo, 
+                jobType: jtParam || "", 
+                structureType: detectedStructureType, 
+                waterDepth,
+                vessel
+            });
+            setGlobalUrlType(detectedStructureType);
         }
         fetchHeaderInfo();
     }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam]);
@@ -2043,7 +2198,12 @@ function V10PreviewLayout() {
             let inspsQuery = supabase.from('insp_records').select(`
                 *,
                 inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (q_id, code),
+                structure_components:component_id!left (
+                    id,
+                    q_id, 
+                    code,
+                    metadata
+                ),
                 insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                 insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                 insp_video_tapes:tape_id!left(tape_no),
@@ -2130,6 +2290,7 @@ function V10PreviewLayout() {
             setIsDeploymentValid(false);
         } finally {
             setSyncLoading(false);
+            setIsReadyForComps(true);
         }
     }, [activeDep, inspMethod, supabase, parseDbDate, structureId, headerData.sowReportNo]);
 
@@ -2646,6 +2807,7 @@ function V10PreviewLayout() {
     useEffect(() => {
         async function fetchDeps() {
             setIsFetchingDeps(true);
+            setIsReadyForComps(false);
             // Clear current states when switching modes
             setDeployments([]);
             setActiveDep(null);
@@ -2682,9 +2844,13 @@ function V10PreviewLayout() {
                 query = query.eq('structure_id', Number(structureId));
             }
 
-            // ADD SOW FILTERING
+            // ADD SOW FILTERING (Flexible match for both Report No and SOW ID)
             if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-                query = query.eq('sow_report_no', headerData.sowReportNo);
+                if (sowIdFull) {
+                    query = query.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.eq."${sowIdFull}"`);
+                } else {
+                    query = query.eq('sow_report_no', headerData.sowReportNo);
+                }
             }
 
             const { data, error } = await query;
@@ -2756,6 +2922,7 @@ function V10PreviewLayout() {
                 console.warn("[fetchDeps] No deployment records found.");
                 setDeployments([]);
                 setActiveDep(null);
+                setIsReadyForComps(true);
             }
             setIsFetchingDeps(false);
         }
@@ -2765,30 +2932,89 @@ function V10PreviewLayout() {
 
     // Replacement: useQuery for SOW and Component Data
     const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
-        queryKey: ['sow-data', structureId, sowId, headerData.sowReportNo, inspMethod],
+        queryKey: ['sow-data', structureId, sowId, inspMethod],
+        enabled: !!(sowId && structureId && !isNaN(Number(structureId)) && isReadyForComps),
         queryFn: async () => {
             if (!sowId || !structureId) return { assigned: [], unassigned: [], all: [] };
 
-            // 1. Fetch ALL components
-            const { data: allCompsData } = await supabase.from('structure_components')
-                .select('*')
-                .eq('structure_id', parseInt(structureId));
+            // 1. Fetch ALL active components for this structure (Paginated to bypass 1000 hard limit)
+            let allCompsDataRaw: any[] = [];
+            let hasMore = true;
+            let offset = 0;
+            const pageSize = 1000;
+            let compErr = null;
 
-            if (!allCompsData) return { assigned: [], unassigned: [], all: [] };
+            while (hasMore) {
+                const { data: pageData, error: pageErr } = await supabase.from('structure_components')
+                    .select('*')
+                    .eq('structure_id', parseInt(structureId))
+                    .not('is_deleted', 'eq', true)
+                    .range(offset, offset + pageSize - 1);
 
-            // 2. Fetch SOW items
-            const { data: sowItems } = await supabase.from('u_sow_items')
-                .select('*, inspection_type:inspection_type_id!left(id, code, name, metadata)')
-                .eq('sow_id', sowId);
+                if (pageErr) {
+                    compErr = pageErr;
+                    break;
+                }
+
+                if (pageData && pageData.length > 0) {
+                    allCompsDataRaw = [...allCompsDataRaw, ...pageData];
+                    offset += pageSize;
+                    if (pageData.length < pageSize) {
+                        hasMore = false;
+                    }
+                } else {
+                    hasMore = false;
+                }
+            }
+
+            if (!allCompsDataRaw || compErr) return { assigned: [], unassigned: [], all: [] };
+
+            // Further filter legacy 'del' flag from metadata
+            const allCompsData = allCompsDataRaw.filter((c: any) => {
+                if (c.is_deleted === true || c.is_deleted === 1) return false;
+                if (c.metadata && (c.metadata.del === 1 || c.metadata.del === '1' || c.metadata.del === true)) return false;
+                return true;
+            });
+
+            // 2. Fetch SOW items scoped strictly to this sowId AND report Number
+            let allSowItems: any[] = [];
+            let hasMoreSow = true;
+            let offsetSow = 0;
+
+            while (hasMoreSow) {
+                let sowItemsQuery = supabase.from('u_sow_items')
+                    .select('*, inspection_type:inspection_type_id!left(id, code, name, metadata)')
+                    .eq('sow_id', sowId)
+                    .range(offsetSow, offsetSow + pageSize - 1);
+                    
+                if (targetReportNumber) {
+                    sowItemsQuery = sowItemsQuery.eq('report_number', targetReportNumber);
+                }
+
+                const { data: pageSowItems, error: sowItemsErr } = await sowItemsQuery;
+
+                if (sowItemsErr) {
+                    console.error("Error fetching SOW items:", sowItemsErr);
+                    break;
+                }
+
+                if (pageSowItems && pageSowItems.length > 0) {
+                    allSowItems = [...allSowItems, ...pageSowItems];
+                    offsetSow += pageSize;
+                    if (pageSowItems.length < pageSize) {
+                        hasMoreSow = false;
+                    }
+                } else {
+                    hasMoreSow = false;
+                }
+            }
+
+            const sowItems = allSowItems;
 
             // 2.5 Fetch actual records for true dynamic status correction
             let recsQuery = supabase.from('insp_records')
                 .select('component_id, inspection_type_code, status, cr_date')
                 .eq('structure_id', Number(structureId));
-            
-            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-                recsQuery = recsQuery.eq('sow_report_no', headerData.sowReportNo);
-            }
 
             const { data: actualRecords } = await recsQuery.order('cr_date', { ascending: false });
 
@@ -2798,7 +3024,7 @@ function V10PreviewLayout() {
                 actualRecords.forEach((r: any) => {
                     if (!r.component_id || !r.inspection_type_code) return;
                     const key = `${r.component_id}_${r.inspection_type_code}`;
-                    // Array is newest first, so first encouter sets the final state
+                    // Array is newest first, so first encounter sets the final state
                     if (!trueStatusMap.has(key)) {
                         trueStatusMap.set(key, r.status?.toLowerCase() === 'incomplete' ? 'incomplete' : 'completed');
                     }
@@ -2809,21 +3035,18 @@ function V10PreviewLayout() {
 
             if (sowItems) {
                 sowItems.forEach(item => {
-                    const md = item.inspection_type?.metadata || {};
-                    const isRov = md.rov === 1 || md.rov === "1" || md.rov === true || md.job_type?.includes('ROV');
-                    const isDiving = md.diving === 1 || md.diving === "1" || md.diving === true || md.job_type?.includes('DIVING');
-
-                    let isCompatible = true;
-                    if (inspMethod === 'DIVING') isCompatible = isDiving;
-                    if (inspMethod === 'ROV') isCompatible = isRov;
-
-                    if (!isCompatible) return;
-
-                    const matchingComp = (allCompsData || []).find((c: any) =>
-                        (item.component_qid && c.q_id === item.component_qid) ||
-                        (item.component_id && c.id === item.component_id) ||
-                        (item.component_type && c.name === item.component_type)
-                    );
+                    // Match component by qid, id, or type — no method filter here
+                    // (ROV/DIVING filter applies to task display, not component scope)
+                    let matchingComp = null;
+                    if (item.component_id) {
+                        matchingComp = (allCompsData || []).find((c: any) => c.id === item.component_id);
+                    }
+                    if (!matchingComp && item.component_qid) {
+                        matchingComp = (allCompsData || []).find((c: any) => c.q_id === item.component_qid);
+                    }
+                    if (!matchingComp && item.component_type && !item.component_qid && !item.component_id) {
+                        matchingComp = (allCompsData || []).find((c: any) => c.code === item.component_type || c.name === item.component_type);
+                    }
 
                     if (matchingComp) {
                         if (!assignedCompsMap.has(matchingComp.id)) {
@@ -2836,6 +3059,8 @@ function V10PreviewLayout() {
                             const realStatus = trueStatusMap.get(dynKey1) || trueStatusMap.get(dynKey2) || 'pending';
                             assignedCompsMap.get(matchingComp.id)?.push({ code: taskToLog, status: realStatus });
                         }
+                    } else {
+                        console.log(`[CompQuery] No match for SOW item: qid=${item.component_qid} cid=${item.component_id} ctype=${item.component_type}`);
                     }
                 });
             }
@@ -2890,7 +3115,7 @@ function V10PreviewLayout() {
             const combined = [...assigned, ...unassigned];
             return { assigned, unassigned, all: combined };
         },
-        staleTime: 10 * 60 * 1000, // 10 minutes cache to avoid huge page loads
+        staleTime: 0,             // Always refetch when structure/sow changes
         refetchOnWindowFocus: false,
     });
 
@@ -3283,7 +3508,7 @@ function V10PreviewLayout() {
 
     useEffect(() => {
         const runCheck = async () => {
-            if (isManualOverride || !criteriaRules.length || !isUserInteraction) return;
+            if (isManualOverride || !criteriaRules.length || !isUserInteraction || editingRecordId) return;
 
             const hasAnomaly = findingType === 'Anomaly';
             let bestMatchedRule: any = null;
@@ -3356,7 +3581,7 @@ function V10PreviewLayout() {
         };
 
         runCheck();
-    }, [debouncedProps, selectedComp, activeSpec, criteriaRules, findingType, anomalyData.defectCode, lastAutoMatchedRuleId, isManualOverride]);
+    }, [debouncedProps, selectedComp, activeSpec, criteriaRules, findingType, anomalyData.defectCode, lastAutoMatchedRuleId, isManualOverride, editingRecordId]);
 
     const handleCommitRecord = async () => {
         if (!selectedComp || !activeSpec || !activeDep?.id) return;
@@ -3994,392 +4219,6 @@ function V10PreviewLayout() {
         setPreviewOpen(true);
     };
 
-    const generateAnomalyReportBlob = async (printFriendly?: boolean) => {
-        if (!previewRecord) return;
-        const record = previewRecord;
-        try {
-            const settings = await getReportHeaderData();
-            const config = {
-                reportNoPrefix: "ANOMALY",
-                reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                reviewedBy: { name: "", date: "" },
-                approvedBy: { name: "", date: "" },
-                watermark: { enabled: false, text: "", transparency: 0.1 },
-                showContractorLogo: true,
-                showPageNumbers: true,
-                inspectionId: record.insp_id,
-                returnBlob: true,
-                printFriendly: printFriendly || false
-            };
-            return await generateDefectAnomalyReport(
-                { id: jobPackId || "0", name: headerData.jobpackName },
-                { id: structureId || "0", str_name: headerData.platformName },
-                headerData.sowReportNo || "",
-                { company_name: settings.companyName, logo_url: settings.companyLogo },
-                config
-            );
-        } catch (error) {
-            console.error(error);
-            toast.error("Failed to generate report");
-            return;
-        }
-    };
-
-    const generateSeabedReport = async (templateId: string) => {
-        const filterMap: Record<string, string> = {
-            "seabed-survey-debris": "Debris",
-            "seabed-survey-gas": "Gas Seepage",
-            "seabed-survey-crater": "Crater"
-        };
-        
-        const itemTypeFilter = filterMap[templateId] || "Debris";
-        const recordsToPrint = currentRecords.filter(r => 
-            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && 
-            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
-        );
-
-        if (recordsToPrint.length === 0) {
-            toast.error(`No ${itemTypeFilter} records found for Seabed Survey.`);
-            return;
-        }
-
-        setSeabedTemplateType(templateId);
-        setSeabedPreviewOpen(true);
-    };
-
-    const generateSeabedReportBlob = async (templateId: string, printFriendly?: boolean): Promise<Blob | void> => {
-        const filterMap: Record<string, string> = {
-            "seabed-survey-debris": "Debris",
-            "seabed-survey-gas": "Gas Seepage",
-            "seabed-survey-crater": "Crater"
-        };
-        
-        const itemTypeFilter = filterMap[templateId] || "Debris";
-        const recordsToPrint = currentRecords.filter(r => 
-            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && 
-            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
-        );
-
-        if (recordsToPrint.length === 0) return;
-
-        const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('*').eq('id', Number(jobPackId)).single();
-        const { data: structure } = await supabase.from('structure').select('*').eq('str_id', Number(structureId)).single();
-
-        if (!jobPack || !structure) return;
-
-        return await generateSeabedSurveyReport(
-            { ...jobPack, id: jobPack.id },
-            { ...structure, id: structure.str_id },
-            headerData.sowReportNo,
-            { company_name: settings.companyName, logo_url: settings.companyLogo },
-            {
-                reportNoPrefix: "SEABED",
-                reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                showContractorLogo: true,
-                showPageNumbers: true,
-                printFriendly: printFriendly || false,
-                returnBlob: true
-            },
-            itemTypeFilter
-        ) as Blob;
-    };
-
-    const generateMGIReport = async () => {
-        const mgiRecords = currentRecords.filter(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI');
-        if (mgiRecords.length === 0) {
-            toast.error("No MGI records found to generate report");
-            return;
-        }
-        setMPreviewOpen(true);
-    };
-
-    const generateMGIReportBlob = async (): Promise<Blob | void> => {
-        const mgiRecords = currentRecords.filter(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI');
-        if (mgiRecords.length === 0) return;
-
-        const settings = await getReportHeaderData();
-        
-        let profile = null;
-        const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
-        if (profileId) {
-            const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
-            profile = data;
-        }
-
-        // Fetch Contractor Logo URL for the report header
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
-        let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
-        }
-
-        return (await generateROVMGIReport(
-            mgiRecords,
-            profile,
-            { 
-                ...headerData, 
-                contractorLogoUrl,
-                vessel: jobPack?.metadata?.vessel || 'N/A'
-            },
-            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-            {
-                jobPackId: Number(jobPackId),
-                structureId: Number(structureId),
-                sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                returnBlob: true
-            }
-        )) as Blob;
-    };
-
-    const generateFMDReport = async () => {
-        const fmdRecords = currentRecords.filter(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD');
-        if (fmdRecords.length === 0) {
-            toast.error("No FMD records found to generate report");
-            return;
-        }
-        setFmdPreviewOpen(true);
-    };
-
-    const generateFMDReportBlob = async (): Promise<Blob | void> => {
-        const fmdRecords = currentRecords.filter(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD');
-        if (fmdRecords.length === 0) return;
-
-        const settings = await getReportHeaderData();
-
-        // Fetch Contractor Logo URL and Vessel for the report header
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
-        let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
-        }
-
-        return (await generateROVFMDReport(
-            fmdRecords,
-            { 
-                ...headerData, 
-                contractorLogoUrl,
-                vessel: jobPack?.metadata?.vessel || 'N/A'
-            },
-            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-            {
-                jobPackId: Number(jobPackId),
-                structureId: Number(structureId),
-                sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                returnBlob: true
-            }
-        )) as Blob;
-    };
-
-    const generateSZCIReport = async () => {
-        const szciRecords = currentRecords.filter(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI');
-        if (szciRecords.length === 0) {
-            toast.error("No Splash Zone records found to generate report");
-            return;
-        }
-        setSzciPreviewOpen(true);
-    };
-
-    const generateSZCIReportBlob = async (): Promise<Blob | void> => {
-        const szciRecords = currentRecords.filter(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI');
-        if (szciRecords.length === 0) return;
-
-        const settings = await getReportHeaderData();
-        
-        // Fetch Contractor Logo URL
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
-        let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
-        }
-
-        return (await generateROVSZCIReport(
-            szciRecords,
-            { 
-                ...headerData, 
-                contractorLogoUrl,
-                vessel: jobPack?.metadata?.vessel || 'N/A'
-            },
-            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-            {
-                jobPackId: Number(jobPackId),
-                structureId: Number(structureId),
-                sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                returnBlob: true
-            }
-        )) as Blob;
-    };
-
-    const generateUTWTReport = async () => {
-        const utwtRecords = currentRecords.filter(r => r.inspection_type_code === 'RUTWT' || r.inspection_type?.code === 'RUTWT');
-        if (utwtRecords.length === 0) {
-            toast.error("No UTWT records found to generate report");
-            return;
-        }
-        setUtwtPreviewOpen(true);
-    };
-
-    const generateUTWTReportBlob = async (): Promise<Blob | void> => {
-        const utwtRecords = currentRecords.filter(r => r.inspection_type_code === 'RUTWT' || r.inspection_type?.code === 'RUTWT');
-        if (utwtRecords.length === 0) return;
-
-        const settings = await getReportHeaderData();
-        
-        // Fetch Contractor Logo URL
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
-        let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
-        }
-
-        return (await generateROVUTWTReport(
-            utwtRecords,
-            { 
-                ...headerData, 
-                contractorLogoUrl,
-                vessel: jobPack?.metadata?.vessel || 'N/A'
-            },
-            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-            {
-                jobPackId: Number(jobPackId),
-                structureId: Number(structureId),
-                sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                returnBlob: true
-            }
-        )) as Blob;
-    };
-
-    const generateInspectionReportByType = async (typeId: number) => {
-        const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
-        if (recordsToPrint.length === 0) {
-            toast.error("No records found for this inspection type");
-            return;
-        }
-
-        const type = allInspectionTypes.find(t => t.id === typeId);
-        const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac').eq('id', Number(jobPackId)).single();
-        let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
-        }
-
-        await generateMultiInspectionReport(
-            recordsToPrint.map(r => r.insp_id),
-            { company_name: settings.companyName, logo_url: settings.companyLogo },
-            {
-                reportNoPrefix: type?.code || "REPORT",
-                reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                reviewedBy: { name: "", date: "" },
-                approvedBy: { name: "", date: "" },
-                watermark: { enabled: false, text: "", transparency: 0.1 },
-                showContractorLogo: true,
-                contractorLogoUrl,
-                showPageNumbers: true,
-                printFriendly: false
-            }
-        );
-    };
-
-    const generateFullInspectionReport = async () => {
-        if (currentRecords.length === 0) {
-            toast.error("No records captured to generate report");
-            return;
-        }
-
-        const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('contrac').eq('id', Number(jobPackId)).single();
-        let contractorLogoUrl = '';
-        if (jobPack?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
-        }
-
-        await generateMultiInspectionReport(
-            currentRecords.map(r => r.insp_id),
-            { company_name: settings.companyName, logo_url: settings.companyLogo },
-            {
-                reportNoPrefix: "FULL_INSPECTION",
-                reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                reviewedBy: { name: "", date: "" },
-                approvedBy: { name: "", date: "" },
-                watermark: { enabled: false, text: "", transparency: 0.1 },
-                showContractorLogo: true,
-                contractorLogoUrl,
-                showPageNumbers: true,
-                printFriendly: false
-            }
-        );
-    };
-
-    const generateRSCORReport = async () => {
-        const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
-        if (scourRecords.length === 0) {
-            toast.error("No Scour Survey records found to generate report");
-            return;
-        }
-        setRscorPreviewOpen(true);
-    };
-
-    const generateRRISIReport = async () => {
-        const riserRecords = currentRecords.filter(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI');
-        if (riserRecords.length === 0) {
-            toast.error("No Riser Inspection records found to generate report");
-            return;
-        }
-        setRrisiPreviewOpen(true);
-    };
-    
-    const generateAnodeReport = async () => {
-        const anodeRecords = currentRecords.filter(r => {
-            const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
-            const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
-                         (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
-            return isRGVI && isAN;
-        });
-        if (anodeRecords.length === 0) {
-            toast.error("No Anode Inspection records (RGVI + component_type: AN) found to generate report");
-            return;
-        }
-        setAnodePreviewOpen(true);
-    };
-
-    const generateCPReport = async () => {
-        const cpRecords = currentRecords.filter(r => {
-            const d = r.inspection_data || {};
-            return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
-        });
-        if (cpRecords.length === 0) {
-            toast.error("No CP readings found in current records");
-            return;
-        }
-        setCpPreviewOpen(true);
-    };
-
-    const generateRGVIReport = async () => {
-        const rgviRecords = currentRecords.filter(r =>
-            (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI'
-        );
-        if (rgviRecords.length === 0) {
-            toast.error("No RGVI records found in current records");
-            return;
-        }
-        setRgviPreviewOpen(true);
-    };
-
     const handleAddNewInspectionSpec = async (typeIdStr: string) => {
         if (!typeIdStr) return;
 
@@ -4440,48 +4279,215 @@ function V10PreviewLayout() {
             return;
         }
 
-        const { error } = await supabase.from('u_sow_items').insert({
-            sow_id: targetSowId,
-            component_id: selectedComp.id,
-            component_qid: selectedComp.name || selectedComp.q_id || selectedComp.raw?.name || null,
-            component_type: selectedComp.raw?.type || null,
-            inspection_type_id: it.id,
-            status: 'pending',
-            report_number: sowReportNo,
-            inspection_code: it.code,
-            inspection_name: it.name,
-            elevation_required: false,
-            created_by: userId
-        });
+        // Check if combination already exists
+        const { data: existingItem } = await supabase.from('u_sow_items')
+            .select('id')
+            .eq('sow_id', targetSowId)
+            .eq('component_id', selectedComp.id)
+            .eq('inspection_type_id', it.id)
+            .eq('report_number', sowReportNo)
+            .maybeSingle();
+
+        let error = null;
+        if (!existingItem) {
+            const { error: insertError } = await supabase.from('u_sow_items').insert({
+                sow_id: targetSowId,
+                component_id: selectedComp.id,
+                component_qid: selectedComp.name || selectedComp.q_id || selectedComp.raw?.name || null,
+                component_type: selectedComp.raw?.type || null,
+                inspection_type_id: it.id,
+                status: 'pending',
+                report_number: sowReportNo,
+                inspection_code: it.code,
+                inspection_name: it.name,
+                elevation_required: false,
+                created_by: userId
+            });
+            error = insertError;
+        }
+
+        if (!error && !existingItem) {
+            // Keep totals synchronized (only for NEW items)
+            const { data: sowData } = await supabase.from('u_sow')
+                .select('total_items, pending_items, report_numbers')
+                .eq('id', targetSowId)
+                .maybeSingle();
+
+            if (sowData) {
+                const currentReports = sowData.report_numbers || [];
+                const hasReport = currentReports.some((r: any) => r.number === sowReportNo);
+
+                const updatePayload: any = {
+                    total_items: (sowData.total_items || 0) + 1,
+                    pending_items: (sowData.pending_items || 0) + 1,
+                    updated_by: userId,
+                    updated_at: new Date().toISOString()
+                };
+
+                if (!hasReport && sowReportNo && sowReportNo !== 'N/A') {
+                    updatePayload.report_numbers = [
+                        ...currentReports,
+                        { 
+                            number: sowReportNo, 
+                            job_type: headerData.jobType || 'Unassigned',
+                            date: new Date().toISOString()
+                        }
+                    ];
+                }
+
+                await supabase.from('u_sow').update(updatePayload).eq('id', targetSowId);
+            }
+
+            // Sync to Jobpack Metadata to ensure badges show up in modify screen
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            if (jobPack) {
+                const metadata = jobPack.metadata || {};
+                const inspections = metadata.inspections || {};
+                const structType = headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM';
+                const key = `${structType}-${structureId}`;
+                
+                const currentList = inspections[key] || [];
+                if (!currentList.some((item: any) => item.code === it.code)) {
+                    inspections[key] = [...currentList, { id: it.id, code: it.code, name: it.name, metadata: it.metadata }];
+                    
+                    // Ensure structure is also in the list
+                    const structures = metadata.structures || [];
+                    if (!structures.some((s: any) => s.id == structureId && s.type === structType)) {
+                        structures.push({ id: Number(structureId), type: structType, title: headerData.platformName });
+                    }
+
+                    await supabase.from('jobpack').update({
+                        metadata: { ...metadata, inspections, structures }
+                    }).eq('id', Number(jobPackId));
+                }
+            }
+        }
 
         if (!error) {
-            // "also refer the u_sow table" -> keep totals synchronized
+            const specName = it.code || it.name;
+            const currentTasks = selectedComp.tasks || [];
+            
+            if (currentTasks.includes(specName)) {
+                toast.info(`The inspection type ${it.name} is already in the UI scope.`);
+                return;
+            }
+
+            const newTaskStatus = { code: specName, status: 'pending' };
+            const newTasks = [...currentTasks, specName];
+            const newStatuses = [...(selectedComp.taskStatuses || []), newTaskStatus];
+
+            // Optimistically update the main component lists (SOW vs Non-SOW)
+            const updatedComp = { ...selectedComp, tasks: newTasks, taskStatuses: newStatuses };
+            
+            setComponentsSow(prev => {
+                const isAlreadyInSow = prev.some(comp => comp.id === selectedComp.id);
+                if (isAlreadyInSow) {
+                    return prev.map(comp => comp.id === selectedComp.id ? updatedComp : comp);
+                } else {
+                    return [...prev, updatedComp];
+                }
+            });
+
+            setComponentsNonSow(prev => prev.filter(comp => comp.id !== selectedComp.id));
+            setAllComps(prev => prev.map(comp => comp.id === selectedComp.id ? updatedComp : comp));
+            setSelectedComp(updatedComp);
+
+            toast.success(`Successfully added ${it.name} to scope!`);
+            
+            // CRITICAL: Refresh the component list to show the new scope
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+        } else {
+            console.error("Failed to insert u_sow_item:", error.message, error.details, error.hint, error);
+            toast.error("Failed to add inspection type: " + (error.message || error.details || JSON.stringify(error)));
+        }
+    };
+
+    const handleDeleteInspectionSpec = async (specCode: string) => {
+        if (!specCode || !selectedComp) return;
+
+        try {
+            // 1. Database-level check: ensure no records exist for this component and inspection type across ALL scopes
+            const { data: existingRecords, error: recordError } = await supabase
+                .from('insp_records')
+                .select('insp_id')
+                .eq('component_id', Number(selectedComp.id))
+                .or(`inspection_type_code.eq.${specCode},inspection_type_code.eq.${specCode.toUpperCase()}`)
+                .limit(1);
+
+            if (recordError) {
+                toast.error("Error verifying inspection data integrity.");
+                return;
+            }
+
+            if (existingRecords && existingRecords.length > 0) {
+                toast.error(`Cannot delete ${specCode} because inspection data exists.`);
+                return;
+            }
+
+            // 2. Resolve active SOW entry
+            let targetSowId = sowId && !isNaN(parseInt(sowId)) ? parseInt(sowId) : null;
+            if (!targetSowId && jobPackId && structureId) {
+                const { data: existingSow } = await supabase.from('u_sow')
+                    .select('id')
+                    .eq('jobpack_id', Number(jobPackId))
+                    .eq('structure_id', Number(structureId))
+                    .limit(1)
+                    .maybeSingle();
+
+                if (existingSow) targetSowId = existingSow.id;
+            }
+
+            if (!targetSowId) {
+                toast.error("Error determining active SOW.");
+                return;
+            }
+
+            // 3. Delete from u_sow_items
+            const { error: deleteError } = await supabase
+                .from('u_sow_items')
+                .delete()
+                .eq('sow_id', targetSowId)
+                .eq('component_id', selectedComp.id)
+                .or(`inspection_code.eq.${specCode},inspection_code.eq.${specCode.toUpperCase()}`);
+
+            if (deleteError) {
+                console.error("Failed to delete u_sow_item:", deleteError);
+                toast.error("Failed to delete from SOW items.");
+                return;
+            }
+
+            // 4. Decrement u_sow counters (total_items, pending_items)
             const { data: sowData } = await supabase.from('u_sow')
                 .select('total_items, pending_items')
                 .eq('id', targetSowId)
                 .maybeSingle();
 
             if (sowData) {
-                await supabase.from('u_sow').update({
-                    total_items: (sowData.total_items || 0) + 1,
-                    pending_items: (sowData.pending_items || 0) + 1,
-                    updated_by: userId,
+                const updatePayload: any = {
+                    total_items: Math.max(0, (sowData.total_items || 0) - 1),
+                    pending_items: Math.max(0, (sowData.pending_items || 0) - 1),
+                    updated_by: (await supabase.auth.getUser()).data.user?.id || 'system',
                     updated_at: new Date().toISOString()
-                }).eq('id', targetSowId);
+                };
+                await supabase.from('u_sow').update(updatePayload).eq('id', targetSowId);
             }
 
-            const newTasks = [...(selectedComp.tasks || []), specName];
-            setSelectedComp({ ...selectedComp, tasks: newTasks });
+            // 5. Update local component state
+            const newTasks = (selectedComp.tasks || []).filter((t: string) => t !== specCode);
+            const newStatuses = (selectedComp.taskStatuses || []).filter((ts: any) => ts.code !== specCode);
 
-            // Optimistically update existing task lists immediately if possible
-            const newTaskStatus = { code: specName, status: 'pending' };
-            const newStatuses = [...(selectedComp.taskStatuses || []), newTaskStatus];
-            setSelectedComp((prev: any) => ({ ...prev, taskStatuses: newStatuses, tasks: newTasks }));
+            const updatedComp = { ...selectedComp, tasks: newTasks, taskStatuses: newStatuses };
+            
+            setComponentsSow(prev => prev.map(comp => comp.id === selectedComp.id ? updatedComp : comp));
+            setAllComps(prev => prev.map(comp => comp.id === selectedComp.id ? updatedComp : comp));
+            setSelectedComp(updatedComp);
 
-            toast.success(`Successfully added ${it.name} to scope!`);
-        } else {
-            console.error("Failed to insert u_sow_item:", error);
-            toast.error("Failed to add inspection type: " + (error.message || "Unknown anomaly"));
+            toast.success(`Successfully removed ${specCode} from scope.`);
+            queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+
+        } catch (err) {
+            console.error("Error executing scope deletion:", err);
+            toast.error("An error occurred while deleting the inspection type.");
         }
     };
 
@@ -4524,45 +4530,227 @@ function V10PreviewLayout() {
 
     return (
         <div className="flex flex-col h-[calc(100vh)] bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 overflow-hidden">
+            {/* HELPER FOR REPORT GENERATION (MATCHING REPORT WIZARD) */}
+            {(() => {
+                const resolveVessel = (jobPack: any) => {
+                    if (!jobPack?.metadata) return "N/A";
+                    const history = jobPack.metadata.vessel_history;
+                    if (Array.isArray(history) && history.length > 0) {
+                        return history.map((v: any) => v.name || v).join(", ");
+                    }
+                    return jobPack.metadata.vessel || "N/A";
+                };
+
+                return null;
+            })()}
             <ReportPreviewDialog 
                 open={rrisiPreviewOpen} 
                 onOpenChange={setRrisiPreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
-                    const riserRecords = currentRecords.filter(r => r.inspection_type_code === 'RRISI' || r.inspection_type?.code === 'RRISI');
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const riserRecords = (allRecords || []).filter(r => 
+                        ((r.inspection_type?.code || '').toUpperCase() === 'RRISI' || (r.inspection_type?.code || '').toUpperCase() === 'RSI') && 
+                        (r.structure_components?.q_id || '').toUpperCase().startsWith('R')
+                    );
+                    
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.lib_path || '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
                     }
 
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
                     return await generateROVRRISIReport(
-                        riserRecords,
+                        riserRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                         { 
                             ...headerData, 
                             contractorLogoUrl,
-                            vessel: jobPack?.metadata?.vessel || 'N/A'
+                            vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
                             sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                            preparedBy: { name: "Inspector", date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
-                            printFriendly: isPrintFriendly
+                            printFriendly: isPrintFriendly,
+                            reportType: 'R',
+                            showSignatures
                         }
                     );
                 }}
-                title="ROV Riser Inspection Report (RRISI)"
-                fileName={`ROV_Riser_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                title="ROV Riser Survey Report"
+                fileName={`ROV_Riser_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={jtisiPreviewOpen} 
+                onOpenChange={setJtisiPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const jtisiRecords = (allRecords || []).filter(r => 
+                        ((r.inspection_type?.code || '').toUpperCase() === 'RRISI' || (r.inspection_type?.code || '').toUpperCase() === 'RSI') && 
+                        (r.structure_components?.q_id || '').toUpperCase().startsWith('J')
+                    );
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
+                    return await generateROVRRISIReport(
+                        jtisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        { 
+                            ...headerData, 
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: "Inspector", date: format(new Date(), 'dd MMM yyyy') },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            reportType: 'J',
+                            showSignatures
+                        }
+                    );
+                }}
+                title="ROV J-Tube Inspection Report"
+                fileName={`ROV_JTube_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={itisiPreviewOpen} 
+                onOpenChange={setItisiPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const itisiRecords = (allRecords || []).filter(r => 
+                        ((r.inspection_type?.code || '').toUpperCase() === 'RRISI' || (r.inspection_type?.code || '').toUpperCase() === 'RSI') && 
+                        (r.structure_components?.q_id || '').toUpperCase().startsWith('I')
+                    );
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
+                    return await generateROVRRISIReport(
+                        itisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        { 
+                            ...headerData, 
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: "Inspector", date: format(new Date(), 'dd MMM yyyy') },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            reportType: 'I',
+                            showSignatures
+                        }
+                    );
+                }}
+                title="ROV I-Tube Inspection Report"
+                fileName={`ROV_ITube_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             <ReportPreviewDialog 
                 open={anodePreviewOpen} 
                 onOpenChange={setAnodePreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     const anodeRecords = currentRecords.filter(r => {
                         const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
                         const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
@@ -4570,16 +4758,16 @@ function V10PreviewLayout() {
                         return isRGVI && isAN;
                     });
                     const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
+                    if (jobPack?.metadata?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
                         contractorLogoUrl = contrData?.lib_path || '';
                     }
 
                     const headerDataObj = {
                         ...headerData,
-                        vessel: jobPack?.metadata?.vessel || 'N/A',
+                        vessel: headerData.vessel,
                         contractorLogoUrl
                     };
 
@@ -4597,11 +4785,409 @@ function V10PreviewLayout() {
             <ReportPreviewDialog 
                 open={seabedPreviewOpen} 
                 onOpenChange={setSeabedPreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
+                generateReport={async (isPrintFriendly, showSignatures) => {
                     return await generateSeabedReportBlob(seabedTemplateType, isPrintFriendly);
                 }}
                 title={`Seabed Survey Report - ${seabedTemplateType === 'seabed-survey-debris' ? 'Debris' : seabedTemplateType === 'seabed-survey-gas' ? 'Gas Seepage' : 'Crater'}`}
                 fileName={`Seabed_Survey_${seabedTemplateType.replace('seabed-survey-', '')}_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={rcasnPreviewOpen} 
+                onOpenChange={setRcasnPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const rcasnRecords = (allRecords || []).filter(r => {
+                        const sowMatches = !headerData.sowReportNo || 
+                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+                        
+                        // For Caisson report, we fetch all records for this SOW/Structure 
+                        // and let the generator's hierarchy logic group them by CS.
+                        return sowMatches;
+                    });
+
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: headerData.vessel,
+                        contractorLogoUrl
+                    };
+                    return await generateROVCasnReport(
+                        rcasnRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
+                    );
+                }}
+                title="ROV Caisson Survey Report"
+                fileName={`ROV_Caisson_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={rcondPreviewOpen} 
+                onOpenChange={setRcondPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_video_tapes:tape_id!left(tape_no),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const rcondRecords = (allRecords || []).filter(r => {
+                        const sowMatches = !headerData.sowReportNo || 
+                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+                        
+                        // For Conductor report, we fetch all records for this SOW/Structure 
+                        // and let the generator's hierarchy logic group them by CD.
+                        return sowMatches;
+                    });
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: headerData.vessel,
+                        contractorLogoUrl
+                    };
+                    return await generateROVCondReport(
+                        rcondRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
+                    );
+                }}
+                title="ROV Conductor Survey Report"
+                fileName={`ROV_Conductor_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={rcasnSketchPreviewOpen} 
+                onOpenChange={setRcasnSketchPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    // Separate fetch for caisson records
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id(id, code, name),
+                            structure_components:component_id(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const caissonRecords = (allRecords || []).filter(r => {
+                        const sowMatches = !headerData.sowReportNo || 
+                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+                        return sowMatches;
+                    });
+
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
+                    return await generateROVCasnSketchReport(
+                        caissonRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showSignatures
+                        }
+                    );
+                }}
+                title="ROV Caisson Survey (Sketch) Report"
+                fileName={`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={blPreviewOpen} 
+                onOpenChange={setBlPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_video_tapes:tape_id!left(tape_no),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const blRecords = (allRecords || []).filter(r => {
+                        const sowMatches = !headerData.sowReportNo || 
+                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+                        return sowMatches;
+                    });
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: headerData.vessel,
+                        contractorLogoUrl
+                    };
+                    return await generateROVBoatlandingReport(
+                        blRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
+                    );
+                }}
+                title="ROV Boatlanding Survey Report"
+                fileName={`ROV_Boatlanding_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={photographyPreviewOpen} 
+                onOpenChange={setPhotographyPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: records } = await supabase
+                        .from('insp_records')
+                        .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
+                        .eq('structure_id', Number(structureId))
+                        .eq('jobpack_id', Number(jobPackId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    if (!records || records.length === 0) {
+                        return await generateROVPhotographyReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
+                    }
+
+                    const recordIds = records.map(r => r.insp_id);
+
+                    const { data: attachments } = await supabase
+                        .from('attachment')
+                        .select('*')
+                        .in('source_id', recordIds)
+                        .ilike('source_type', 'inspection')
+                        .order('created_at', { ascending: true });
+
+                    const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
+                        const record = records?.find(r => r.insp_id === a.source_id);
+                        return {
+                            ...a,
+                            anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
+                        };
+                    });
+
+                    if (photoData.length === 0) {
+                        return await generateROVPhotographyReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
+                    }
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const resolveVessel = (jp: any) => {
+                        if (!jp?.metadata) return "N/A";
+                        const history = jp.metadata.vessel_history;
+                        if (Array.isArray(history) && history.length > 0) {
+                            return history.map((v: any) => v.name || v).join(", ");
+                        }
+                        return jp.metadata.vessel || "N/A";
+                    };
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: headerData.vessel,
+                        contractorLogoUrl
+                    };
+                    return await generateROVPhotographyReport(
+                        photoData,
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
+                    );
+                }}
+                title="ROV Photography Report"
+                fileName={`ROV_Photography_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog 
+                open={photographyLogPreviewOpen} 
+                onOpenChange={setPhotographyLogPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: records } = await supabase
+                        .from('insp_records')
+                        .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
+                        .eq('structure_id', Number(structureId))
+                        .eq('jobpack_id', Number(jobPackId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    if (!records || records.length === 0) {
+                        return await generateROVPhotographyLogReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
+                    }
+
+                    const recordIds = records.map(r => r.insp_id);
+
+                    const { data: attachments } = await supabase
+                        .from('attachment')
+                        .select('*')
+                        .in('source_id', recordIds)
+                        .ilike('source_type', 'inspection')
+                        .order('created_at', { ascending: true });
+
+                    const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
+                        const record = records?.find(r => r.insp_id === a.source_id);
+                        return {
+                            ...a,
+                            anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
+                        };
+                    });
+
+                    if (photoData.length === 0) {
+                        return await generateROVPhotographyLogReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
+                    }
+                    
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const headerDataObj = {
+                        ...headerData,
+                        vessel: headerData.vessel,
+                        contractorLogoUrl
+                    };
+                    return await generateROVPhotographyLogReport(
+                        photoData,
+                        headerDataObj,
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
+                    );
+                }}
+                title="ROV Photography Log Report"
+                fileName={`ROV_Photography_Log_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             <InspectionHeader 
@@ -4618,11 +5204,20 @@ function V10PreviewLayout() {
                 generateFMDReport={generateFMDReport}
                 generateSZCIReport={generateSZCIReport}
                 generateUTWTReport={generateUTWTReport}
-                generateRSCORReport={generateRSCORReport}
-                generateRRISIReport={generateRRISIReport}
-                generateAnodeReport={generateAnodeReport}
-                generateCPReport={generateCPReport}
-                generateRGVIReport={generateRGVIReport}
+                generateRSCORReport={() => setRscorPreviewOpen(true)}
+                generateRRISIReport={() => setRrisiPreviewOpen(true)}
+                generateJTISIReport={() => setJtisiPreviewOpen(true)}
+                generateITISIReport={() => setItisiPreviewOpen(true)}
+                generateAnodeReport={() => setAnodePreviewOpen(true)}
+                generateCPReport={() => setCpPreviewOpen(true)}
+                generateRGVIReport={() => setRgviPreviewOpen(true)}
+                generateRCASNReport={() => setRcasnPreviewOpen(true)}
+                generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
+                generateRCONDReport={() => setRcondPreviewOpen(true)}
+                generateRCONDSketchReport={() => setRcondSketchPreviewOpen(true)}
+                generateBLReport={() => setBlPreviewOpen(true)}
+                generatePhotographyReport={() => setPhotographyPreviewOpen(true)}
+                generatePhotographyLogReport={() => setPhotographyLogPreviewOpen(true)}
                 generateFullInspectionReport={generateFullInspectionReport}
                 jobPackId={jobPackId}
                 structureId={structureId}
@@ -4721,7 +5316,33 @@ function V10PreviewLayout() {
                     </DropdownMenu>
                 )}
 
+                {inspMethod === 'DIVING' && activeDep && (
+                    <Button
+                        onClick={() => setCalibrationDialogOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 h-7"
+                    >
+                        <Wrench className="h-3.5 w-3.5" />
+                        Calibration
+                    </Button>
+                )}
+
+                {inspMethod === 'ROV' && activeDep && (
+                    <Button
+                        onClick={() => setRovCalibrationDialogOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 h-7"
+                    >
+                        <Wrench className="h-3.5 w-3.5" />
+                        Calibration
+                    </Button>
+                )}
+
+
                 {/* Inspection Readiness Traffic Light */}
+
                 {(() => {
                     const isDepActive = !!activeDep && activeDep.raw?.status !== 'COMPLETED';
                     const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
@@ -5067,7 +5688,25 @@ function V10PreviewLayout() {
                                         <div className="w-full max-w-2xl flex flex-col items-center">
                                             <div className="text-[11px] font-bold uppercase text-slate-400 tracking-widest mb-4">Select Scope to Inspect ({selectedComp.name})</div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
-                                                {selectedComp.tasks && selectedComp.tasks.map((t: string) => {
+                                                {selectedComp.tasks && selectedComp.tasks.filter((t: string) => {
+                                                    const it = (allInspectionTypes || []).find((type: any) => type.code === t || type.name === t);
+                                                    const localIt = (inspectionRegistry as any).inspectionTypes?.find((type: any) => type.code === t || type.name === t);
+                                                    
+                                                    const methods = it?.default_properties?.methods || it?.methods || localIt?.methods || [];
+                                                    const isRov = methods.includes("ROV") || it?.metadata?.rov === 1 || it?.metadata?.rov === "1" || it?.metadata?.rov === true || (it?.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                    const isDiving = methods.includes("DIVING") || it?.metadata?.diving === 1 || it?.metadata?.diving === "1" || it?.metadata?.diving === true || (it?.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+
+                                                    if (!it && !localIt) {
+                                                        const isCodeRov = String(t).startsWith("R") || String(t).startsWith("ROV") || String(t).toLowerCase().includes("rov");
+                                                        if (inspMethod === "DIVING" && isCodeRov) return false;
+                                                        if (inspMethod === "ROV" && !isCodeRov) return false;
+                                                        return true;
+                                                    }
+
+                                                    if (inspMethod === "DIVING" && !isDiving) return false;
+                                                    if (inspMethod === "ROV" && !isRov) return false;
+                                                    return true;
+                                                }).map((t: string) => {
                                                     const taskStatus = selectedComp.taskStatuses?.find((ts: any) => ts.code === t);
                                                     const status = taskStatus?.status || 'pending';
                                                     const isCompleted = status === 'completed';
@@ -5098,142 +5737,163 @@ function V10PreviewLayout() {
                                                                        isCompleted ? 'Completed' :
                                                                        isIncomplete ? 'Incomplete' : 'Pending';
                                                     
+
                                                     return (
-                                                        <Button key={t} onClick={() => {
-                                                            setActiveSpec(t);
-                                                            const now = new Date();
-                                                            const newProps: Record<string, any> = {
-                                                                inspection_date: format(now, 'yyyy-MM-dd'),
-                                                                inspection_time: format(now, 'HH:mm:ss')
-                                                            };
-                                                            
-                                                            // 2. Resolve field definitions (from registry or DB)
-                                                            const specProps = it?.default_properties || [];
-                                                            let propsList: any[] = [];
-                                                            if (typeof specProps === 'string') {
-                                                                try {
-                                                                    const parsed = JSON.parse(specProps);
+                                                        <div key={t} className="flex gap-2 items-center w-full relative group/item">
+                                                            <Button onClick={() => {
+                                                                setActiveSpec(t);
+                                                                const now = new Date();
+                                                                const newProps: Record<string, any> = {
+                                                                    inspection_date: format(now, 'yyyy-MM-dd'),
+                                                                    inspection_time: format(now, 'HH:mm:ss')
+                                                                };
+                                                                
+                                                                // 2. Resolve field definitions (from registry or DB)
+                                                                const specProps = it?.default_properties || [];
+                                                                let propsList: any[] = [];
+                                                                if (typeof specProps === 'string') {
+                                                                    try {
+                                                                        const parsed = JSON.parse(specProps);
+                                                                        propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
+                                                                    } catch (e) { }
+                                                                } else {
+                                                                    const parsed = specProps as any;
                                                                     propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
-                                                                } catch (e) { }
-                                                            } else {
-                                                                const parsed = specProps as any;
-                                                                propsList = parsed.fields || parsed.properties || (Array.isArray(parsed) ? parsed : []);
-                                                            }
-
-                                                            // 3. Apply JSON Defaults
-                                                            propsList.forEach((p: any) => {
-                                                                if (p.default !== undefined) {
-                                                                    newProps[p.name || p.label] = p.default;
                                                                 }
-                                                            });
 
-                                                            // 4. Auto-insert current tape counter for LIVE entry mode
-                                                            if (!manualOverride) {
-                                                                newProps.tape_count_no = formatTime(vidTimer);
-                                                            }
-
-                                                            // 5. Auto-fill Nominal Thickness from Component Data
-                                                            if (selectedComp.nominalThk && selectedComp.nominalThk !== '-') {
-                                                                const ntField = propsList.find((p: any) => 
-                                                                    String(p.label || p.name || '').toLowerCase().includes('nominal thickness') ||
-                                                                    String(p.label || p.name || '').toLowerCase() === 'nt'
-                                                                );
-                                                                if (ntField) {
-                                                                    newProps[ntField.name || ntField.label] = selectedComp.nominalThk;
-                                                                }
-                                                            }
-
-                                                            // 6. Populate from ROV Data Acquisition if connected
-                                                            if (inspMethod === 'ROV' && dataAcqConnected) {
-                                                                dataAcqFields.forEach(f => {
-                                                                    if (f.value && f.value !== '--' && f.targetField) {
-                                                                        newProps[f.targetField] = f.value;
+                                                                // 3. Apply JSON Defaults
+                                                                propsList.forEach((p: any) => {
+                                                                    if (p.default !== undefined) {
+                                                                        newProps[p.name || p.label] = p.default;
                                                                     }
                                                                 });
-                                                            }
 
-                                                            // 7. Default elevation for underwater types to negative
-                                                            if (inspMethod === 'ROV' || inspMethod === 'DIVING') {
-                                                                const depthVal = selectedComp.depth || (selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : null);
-                                                                if (depthVal) {
-                                                                    const numericDepth = parseFloat(String(depthVal).replace(/[^\d.-]/g, ''));
-                                                                    if (!isNaN(numericDepth)) {
-                                                                        newProps.verification_depth = -Math.abs(numericDepth);
+                                                                // 4. Auto-insert current tape counter for LIVE entry mode
+                                                                if (!manualOverride) {
+                                                                    newProps.tape_count_no = formatTime(vidTimer);
+                                                                }
+
+                                                                // 5. Auto-fill Nominal Thickness from Component Data
+                                                                const compNT = selectedComp.nominalThk && selectedComp.nominalThk !== '-' ? selectedComp.nominalThk : 
+                                                                               (selectedComp.wallThickness && selectedComp.wallThickness !== '-' ? selectedComp.wallThickness : null);
+                                                                if (compNT) {
+                                                                    const ntField = propsList.find((p: any) => 
+                                                                        String(p.label || p.name || '').toLowerCase().includes('nominal thickness') ||
+                                                                        String(p.label || p.name || '').toLowerCase() === 'nt'
+                                                                    );
+                                                                    if (ntField) {
+                                                                        newProps[ntField.name || ntField.label] = compNT;
                                                                     }
                                                                 }
-                                                            }
-                                                            
-                                                            setDynamicProps(newProps);
-                                                            setFindingType("Pass");
-                                                            setRecordNotes("");
-                                                            setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
-                                                                rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
-                                                            setIsManualOverride(false);
-                                                            setIsUserInteraction(false);
-                                                        }} className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${
-                                                            statusColor === 'green' ? 'border-green-200 hover:bg-green-50/50' :
-                                                            statusColor === 'red' ? 'border-red-200 hover:bg-red-50/30' :
-                                                            statusColor === 'orange' ? 'border-orange-200 hover:bg-orange-50/30' :
-                                                            statusColor === 'teal' ? 'border-teal-200 hover:bg-teal-50/30' :
-                                                            statusColor === 'amber' ? 'border-amber-200 hover:bg-amber-50/30' :
-                                                            'border-blue-200 hover:bg-blue-50'
-                                                        }`}>
-                                                            <div className="flex items-center gap-2.5">
-                                                                {/* Status indicator dot */}
-                                                                <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${
-                                                                    statusColor === 'green' ? 'bg-green-500' :
-                                                                    statusColor === 'red' ? 'bg-red-500 animate-pulse' :
-                                                                    statusColor === 'orange' ? 'bg-orange-500' :
-                                                                    statusColor === 'teal' ? 'bg-teal-500' :
-                                                                    statusColor === 'amber' ? 'bg-amber-500' :
-                                                                    'bg-slate-300'
-                                                                }`}>
-                                                                    {statusColor === 'green' && <Check className="w-2 h-2 text-white" />}
-                                                                    {(statusColor === 'red' || statusColor === 'orange') && <AlertTriangle className="w-2 h-2 text-white" />}
-                                                                </div>
-                                                                <div className="flex flex-col items-start overflow-hidden flex-1 max-w-[170px]">
-                                                                    <div className="flex items-baseline gap-1.5 w-full text-left truncate">
-                                                                        <span className={`text-sm font-bold truncate ${
-                                                                            statusColor === 'green' ? 'text-green-700' :
-                                                                            statusColor === 'red' ? 'text-red-700' :
-                                                                            statusColor === 'orange' ? 'text-orange-700' :
-                                                                            statusColor === 'teal' ? 'text-teal-700' :
-                                                                            statusColor === 'amber' ? 'text-amber-700' :
-                                                                            'text-blue-700'
-                                                                        }`} title={it?.name || t}>
-                                                                            {it?.name || t}
-                                                                        </span>
-                                                                        <span className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${
-                                                                            statusColor === 'green' ? 'bg-green-50 border-green-200 text-green-700' :
-                                                                            statusColor === 'red' ? 'bg-red-50 border-red-200 text-red-700' :
-                                                                            statusColor === 'orange' ? 'bg-orange-50 border-orange-200 text-orange-700' :
-                                                                            statusColor === 'teal' ? 'bg-teal-50 border-teal-200 text-teal-700' :
-                                                                            statusColor === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                                                                            'bg-blue-50 border-blue-200 text-blue-700'
+
+                                                                // 6. Populate from ROV Data Acquisition if connected
+                                                                if (inspMethod === 'ROV' && dataAcqConnected) {
+                                                                    dataAcqFields.forEach(f => {
+                                                                        if (f.value && f.value !== '--' && f.targetField) {
+                                                                            newProps[f.targetField] = f.value;
+                                                                        }
+                                                                    });
+                                                                }
+
+                                                                // 7. Default elevation for underwater types to negative
+                                                                if (inspMethod === 'ROV' || inspMethod === 'DIVING') {
+                                                                    const depthVal = selectedComp.depth || (selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : null);
+                                                                    if (depthVal) {
+                                                                        const numericDepth = parseFloat(String(depthVal).replace(/[^\d.-]/g, ''));
+                                                                        if (!isNaN(numericDepth)) {
+                                                                            newProps.verification_depth = -Math.abs(numericDepth);
+                                                                        }
+                                                                    }
+                                                                }
+                                                                
+                                                                setDynamicProps(newProps);
+                                                                setFindingType("Pass");
+                                                                setRecordNotes("");
+                                                                setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
+                                                                    rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
+                                                                setIsManualOverride(false);
+                                                                setIsUserInteraction(false);
+                                                            }} className={`flex-1 h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${
+                                                                statusColor === 'green' ? 'border-green-200 hover:bg-green-50/50' :
+                                                                statusColor === 'red' ? 'border-red-200 hover:bg-red-50/30' :
+                                                                statusColor === 'orange' ? 'border-orange-200 hover:bg-orange-50/30' :
+                                                                statusColor === 'teal' ? 'border-teal-200 hover:bg-teal-50/30' :
+                                                                statusColor === 'amber' ? 'border-amber-200 hover:bg-amber-50/30' :
+                                                                'border-blue-200 hover:bg-blue-50'
+                                                            }`}>
+                                                                <div className="flex items-center gap-2.5">
+                                                                    {/* Status indicator dot */}
+                                                                    <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${
+                                                                        statusColor === 'green' ? 'bg-green-500' :
+                                                                        statusColor === 'red' ? 'bg-red-500 animate-pulse' :
+                                                                        statusColor === 'orange' ? 'bg-orange-500' :
+                                                                        statusColor === 'teal' ? 'bg-teal-500' :
+                                                                        statusColor === 'amber' ? 'bg-amber-500' :
+                                                                        'bg-slate-300'
+                                                                    }`}>
+                                                                        {statusColor === 'green' && <Check className="w-2 h-2 text-white" />}
+                                                                        {(statusColor === 'red' || statusColor === 'orange') && <AlertTriangle className="w-2 h-2 text-white" />}
+                                                                    </div>
+                                                                    <div className="flex flex-col items-start overflow-hidden flex-1 max-w-[170px]">
+                                                                        <div className="flex items-baseline gap-1.5 w-full text-left truncate">
+                                                                            <span className={`text-sm font-bold truncate ${
+                                                                                statusColor === 'green' ? 'text-green-700' :
+                                                                                statusColor === 'red' ? 'text-red-700' :
+                                                                                statusColor === 'orange' ? 'text-orange-700' :
+                                                                                statusColor === 'teal' ? 'text-teal-700' :
+                                                                                statusColor === 'amber' ? 'text-amber-700' :
+                                                                                'text-blue-700'
+                                                                            }`} title={it?.name || t}>
+                                                                                {it?.name || t}
+                                                                            </span>
+                                                                            <span className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${
+                                                                                statusColor === 'green' ? 'bg-green-50 border-green-200 text-green-700' :
+                                                                                statusColor === 'red' ? 'bg-red-50 border-red-200 text-red-700' :
+                                                                                statusColor === 'orange' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                                                                                statusColor === 'teal' ? 'bg-teal-50 border-teal-200 text-teal-700' :
+                                                                                statusColor === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                                                                'bg-blue-50 border-blue-200 text-blue-700'
+                                                                            }`}>
+                                                                                {it?.code || t}
+                                                                            </span>
+                                                                        </div>
+                                                                        <span className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${
+                                                                            statusColor === 'green' ? 'text-green-500' :
+                                                                            statusColor === 'red' ? 'text-red-500' :
+                                                                            statusColor === 'orange' ? 'text-orange-500' :
+                                                                            statusColor === 'teal' ? 'text-teal-500' :
+                                                                            statusColor === 'amber' ? 'text-amber-500' :
+                                                                            'text-slate-400'
                                                                         }`}>
-                                                                            {it?.code || t}
+                                                                            {statusLabel}
                                                                         </span>
                                                                     </div>
-                                                                    <span className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${
-                                                                        statusColor === 'green' ? 'text-green-500' :
-                                                                        statusColor === 'red' ? 'text-red-500' :
-                                                                        statusColor === 'orange' ? 'text-orange-500' :
-                                                                        statusColor === 'teal' ? 'text-teal-500' :
-                                                                        statusColor === 'amber' ? 'text-amber-500' :
-                                                                        'text-slate-400'
-                                                                    }`}>
-                                                                        {statusLabel}
-                                                                    </span>
                                                                 </div>
-                                                            </div>
-                                                            <ArrowRight className={`w-4 h-4 ${
-                                                                statusColor === 'green' ? 'text-green-300' :
-                                                                statusColor === 'red' ? 'text-red-300' :
-                                                                statusColor === 'orange' ? 'text-orange-300' :
-                                                                statusColor === 'amber' ? 'text-amber-300' :
-                                                                'text-blue-300'
-                                                            }`} />
-                                                        </Button>
+                                                                <ArrowRight className={`w-4 h-4 ${
+                                                                    statusColor === 'green' ? 'text-green-300' :
+                                                                    statusColor === 'red' ? 'text-red-300' :
+                                                                    statusColor === 'orange' ? 'text-orange-300' :
+                                                                    statusColor === 'amber' ? 'text-amber-300' :
+                                                                    'text-blue-300'
+                                                                }`} />
+                                                            </Button>
+
+                                                            {taskRecords.length === 0 && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className="h-14 w-10 shrink-0 text-slate-400 border-dashed hover:text-red-600 hover:border-red-200 hover:bg-red-50/50"
+                                                                    title={`Remove ${t}`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        e.preventDefault();
+                                                                        handleDeleteInspectionSpec(t);
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
                                                     );
                                                 })}
                                             </div>
@@ -5251,8 +5911,8 @@ function V10PreviewLayout() {
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-[350px] p-0 shadow-2xl border-slate-200" align="center" side="top">
                                                         <div className="flex flex-col">
-                                                            <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-                                                                <div className="relative">
+                                                            <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex gap-2 items-center">
+                                                                <div className="relative flex-1">
                                                                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                                                                     <Input
                                                                         placeholder="Search type name or code..."
@@ -5262,14 +5922,23 @@ function V10PreviewLayout() {
                                                                         autoFocus
                                                                     />
                                                                 </div>
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="sm" 
+                                                                    onClick={() => setIsAddInspOpen(false)} 
+                                                                    className="h-9 px-2 text-xs font-bold text-slate-500 hover:text-slate-700 shrink-0"
+                                                                >
+                                                                    Cancel
+                                                                </Button>
                                                             </div>
                                                             <ScrollArea className="h-[300px]">
                                                                 <div className="p-1.5 space-y-1">
                                                                     {allInspectionTypes
                                                                         .filter(it => {
                                                                             // Filter by mode
-                                                                            const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || it.metadata?.job_type?.includes('ROV');
-                                                                            const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || it.metadata?.job_type?.includes('DIVING');
+                                                                            const methods = it.default_properties?.methods || it.methods || [];
+                                                                            const isRov = methods.includes("ROV") || it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || it.metadata?.job_type?.includes('ROV');
+                                                                            const isDiving = methods.includes("DIVING") || it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || it.metadata?.job_type?.includes('DIVING');
                                                                             if (inspMethod === 'DIVING' && !isDiving) return false;
                                                                             if (inspMethod === 'ROV' && !isRov) return false;
 
@@ -5553,12 +6222,7 @@ function V10PreviewLayout() {
                                                                 <DropdownMenuItem onClick={() => {
                                                                     const comp = (allComps || []).find((c: any) => c.id === r.component_id);
                                                                     if (comp) {
-                                                                        const obj = {
-                                                                            id: comp.id,
-                                                                            name: comp.q_id || comp.name || `Node ${comp.id}`,
-                                                                            raw: comp
-                                                                        };
-                                                                        setSelectedComp(obj);
+                                                                        setSelectedComp(comp);
                                                                         setCompSpecDialogOpen(true);
                                                                     }
                                                                 }} className="text-xs py-2 cursor-pointer">
@@ -5803,12 +6467,7 @@ function V10PreviewLayout() {
                                                                     <DropdownMenuItem onClick={() => {
                                                                         const comp = (allComps || []).find((c: any) => c.id === r.component_id);
                                                                         if (comp) {
-                                                                            const obj = {
-                                                                                id: comp.id,
-                                                                                name: comp.q_id || comp.name || `Node ${comp.id}`,
-                                                                                raw: comp
-                                                                            };
-                                                                            setSelectedComp(obj);
+                                                                            setSelectedComp(comp);
                                                                             setCompSpecDialogOpen(true);
                                                                         }
                                                                     }} className="text-xs py-2 cursor-pointer">
@@ -5887,7 +6546,27 @@ function V10PreviewLayout() {
                                         <div>
                                             <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
                                             <div className="space-y-1">
-                                                {componentsSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
+                                                {componentsSow.filter((c: any) => {
+                                                    let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
+                                                    const hasValidTask = tasksToFilter.some((tCode: string) => {
+                                                        const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                                                        if (!it) return true;
+                                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                        if (inspMethod === "DIVING" && isDiving) return true;
+                                                        if (inspMethod === "ROV" && isRov) return true;
+                                                        return false;
+                                                    });
+                                                    if (!hasValidTask) return false;
+
+                                                    const term = compSearchTerm.toLowerCase().trim();
+                                                    if (!term) return true;
+                                                    const qid = (c.name || '').toLowerCase();
+                                                    const code = (c.raw?.code || '').toLowerCase();
+                                                    const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
+                                                    const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
+                                                    return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term);
+                                                }).map((c: any) => {
                                                     const isSelected = selectedComp?.id === c.id;
                                                     return (
                                                         <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
@@ -5908,7 +6587,15 @@ function V10PreviewLayout() {
                                                                 <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} â†’ {c.endNode}</div>
                                                             )}
                                                             <div className="flex flex-wrap gap-1 mt-1.5">
-                                                                {c.taskStatuses?.length > 0 ? c.taskStatuses.map((ts: any, idx: number) => {
+                                                                {c.taskStatuses?.length > 0 ? c.taskStatuses.filter((ts: any) => {
+                                                                    const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
+                                                                    if (!it) return true;
+                                                                    const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                                    const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                                    if (inspMethod === "DIVING" && !isDiving) return false;
+                                                                    if (inspMethod === "ROV" && !isRov) return false;
+                                                                    return true;
+                                                                }).map((ts: any, idx: number) => {
                                                                     const s = ts.status || 'pending';
                                                                     const hasAnom = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === ts.code || r.inspection_type_code === ts.code) && r.component_id === c.id);
                                                                     return (
@@ -5933,7 +6620,15 @@ function V10PreviewLayout() {
                                                                         </span>
                                                                     );
                                                                 }) : (
-                                                                    <span className={`text-[10px] font-mono ${isSelected ? 'opacity-85' : 'opacity-85'}`}>Tasks: {c.tasks?.join(', ')}</span>
+                                                                    <span className={`text-[10px] font-mono ${isSelected ? 'opacity-85' : 'opacity-85'}`}>Tasks: {c.tasks?.filter((t: string) => {
+                                                                        const it = (allInspectionTypes || []).find((type: any) => type.code === t || type.name === t);
+                                                                        if (!it) return true;
+                                                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                                        if (inspMethod === "DIVING" && !isDiving) return false;
+                                                                        if (inspMethod === "ROV" && !isRov) return false;
+                                                                        return true;
+                                                                    }).join(', ')}</span>
                                                                 )}
                                                             </div>
                                                         </button>
@@ -5944,7 +6639,15 @@ function V10PreviewLayout() {
                                         <div>
                                             <div className="text-[9px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200">Non-SOW</div>
                                             <div className="space-y-1">
-                                                {componentsNonSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
+                                                {componentsNonSow.filter((c: any) => {
+                                                    const term = compSearchTerm.toLowerCase().trim();
+                                                    if (!term) return true;
+                                                    const qid = (c.name || '').toLowerCase();
+                                                    const code = (c.raw?.code || '').toLowerCase();
+                                                    const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
+                                                    const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
+                                                    return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term);
+                                                }).map((c: any) => (
                                                     <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                         <div className="flex justify-between font-bold">
                                                             <div className="flex items-center gap-2">
@@ -6066,1143 +6769,164 @@ function V10PreviewLayout() {
 
             </div>
 
-            {isDiveSetupOpen && (
-                inspMethod === "DIVING" ? (
-                    <DiveJobSetupDialog
-                        jobpackId={jobPackId || ""}
-                        structureId={structureId || ""}
-                        sowId={sowIdFull || sowId || ""}
-                        existingJob={isDiveSetupForNew ? null : (activeDep as any)?.raw}
-                        open={isDiveSetupOpen}
-                        onOpenChange={setIsDiveSetupOpen}
-                        onJobCreated={(job: any) => {
-                            setIsDiveSetupOpen(false);
-                            window.location.reload(); // Refresh to catch newly deployed Job
-                        }}
-                    />
-                ) : (
-                    <ROVJobSetupDialog
-                        jobpackId={jobPackId || ""}
-                        structureId={structureId || ""}
-                        sowId={sowIdFull || sowId || ""}
-                        existingJob={isDiveSetupForNew ? null : (activeDep as any)?.raw}
-                        open={isDiveSetupOpen}
-                        onOpenChange={setIsDiveSetupOpen}
-                        onJobCreated={(job: any) => {
-                            setIsDiveSetupOpen(false);
-                            window.location.reload();
-                        }}
-                    />
-                )
-            )}
+            <WorkspaceDialogs
+                supabase={supabase}
+                jobPackId={jobPackId}
+                structureId={structureId}
+                sowId={sowId}
+                sowIdFull={sowIdFull}
+                headerData={headerData}
+                inspMethod={inspMethod}
+                currentRecords={currentRecords}
+                recordedFiles={recordedFiles}
+                pendingAttachments={pendingAttachments}
+                setPendingAttachments={setPendingAttachments}
+                states={{
+                    isDiveSetupOpen,
+                    isDiveSetupForNew,
+                    activeDep,
+                    editingEvent,
+                    lastStartEventForEdit,
+                    isMovementLogOpen,
+                    isEditTapeOpen,
+                    editTapeNo,
+                    editTapeChapter,
+                    editTapeStatus,
+                    editTapeRemarks,
+                    isNewTapeOpen,
+                    newTapeNo,
+                    newTapeChapter,
+                    newTapeRemarks,
+                    isCommitting,
+                    calibrationDialogOpen,
+                    rovCalibrationDialogOpen,
+                    specDialogOpen: false,
 
-            {/* Edit Event Dialog Component */}
-            {editingEvent && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
-                    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 w-[400px] border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
-                        <h3 className="font-bold text-lg mb-4 text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                            <Clock className="w-5 h-5 text-blue-600" /> Edit Video Log
-                        </h3>
-                        <div className="space-y-4">
-                            <div>
-                                <span className="block text-[10px] text-slate-500 uppercase font-black mb-1.5 tracking-widest">1. Wall Clock (Local Date & Time)</span>
-                                <Input
-                                    type="datetime-local"
-                                    value={editingEvent.eventTime ? new Date(new Date(editingEvent.eventTime).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ""}
-                                    onChange={e => {
-                                        const localVal = e.target.value;
-                                        if (!localVal) return;
 
-                                        // Correctly convert local picker string back to UTC ISO
-                                        const d = new Date(localVal);
-                                        const newIso = d.toISOString();
-
-                                        let updatedTime = editingEvent.time;
-
-                                        if (lastStartEventForEdit) {
-                                            const startAt = parseDbDate(lastStartEventForEdit.event_time).getTime();
-                                            const nowAt = d.getTime(); // Both are now absolute UTC timestamps
-                                            const diffSecs = Math.max(0, Math.floor((nowAt - startAt) / 1000));
-                                            updatedTime = formatTime((lastStartEventForEdit.tape_counter_start || 0) + diffSecs);
-                                        }
-
-                                        setEditingEvent({ ...editingEvent, eventTime: newIso, time: updatedTime, referenceNo: '' });
-                                    }}
-                                    className="font-mono font-bold bg-blue-50/30 border-blue-100 focus:ring-blue-500"
-                                />
-                                <p className="text-[10px] text-blue-500 mt-1.5 italic font-medium">Counter auto-calculates as you change the time.</p>
-                            </div>
-                            <div>
-                                <span className="block text-[10px] text-slate-500 uppercase font-black mb-1.5 tracking-widest">2. Video Counter (Timecode)</span>
-                                <Input
-                                    value={editingEvent.time}
-                                    onChange={e => setEditingEvent({ ...editingEvent, time: e.target.value })}
-                                    className="font-mono font-black text-blue-700 bg-slate-50 border-slate-200"
-                                />
-                            </div>
-                            <div>
-                                <span className="block text-[10px] text-slate-500 uppercase font-black mb-1.5 tracking-widest">3. Action / Status Event</span>
-                                <Input
-                                    value={editingEvent.action}
-                                    onChange={e => setEditingEvent({ ...editingEvent, action: e.target.value })}
-                                    className="font-bold uppercase bg-slate-50 border-slate-200"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex gap-2 mt-8 justify-end">
-                            <Button variant="outline" onClick={() => { setEditingEvent(null); setLastStartEventForEdit(null); }} className="font-bold h-11 px-6">Cancel</Button>
-                            <Button className="bg-blue-600 text-white hover:bg-blue-700 font-bold h-11 px-6 shadow-lg shadow-blue-500/20" onClick={() => {
-                                handleEditEventSave(editingEvent.time, editingEvent.action, editingEvent.eventTime);
-                                setEditingEvent(null);
-                                setLastStartEventForEdit(null);
-                            }}>Update Event</Button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isMovementLogOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-auto py-10">
-                    <div className="bg-white rounded-lg w-[800px] shadow-2xl animate-in zoom-in-95 my-auto shrink-0 relative">
-                        <div className="flex justify-between items-center px-6 py-4 border-b pb-4">
-                            <h2 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                                <Activity className="w-5 h-5 text-blue-600" /> {inspMethod === "DIVING" ? "Dive Movements & Checklists" : "ROV Movements & Log"}
-                            </h2>
-                            <button onClick={() => {
-                                setIsMovementLogOpen(false);
-                                if (activeDep) {
-                                    setActiveDep({ ...activeDep });
-                                }
-                            }} className="rounded-full p-1.5 hover:bg-slate-100"><X className="w-5 h-5 text-slate-500" /></button>
-                        </div>
-                        <div className="p-6">
-                            {inspMethod === "DIVING" ? (
-                                <DiveMovementLog diveJob={(activeDep as any)?.raw} />
-                            ) : (
-                                <ROVMovementLog diveJob={(activeDep as any)?.raw} />
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-            {/* Edit Tape Dialog */}
-            <Dialog open={isEditTapeOpen} onOpenChange={setIsEditTapeOpen}>
-                <DialogContent className="max-w-md bg-white border-2 border-blue-100 shadow-2xl p-0 overflow-hidden">
-                    <DialogHeader className="p-4 bg-slate-900 text-white space-y-1">
-                        <DialogTitle className="text-xs font-bold uppercase tracking-widest opacity-80 mb-0">Tape Management</DialogTitle>
-                        <DialogDescription className="text-sm font-black text-white/90">Edit Tape Details</DialogDescription>
-                    </DialogHeader>
-                    <div className="p-5 space-y-5 bg-white">
-                        <div className="space-y-4">
-                            <div className="space-y-1.5">
-                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Video Tape Number / Name</Label>
-                                <Input 
-                                    value={editTapeNo} 
-                                    onChange={(e) => setEditTapeNo(e.target.value.toUpperCase())}
-                                    placeholder="Enter tape reference..."
-                                    className="h-11 text-sm font-bold bg-slate-50 border-slate-200 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Chapter No.</Label>
-                                    <Input 
-                                        type="number"
-                                        value={editTapeChapter} 
-                                        onChange={(e) => setEditTapeChapter(e.target.value)}
-                                        className="h-11 text-sm font-bold bg-slate-50 border-slate-200 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all"
-                                    />
-                                    <p className="text-[9px] text-amber-600 font-bold italic mt-1 leading-tight">
-                                        Note: Adjust this if you want to maintain a previous numbering sequence.
-                                    </p>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Status</Label>
-                                    <Select value={editTapeStatus} onValueChange={setEditTapeStatus}>
-                                        <SelectTrigger className="h-11 text-sm font-bold bg-slate-50 border-slate-200">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="ACTIVE" className="font-bold text-xs">ACTIVE</SelectItem>
-                                            <SelectItem value="COMPLETED" className="font-bold text-xs">COMPLETED</SelectItem>
-                                            <SelectItem value="ARCHIVED" className="font-bold text-xs">ARCHIVED</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Tape Remarks</Label>
-                                <Input 
-                                    value={editTapeRemarks} 
-                                    onChange={(e) => setEditTapeRemarks(e.target.value)}
-                                    placeholder="Optional notes..."
-                                    className="h-11 text-sm font-bold bg-slate-50 border-slate-200 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 pt-2">
-                            <Button
-                                variant="outline"
-                                className="flex-1 h-11 text-[11px] font-black uppercase tracking-widest border-slate-200 hover:bg-slate-50 text-slate-500"
-                                onClick={() => setIsEditTapeOpen(false)}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                className="flex-1 h-11 text-[11px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20"
-                                onClick={handleSaveTapeEdit}
-                                disabled={isCommitting || !editTapeNo}
-                            >
-                                {isCommitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Changes"}
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* New Tape Creation Dialog */}
-            <Dialog open={isNewTapeOpen} onOpenChange={setIsNewTapeOpen}>
-                <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                        <DialogTitle>Create New Tape</DialogTitle>
-                        <DialogDescription>
-                            Create a new video tape sequence for the current {inspMethod === 'DIVING' ? 'dive' : 'ROV'} deployment.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="ws_new_tape_no" className="text-right text-sm font-semibold">Tape No</Label>
-                            <Input
-                                id="ws_new_tape_no"
-                                value={newTapeNo}
-                                onChange={(e) => setNewTapeNo(e.target.value)}
-                                className="col-span-3 font-mono"
-                                placeholder="e.g. RPT-001 / PLAT-C / V001D"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="ws_new_tape_chapter" className="text-right text-sm font-semibold">Chapter</Label>
-                            <Input
-                                id="ws_new_tape_chapter"
-                                value={newTapeChapter}
-                                onChange={(e) => setNewTapeChapter(e.target.value)}
-                                className="col-span-3"
-                                placeholder="e.g. 1"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="ws_new_tape_remarks" className="text-right text-sm font-semibold">Remarks</Label>
-                            <Input
-                                id="ws_new_tape_remarks"
-                                value={newTapeRemarks}
-                                onChange={(e) => setNewTapeRemarks(e.target.value)}
-                                className="col-span-3"
-                                placeholder="Optional notes"
-                            />
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setIsNewTapeOpen(false)}>Cancel</Button>
-                        <Button
-                            onClick={async () => {
-                                if (!newTapeNo) { toast.error("Tape number is required"); return; }
-                                if (!activeDep?.id) { toast.error("No active deployment selected"); return; }
-                                try {
-                                    const { data: { user } } = await supabase.auth.getUser();
-                                    const depCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
-                                    const payload: any = {
-                                        tape_no: newTapeNo,
-                                        status: 'ACTIVE',
-                                        tape_type: 'DIGITAL - PRIMARY',
-                                        cr_user: user?.id || 'system',
-                                        chapter_no: parseInt(newTapeChapter) || 1,
-                                        remarks: newTapeRemarks || null,
-                                        [depCol]: Number(activeDep.id),
-                                    };
-                                    const { data: createdTape, error } = await supabase
-                                        .from('insp_video_tapes')
-                                        .insert(payload)
-                                        .select('*')
-                                        .single();
-                                    if (error) throw error;
-                                    toast.success(`Tape "${newTapeNo}" created successfully`);
-                                    setJobTapes(prev => [createdTape, ...prev]);
-                                    setTapeId(createdTape.tape_id);
-                                    setTapeNo(createdTape.tape_no);
-                                    setActiveChapter(createdTape.chapter_no || 1);
-                                    setIsNewTapeOpen(false);
-                                    setNewTapeNo("");
-                                    setNewTapeChapter("");
-                                    setNewTapeRemarks("");
-                                } catch (err: any) {
-                                    console.error("Failed to create tape:", err);
-                                    toast.error("Failed to create tape: " + (err.message || "Unknown error"));
-                                }
-                            }}
-                            className="bg-blue-600 hover:bg-blue-700"
-                        >
-                            Create Tape
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-            {/* Component Specification Dialog */}
-            <ComponentSpecDialog
-                open={specDialogOpen}
-                onOpenChange={setSpecDialogOpen}
-                component={selectedComp?.raw}
-                mode="view"
-            />
-            <ReportPreviewDialog
-                open={previewOpen}
-                onOpenChange={setPreviewOpen}
-                title="Anomaly Report Preview"
-                fileName={`Anomaly_Report_${previewRecord?.anomaly_ref_no || 'Draft'}`}
-                generateReport={generateAnomalyReportBlob}
-            />
-            <ReportPreviewDialog
-                open={mPreviewOpen}
-                onOpenChange={setMPreviewOpen}
-                title="ROV MGI Survey Report Preview"
-                fileName={`ROV_MGI_Report_${headerData.sowReportNo}`}
-                generateReport={generateMGIReportBlob}
-            />
-            <ReportPreviewDialog
-                open={fmdPreviewOpen}
-                onOpenChange={setFmdPreviewOpen}
-                title="ROV FMD Survey Report Preview"
-                fileName={`ROV_FMD_Report_${headerData.sowReportNo}`}
-                generateReport={generateFMDReportBlob}
-            />
-            <ReportPreviewDialog
-                open={utwtPreviewOpen}
-                onOpenChange={setUtwtPreviewOpen}
-                title="ROV UTWT Survey Report Preview"
-                fileName={`ROV_UTWT_Report_${headerData.sowReportNo}`}
-                generateReport={generateUTWTReportBlob}
-            />
-            <ReportPreviewDialog
-                open={szciPreviewOpen}
-                onOpenChange={setSzciPreviewOpen}
-                title="ROV SZCI Survey Report Preview"
-                fileName={`ROV_SZCI_Report_${headerData.sowReportNo}`}
-                generateReport={generateSZCIReportBlob}
-            />
-            {/* Recording Gallery Dialog */}
-            <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>
-                <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col p-6">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <History className="w-5 h-5 text-blue-600" />
-                            Session Media Gallery
-                        </DialogTitle>
-                    </DialogHeader>
-                    <div className="flex-1 min-h-0">
-                        {recordedFiles.length === 0 ? (
-                            <div className="h-40 flex items-center justify-center text-slate-400 font-medium italic border-2 border-dashed border-slate-100 rounded-xl">
-                                No media captured in this session yet...
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto p-1 pr-4">
-                                {recordedFiles.map((file) => (
-                                    <Card key={file.id} className="overflow-hidden border-slate-200 group relative">
-                                        <div className="aspect-video bg-slate-900 flex items-center justify-center text-white relative">
-                                            {file.type === 'video' ? (
-                                                <video src={file.url} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <img src={file.url} className="w-full h-full object-cover" />
-                                            )}
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                                <Button size="sm" variant="secondary" onClick={() => window.open(file.url)} className="h-8 text-xs font-bold">Open</Button>
-                                                <Button size="sm" className="h-8 text-xs font-bold bg-blue-600" onClick={() => handleLinkToRecord(file)}>Link to Session</Button>
-                                            </div>
-                                            <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/60 rounded text-[9px] font-bold uppercase tracking-wider">
-                                                {file.type}
-                                            </div>
-                                        </div>
-                                        <div className="p-2 border-t border-slate-100">
-                                            <p className="text-[10px] font-bold truncate text-slate-700">{file.name}</p>
-                                            <p className="text-[9px] text-slate-400 mt-0.5">{new Date(file.timestamp).toLocaleTimeString()}</p>
-                                        </div>
-                                    </Card>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* Attachment Management Suite */}
-            {/* Viewing Saved Attachments Dialog */}
-            <Dialog open={!!viewingRecordAttachments} onOpenChange={(open) => !open && setViewingRecordAttachments(null)}>
-                <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-6 overflow-hidden">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Paperclip className="w-5 h-5 text-blue-600" />
-                            Record Attachments
-                        </DialogTitle>
-                    </DialogHeader>
-                    <div className="flex-1 overflow-y-auto mt-4 pr-2">
-                        {viewingRecordAttachments && viewingRecordAttachments.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {viewingRecordAttachments.map((att: any) => {
-                                    const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(att.path);
-                                    return (
-                                        <Card key={att.id} className="overflow-hidden border-slate-200 group flex flex-col bg-slate-50">
-                                            <div className="aspect-video bg-slate-900 flex items-center justify-center text-white relative">
-                                                {(!att.meta?.type || att.meta.type === 'PHOTO') ? (
-                                                    <img src={publicUrl} className="w-full h-full object-contain cursor-pointer" onClick={() => window.open(publicUrl, '_blank')} title={att.name} />
-                                                ) : (
-                                                    <div className="flex flex-col items-center gap-2 opacity-60">
-                                                        {att.meta.type === 'VIDEO' ? <Video className="w-10 h-10" /> : <FileText className="w-10 h-10" />}
-                                                        <span className="text-[10px] uppercase font-bold tracking-widest">{att.meta.type}</span>
-                                                    </div>
-                                                )}
-                                                <div className="absolute inset-x-0 bottom-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2">
-                                                    <Button size="sm" variant="secondary" className="w-full text-[10px] h-7 font-black uppercase tracking-wider" onClick={() => window.open(publicUrl, '_blank')}>Open Fullsize</Button>
-                                                </div>
-                                            </div>
-                                            <div className="p-3 flex-1 flex flex-col gap-1 bg-white">
-                                                <div className="text-[10px] font-black text-slate-800 uppercase tracking-tight line-clamp-2 leading-[1.3]">{att.name}</div>
-                                                {att.meta?.description && <div className="text-[9px] text-slate-500 font-medium italic border-l-2 border-slate-200 pl-2 mt-0.5">{att.meta.description}</div>}
-                                                <div className="mt-auto pt-2 text-[8px] text-slate-400 font-black uppercase tracking-widest flex items-center justify-between border-t border-slate-50">
-                                                    <span className="bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">SOURCE: {att.source_type}</span>
-                                                    {att.created_at && <span>{new Date(att.created_at).toLocaleDateString()}</span>}
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div className="h-40 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-100 rounded-xl">
-                                <Paperclip className="w-8 h-8 mb-2 opacity-20" />
-                                <span className="text-[10px] font-black uppercase tracking-widest">No attachments found</span>
-                            </div>
-                        )}
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* Selection/Upload Manager Dialog */}
-            <Dialog open={isAttachmentManagerOpen} onOpenChange={setIsAttachmentManagerOpen}>
-                <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col p-6 bg-white overflow-hidden">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                             <div className="bg-blue-600 p-1.5 rounded-lg shadow-lg shadow-blue-500/20">
-                                <Camera className="w-4 h-4 text-white" />
-                             </div>
-                            <span className="font-black uppercase tracking-widest text-slate-800">Media Management</span>
-                        </DialogTitle>
-                        <DialogDescription className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Session Attachments & External Uploads</DialogDescription>
-                    </DialogHeader>
-                    
-                    <div className="flex-1 min-h-0 mt-6 flex flex-col gap-5 overflow-hidden">
-                        {/* Pending Attachments Strip */}
-                        {pendingAttachments.length > 0 && (
-                            <div className="flex-shrink-0 bg-blue-50/30 border border-blue-100 rounded-xl p-3">
-                                <h4 className="text-[10px] font-black uppercase text-blue-700 tracking-widest mb-3 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <Paperclip className="w-3 h-3" /> {pendingAttachments.length} Pending Attachments
-                                    </div>
-                                    <span className="text-[8px] bg-blue-100 px-2 py-0.5 rounded-full">Final Review</span>
-                                </h4>
-                                <ScrollArea className="h-40">
-                                    <div className="flex gap-4 pb-4 px-1">
-                                        {pendingAttachments.map((att) => (
-                                            <div key={att.id} className="w-56 flex-shrink-0 bg-white border border-slate-200 rounded-xl p-2 relative group shadow-sm hover:shadow-md transition-all">
-                                                <div className="aspect-video bg-slate-100 rounded-lg overflow-hidden mb-3 border border-slate-50">
-                                                    {att.previewUrl ? (
-                                                        <img src={att.previewUrl} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <div className="h-full flex items-center justify-center bg-slate-50">
-                                                            <FileText className="w-6 h-6 text-slate-300" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="space-y-2.5">
-                                                    <div>
-                                                        <Label className="text-[8px] font-black uppercase text-blue-600 tracking-widest ml-1 mb-1 block">Attachment Title</Label>
-                                                        <Input 
-                                                            value={att.title} 
-                                                            onChange={(e) => setPendingAttachments(prev => prev.map(a => a.id === att.id ? { ...a, title: e.target.value } : a))}
-                                                            className="h-8 text-[11px] font-black border-slate-100 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/5 transition-all shadow-none placeholder:text-slate-300"
-                                                            placeholder="Enter Title..."
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <Label className="text-[8px] font-black uppercase text-slate-400 tracking-widest ml-1 mb-1 block">Remark / Observation</Label>
-                                                        <Input 
-                                                            value={att.description} 
-                                                            onChange={(e) => setPendingAttachments(prev => prev.map(a => a.id === att.id ? { ...a, description: e.target.value } : a))}
-                                                            className="h-8 text-[10px] font-medium border-slate-100 bg-slate-50 focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/5 transition-all italic shadow-none placeholder:text-slate-300"
-                                                            placeholder="Add detail..."
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <button 
-                                                    onClick={() => setPendingAttachments(prev => prev.filter(a => a.id !== att.id))} 
-                                                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xl hover:bg-black transition-all hover:scale-110 active:scale-90 border-2 border-white"
-                                                    title="Remove Attachment"
-                                                >
-                                                    <Trash2 className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </ScrollArea>
-                            </div>
-                        )}
-
-                        <div className="flex-1 grid grid-cols-4 gap-6 overflow-hidden min-h-0">
-                            {/* Upload Section */}
-                            <div className="col-span-1 flex flex-col gap-3">
-                                <Label className="text-[10px] font-black uppercase text-slate-500 tracking-widest pl-1">External Media</Label>
-                                <Button 
-                                    variant="outline" 
-                                    className="flex-1 border-dashed border-2 flex flex-col items-center justify-center gap-3 hover:bg-blue-50/50 hover:border-blue-300 transition-all border-slate-200 bg-slate-50/50 rounded-2xl group"
-                                    onClick={() => fileInputRef.current?.click()}
-                                >
-                                    <div className="p-3 bg-white rounded-full shadow-sm group-hover:scale-110 transition-transform">
-                                        <CloudUpload className="w-6 h-6 text-blue-500" />
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-[10px] font-black uppercase text-slate-700">Upload Files</div>
-                                        <div className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Images or Videos</div>
-                                    </div>
-                                    <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleExternalFileUpload} accept="image/*,video/*" />
-                                </Button>
-                            </div>
-
-                            {/* Session Grabs Section */}
-                            <div className="col-span-3 flex flex-col gap-3 overflow-hidden min-h-0">
-                                <Label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center justify-between pl-1">
-                                    <span>Stream Session Grabs</span>
-                                    <span className="bg-slate-100 px-2 py-0.5 rounded-full text-[9px] text-slate-400 font-bold">{recordedFiles.filter(f => f.type === 'photo').length} Found</span>
-                                </Label>
-                                <ScrollArea className="flex-1 border border-slate-100 rounded-2xl bg-slate-50/20 p-4">
-                                    <div className="grid grid-cols-3 gap-4 pb-4">
-                                        {recordedFiles.filter(f => f.type === 'photo').length === 0 ? (
-                                            <div className="col-span-3 h-48 flex flex-col items-center justify-center text-slate-300 border-2 border-dashed border-slate-100 rounded-xl space-y-2">
-                                                <Camera className="w-8 h-8 opacity-20" />
-                                                <span className="text-[10px] font-black uppercase tracking-widest italic opacity-50">No stream snapshots captured yet</span>
-                                            </div>
-                                        ) : recordedFiles.filter(f => f.type === 'photo').map((file) => {
-                                            const isSelected = pendingAttachments.some(a => a.previewUrl === file.url);
-                                            return (
-                                                <div 
-                                                    key={file.id} 
-                                                    onClick={() => {
-                                                        if (isSelected) setPendingAttachments(prev => prev.filter(a => a.previewUrl !== file.url));
-                                                        else {
-                                                            const isAnomaly = findingType === 'Anomaly';
-                                                            const isFinding = findingType === 'Finding';
-                                                            const prefix = isAnomaly ? 'Anomaly - ' : (isFinding ? 'Findings - ' : '');
-                                                            const refNo = anomalyData.referenceNo || 'Draft';
-                                                            setPendingAttachments(prev => [...prev, {
-                                                                id: Math.random().toString(36).substr(2, 9),
-                                                                file: file.blob,
-                                                                name: file.name,
-                                                                type: 'PHOTO',
-                                                                title: prefix ? `${prefix}${refNo}` : file.name,
-                                                                description: '',
-                                                                source: 'LIVE_SNAPSHOT',
-                                                                previewUrl: file.url,
-                                                                isFromRecording: true
-                                                            }]);
-                                                        }
-                                                    }}
-                                                    className={`relative aspect-video rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${isSelected ? 'border-blue-600 ring-4 ring-blue-500/10 shadow-xl shadow-blue-500/10 scale-[0.98]' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
-                                                >
-                                                    <img src={file.url} className="w-full h-full object-cover" />
-                                                    {isSelected && (
-                                                        <div className="absolute inset-0 bg-blue-600/10 flex items-center justify-center">
-                                                            <div className="bg-blue-600 text-white rounded-full p-1 shadow-lg border-2 border-white scale-125">
-                                                                <Check className="w-3.5 h-3.5" />
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {!isSelected && (
-                                                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-black/40 text-white flex items-center justify-center backdrop-blur-sm border border-white/20">
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-white/40" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </ScrollArea>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="pt-6 mt-6 flex justify-between items-center border-t border-slate-100">
-                         <div className="flex items-center gap-3">
-                            <div className="bg-slate-100 rounded-full px-4 py-2 border border-slate-200">
-                                <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{pendingAttachments.length} Selected</span>
-                            </div>
-                            {pendingAttachments.length > 0 && <span className="text-[10px] font-bold text-amber-500 animate-pulse">Set titles & descriptions above â†‘</span>}
-                         </div>
-                        <Button 
-                            className="bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-[0.15em] px-12 h-12 rounded-full shadow-2xl shadow-blue-500/30 transition-all hover:scale-[1.02] active:scale-[0.98] text-[11px]" 
-                            onClick={() => setIsAttachmentManagerOpen(false)}
-                        >
-                            Sync with Record
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            <ComponentSpecDialog
-                open={compSpecDialogOpen}
-                onOpenChange={setCompSpecDialogOpen}
-                component={selectedComp?.raw}
-                mode="view"
-            />
-        
-            {/* Defect Criteria Automated Confirmation Dialog */}
-            <Dialog open={showCriteriaConfirm} onOpenChange={setShowCriteriaConfirm}>
-                <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl">
-                    <DialogHeader className="sr-only">
-                        <DialogTitle>Defect Criteria Alert</DialogTitle>
-                        <DialogDescription>Confirm if the current observation matches defect criteria.</DialogDescription>
-                    </DialogHeader>
-                    <div className="bg-red-600 p-4 flex items-center gap-3">
-                        <div className="bg-white/20 p-2 rounded-lg">
-                            <AlertTriangle className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                            <h3 className="text-white font-bold text-sm">Automated Defect Alert</h3>
-                            <p className="text-white/80 text-[10px] uppercase tracking-wider font-medium">Verification Required</p>
-                        </div>
-                    </div>
-                    <div className="p-5 space-y-4 bg-white">
-                        <div className="bg-red-50 p-3 rounded-md border border-red-100 mb-4 space-y-2">
-                            <div className="text-xs font-bold text-red-800 uppercase tracking-widest flex items-center justify-between">
-                                <span>Defect Alert</span>
-                                {pendingRule?.referenceNo && <span className="bg-red-100 px-1.5 py-0.5 rounded">Ref: {pendingRule.referenceNo}</span>}
-                            </div>
-                            <div className="text-xs font-medium text-red-700 leading-relaxed">
-                                {pendingRule?.alertMessage || "Defect criteria exceeded."}
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 pt-2">
-                            <Button
-                                variant="outline"
-                                className="flex-1 h-10 text-xs font-bold border-slate-200 hover:bg-slate-50 transition-all text-slate-600 uppercase tracking-wide"
-                                onClick={() => {
-                                    setShowCriteriaConfirm(false);
-                                    setIsManualOverride(true);
-                                }}
-                            >
-                                Dismiss Alert
-                            </Button>
-                            <Button
-                                className="flex-1 h-10 text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-100 transition-all uppercase tracking-wide"
-                                onClick={handleRegisterAnomaly}
-                            >
-                                Register Anomaly
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            <ReportPreviewDialog 
-                open={rscorPreviewOpen} 
-                onOpenChange={setRscorPreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
-                    const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
-                    let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.lib_path || '';
-                    }
-
-                    return await generateROVRSCORReport(
-                        scourRecords,
-                        { 
-                            ...headerData, 
-                            contractorLogoUrl,
-                            vessel: jobPack?.metadata?.vessel || 'N/A'
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly
-                        }
-                    );
+                    compSpecDialogOpen,
+                    selectedComp,
+                    previewOpen,
+                    previewRecord,
+                    mPreviewOpen,
+                    fmdPreviewOpen,
+                    utwtPreviewOpen,
+                    szciPreviewOpen,
+                    isGalleryOpen,
+                    viewingRecordAttachments,
+                    isAttachmentManagerOpen,
+                    findingType,
+                    anomalyData,
+                    showCriteriaConfirm,
+                    pendingRule,
+                    rscorPreviewOpen,
+                    anodePreviewOpen,
+                    cpPreviewOpen,
+                    rgviPreviewOpen,
+                    rcondSketchPreviewOpen,
+                    showRemovalConfirm,
+                    editingRecordId,
+                    pendingReclass,
+                    showTaskSelector,
+                    activeSpec,
+                    allInspectionTypes,
+                    addTaskSearch,
+                    showCompSelector,
+                    compSelectorSearch,
+                    componentsSow,
+                    allComps,
+                    selectorShowAll,
+                    isSeabedGuiOpen,
+                    tapeId,
+                    vidTimer,
+                    dataAcqFields,
+                    manualOverride,
+                    vidState,
+                    blPreviewOpen,
+                    photographyPreviewOpen,
+                    photographyLogPreviewOpen,
+                    seabedPreviewOpen,
+                    rcondPreviewOpen,
+                    rcasnPreviewOpen,
+                    rcasnSketchPreviewOpen,
+                    rrisiPreviewOpen,
+                    jtisiPreviewOpen,
+                    itisiPreviewOpen
                 }}
-                title="ROV Scour Survey Report (RSCOR)"
-                fileName={`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                setters={{
+                    setIsDiveSetupOpen,
+                    setEditingEvent,
+                    setLastStartEventForEdit,
+                    setIsMovementLogOpen,
+                    setIsEditTapeOpen,
+                    setEditTapeNo,
+                    setEditTapeChapter,
+                    setEditTapeStatus,
+                    setEditTapeRemarks,
+                    setIsNewTapeOpen,
+                    setNewTapeNo,
+                    setNewTapeChapter,
+                    setNewTapeRemarks,
+                    setCalibrationDialogOpen,
+                    setRovCalibrationDialogOpen,
+                    setCompSpecDialogOpen,
+
+
+                    setPreviewOpen,
+                    setMPreviewOpen,
+                    setFmdPreviewOpen,
+                    setUtwtPreviewOpen,
+                    setSzciPreviewOpen,
+                    setIsGalleryOpen,
+                    setViewingRecordAttachments,
+                    setIsAttachmentManagerOpen,
+                    setShowCriteriaConfirm,
+                    setRscorPreviewOpen,
+                    setAnodePreviewOpen,
+                    setCpPreviewOpen,
+                    setRgviPreviewOpen,
+                    setRcondSketchPreviewOpen,
+                    setShowRemovalConfirm,
+                    setPendingReclass,
+                    setShowTaskSelector,
+                    setAddTaskSearch,
+                    setShowCompSelector,
+                    setCompSelectorSearch,
+                    setSelectorShowAll,
+                    setIsSeabedGuiOpen,
+                    setBlPreviewOpen,
+                    setPhotographyPreviewOpen,
+                    setPhotographyLogPreviewOpen,
+                    setSeabedPreviewOpen,
+                    setRcondPreviewOpen,
+                    setRcasnPreviewOpen,
+                    setRcasnSketchPreviewOpen,
+                    setRrisiPreviewOpen,
+                    setJtisiPreviewOpen,
+                    setItisiPreviewOpen
+                }}
+                handlers={{
+                    handleEditEventSave,
+                    handleSaveTapeEdit,
+                    handleRegisterAnomaly,
+                    handleConfirmRemoval,
+                    confirmReclassification,
+                    handleTaskChange,
+                    handleComponentSelection,
+                    handleExternalFileUpload,
+                    handleLinkToRecord,
+                    syncDeploymentState,
+                    queryClient,
+                    generateAnomalyReportBlob,
+                    generateMGIReportBlob,
+                    generateFMDReportBlob,
+                    generateUTWTReportBlob,
+                    generateSZCIReportBlob
+                }}
+                refs={{
+                    fileInputRef
+                }}
             />
 
-            <ReportPreviewDialog 
-                open={anodePreviewOpen} 
-                onOpenChange={setAnodePreviewOpen} 
-                generateReport={async (isPrintFriendly) => {
-                    const anodeRecords = currentRecords.filter(r => {
-                        const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
-                        const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
-                                     (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
-                        return isRGVI && isAN;
-                    });
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
-                    let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.lib_path || '';
-                    }
-
-                    const headerDataObj = {
-                        ...headerData,
-                        vessel: jobPack?.metadata?.vessel || 'N/A',
-                        contractorLogoUrl
-                    };
-
-                    return await generateROVAnodeReport(
-                        anodeRecords,
-                        headerDataObj,
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        { printFriendly: isPrintFriendly, returnBlob: true }
-                    );
-                }}
-                title="ROV Anode Inspection Report"
-                fileName={`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                open={cpPreviewOpen}
-                onOpenChange={setCpPreviewOpen}
-                generateReport={async (isPrintFriendly) => {
-                    const cpRecords = currentRecords.filter(r => {
-                        const d = r.inspection_data || {};
-                        return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
-                    });
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
-                    let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.lib_path || '';
-                    }
-
-                    return await generateROVCPReport(
-                        cpRecords,
-                        {
-                            ...headerData,
-                            contractorLogoUrl,
-                            vessel: jobPack?.metadata?.vessel || 'N/A'
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showPageNumbers: true,
-                        }
-                    );
-                }}
-                title="ROV CP Survey Report"
-                fileName={`ROV_CP_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                open={rgviPreviewOpen}
-                onOpenChange={setRgviPreviewOpen}
-                generateReport={async (isPrintFriendly) => {
-                    const rgviRecords = currentRecords.filter(r =>
-                        (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI'
-                    );
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('contrac, metadata').eq('id', Number(jobPackId)).single();
-                    let contractorLogoUrl = '';
-                    if (jobPack?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.lib_path || '';
-                    }
-
-                    return await generateROVRGVIReport(
-                        rgviRecords,
-                        {
-                            ...headerData,
-                            contractorLogoUrl,
-                            vessel: jobPack?.metadata?.vessel || 'N/A'
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showPageNumbers: true,
-                        }
-                    );
-                }}
-                title="ROV GVI Report (RGVI)"
-                fileName={`ROV_GVI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            {/* Anomaly Removal Confirmation Dialog */}
-            <Dialog open={showRemovalConfirm} onOpenChange={setShowRemovalConfirm}>
-                <DialogContent className="sm:max-w-[440px] p-0 overflow-hidden border-none shadow-2xl">
-                    <DialogHeader className="bg-amber-500 p-4 flex-row items-center gap-3 space-y-0">
-                        <div className="bg-white/20 p-2 rounded-lg shrink-0">
-                            <AlertTriangle className="w-5 h-5 text-white" />
-                        </div>
-                        <div className="text-left">
-                            <DialogTitle className="text-white font-bold text-sm">Value No Longer Meets Criteria</DialogTitle>
-                            <DialogDescription className="text-white/80 text-[10px] uppercase tracking-wider font-medium">Anomaly / Finding Review Required</DialogDescription>
-                        </div>
-                    </DialogHeader>
-                    <div className="p-5 space-y-4 bg-white">
-                        <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                            The entered value has been corrected and no longer triggers the defect criteria. What would you like to do with the registered {findingType === 'Finding' ? 'finding' : 'anomaly'}?
-                        </p>
-                        {(() => {
-                            // Check if this is the last/latest anomaly
-                            const recordRow = editingRecordId ? currentRecords.find(r => r.insp_id === editingRecordId) : null;
-                            const hasNewerAnomalies = recordRow ? currentRecords.some(r =>
-                                r.has_anomaly &&
-                                r.insp_id !== editingRecordId &&
-                                (new Date(r.inspection_date) > new Date(recordRow.inspection_date) ||
-                                    (r.inspection_date === recordRow.inspection_date && r.inspection_time > recordRow.inspection_time))
-                            ) : false;
-                            const isNewRecord = !editingRecordId;
-
-                            return (
-                                <>
-                                    {!isNewRecord && hasNewerAnomalies && (
-                                        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-[10px] text-amber-800 font-medium">
-                                            <strong className="uppercase tracking-wider">âš  Cannot Delete:</strong> Subsequent anomalies exist after this record. The anomaly will be <strong>rectified</strong> with priority set to <strong>NONE</strong> to preserve event sequence numbering.
-                                        </div>
-                                    )}
-                                    {(isNewRecord || !hasNewerAnomalies) && (
-                                        <div className="bg-green-50 border border-green-200 rounded-md p-3 text-[10px] text-green-800 font-medium">
-                                            <strong className="uppercase tracking-wider">âœ“ Safe to Remove:</strong> {isNewRecord ? 'This is a new record â€” the anomaly data will be cleared.' : 'This is the latest anomaly â€” it can be safely deleted.'}
-                                        </div>
-                                    )}
-                                </>
-                            );
-                        })()}
-                        <div className="flex gap-3 pt-2">
-                            <Button
-                                variant="outline"
-                                className="flex-1 h-10 text-xs font-bold border-slate-200 hover:bg-slate-50 transition-all text-slate-600 uppercase tracking-wide"
-                                onClick={() => {
-                                    setShowRemovalConfirm(false);
-                                    setIsManualOverride(true);
-                                }}
-                            >
-                                Keep As-Is
-                            </Button>
-                            <Button
-                                className="flex-1 h-10 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-100 transition-all uppercase tracking-wide"
-                                onClick={handleConfirmRemoval}
-                            >
-                                {(() => {
-                                    const recordRow = editingRecordId ? currentRecords.find(r => r.insp_id === editingRecordId) : null;
-                                    const hasNewerAnomalies = recordRow ? currentRecords.some(r =>
-                                        r.has_anomaly &&
-                                        r.insp_id !== editingRecordId &&
-                                        (new Date(r.inspection_date) > new Date(recordRow.inspection_date) ||
-                                            (r.inspection_date === recordRow.inspection_date && r.inspection_time > recordRow.inspection_time))
-                                    ) : false;
-                                    return (!editingRecordId || !hasNewerAnomalies) ? 'Remove & Reset' : 'Rectify (Priority: NONE)';
-                                })()}
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* RE-CLASSIFICATION WARNING MODAL */}
-            <Dialog open={!!pendingReclass} onOpenChange={() => setPendingReclass(null)}>
-                <DialogContent className="max-w-md bg-white border-2 border-amber-200">
-                    <DialogHeader>
-                        <div className="flex items-center gap-2 text-amber-600 mb-2">
-                            <AlertTriangle className="w-6 h-6" />
-                            <DialogTitle className="text-lg font-bold uppercase tracking-tight">Warning: Data Impact</DialogTitle>
-                        </div>
-                        <DialogDescription className="text-slate-600 font-medium">
-                            Changing the {pendingReclass?.type === 'COMPONENT' ? 'Component' : 'Task Type'} while editing an existing record will hide fields not present in the new specification.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    {pendingReclass?.orphanedFields && pendingReclass.orphanedFields.length > 0 && (
-                        <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-100">
-                            <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-2">Impacted Fields (Will be archived):</p>
-                            <div className="flex flex-wrap gap-2">
-                                {pendingReclass.orphanedFields.map(f => (
-                                    <span key={f} className="px-2 py-1 bg-white border border-amber-200 text-amber-800 text-[10px] font-bold rounded shadow-sm">
-                                        {f.replace(/_/g, ' ').toUpperCase()}
-                                    </span>
-                                ))}
-                            </div>
-                            <p className="mt-3 text-[10px] text-amber-600 leading-relaxed italic">
-                                Note: These fields are not lost. They are moved to an archive column and will be restored automatically if you switch back to the original specification.
-                            </p>
-                        </div>
-                    )}
-
-                    <div className="mt-6 flex gap-3">
-                        <Button variant="outline" className="flex-1 font-bold text-slate-500 border-slate-200" onClick={() => setPendingReclass(null)}>
-                            CANCEL
-                        </Button>
-                        <Button className="flex-1 font-bold bg-amber-600 hover:bg-amber-700 text-white" onClick={confirmReclassification}>
-                            CONFIRM CHANGE
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* TASK SELECTOR MODAL (FOR RE-CLASSIFICATION) */}
-            <Dialog open={showTaskSelector} onOpenChange={(open) => {
-                setShowTaskSelector(open);
-                if (!open && editingRecordId) resetForm();
-            }}>
-                <DialogContent className="max-w-sm bg-white p-0 overflow-hidden border-2 border-blue-100 shadow-2xl">
-                    <DialogHeader className="p-4 bg-blue-600 text-white space-y-1">
-                        <DialogTitle className="text-xs font-bold uppercase tracking-widest opacity-80 mb-0">Re-classify Task</DialogTitle>
-                        <DialogDescription className="text-sm font-black text-white/90">Change Specification for {selectedComp?.name}</DialogDescription>
-                    </DialogHeader>
-                    <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto bg-slate-50">
-                        {/* SOW TASKS */}
-                        <div>
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">SOW Tasks</h3>
-                            <div className="space-y-1.5">
-                                {selectedComp?.taskStatuses
-                                    ?.filter((ts: any) => {
-                                        const it = allInspectionTypes.find(type => type.code === ts.code);
-                                        if (!it) return true; // fallback
-                                        if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
-                                        if (inspMethod === 'ROV') return it.metadata?.rov === 1;
-                                        return true;
-                                    })
-                                    .map((ts: any) => (
-                                        <button 
-                                            key={ts.code} 
-                                            onClick={() => handleTaskChange(ts.code)}
-                                            className={`w-full text-left p-3 rounded-lg border flex justify-between items-center transition-all ${
-                                                activeSpec === ts.code 
-                                                ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm' 
-                                                : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300 hover:bg-blue-50/30'
-                                            }`}
-                                        >
-                                            <span className="font-bold text-xs uppercase tracking-wide">{ts.code}</span>
-                                            {activeSpec === ts.code && <Check className="w-4 h-4" />}
-                                        </button>
-                                    ))}
-                            </div>
-                        </div>
-
-                        {/* OTHER LIBRARY TASKS */}
-                        <div className="pt-2 border-t border-slate-200">
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Add Selection from Library</h3>
-                            <div className="relative mb-2">
-                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                                <Input 
-                                    placeholder="Search library..." 
-                                    className="pl-8 h-8 text-[11px] font-bold bg-white border-slate-200"
-                                    value={addTaskSearch}
-                                    onChange={(e) => setAddTaskSearch(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                {allInspectionTypes
-                                    .filter(it => {
-                                        const isInSow = selectedComp?.tasks?.includes(it.code);
-                                        if (isInSow) return false;
-                                        const matchesSearch = it.name.toLowerCase().includes(addTaskSearch.toLowerCase()) || 
-                                                            it.code.toLowerCase().includes(addTaskSearch.toLowerCase());
-                                        if (!matchesSearch) return false;
-                                        if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
-                                        if (inspMethod === 'ROV') return it.metadata?.rov === 1;
-                                        return true;
-                                    })
-                                    .slice(0, 10) // Limit to 10 for performance
-                                    .map((it: any) => (
-                                        <button 
-                                            key={it.id} 
-                                            onClick={() => {
-                                                handleTaskChange(it.code);
-                                                setAddTaskSearch("");
-                                            }}
-                                            className="w-full text-left p-2.5 rounded border border-dashed border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-200 text-slate-500 hover:text-blue-600 transition-all group"
-                                        >
-                                            <div className="flex justify-between items-center">
-                                                <span className="font-bold text-[11px] uppercase tracking-wide">{it.name}</span>
-                                                <Plus className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                            </div>
-                                            <p className="text-[9px] font-medium text-slate-400 uppercase tracking-tighter leading-none mt-0.5">{it.code}</p>
-                                        </button>
-                                    ))}
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-3 bg-white border-t border-slate-100 flex justify-end">
-                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => {
-                            setShowTaskSelector(false);
-                            if (editingRecordId) resetForm();
-                        }}>CLOSE</Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* COMPONENT SELECTOR MODAL (FOR RE-CLASSIFICATION) */}
-            <Dialog 
-                open={showCompSelector} 
-                onOpenChange={(open) => {
-                    setShowCompSelector(open);
-                    if (!open) {
-                        setSelectorShowAll(false);
-                        if (editingRecordId) resetForm();
-                    }
-                }}
-            >
-                <DialogContent className="max-w-md bg-white p-0 overflow-hidden border-2 border-blue-100 shadow-2xl">
-                    <DialogHeader className="p-4 bg-blue-600 text-white space-y-1">
-                        <DialogTitle className="text-xs font-bold uppercase tracking-widest opacity-80">Re-classify Component</DialogTitle>
-                        <DialogDescription className="text-sm font-black text-white p-0 m-0">Transfer Record to Another Component</DialogDescription>
-                    </DialogHeader>
-                    <div className="p-3 bg-slate-50 border-b border-slate-200">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <Input 
-                                placeholder="Search Component Name..." 
-                                className="pl-9 h-10 bg-white border-slate-200 text-sm font-bold focus-visible:ring-blue-500"
-                                value={compSelectorSearch}
-                                onChange={(e) => setCompSelectorSearch(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <div className="p-2 space-y-1 max-h-[50vh] overflow-y-auto bg-white">
-                        {/* SOW COMPONENTS GROUP */}
-                        <div className="px-2 py-1 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 mb-1 rounded">SOW Items</div>
-                        {componentsSow
-                            .filter(c => JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase()))
-                            .map((c: any) => (
-                                <button 
-                                    key={c.id} 
-                                    onClick={() => {
-                                        handleComponentSelection(c);
-                                        setShowCompSelector(false);
-                                        setCompSelectorSearch("");
-                                    }}
-                                    className={`w-full text-left px-4 py-3 rounded-md flex justify-between items-center transition-all ${
-                                        selectedComp?.id === c.id 
-                                        ? 'bg-blue-50 border border-blue-200 text-blue-700' 
-                                        : 'hover:bg-slate-50 text-slate-600'
-                                    }`}
-                                >
-                                    <div>
-                                        <p className="font-black text-xs uppercase tracking-wide">{c.name}</p>
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase leading-tight mt-0.5">{c.type || 'Structure Item'}</p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-[8px] h-3.5 px-1 bg-blue-50 text-blue-600 border-blue-100 font-bold">SOW</Badge>
-                                        {selectedComp?.id === c.id ? <Check className="w-4 h-4" /> : <ChevronRight className="w-4 h-4 text-slate-300" />}
-                                    </div>
-                                </button>
-                            ))}
-
-                        {/* OTHER LIBRARY COMPONENTS (CONDITIONAL) */}
-                        {selectorShowAll ? (
-                            <>
-                                <div className="mt-4 px-2 py-1 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 mb-1 rounded">Platform Library (Non-SOW)</div>
-                                {allComps
-                                    .filter(c => {
-                                        const isInSow = componentsSow.some(sc => sc.id === c.id);
-                                        return !isInSow && JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
-                                    })
-                                    .map((c: any) => (
-                                        <button 
-                                            key={c.id} 
-                                            onClick={() => {
-                                                handleComponentSelection(c);
-                                                setShowCompSelector(false);
-                                                setCompSelectorSearch("");
-                                            }}
-                                            className="w-full text-left px-4 py-3 rounded-md flex justify-between items-center hover:bg-slate-50 text-slate-600 transition-all"
-                                        >
-                                            <div>
-                                                <p className="font-black text-xs uppercase tracking-wide">{c.name}</p>
-                                                <p className="text-[10px] text-slate-400 font-bold uppercase leading-tight mt-0.5">{c.type || 'Structure Item'}</p>
-                                            </div>
-                                            <ChevronRight className="w-4 h-4 text-slate-300" />
-                                        </button>
-                                    ))}
-                            </>
-                        ) : (
-                            <div className="mt-4 p-4 text-center">
-                                <p className="text-[11px] text-slate-400 font-bold mb-2">Cant find the QID? Show all platform components.</p>
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="h-8 text-[10px] font-black border-dashed border-slate-300 text-slate-500 hover:text-blue-600 hover:border-blue-300"
-                                    onClick={() => setSelectorShowAll(true)}
-                                >
-                                    <Layers className="w-3.5 h-3.5 mr-1.5" /> SHOW ALL COMPONENTS
-                                </Button>
-                            </div>
-                        )}
-                    </div>
-                    <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                        <div className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
-                            <Info className="w-3 h-3" />
-                            {selectorShowAll ? "Showing full platform library" : "Showing SOW components only"}
-                        </div>
-                        <Button variant="ghost" className="text-xs font-bold text-slate-400" onClick={() => { 
-                            setShowCompSelector(false); 
-                            setCompSelectorSearch(""); 
-                            setSelectorShowAll(false); 
-                            if (editingRecordId) resetForm();
-                        }}>CANCEL</Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* SEABED GUI INLINE POPUP */}
-            {isSeabedGuiOpen && (
-                <div className="fixed inset-0 z-[100] bg-black/60 p-6 flex flex-col items-center justify-center backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="w-full max-w-[1400px] h-full max-h-[92vh] flex flex-col bg-slate-50 shadow-2xl rounded-xl overflow-hidden ring-1 ring-slate-900/10 relative">
-                        <SeabedSurveyGuiInline 
-                            open={isSeabedGuiOpen}
-                            onClose={() => setIsSeabedGuiOpen(false)}
-                            jobpackId={jobPackId || "0"}
-                            structureId={structureId || "0"}
-                            sowRecordId={sowId ? Number(sowId) : null}
-                            sowReportNo={headerData?.sowReportNo}
-                            rovJob={activeDep || undefined}
-                            tapeId={tapeId?.toString()}
-                            tapeCounter={vidTimer?.toString()} 
-                            telemetryData={dataAcqFields}
-                            isStreamRecording={manualOverride || vidState !== "IDLE"}
-                            isStreamPaused={!manualOverride && vidState === "PAUSED"}
-                            onRefreshInspection={() => {
-                                syncDeploymentState();
-                                queryClient.invalidateQueries({ queryKey: ['inspection-records'] });
-                            }}
-                        />
-                    </div>
-                </div>
-            )}
 
         </div>
     );
