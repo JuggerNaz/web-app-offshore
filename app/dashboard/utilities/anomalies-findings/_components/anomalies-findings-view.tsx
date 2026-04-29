@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
+import inspectionTypesData from "@/utils/types/inspection-types.json";
 
 import { createClient } from "@/utils/supabase/client";
 import { 
@@ -82,6 +83,43 @@ export function AnomaliesFindingsView() {
     return map;
   }, [priorityColorsData]);
 
+  const { data: apiInspectionTypes } = useSWR('/api/inspection-type?pageSize=1000', fetcher);
+
+  const inspectionTypeMap = useMemo(() => {
+    const map: Record<string, { name: string, mode: string }> = {};
+    
+    // Populate from JSON
+    if (inspectionTypesData && (inspectionTypesData as any).inspectionTypes) {
+      (inspectionTypesData as any).inspectionTypes.forEach((type: any) => {
+        const mode = type.methods?.includes("ROV") ? "ROV" : (type.methods?.includes("DIVING") ? "Diving" : "");
+        map[type.code] = {
+          name: type.name,
+          mode: mode
+        };
+      });
+    }
+
+    // Populate from API
+    if (apiInspectionTypes?.data) {
+      apiInspectionTypes.data.forEach((type: any) => {
+        const isDiving = type.metadata?.diving === 1 || type.metadata?.diving === "1" || type.metadata?.diving === true;
+        const isRov = type.metadata?.rov === 1 || type.metadata?.rov === "1" || type.metadata?.rov === true || type.code?.toUpperCase().startsWith("R");
+        
+        let mode = "";
+        if (isDiving && isRov) mode = "Diving/ROV";
+        else if (isDiving) mode = "Diving";
+        else if (isRov) mode = "ROV";
+        
+        map[type.code] = {
+          name: type.name || type.code,
+          mode: mode
+        };
+      });
+    }
+    
+    return map;
+  }, [apiInspectionTypes]);
+
   
   // Filter State
   const [selectedStructureId, setSelectedStructureId] = useState<string | null>(null);
@@ -118,13 +156,28 @@ export function AnomaliesFindingsView() {
               structure_id, 
               component_id, 
               jobpack_id,
+              sow_report_no,
               inspection_type_code,
               inspection_date,
               inspection_data,
-              has_anomaly
+              has_anomaly,
+              tape_count_no,
+              tape_id,
+              dive_job_id,
+              rov_job_id,
+              structure_components:component_id!left(q_id, code),
+              insp_rov_jobs:rov_job_id!left(job_no:deployment_no),
+              insp_dive_jobs:dive_job_id!left(job_no:dive_no),
+              insp_video_tapes:tape_id!left(tape_no)
             )
           `),
-          supabase.from("insp_records").select("*")
+          supabase.from("insp_records").select(`
+            *,
+            structure_components:component_id!left(q_id, code),
+            insp_rov_jobs:rov_job_id!left(job_no:deployment_no),
+            insp_dive_jobs:dive_job_id!left(job_no:dive_no),
+            insp_video_tapes:tape_id!left(tape_no)
+          `)
         ]);
 
         const combinedStructures = [
@@ -221,8 +274,14 @@ export function AnomaliesFindingsView() {
         valA = viewMode === "anomalies" ? a.anomaly_ref_no : `INSP-${a.insp_id}`;
         valB = viewMode === "anomalies" ? b.anomaly_ref_no : `INSP-${b.insp_id}`;
       } else if (sortColumn === "type") {
-        valA = viewMode === "anomalies" ? a.defect_type_code : a.inspection_type_code;
-        valB = viewMode === "anomalies" ? b.defect_type_code : b.inspection_type_code;
+        const typeCodeA = viewMode === "anomalies" ? a.inspection?.inspection_type_code : a.inspection_type_code;
+        const typeCodeB = viewMode === "anomalies" ? b.inspection?.inspection_type_code : b.inspection_type_code;
+        
+        const infoA = inspectionTypeMap[typeCodeA];
+        const infoB = inspectionTypeMap[typeCodeB];
+        
+        valA = infoA ? `${infoA.name}${infoA.mode ? ` (${infoA.mode})` : ''}` : (typeCodeA || (viewMode === "anomalies" ? a.defect_type_code : ""));
+        valB = infoB ? `${infoB.name}${infoB.mode ? ` (${infoB.mode})` : ''}` : (typeCodeB || (viewMode === "anomalies" ? b.defect_type_code : ""));
       } else if (sortColumn === "description") {
         valA = viewMode === "anomalies" ? a.defect_description : (a.description || a.observation);
         valB = viewMode === "anomalies" ? b.defect_description : (b.description || b.observation);
@@ -514,6 +573,9 @@ export function AnomaliesFindingsView() {
                           const comp = components[compId];
                           const refNo = viewMode === "anomalies" ? item.anomaly_ref_no : `INSP-${item.insp_id}`;
                           const desc = viewMode === "anomalies" ? item.defect_description : (item.description || item.observation);
+                          const qid = viewMode === "anomalies"
+                            ? (item.inspection?.structure_components?.q_id || comp?.q_id || "N/A")
+                            : (item.structure_components?.q_id || comp?.q_id || "N/A");
 
                           return (
                             <Card 
@@ -543,7 +605,13 @@ export function AnomaliesFindingsView() {
 
                                 </div>
                                 <CardTitle className="text-base font-semibold mt-2">
-                                  {viewMode === "anomalies" ? item.defect_type_code : item.inspection_type_code}
+                                  {(() => {
+                                    const typeCode = viewMode === "anomalies" ? item.inspection?.inspection_type_code : item.inspection_type_code;
+                                    const typeInfo = inspectionTypeMap[typeCode];
+                                    return typeInfo 
+                                      ? `${typeInfo.name}${typeInfo.mode ? ` (${typeInfo.mode})` : ''}` 
+                                      : (typeCode || (viewMode === "anomalies" ? item.defect_type_code : "N/A"));
+                                  })()}
                                 </CardTitle>
                               </CardHeader>
                               <CardContent className="space-y-3 text-sm text-muted-foreground">
@@ -558,7 +626,7 @@ export function AnomaliesFindingsView() {
                                     }}
                                     className="text-primary hover:underline flex items-center gap-1 font-mono"
                                   >
-                                    {comp?.q_id || "N/A"}
+                                    {qid}
                                     <ExternalLink className="h-3 w-3" />
                                   </button>
                                 </div>
@@ -586,6 +654,9 @@ export function AnomaliesFindingsView() {
                               const comp = components[compId];
                               const refNo = viewMode === "anomalies" ? item.anomaly_ref_no : `INSP-${item.insp_id}`;
                               const desc = viewMode === "anomalies" ? item.defect_description : (item.description || item.observation);
+                              const qid = viewMode === "anomalies"
+                                ? (item.inspection?.structure_components?.q_id || comp?.q_id || "N/A")
+                                : (item.structure_components?.q_id || comp?.q_id || "N/A");
 
                               return (
                                 <tr 
@@ -598,7 +669,13 @@ export function AnomaliesFindingsView() {
                                 >
                                   <td className="px-4 py-3 font-mono text-foreground font-medium">{refNo}</td>
                                   <td className="px-4 py-3 text-foreground">
-                                    {viewMode === "anomalies" ? item.defect_type_code : item.inspection_type_code}
+                                    {(() => {
+                                      const typeCode = viewMode === "anomalies" ? item.inspection?.inspection_type_code : item.inspection_type_code;
+                                      const typeInfo = inspectionTypeMap[typeCode];
+                                      return typeInfo 
+                                        ? `${typeInfo.name}${typeInfo.mode ? ` (${typeInfo.mode})` : ''}` 
+                                        : (typeCode || (viewMode === "anomalies" ? item.defect_type_code : "N/A"));
+                                    })()}
                                   </td>
                                   <td className="px-4 py-3 text-muted-foreground truncate max-w-xs">{desc}</td>
                                   <td className="px-4 py-3">
@@ -609,7 +686,7 @@ export function AnomaliesFindingsView() {
                                       }}
                                       className="text-primary hover:underline flex items-center gap-1 font-mono"
                                     >
-                                      {comp?.q_id || "N/A"}
+                                      {qid}
                                       <ExternalLink className="h-3 w-3" />
                                     </button>
                                   </td>
@@ -648,7 +725,7 @@ export function AnomaliesFindingsView() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl font-bold">
               {viewMode === "anomalies" ? <AlertTriangle className="h-5 w-5 text-destructive" /> : <ClipboardCheck className="h-5 w-5 text-emerald-600" />}
-              Item Details
+              {viewMode === "anomalies" ? "Anomaly Details" : "Finding Details"}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               Review information and rectify.
@@ -732,6 +809,75 @@ export function AnomaliesFindingsView() {
                   />
                 </div>
               </div>
+
+              {(() => {
+                const typeCode = viewMode === "anomalies" ? selectedItem.inspection?.inspection_type_code : selectedItem.inspection_type_code;
+                const typeInfo = inspectionTypeMap[typeCode];
+                const boxTitle = typeInfo 
+                  ? `${typeInfo.name}${typeInfo.mode ? ` (${typeInfo.mode})` : ''}` 
+                  : (typeCode || "Inspection Details");
+                  
+                const jpId = viewMode === "anomalies" ? selectedItem.inspection?.jobpack_id : selectedItem.jobpack_id;
+                const jobpack = jobpacks.find(jp => String(jp.id) === String(jpId));
+                
+                const sowNo = viewMode === "anomalies" ? selectedItem.inspection?.sow_report_no : selectedItem.sow_report_no;
+                
+                const inspData = viewMode === "anomalies" ? selectedItem.inspection?.inspection_data : selectedItem.inspection_data;
+                
+                                const diveNo = viewMode === "anomalies" 
+                  ? (selectedItem.inspection?.insp_dive_jobs?.job_no || selectedItem.inspection?.insp_rov_jobs?.job_no || "N/A")
+                  : (selectedItem.insp_dive_jobs?.job_no || selectedItem.insp_rov_jobs?.job_no || "N/A");
+                const tapeNo = viewMode === "anomalies"
+                  ? (selectedItem.inspection?.insp_video_tapes?.tape_no || "N/A")
+                  : (selectedItem.insp_video_tapes?.tape_no || "N/A");
+                const tapeCounter = viewMode === "anomalies"
+                  ? (selectedItem.inspection?.tape_count_no || "N/A")
+                  : (selectedItem.tape_count_no || "N/A");
+                const qid = viewMode === "anomalies"
+                  ? (selectedItem.inspection?.structure_components?.q_id || "N/A")
+                  : (selectedItem.structure_components?.q_id || "N/A");
+                const findings = viewMode === "anomalies" ? selectedItem.defect_description : (selectedItem.description || selectedItem.observation);
+
+                return (
+                  <div className="p-4 rounded-md border border-border bg-muted/10 space-y-3 mt-4">
+                    <div className="text-sm font-bold uppercase tracking-wider text-primary border-b border-border pb-1">
+                      {boxTitle}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <div className="flex justify-between border-b border-border/50 pb-1">
+                        <span className="text-muted-foreground font-medium">Jobpack:</span>
+                        <span className="text-foreground font-semibold truncate max-w-[150px]">{jobpack?.name || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/50 pb-1">
+                        <span className="text-muted-foreground font-medium">SOW Report No:</span>
+                        <span className="text-foreground font-semibold">{sowNo || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/50 pb-1">
+                        <span className="text-muted-foreground font-medium">Component QID:</span>
+                        <span className="text-foreground font-semibold">{qid}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/50 pb-1">
+                        <span className="text-muted-foreground font-medium">Dive No:</span>
+                        <span className="text-foreground font-semibold">{diveNo}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/50 pb-1">
+                        <span className="text-muted-foreground font-medium">Tape No:</span>
+                        <span className="text-foreground font-semibold">{tapeNo}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/50 pb-1">
+                        <span className="text-muted-foreground font-medium">Tape Counter:</span>
+                        <span className="text-foreground font-semibold">{tapeCounter}</span>
+                      </div>
+                    </div>
+                    <div className="pt-2 text-sm">
+                      <span className="text-muted-foreground font-medium block pb-1">Inspection Findings:</span>
+                      <div className="p-2 bg-background border border-border rounded-md text-foreground italic">
+                        "{findings}"
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {selectedItem.status !== 'CLOSED' && selectedItem.status !== 'COMPLETED' && (
                 <div className="p-4 rounded-md bg-muted/20 border border-border space-y-4">

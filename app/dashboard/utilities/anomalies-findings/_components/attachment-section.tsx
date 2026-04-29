@@ -10,9 +10,22 @@ import {
   Loader2, 
   FileText, 
   Image as ImageIcon,
-  ExternalLink 
+  Video,
+  File,
+  ExternalLink,
+  LayoutGrid,
+  List,
+  Eye
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface Attachment {
   id: number;
@@ -34,7 +47,13 @@ interface AttachmentSectionProps {
 export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewType, setViewType] = useState<"card" | "list">("card");
   
+  // Dialog States
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+
   // Upload State
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -95,6 +114,7 @@ export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionPro
       setFile(null);
       setTitle("");
       setDescription("");
+      setIsUploadOpen(false);
       
       // Refresh list
       fetchAttachments();
@@ -106,114 +126,276 @@ export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionPro
     }
   };
 
+  const getFileIcon = (type?: string, path?: string) => {
+    const lowerType = type?.toLowerCase() || "";
+    const lowerPath = path?.toLowerCase() || "";
+    
+    if (lowerType.startsWith("image/") || lowerPath.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
+      return <ImageIcon className="h-12 w-12 text-indigo-400" />;
+    }
+    if (lowerType.startsWith("video/") || lowerPath.match(/\.(mp4|webm|ogg|mov)$/)) {
+      return <Video className="h-12 w-12 text-rose-400" />;
+    }
+    if (lowerType.includes("pdf") || lowerPath.match(/\.pdf$/)) {
+      return <FileText className="h-12 w-12 text-red-400" />;
+    }
+    return <File className="h-12 w-12 text-blue-400" />;
+  };
+
+  const getFileIconSmall = (type?: string, path?: string) => {
+    const lowerType = type?.toLowerCase() || "";
+    const lowerPath = path?.toLowerCase() || "";
+    
+    if (lowerType.startsWith("image/") || lowerPath.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
+      return <ImageIcon className="h-5 w-5 text-indigo-400" />;
+    }
+    if (lowerType.startsWith("video/") || lowerPath.match(/\.(mp4|webm|ogg|mov)$/)) {
+      return <Video className="h-5 w-5 text-rose-400" />;
+    }
+    if (lowerType.includes("pdf") || lowerPath.match(/\.pdf$/)) {
+      return <FileText className="h-5 w-5 text-red-400" />;
+    }
+    return <File className="h-5 w-5 text-blue-400" />;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-4">
-        <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* List */}
-      {attachments.length === 0 ? (
-        <div className="text-sm text-slate-500 italic py-2">No attachments found.</div>
-      ) : (
-        <div className="grid grid-cols-1 gap-2">
-          {attachments.map((att) => {
-            const isImage = att.meta?.file_type?.startsWith("image/") || att.path?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-            const url = att.meta?.file_url || att.path;
+    <div className="border border-border rounded-md bg-muted/5 p-4 space-y-4 mt-4">
+      {/* Group Header */}
+      <div className="flex justify-between items-center border-b border-border pb-2">
+        <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
+          <Paperclip className="h-4 w-4" />
+          Attachments ({attachments.length})
+        </div>
+        <div className="flex items-center gap-2">
+          {/* View Toggle */}
+          <div className="flex border border-border rounded-md p-0.5 bg-muted/50">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewType("card")}
+              className={`px-2 h-6 text-xs ${viewType === "card" ? "bg-background shadow-sm text-primary" : "text-muted-foreground"}`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewType("list")}
+              className={`px-2 h-6 text-xs ${viewType === "list" ? "bg-background shadow-sm text-primary" : "text-muted-foreground"}`}
+            >
+              <List className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          
+          {/* Add Button */}
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="h-7 text-xs flex items-center gap-1"
+            onClick={() => setIsUploadOpen(true)}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Add
+          </Button>
+        </div>
+      </div>
 
-            return (
-              <div 
-                key={att.id} 
-                className="flex items-center justify-between p-3 rounded-lg bg-slate-950 border border-slate-800 text-sm"
-              >
-                <div className="flex items-center gap-3">
-                  {isImage ? (
-                    <ImageIcon className="h-5 w-5 text-indigo-400" />
-                  ) : (
-                    <FileText className="h-5 w-5 text-blue-400" />
-                  )}
-                  <div>
-                    <span className="font-medium text-slate-200 block">
-                      {att.meta?.title || att.name}
-                    </span>
-                    {att.meta?.description && (
-                      <span className="text-xs text-slate-400 block">
-                        {att.meta.description}
-                      </span>
-                    )}
-                  </div>
+      {/* Content */}
+      {attachments.length === 0 ? (
+        <div className="text-sm text-muted-foreground italic py-4 text-center">No attachments found.</div>
+      ) : viewType === "card" ? (
+        /* Card View */
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          {attachments.map((att) => (
+            <Card 
+              key={att.id} 
+              className="bg-card border-border hover:border-primary/30 transition-all cursor-pointer shadow-sm hover:shadow-md"
+              onClick={() => {
+                setSelectedAttachment(att);
+                setIsPreviewOpen(true);
+              }}
+            >
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
+                {/* Graphic Icon Only initially */}
+                <div className="p-4 bg-muted/30 rounded-full">
+                  {getFileIcon(att.meta?.file_type, att.path)}
                 </div>
-                
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-slate-400 hover:text-slate-200"
-                  asChild
+                <div className="w-full">
+                  <span className="font-medium text-foreground text-xs block truncate">
+                    {att.meta?.title || att.name}
+                  </span>
+                  {att.meta?.description && (
+                    <span className="text-[10px] text-muted-foreground block truncate">
+                      {att.meta.description}
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        /* List View */
+        <div className="border border-border rounded-md overflow-hidden bg-card">
+          <table className="w-full text-xs text-left text-muted-foreground">
+            <thead className="bg-muted text-muted-foreground border-b border-border">
+              <tr>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Title</th>
+                <th className="px-3 py-2">Description</th>
+                <th className="px-3 py-2 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {attachments.map((att) => (
+                <tr 
+                  key={att.id}
+                  className="border-b border-border hover:bg-muted/50 transition-colors"
                 >
-                  <a href={url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-1" /> View
-                  </a>
-                </Button>
-              </div>
-            );
-          })}
+                  <td className="px-3 py-2">
+                    {getFileIconSmall(att.meta?.file_type, att.path)}
+                  </td>
+                  <td className="px-3 py-2 font-medium text-foreground">
+                    {att.meta?.title || att.name}
+                  </td>
+                  <td className="px-3 py-2 truncate max-w-[150px]">
+                    {att.meta?.description || "-"}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-6 px-2 text-xs"
+                      onClick={() => {
+                        setSelectedAttachment(att);
+                        setIsPreviewOpen(true);
+                      }}
+                    >
+                      <Eye className="h-3 w-3 mr-1" /> View
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Upload Form */}
-      <form onSubmit={handleUpload} className="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-4 mt-2">
-        <h4 className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-          <Upload className="h-3 w-3" /> Add New Attachment
-        </h4>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="att-title">Title</Label>
-            <Input 
-              id="att-title" 
-              placeholder="e.g., Anomaly Photo 1" 
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="bg-slate-950 border-slate-800 h-8 text-xs"
-            />
-          </div>
+      {/* Preview Dialog */}
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="bg-card text-foreground border-border max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">
+              {selectedAttachment?.meta?.title || selectedAttachment?.name}
+            </DialogTitle>
+            {selectedAttachment?.meta?.description && (
+              <DialogDescription className="text-xs text-muted-foreground">
+                {selectedAttachment.meta.description}
+              </DialogDescription>
+            )}
+          </DialogHeader>
           
-          <div className="space-y-1.5">
-            <Label htmlFor="att-desc">Description</Label>
-            <Input 
-              id="att-desc" 
-              placeholder="Optional details..." 
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="bg-slate-950 border-slate-800 h-8 text-xs"
-            />
+          <div className="flex-1 flex items-center justify-center p-4 bg-muted/10 rounded-md overflow-auto min-h-[300px]">
+            {selectedAttachment && (() => {
+              const url = selectedAttachment.meta?.file_url || selectedAttachment.path;
+              const type = selectedAttachment.meta?.file_type?.toLowerCase() || "";
+              const path = selectedAttachment.path?.toLowerCase() || "";
+              
+              if (type.startsWith("image/") || path.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
+                return <img src={url} alt={selectedAttachment.name} className="max-w-full max-h-[50vh] object-contain" />;
+              }
+              if (type.startsWith("video/") || path.match(/\.(mp4|webm|ogg|mov)$/)) {
+                return <video src={url} controls className="max-w-full max-h-[50vh]" />;
+              }
+              if (type.includes("pdf") || path.match(/\.pdf$/)) {
+                return (
+                  <div className="flex flex-col items-center gap-4">
+                    <FileText className="h-16 w-16 text-red-400" />
+                    <Button asChild size="sm">
+                      <a href={url} target="_blank" rel="noopener noreferrer">
+                        Open PDF in New Tab <ExternalLink className="h-3 w-3 ml-1" />
+                      </a>
+                    </Button>
+                  </div>
+                );
+              }
+              return (
+                <div className="flex flex-col items-center gap-4">
+                  <File className="h-16 w-16 text-blue-400" />
+                  <Button asChild size="sm">
+                    <a href={url} target="_blank" rel="noopener noreferrer">
+                      Download File <ExternalLink className="h-3 w-3 ml-1" />
+                    </a>
+                  </Button>
+                </div>
+              );
+            })()}
           </div>
-        </div>
+        </DialogContent>
+      </Dialog>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="att-file">File</Label>
-          <Input 
-            id="att-file" 
-            type="file" 
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            className="bg-slate-950 border-slate-800 text-xs text-slate-400 file:text-slate-200 file:bg-slate-800 file:border-none file:px-2 file:py-1 file:rounded file:mr-2"
-          />
-        </div>
+      {/* Upload Dialog */}
+      <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+        <DialogContent className="bg-card text-foreground border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-1">
+              <Upload className="h-4 w-4" /> Add New Attachment
+            </DialogTitle>
+          </DialogHeader>
+          
+          <form onSubmit={handleUpload} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="att-title" className="text-xs">Title</Label>
+              <Input 
+                id="att-title" 
+                placeholder="e.g., Anomaly Photo 1" 
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="bg-background border-border h-8 text-xs"
+              />
+            </div>
+            
+            <div className="space-y-1.5">
+              <Label htmlFor="att-desc" className="text-xs">Description</Label>
+              <Input 
+                id="att-desc" 
+                placeholder="Optional details..." 
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="bg-background border-border h-8 text-xs"
+              />
+            </div>
 
-        <Button 
-          type="submit" 
-          size="sm"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-          disabled={uploading || !file}
-        >
-          {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-          Upload Attachment
-        </Button>
-      </form>
+            <div className="space-y-1.5">
+              <Label htmlFor="att-file" className="text-xs">File</Label>
+              <Input 
+                id="att-file" 
+                type="file" 
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                className="bg-background border-border text-xs text-muted-foreground file:text-foreground file:bg-muted file:border-none file:px-2 file:py-1 file:rounded file:mr-2 h-9"
+              />
+            </div>
+
+            <Button 
+              type="submit" 
+              size="sm"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+              disabled={uploading || !file}
+            >
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+              Upload Attachment
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
