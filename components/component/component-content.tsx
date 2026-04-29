@@ -9,11 +9,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-<<<<<<< HEAD
-import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-=======
-import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, Link2 } from "lucide-react";
->>>>>>> origin/main
+import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Link2 } from "lucide-react";
 import { DeleteConfirmDialog } from "../dialogs/delete-confirm-dialog";
 import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
@@ -365,22 +361,13 @@ export default function ComponentContent() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
-<<<<<<< HEAD
-                                    <TableTh className="w-[200px]" onClick={() => handleSort('id_no')} sortDirection={sortConfig?.key === 'id_no' ? sortConfig.direction : null}>{pageType === "pipeline" ? "ID No" : "System ID No"}</TableTh>
+                  <TableTh className="w-[200px]" onClick={() => handleSort('id_no')} sortDirection={sortConfig?.key === 'id_no' ? sortConfig.direction : null}>{pageType === "pipeline" ? "ID No" : "System ID No"}</TableTh>
                   <TableTh className="w-[140px]" onClick={() => handleSort('q_id')} sortDirection={sortConfig?.key === 'q_id' ? sortConfig.direction : null}>Q ID</TableTh>
                   <TableTh className="w-[100px]" onClick={() => handleSort('code')} sortDirection={sortConfig?.key === 'code' ? sortConfig.direction : null}>Type</TableTh>
                   <TableTh className="w-[180px]" onClick={() => handleSort('kp_node')} sortDirection={sortConfig?.key === 'kp_node' ? sortConfig.direction : null}>{pageType === "pipeline" ? "KP" : "Node Path (S/E)"}</TableTh>
                   <TableTh className="w-[160px]" onClick={() => handleSort('depth_leg')} sortDirection={sortConfig?.key === 'depth_leg' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Depth" : "Platform Leg (S/E)"}</TableTh>
                   <TableTh className="w-[160px]" onClick={() => handleSort('easting_elv')} sortDirection={sortConfig?.key === 'easting_elv' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Easting Northing" : "Elevation (1/2)"}</TableTh>
                   <TableTh className="w-[120px]" onClick={() => handleSort('created_at')} sortDirection={sortConfig?.key === 'created_at' ? sortConfig.direction : null}>Timestamp</TableTh>
-=======
-                  <TableTh className="w-[200px]">{pageType === "pipeline" ? "ID No" : "System ID No"}</TableTh>
-                  <TableTh className="w-[220px]">Q ID</TableTh>
-                  <TableTh className="w-[100px]">Type</TableTh>
-                  <TableTh className="w-[180px]">{pageType === "pipeline" ? "KP" : "Node Path (S/E)"}</TableTh>
-                  <TableTh className="w-[160px]">{pageType === "pipeline" ? "Depth" : "Platform Leg (S/E)"}</TableTh>
-                  <TableTh className="w-[160px]">{pageType === "pipeline" ? "Easting Northing" : "Elevation (1/2)"}</TableTh>
->>>>>>> origin/main
                   <TableTh className="w-[80px] text-center">Actions</TableTh>
                 </tr>
               </thead>

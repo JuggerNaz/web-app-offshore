@@ -2060,33 +2060,7 @@ export function ComponentEditDialog({
                               </Select>
                             </div>
                           );
-                        if (key === "valve_status" && lowerCode === "fv")
-                          return (
-                            <div key={key} className="space-y-2">
-                              <Label
-                                htmlFor={`edit-${key}`}
-                                className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
-                              >
-                                Status of the Valve
-                              </Label>
-                              <Select
-                                value={value || ""}
-                                onValueChange={(val) => handleAdditionalInfoChange(key, val)}
-                              >
-                                <SelectTrigger
-                                  id={`edit-${key}`}
-                                  className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold"
-                                >
-                                  <SelectValue placeholder="Select valve status" />
-                                </SelectTrigger>
-                                <SelectContent className="rounded-xl">
-                                  <SelectItem value="Open">Open</SelectItem>
-                                  <SelectItem value="Close">Close</SelectItem>
-                                  <SelectItem value="Unable to verify">Unable to verify</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          );
+
                         if (key === "csum_typ" && lowerCode === "cs")
                           return renderSelect(key, "Select caisson type", csumTypeData);
                         if (key === "cais_at" && lowerCode === "cs")
@@ -2431,19 +2405,6 @@ export function ComponentEditDialog({
                     })
                   : candidates;
 
-<<<<<<< HEAD
-                  <div className="flex items-center space-x-4">
-                    <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider min-w-[120px]">
-                      Associated to:
-                    </Label>
-                    <div className="flex items-center space-x-2 flex-1">
-                      <div className="min-w-[200px] h-11 px-4 flex items-center bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
-                        <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
-                          {allComponents?.data?.find(
-                            (c: any) => c.id === formData.associated_comp_id
-                          )?.id_no || "None"}
-                        </span>
-=======
                 return (
                   <div className="space-y-6">
                     {/* Current Association Card */}
@@ -2455,40 +2416,8 @@ export function ComponentEditDialog({
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Current Association</p>
                         </div>
->>>>>>> origin/main
                       </div>
 
-<<<<<<< HEAD
-              <Dialog open={selectorOpen} onOpenChange={setSelectorOpen}>
-                <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
-                  <DialogHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/50 border-b">
-                    <DialogTitle className="text-xl font-black uppercase tracking-tight">
-                      Select Component
-                    </DialogTitle>
-                    <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                      Associate with structure ({structureId})
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="flex-1 overflow-y-auto p-8">
-                    <div className="border border-slate-200/60 dark:border-slate-800/60 rounded-2xl overflow-hidden shadow-sm">
-                      <DataTable
-                        columns={[
-                          { accessorKey: "id_no", header: "ID No" },
-                          { accessorKey: "q_id", header: "Q ID" },
-                          { accessorKey: "code", header: "Code" },
-                          {
-                            id: "actions",
-                            header: "Action",
-                            cell: ({ row }: { row: any }) => (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="rounded-lg font-bold"
-                                onClick={() => {
-                                  handleChange("associated_comp_id", (row.original as any).id);
-                                  setSelectorOpen(false);
-                                }}
-=======
                       {associatedComp ? (
                         <div className="flex items-center gap-4">
                           <div className="flex-1 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded-2xl p-4">
@@ -2589,7 +2518,6 @@ export function ComponentEditDialog({
                                 className={`w-full text-left px-5 py-3.5 border-b border-slate-100 dark:border-slate-800/60 last:border-0 transition-all flex items-center gap-4 group ${
                                   isSelected ? "bg-blue-50 dark:bg-blue-950/30" : "hover:bg-slate-50 dark:hover:bg-slate-900/50"
                                 }`}
->>>>>>> origin/main
                               >
                                 <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-black uppercase ${
                                   isSelected ? "bg-blue-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-slate-700"
