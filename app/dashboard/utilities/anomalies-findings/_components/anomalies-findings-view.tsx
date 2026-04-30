@@ -36,7 +36,9 @@ import {
   List,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Save,
+  RotateCcw
 } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentSection } from "./attachment-section";
@@ -138,13 +140,93 @@ export function AnomaliesFindingsView() {
   const [isSpecOpen, setIsSpecOpen] = useState(false);
   const [selectedCompForSpec, setSelectedCompForSpec] = useState<ComponentSpec | null>(null);
   const [rectificationNotes, setRectificationNotes] = useState("");
+  const [rectifiedDate, setRectifiedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [approvedBy, setApprovedBy] = useState("");
+  const [evaluatedBy, setEvaluatedBy] = useState("");
   const [isRectifying, setIsRectifying] = useState(false);
+  const handleSaveChanges = async () => {
+    if (!selectedItem) return;
+
+    try {
+      if (viewMode === "anomalies") {
+        const codeChanged = editDefectCode !== selectedItem.defect_type_code;
+        const typeChanged = editDefectType !== selectedItem.defect_category_code;
+        const priorityChanged = editPriority !== selectedItem.priority_code;
+        
+        const isModified = codeChanged || typeChanged || priorityChanged;
+
+        let newRefNo = selectedItem.anomaly_ref_no || "";
+
+        if (isModified) {
+          if (selectedItem.status !== 'CLOSED') {
+            if (!newRefNo.endsWith('A')) {
+              if (newRefNo.endsWith('R')) {
+                newRefNo = newRefNo.slice(0, -1) + 'A';
+              } else {
+                newRefNo = newRefNo + 'A';
+              }
+            }
+          }
+        }
+
+        const payload: any = {
+          defect_type_code: editDefectCode,
+          defect_category_code: editDefectType,
+          priority_code: editPriority,
+          anomaly_ref_no: newRefNo
+        };
+
+        const { error } = await supabase
+          .from('insp_anomalies')
+          .update(payload)
+          .eq('anomaly_id', selectedItem.anomaly_id);
+
+        if (error) {
+          toast.error(`Failed to save changes: ${error.message}`);
+        } else {
+          toast.success(`Changes saved successfully.`);
+          setAnomalies((prev: any[]) => prev.map(a => a.anomaly_id === selectedItem.anomaly_id ? { ...a, ...payload } : a));
+          setSelectedItem((prev: any) => ({ ...prev, ...payload }));
+        }
+      } else {
+        // For findings
+        const updatedData = {
+          ...selectedItem.inspection_data,
+          priority: editPriority
+        };
+        const { error } = await supabase
+          .from('insp_records')
+          .update({ inspection_data: updatedData })
+          .eq('insp_id', selectedItem.insp_id);
+
+        if (error) {
+          toast.error(`Failed to save changes: ${error.message}`);
+        } else {
+          toast.success(`Changes saved successfully.`);
+          setFindings((prev: any[]) => prev.map(f => f.insp_id === selectedItem.insp_id ? { ...f, inspection_data: updatedData } : f));
+          setSelectedItem((prev: any) => ({ ...prev, inspection_data: updatedData }));
+        }
+      }
+    } catch (e: any) {
+      toast.error(`Error saving changes: ${e.message}`);
+    }
+  };
+  const [editDefectCode, setEditDefectCode] = useState("");
+  const [editDefectType, setEditDefectType] = useState("");
+  const [editPriority, setEditPriority] = useState("");
+  const [defectCodes, setDefectCodes] = useState<any[]>([]);
+  const [priorities, setPriorities] = useState<any[]>([]);
+  const [allDefectTypes, setAllDefectTypes] = useState<any[]>([]);
+  const [availableDefectTypes, setAvailableDefectTypes] = useState<any[]>([]);
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       try {
-        const [platformsRes, pipelinesRes, jobpacksRes, componentsRes, anomaliesRes, findingsRes] = await Promise.all([
+        const [
+          platformsRes, pipelinesRes, jobpacksRes, componentsRes, anomaliesRes, findingsRes,
+          codesRes, priosRes, fndsRes
+        ] = await Promise.all([
           supabase.from("platform").select("plat_id, title"),
           supabase.from("u_pipeline").select("pipe_id, title"),
           supabase.from("jobpack").select("id, name, metadata"),
@@ -177,7 +259,10 @@ export function AnomaliesFindingsView() {
             insp_rov_jobs:rov_job_id!left(job_no:deployment_no),
             insp_dive_jobs:dive_job_id!left(job_no:dive_no),
             insp_video_tapes:tape_id!left(tape_no)
-          `)
+          `),
+          supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_COD").order("lib_desc"),
+          supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_TYP").order("lib_desc"),
+          supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_FND").order("lib_desc")
         ]);
 
         const combinedStructures = [
@@ -187,6 +272,13 @@ export function AnomaliesFindingsView() {
         
         setStructures(combinedStructures);
         setJobpacks(jobpacksRes.data || []);
+
+        if (codesRes.data) setDefectCodes(codesRes.data);
+        if (priosRes.data) setPriorities(priosRes.data);
+        if (fndsRes.data) {
+          setAllDefectTypes(fndsRes.data);
+          setAvailableDefectTypes(fndsRes.data);
+        }
         
         const anomaliesFiltered = (anomaliesRes.data || []).filter((a: any) => {
           const metaStatus = (a.inspection?.inspection_data?._meta_status || "").toLowerCase();
@@ -228,6 +320,37 @@ export function AnomaliesFindingsView() {
 
     fetchData();
   }, []);
+  // Filter Defect Types by selected Defect Code via u_lib_combo
+  useEffect(() => {
+    async function filterDefectTypes() {
+      const currentDefectCode = editDefectCode;
+
+      if (!currentDefectCode) {
+        setAvailableDefectTypes(allDefectTypes);
+        return;
+      }
+      
+      const selectedCodeItem = defectCodes.find(c => c.lib_desc === currentDefectCode);
+      if (!selectedCodeItem) {
+        setAvailableDefectTypes(allDefectTypes);
+        return;
+      }
+      
+      const { data: combos } = await supabase
+        .from('u_lib_combo')
+        .select('code_2')
+        .eq('code_1', selectedCodeItem.lib_id);
+        
+      if (combos && combos.length > 0) {
+        const validTypeIds = combos.map((c: any) => c.code_2);
+        const filtered = allDefectTypes.filter(t => validTypeIds.includes(t.lib_id));
+        setAvailableDefectTypes(filtered.length > 0 ? filtered : allDefectTypes);
+      } else {
+        setAvailableDefectTypes(allDefectTypes);
+      }
+    }
+    filterDefectTypes();
+  }, [editDefectCode, defectCodes, allDefectTypes, viewMode, supabase]);
 
   // Filtered Structures (Only those with items)
   const filteredStructures = useMemo(() => {
@@ -347,51 +470,124 @@ export function AnomaliesFindingsView() {
     try {
       if (viewMode === "anomalies") {
         let currentRef = selectedItem.anomaly_ref_no || "";
-        if (!currentRef.endsWith("R")) {
+        if (currentRef.endsWith("A")) {
+          currentRef = currentRef.slice(0, -1) + "R";
+        } else if (!currentRef.endsWith("R")) {
           currentRef = `${currentRef}R`;
         }
 
+        const payload: any = { 
+          status: "CLOSED", 
+          anomaly_ref_no: currentRef,
+          follow_up_notes: rectificationNotes,
+          rectified_date: rectifiedDate,
+          approved_by: approvedBy,
+          reviewed_by: evaluatedBy,
+          is_rectified: true,
+          rectified_by: approvedBy
+        };
+
         const { error } = await supabase
           .from("insp_anomalies")
-          .update({ 
-            status: "CLOSED", 
-            anomaly_ref_no: currentRef,
-            follow_up_notes: rectificationNotes 
-          })
+          .update(payload)
           .eq("anomaly_id", selectedItem.anomaly_id);
 
         if (error) throw error;
         
         toast.success("Anomaly Rectified & Closed");
-        setAnomalies(prev => prev.map(a => 
-          a.anomaly_id === selectedItem.anomaly_id 
-            ? { ...a, status: "CLOSED", anomaly_ref_no: currentRef, follow_up_notes: rectificationNotes } 
-            : a
+        setAnomalies((prev: any[]) => prev.map(a => 
+          a.anomaly_id === selectedItem.anomaly_id ? { ...a, ...payload } : a
         ));
+        setSelectedItem((prev: any) => ({ ...prev, ...payload }));
       } else {
+        const payload: any = { 
+          status: "COMPLETED",
+          description: rectificationNotes || selectedItem.description,
+          approved_date: rectifiedDate,
+          approved_by: approvedBy,
+          reviewed_by: evaluatedBy
+        };
+
         const { error } = await supabase
           .from("insp_records")
-          .update({ 
-            status: "COMPLETED",
-            description: rectificationNotes || selectedItem.description 
-          })
+          .update(payload)
           .eq("insp_id", selectedItem.insp_id);
 
         if (error) throw error;
         
         toast.success("Finding Rectified & Completed");
-        setFindings(prev => prev.map(f => 
-          f.insp_id === selectedItem.insp_id 
-            ? { ...f, status: "COMPLETED", description: rectificationNotes || f.description } 
-            : f
+        setFindings((prev: any[]) => prev.map(f => 
+          f.insp_id === selectedItem.insp_id ? { ...f, ...payload } : f
         ));
+        setSelectedItem((prev: any) => ({ ...prev, ...payload }));
       }
-      
-      setIsDetailOpen(false);
-      setRectificationNotes("");
-    } catch (error) {
-      console.error("Rectification error:", error);
-      toast.error("Failed to rectify item");
+    } catch (e: any) {
+      toast.error(`Error rectifying: ${e.message}`);
+    } finally {
+      setIsRectifying(false);
+    }
+  };
+
+  const handleRollbackRectify = async () => {
+    if (!selectedItem) return;
+    setIsRectifying(true);
+    
+    try {
+      if (viewMode === "anomalies") {
+        let currentRef = selectedItem.anomaly_ref_no || "";
+        if (currentRef.endsWith("R")) {
+          currentRef = currentRef.slice(0, -1);
+        }
+        if (!currentRef.endsWith("A")) {
+          currentRef = `${currentRef}A`;
+        }
+
+        const payload: any = { 
+          status: "OPEN", 
+          anomaly_ref_no: currentRef,
+          rectified_date: null,
+          is_rectified: false,
+          rectified_by: null
+        };
+
+        const { error } = await supabase
+          .from("insp_anomalies")
+          .update(payload)
+          .eq("anomaly_id", selectedItem.anomaly_id);
+
+        if (error) throw error;
+        
+        toast.success("Anomaly Re-opened");
+        setAnomalies((prev: any[]) => prev.map(a => 
+          a.anomaly_id === selectedItem.anomaly_id 
+            ? { 
+                ...a, 
+                ...payload
+              } 
+            : a
+        ));
+        setSelectedItem((prev: any) => ({ ...prev, ...payload }));
+      } else {
+        const payload: any = { 
+          status: "INCOMPLETE",
+          approved_date: null
+        };
+
+        const { error } = await supabase
+          .from("insp_records")
+          .update(payload)
+          .eq("insp_id", selectedItem.insp_id);
+
+        if (error) throw error;
+        
+        toast.success("Finding Re-opened");
+        setFindings((prev: any[]) => prev.map(f => 
+          f.insp_id === selectedItem.insp_id ? { ...f, ...payload } : f
+        ));
+        setSelectedItem((prev: any) => ({ ...prev, ...payload }));
+      }
+    } catch (e: any) {
+      toast.error(`Error rolling back: ${e.message}`);
     } finally {
       setIsRectifying(false);
     }
@@ -572,7 +768,7 @@ export function AnomaliesFindingsView() {
                           const compId = viewMode === "anomalies" ? item.inspection?.component_id : item.component_id;
                           const comp = components[compId];
                           const refNo = viewMode === "anomalies" ? item.anomaly_ref_no : `INSP-${item.insp_id}`;
-                          const desc = viewMode === "anomalies" ? item.defect_description : (item.description || item.observation);
+                          const desc = viewMode === "anomalies" ? (item.defect_category_code || "N/A") : (item.description || item.observation);
                           const qid = viewMode === "anomalies"
                             ? (item.inspection?.structure_components?.q_id || comp?.q_id || "N/A")
                             : (item.structure_components?.q_id || comp?.q_id || "N/A");
@@ -583,6 +779,15 @@ export function AnomaliesFindingsView() {
                               className="bg-card border-border hover:border-primary/30 transition-all cursor-pointer shadow-sm hover:shadow-md"
                               onDoubleClick={() => {
                                 setSelectedItem(item);
+                                setEditDefectCode(viewMode === "anomalies" ? (item.defect_type_code || "") : (item.inspection_type_code || ""));
+                                setEditDefectType(viewMode === "anomalies" ? (item.defect_category_code || "") : (item.inspection_type_code || ""));
+                                setEditPriority(viewMode === "anomalies" ? (item.priority_code || "") : (item.inspection_data?.priority || ""));
+                                setRectificationNotes(viewMode === "anomalies" ? (item.follow_up_notes || "") : (item.description || ""));
+                                setRectifiedDate(viewMode === "anomalies" 
+                                  ? (item.rectified_date ? new Date(item.rectified_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0])
+                                  : (item.approved_date ? new Date(item.approved_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]));
+                                setApprovedBy(item.approved_by || "");
+                                setEvaluatedBy(item.reviewed_by || "");
                                 setIsDetailOpen(true);
                               }}
                             >
@@ -643,7 +848,7 @@ export function AnomaliesFindingsView() {
                             <tr>
                               {renderSortHeader("Reference", "reference")}
                               {renderSortHeader("Type", "type")}
-                              {renderSortHeader("Description", "description")}
+                              {renderSortHeader(viewMode === "anomalies" ? "Defect Type" : "Description", "description")}
                               {renderSortHeader("QID", "qid")}
                               {viewMode === "anomalies" && renderSortHeader("Status", "status")}
                             </tr>
@@ -653,7 +858,7 @@ export function AnomaliesFindingsView() {
                               const compId = viewMode === "anomalies" ? item.inspection?.component_id : item.component_id;
                               const comp = components[compId];
                               const refNo = viewMode === "anomalies" ? item.anomaly_ref_no : `INSP-${item.insp_id}`;
-                              const desc = viewMode === "anomalies" ? item.defect_description : (item.description || item.observation);
+                              const desc = viewMode === "anomalies" ? (item.defect_category_code || "N/A") : (item.description || item.observation);
                               const qid = viewMode === "anomalies"
                                 ? (item.inspection?.structure_components?.q_id || comp?.q_id || "N/A")
                                 : (item.structure_components?.q_id || comp?.q_id || "N/A");
@@ -663,6 +868,15 @@ export function AnomaliesFindingsView() {
                                   key={viewMode === "anomalies" ? item.anomaly_id : item.insp_id}
                                   onDoubleClick={() => {
                                     setSelectedItem(item);
+                                    setEditDefectCode(viewMode === "anomalies" ? (item.defect_type_code || "") : (item.inspection_type_code || ""));
+                                    setEditDefectType(viewMode === "anomalies" ? (item.defect_category_code || "") : (item.inspection_type_code || ""));
+                                    setEditPriority(viewMode === "anomalies" ? (item.priority_code || "") : (item.inspection_data?.priority || ""));
+                                    setRectificationNotes(viewMode === "anomalies" ? (item.follow_up_notes || "") : (item.description || ""));
+                                    setRectifiedDate(viewMode === "anomalies" 
+                                      ? (item.rectified_date ? new Date(item.rectified_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0])
+                                      : (item.approved_date ? new Date(item.approved_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]));
+                                    setApprovedBy(item.approved_by || "");
+                                    setEvaluatedBy(item.reviewed_by || "");
                                     setIsDetailOpen(true);
                                   }}
                                   className="border-b border-border hover:bg-muted/50 cursor-pointer transition-colors"
@@ -756,30 +970,74 @@ export function AnomaliesFindingsView() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <Label className="text-xs uppercase text-muted-foreground font-semibold">Defect Code *</Label>
-                    <Input 
-                      value={viewMode === "anomalies" ? selectedItem.defect_type_code : selectedItem.inspection_type_code} 
-                      readOnly 
-                      className="bg-background border-border h-9"
-                    />
+                    {viewMode === "anomalies" ? (
+                      <select
+                        value={editDefectCode}
+                        onChange={(e) => setEditDefectCode(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-border bg-background px-2.5 text-xs font-semibold focus-visible:ring-red-500"
+                      >
+                        <option value="">Select Code</option>
+                        {defectCodes.map(c => (
+                          <option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input 
+                        value={selectedItem.inspection_type_code} 
+                        readOnly 
+                        className="bg-background border-border h-9"
+                      />
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs uppercase text-muted-foreground font-semibold">Defect Type</Label>
-                    <Input 
-                      value={viewMode === "anomalies" ? (selectedItem.defect_category_code || "N/A") : selectedItem.inspection_type_code} 
-                      readOnly 
-                      className="bg-background border-border h-9"
-                    />
+                    {viewMode === "anomalies" ? (
+                      <select
+                        value={editDefectType}
+                        onChange={(e) => setEditDefectType(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-border bg-background px-2.5 text-xs font-semibold focus-visible:ring-red-500"
+                      >
+                        <option value="">Select Type</option>
+                        {availableDefectTypes.map(t => (
+                          <option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input 
+                        value={selectedItem.inspection_type_code} 
+                        readOnly 
+                        className="bg-background border-border h-9"
+                      />
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <Label className="text-xs uppercase text-muted-foreground font-semibold">Priority *</Label>
-                    <Input 
-                      value={viewMode === "anomalies" ? selectedItem.priority_code : (selectedItem.inspection_data?.priority || "N/A")} 
-                      readOnly 
-                      className="bg-background border-border h-9"
-                    />
+                    {viewMode === "anomalies" ? (
+                      <select
+                        value={editPriority}
+                        onChange={(e) => setEditPriority(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-border bg-background px-2.5 text-xs font-semibold focus-visible:ring-red-500"
+                      >
+                        <option value="">Select Priority</option>
+                        {priorities.map(p => (
+                          <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        value={editPriority}
+                        onChange={(e) => setEditPriority(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-border bg-background px-2.5 text-xs font-semibold focus-visible:ring-blue-500"
+                      >
+                        <option value="">Select Priority</option>
+                        {priorities.map(p => (
+                          <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs uppercase text-muted-foreground font-semibold">Reference No</Label>
@@ -789,25 +1047,18 @@ export function AnomaliesFindingsView() {
                       className="bg-background border-border h-9"
                     />
                   </div>
+                  <div className="flex justify-end pt-2">
+                    <Button 
+                      size="sm"
+                      onClick={handleSaveChanges}
+                      className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-8"
+                    >
+                      <Save className="h-3.5 w-3.5 mr-1" />
+                      Save Changes
+                    </Button>
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <Label className="text-xs uppercase text-muted-foreground font-semibold">Anomaly Description</Label>
-                  <textarea 
-                    value={viewMode === "anomalies" ? selectedItem.defect_description : (selectedItem.description || selectedItem.observation)} 
-                    readOnly 
-                    className="w-full min-h-[80px] p-2 bg-background border border-border rounded-md text-sm text-foreground resize-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs uppercase text-muted-foreground font-semibold">Recommended Action</Label>
-                  <textarea 
-                    value={viewMode === "anomalies" ? (selectedItem.recommended_action || "N/A") : (selectedItem.inspection_data?.recommended_action || "N/A")} 
-                    readOnly 
-                    className="w-full min-h-[80px] p-2 bg-background border border-border rounded-md text-sm text-foreground resize-none"
-                  />
-                </div>
               </div>
 
               {(() => {
@@ -879,9 +1130,101 @@ export function AnomaliesFindingsView() {
                 );
               })()}
 
+              {(selectedItem.status === 'CLOSED' || selectedItem.status === 'COMPLETED') && (
+                <div className="p-4 rounded-md bg-emerald-500/10 border border-emerald-500/30 space-y-3 mt-4">
+                  <div className="text-sm font-bold uppercase tracking-wider text-emerald-600 border-b border-emerald-500/20 pb-1 flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4" /> Rectification Details
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div className="flex justify-between border-b border-border/50 pb-1">
+                      <span className="text-muted-foreground font-medium">Rectified Date:</span>
+                      <span className="text-foreground font-semibold">
+                        {viewMode === "anomalies" 
+                          ? (selectedItem.rectified_date ? new Date(selectedItem.rectified_date).toLocaleDateString() : "N/A")
+                          : (selectedItem.approved_date ? new Date(selectedItem.approved_date).toLocaleDateString() : "N/A")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-b border-border/50 pb-1">
+                      <span className="text-muted-foreground font-medium">Evaluated By:</span>
+                      <span className="text-foreground font-semibold">
+                        {selectedItem.reviewed_by || "N/A"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-b border-border/50 pb-1 md:col-span-2">
+                      <span className="text-muted-foreground font-medium">Approved By:</span>
+                      <span className="text-foreground font-semibold">
+                        {selectedItem.approved_by || "N/A"}
+                      </span>
+                    </div>
+                  </div>
+                  {viewMode === "anomalies" && selectedItem.follow_up_notes && (
+                    <div className="pt-2 text-sm">
+                      <span className="text-muted-foreground font-medium block pb-1">Resolution Notes:</span>
+                      <div className="p-2 bg-background border border-border rounded-md text-foreground italic">
+                        "{selectedItem.follow_up_notes}"
+                      </div>
+                    </div>
+                  )}
+                  {viewMode === "findings" && selectedItem.description && (
+                    <div className="pt-2 text-sm">
+                      <span className="text-muted-foreground font-medium block pb-1">Resolution Notes:</span>
+                      <div className="p-2 bg-background border border-border rounded-md text-foreground italic">
+                        "{selectedItem.description}"
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end pt-2">
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      onClick={handleRollbackRectify}
+                      disabled={isRectifying}
+                      className="border-destructive/30 hover:bg-destructive/10 text-destructive font-semibold text-xs h-8"
+                    >
+                      {isRectifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RotateCcw className="h-3.5 w-3.5 mr-1" />}
+                      Rollback Rectification
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {selectedItem.status !== 'CLOSED' && selectedItem.status !== 'COMPLETED' && (
                 <div className="p-4 rounded-md bg-muted/20 border border-border space-y-4">
                   <h3 className="text-sm font-semibold text-foreground">Action: Rectify</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="rect-date">Rectified Date</Label>
+                      <Input 
+                        id="rect-date" 
+                        type="date"
+                        value={rectifiedDate}
+                        onChange={(e) => setRectifiedDate(e.target.value)}
+                        className="bg-background border-border text-xs"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="eval-by">Evaluated By</Label>
+                      <Input 
+                        id="eval-by" 
+                        placeholder="Name of evaluator..." 
+                        value={evaluatedBy}
+                        onChange={(e) => setEvaluatedBy(e.target.value)}
+                        className="bg-background border-border text-xs"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="app-by">Approved By</Label>
+                      <Input 
+                        id="app-by" 
+                        placeholder="Name of approver..." 
+                        value={approvedBy}
+                        onChange={(e) => setApprovedBy(e.target.value)}
+                        className="bg-background border-border text-xs"
+                      />
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="rect-notes">Notes / Resolution</Label>
                     <Input 
@@ -889,7 +1232,7 @@ export function AnomaliesFindingsView() {
                       placeholder="Enter rectification details..." 
                       value={rectificationNotes}
                       onChange={(e) => setRectificationNotes(e.target.value)}
-                      className="bg-background border-border"
+                      className="bg-background border-border text-xs"
                     />
                   </div>
                   <Button 
@@ -910,6 +1253,7 @@ export function AnomaliesFindingsView() {
                 <AttachmentSection 
                   sourceId={viewMode === "anomalies" ? selectedItem.anomaly_id : selectedItem.insp_id} 
                   sourceType={viewMode === "anomalies" ? "anomaly" : "inspection"} 
+                  inspectionId={viewMode === "anomalies" ? (selectedItem.inspection?.insp_id || selectedItem.insp_id) : selectedItem.insp_id}
                 />
               </div>
             </div>

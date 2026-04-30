@@ -32,6 +32,7 @@ import {
   Activity,
   Disc,
   Film,
+  Wrench,
   ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
@@ -66,6 +67,7 @@ import { SeabedSurveyGuiInline } from "./components/SeabedSurveyGuiDialog";
 import ROVInspectionTypeCard from "./components/ROVInspectionTypeCard";
 import ROVInspectionList from "./components/ROVInspectionList";
 import ComponentTreeDialog from "../rov/components/ComponentTreeDialog";
+import RovCalibrationDialog from "./components/RovCalibrationDialog";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { useSetAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
@@ -308,6 +310,7 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
   const [inspectionDialogOpen, setInspectionDialogOpen] = useState(false);
   const [movementDialogOpen, setMovementDialogOpen] = useState(false);
   const [componentTreeDialogOpen, setComponentTreeDialogOpen] = useState(false);
+  const [calibrationDialogOpen, setCalibrationDialogOpen] = useState(false);
   const [specDialogOpen, setSpecDialogOpen] = useState(false);
   const [specMode, setSpecMode] = useState<'view' | 'create'>('view');
   const [createDefaultCode, setCreateDefaultCode] = useState<string>("");
@@ -1280,18 +1283,29 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
                     </div>
                   </div>
                 </div>
-                <Button
-                  onClick={() => {
-                    setIsEditing(true);
-                    setSetupDialogOpen(true);
-                  }}
-                  variant="ghost"
-                  size="sm"
-                  className="gap-2"
-                >
-                  <Settings className="h-4 w-4" />
-                  Details
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setCalibrationDialogOpen(true)}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300"
+                  >
+                    <Wrench className="h-4 w-4" />
+                    Calibration
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setIsEditing(true);
+                      setSetupDialogOpen(true);
+                    }}
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Details
+                  </Button>
+                </div>
               </div>
 
               {/* Row 2: Video Session Record Strip */}
@@ -2000,6 +2014,15 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
                 mode={specMode}
                 defaultCode={createDefaultCode}
                 createdFrom="diving_inspection"
+              />
+
+              <RovCalibrationDialog
+                open={calibrationDialogOpen}
+                onOpenChange={setCalibrationDialogOpen}
+                rovJob={selectedROVJob}
+                jobpackId={jobpackId}
+                structureId={effectiveStructureId}
+                sowReportNo={sowReportNumber}
               />
             </>
           )

@@ -1,5 +1,5 @@
 "use client";
-
+import { createClient } from "@/utils/supabase/client";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,8 +25,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Card, CardContent } from "@/components/ui/card";
-
+import { ImageMarkupEditor } from "./image-markup-editor";
 interface Attachment {
   id: number;
   name: string;
@@ -42,9 +48,10 @@ interface Attachment {
 interface AttachmentSectionProps {
   sourceId: number;
   sourceType: "anomaly" | "inspection";
+  inspectionId?: number;
 }
 
-export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionProps) {
+export function AttachmentSection({ sourceId, sourceType, inspectionId }: AttachmentSectionProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewType, setViewType] = useState<"card" | "list">("card");
@@ -63,11 +70,30 @@ export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionPro
   const fetchAttachments = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/attachment/${sourceType}/${sourceId}`);
-      const json = await res.json();
-      if (json.data) {
-        setAttachments(json.data);
+      let allData: Attachment[] = [];
+
+      // 1. Fetch direct sourceType attachments
+      const res1 = await fetch(`/api/attachment/${sourceType}/${sourceId}`);
+      const json1 = await res1.json();
+      if (json1.data) {
+        allData = [...json1.data];
       }
+
+      // 2. Fetch inspection attachments if it's an anomaly & we have inspectionId
+      if (sourceType === "anomaly" && inspectionId) {
+        const res2 = await fetch(`/api/attachment/inspection/${inspectionId}`);
+        const json2 = await res2.json();
+        if (json2.data) {
+          const existingIds = new Set(allData.map(a => a.id));
+          json2.data.forEach((att: Attachment) => {
+            if (!existingIds.has(att.id)) {
+              allData.push(att);
+            }
+          });
+        }
+      }
+
+      setAttachments(allData);
     } catch (error) {
       console.error("Failed to fetch attachments:", error);
       toast.error("Failed to load attachments");
@@ -80,7 +106,7 @@ export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionPro
     if (sourceId) {
       fetchAttachments();
     }
-  }, [sourceId, sourceType]);
+  }, [sourceId, sourceType, inspectionId]);
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,6 +151,48 @@ export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionPro
       setUploading(false);
     }
   };
+  const handleOverwrite = async (canvasDataUrl: string) => {
+    if (!selectedAttachment) return;
+    
+    setLoading(true);
+    try {
+      // 1. Convert Base64 data URL to Blob
+      const resBlob = await fetch(canvasDataUrl);
+      const blob = await resBlob.blob();
+      
+      // 2. Identify storage target path
+      const filePath = selectedAttachment.path;
+      if (!filePath) {
+         toast.error("Attachment path missing");
+         return;
+      }
+
+      // 3. Prepare Form Data
+      const formData = new FormData();
+      formData.append("id", String(selectedAttachment.id));
+      formData.append("filePath", filePath);
+      formData.append("file", blob, "annotated-image.png");
+
+      // 4. Submit via PUT endpoint
+      const res = await fetch("/api/attachment", {
+        method: "PUT",
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to overwrite");
+
+      toast.success("Image overwritten successfully");
+      setIsPreviewOpen(false);
+      fetchAttachments();
+    } catch (error: any) {
+      console.error("Overwrite error:", error);
+      toast.error(error.message || "Failed to overwrite image");
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   const getFileIcon = (type?: string, path?: string) => {
     const lowerType = type?.toLowerCase() || "";
@@ -156,6 +224,36 @@ export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionPro
       return <FileText className="h-5 w-5 text-red-400" />;
     }
     return <File className="h-5 w-5 text-blue-400" />;
+  };
+
+  const renderIconWithHover = (att: Attachment, small: boolean = false) => {
+    const icon = small ? getFileIconSmall(att.meta?.file_type, att.path) : getFileIcon(att.meta?.file_type, att.path);
+    const type = att.meta?.file_type?.toLowerCase() || "";
+    const path = att.path?.toLowerCase() || "";
+    
+    const isImage = type.startsWith("image/") || path.match(/\.(jpg|jpeg|png|gif|webp)$/);
+    
+    if (isImage) {
+      let url = att.meta?.file_url || att.path;
+      if (url && !url.startsWith("http")) {
+        const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpsmxtdqlpbdwfzctqzd.supabase.co";
+        url = `${baseUrl}/storage/v1/object/public/attachments/${url}`;
+      }
+      const cacheBustedUrl = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
+      
+      return (
+        <div className={`relative group flex items-center justify-center ${small ? "w-5 h-5" : "w-12 h-12"}`}>
+          <div className="absolute inset-0 transition-opacity duration-200 opacity-100 group-hover:opacity-0 flex items-center justify-center">
+            {icon}
+          </div>
+          <div className="absolute inset-0 transition-opacity duration-200 opacity-0 group-hover:opacity-100 flex items-center justify-center">
+            <img src={cacheBustedUrl} alt="Thumbnail" className={`object-cover ${small ? "w-5 h-5 rounded-sm" : "w-12 h-12 rounded-md shadow-sm"}`} />
+          </div>
+        </div>
+      );
+    }
+    
+    return icon;
   };
 
   if (loading) {
@@ -214,33 +312,57 @@ export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionPro
       ) : viewType === "card" ? (
         /* Card View */
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {attachments.map((att) => (
-            <Card 
-              key={att.id} 
-              className="bg-card border-border hover:border-primary/30 transition-all cursor-pointer shadow-sm hover:shadow-md"
-              onClick={() => {
-                setSelectedAttachment(att);
-                setIsPreviewOpen(true);
-              }}
-            >
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
-                {/* Graphic Icon Only initially */}
-                <div className="p-4 bg-muted/30 rounded-full">
-                  {getFileIcon(att.meta?.file_type, att.path)}
-                </div>
-                <div className="w-full">
-                  <span className="font-medium text-foreground text-xs block truncate">
-                    {att.meta?.title || att.name}
-                  </span>
-                  {att.meta?.description && (
-                    <span className="text-[10px] text-muted-foreground block truncate">
-                      {att.meta.description}
+          {attachments.map((att) => {
+            const type = att.meta?.file_type?.toLowerCase() || "";
+            const path = att.path?.toLowerCase() || "";
+            const isImage = type.startsWith("image/") || path.match(/\.(jpg|jpeg|png|gif|webp)$/);
+            
+            let url = "";
+            if (isImage) {
+              url = att.meta?.file_url || att.path;
+              if (url && !url.startsWith("http")) {
+                const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpsmxtdqlpbdwfzctqzd.supabase.co";
+                url = `${baseUrl}/storage/v1/object/public/attachments/${url}`;
+              }
+              url = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
+            }
+
+            return (
+              <Card 
+                key={att.id} 
+                className="group relative bg-card border-border hover:border-primary/30 transition-all cursor-pointer shadow-sm hover:shadow-md overflow-hidden min-h-[140px]"
+                onClick={() => {
+                  setSelectedAttachment(att);
+                  setIsPreviewOpen(true);
+                }}
+              >
+                {/* Full Card Image Background on Hover */}
+                {isImage && (
+                  <div className="absolute inset-0 z-0 transition-opacity duration-300 opacity-0 group-hover:opacity-100">
+                    <img src={url} alt="Thumbnail" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" /> {/* Gradient overlay for text readability */}
+                  </div>
+                )}
+
+                <CardContent className="relative z-10 p-4 flex flex-col items-center justify-center text-center space-y-2 h-full">
+                  {/* Graphic Icon Only initially - fade out on hover if it's an image */}
+                  <div className={`p-4 bg-muted/30 rounded-full flex items-center justify-center transition-opacity duration-300 ${isImage ? 'group-hover:opacity-0' : ''}`}>
+                    {getFileIcon(att.meta?.file_type, att.path)}
+                  </div>
+                  <div className="w-full mt-auto">
+                    <span className={`font-medium text-xs block truncate transition-colors duration-300 ${isImage ? 'text-foreground group-hover:text-white' : 'text-foreground'}`}>
+                      {att.meta?.title || att.name}
                     </span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    {att.meta?.description && (
+                      <span className={`text-[10px] block truncate transition-colors duration-300 ${isImage ? 'text-muted-foreground group-hover:text-gray-300' : 'text-muted-foreground'}`}>
+                        {att.meta.description}
+                      </span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       ) : (
         /* List View */
@@ -261,7 +383,7 @@ export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionPro
                   className="border-b border-border hover:bg-muted/50 transition-colors"
                 >
                   <td className="px-3 py-2">
-                    {getFileIconSmall(att.meta?.file_type, att.path)}
+                    {renderIconWithHover(att, true)}
                   </td>
                   <td className="px-3 py-2 font-medium text-foreground">
                     {att.meta?.title || att.name}
@@ -305,12 +427,18 @@ export function AttachmentSection({ sourceId, sourceType }: AttachmentSectionPro
           
           <div className="flex-1 flex items-center justify-center p-4 bg-muted/10 rounded-md overflow-auto min-h-[300px]">
             {selectedAttachment && (() => {
-              const url = selectedAttachment.meta?.file_url || selectedAttachment.path;
+              let url = selectedAttachment.meta?.file_url || selectedAttachment.path;
+              if (url && !url.startsWith("http")) {
+                const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpsmxtdqlpbdwfzctqzd.supabase.co";
+                url = `${baseUrl}/storage/v1/object/public/attachments/${url}`;
+              }
               const type = selectedAttachment.meta?.file_type?.toLowerCase() || "";
               const path = selectedAttachment.path?.toLowerCase() || "";
               
               if (type.startsWith("image/") || path.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-                return <img src={url} alt={selectedAttachment.name} className="max-w-full max-h-[50vh] object-contain" />;
+                // Add timestamp to bypass browser cache
+                const cacheBustedUrl = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
+                return <ImageMarkupEditor imageUrl={cacheBustedUrl} onSave={handleOverwrite} />;
               }
               if (type.startsWith("video/") || path.match(/\.(mp4|webm|ogg|mov)$/)) {
                 return <video src={url} controls className="max-w-full max-h-[50vh]" />;

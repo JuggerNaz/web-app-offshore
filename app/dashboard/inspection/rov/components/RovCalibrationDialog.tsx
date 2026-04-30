@@ -16,27 +16,27 @@ import { Save, ShieldCheck, Zap } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 
-interface DiveCalibrationDialogProps {
+interface RovCalibrationDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    diveJob: any;
+    rovJob: any;
     jobpackId: string | null;
     structureId: number | null;
     sowReportNo?: string | null;
 }
 
-export default function DiveCalibrationDialog({
+export default function RovCalibrationDialog({
     open,
     onOpenChange,
-    diveJob,
+    rovJob,
     jobpackId,
     structureId,
     sowReportNo,
-}: DiveCalibrationDialogProps) {
+}: RovCalibrationDialogProps) {
 
     const supabase = createClient();
     const [saving, setSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState("CPCLB");
+    const [activeTab, setActiveTab] = useState("RCPCLB");
 
     const ensureNegative = (val: string | number) => {
         if (val === "" || val === null || val === undefined) return "";
@@ -92,24 +92,24 @@ export default function DiveCalibrationDialog({
     // Fetch existing calibration data for this dive
 
     useEffect(() => {
-        if (open && diveJob?.dive_job_id) {
+        if (open && rovJob?.rov_job_id) {
             fetchExistingCalibration();
         }
-    }, [open, diveJob]);
+    }, [open, rovJob]);
 
     async function fetchExistingCalibration() {
         try {
             const { data, error } = await supabase
                 .from("insp_records")
                 .select("*")
-                .eq("dive_job_id", diveJob.dive_job_id)
-                .in("inspection_type_code", ["CPCLB", "UTCLB"]);
+                .eq("rov_job_id", rovJob.rov_job_id)
+                .in("inspection_type_code", ["RCPCLB", "RUTCLB"]);
 
             if (error) throw error;
 
             if (data) {
-                const cpRecord = data.find(r => r.inspection_type_code === "CPCLB");
-                const utRecord = data.find(r => r.inspection_type_code === "UTCLB");
+                const cpRecord = data.find(r => r.inspection_type_code === "RCPCLB");
+                const utRecord = data.find(r => r.inspection_type_code === "RUTCLB");
 
                 if (cpRecord) {
                     if (cpRecord.inspection_data) {
@@ -157,14 +157,14 @@ export default function DiveCalibrationDialog({
         }
     }
 
-    async function handleDelete(type: "CPCLB" | "UTCLB") {
-        const recordId = type === "CPCLB" ? cpRecordId : utRecordId;
+    async function handleDelete(type: "RCPCLB" | "RUTCLB") {
+        const recordId = type === "RCPCLB" ? cpRecordId : utRecordId;
         if (!recordId) {
             toast.error("No existing record to delete");
             return;
         }
 
-        if (!confirm(`Are you sure you want to delete this ${type === "CPCLB" ? "CP" : "UT"} Calibration record?`)) {
+        if (!confirm(`Are you sure you want to delete this ${type === "RCPCLB" ? "CP" : "UT"} Calibration record?`)) {
             return;
         }
 
@@ -177,9 +177,9 @@ export default function DiveCalibrationDialog({
 
             if (error) throw error;
 
-            toast.success(`${type === "CPCLB" ? "CP" : "UT"} Calibration deleted successfully`);
+            toast.success(`${type === "RCPCLB" ? "CP" : "UT"} Calibration deleted successfully`);
             
-            if (type === "CPCLB") {
+            if (type === "RCPCLB") {
                 setCpRecordId(null);
                 setCpData({
                     calib_equipment_type: "",
@@ -215,9 +215,9 @@ export default function DiveCalibrationDialog({
     }
 
 
-    async function handleSave(type: "CPCLB" | "UTCLB") {
+    async function handleSave(type: "RCPCLB" | "RUTCLB") {
 
-        if (!diveJob) {
+        if (!rovJob) {
             toast.error("No active dive job context");
             return;
         }
@@ -225,10 +225,10 @@ export default function DiveCalibrationDialog({
         setSaving(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            let dataToSave = type === "CPCLB" ? cpData : utData;
+            let dataToSave = type === "RCPCLB" ? cpData : utData;
 
             // Auto-negate CP values upon Save just in case
-            if (type === "CPCLB") {
+            if (type === "RCPCLB") {
                 dataToSave = {
                     ...dataToSave,
                     pre_dive_cp_rdg: ensureNegative(cpData.pre_dive_cp_rdg).toString(),
@@ -266,12 +266,12 @@ export default function DiveCalibrationDialog({
             const { data: existing } = await supabase
                 .from("insp_records")
                 .select("insp_id")
-                .eq("dive_job_id", diveJob.dive_job_id)
+                .eq("rov_job_id", rovJob.rov_job_id)
                 .eq("inspection_type_code", type)
                 .maybeSingle();
 
             const payload = {
-                dive_job_id: diveJob.dive_job_id,
+                rov_job_id: rovJob.rov_job_id,
                 jobpack_id: jobpackId ? Number(jobpackId) : null,
                 structure_id: structureId,
                 component_id: validComponentId,
@@ -316,7 +316,7 @@ export default function DiveCalibrationDialog({
 
             if (error) throw error;
 
-            toast.success(`${type === "CPCLB" ? "CP" : "UT"} Calibration saved successfully`);
+            toast.success(`${type === "RCPCLB" ? "CP" : "UT"} Calibration saved successfully`);
             fetchExistingCalibration();
         } catch (err: any) {
             console.error("Error saving calibration:", err);
@@ -331,25 +331,25 @@ export default function DiveCalibrationDialog({
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                        🛠️ Diving Calibration Registration
+                        🛠️ ROV Calibration Registration
                     </DialogTitle>
                     <DialogDescription>
-                        Enter Pre-Dive and Post-Dive calibration metrics for Dive No: <span className="font-bold text-slate-900 dark:text-slate-100">{diveJob?.dive_no}</span>
+                        Enter Pre-Dive and Post-Dive calibration metrics for Deployment No: <span className="font-bold text-slate-900 dark:text-slate-100">{rovJob?.deployment_no}</span>
                     </DialogDescription>
                 </DialogHeader>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full mt-4">
                     <TabsList className="grid grid-cols-2 w-full">
-                        <TabsTrigger value="CPCLB" className="flex items-center gap-2">
+                        <TabsTrigger value="RCPCLB" className="flex items-center gap-2">
                             <Zap className="h-4 w-4" /> CP Calibration
                         </TabsTrigger>
-                        <TabsTrigger value="UTCLB" className="flex items-center gap-2">
+                        <TabsTrigger value="RUTCLB" className="flex items-center gap-2">
                             <ShieldCheck className="h-4 w-4" /> UT Calibration
                         </TabsTrigger>
                     </TabsList>
 
                     {/* CP Calibration Content */}
-                    <TabsContent value="CPCLB" className="space-y-4 py-4">
+                    <TabsContent value="RCPCLB" className="space-y-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Equipment Type</Label>
@@ -454,7 +454,7 @@ export default function DiveCalibrationDialog({
                         <div className="flex gap-2 mt-4">
                             {cpRecordId && (
                                 <Button 
-                                    onClick={() => handleDelete("CPCLB")} 
+                                    onClick={() => handleDelete("RCPCLB")} 
                                     disabled={saving} 
                                     variant="destructive"
                                     className="flex-1 gap-2"
@@ -463,7 +463,7 @@ export default function DiveCalibrationDialog({
                                 </Button>
                             )}
                             <Button 
-                                onClick={() => handleSave("CPCLB")} 
+                                onClick={() => handleSave("RCPCLB")} 
                                 disabled={saving} 
                                 className={`${cpRecordId ? 'flex-1' : 'w-full'} gap-2 bg-blue-600 hover:bg-blue-700`}
                             >
@@ -474,7 +474,7 @@ export default function DiveCalibrationDialog({
                     </TabsContent>
 
                     {/* UT Calibration Content */}
-                    <TabsContent value="UTCLB" className="space-y-4 py-4">
+                    <TabsContent value="RUTCLB" className="space-y-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Equipment Type</Label>
@@ -560,7 +560,7 @@ export default function DiveCalibrationDialog({
                         <div className="flex gap-2 mt-4">
                             {utRecordId && (
                                 <Button 
-                                    onClick={() => handleDelete("UTCLB")} 
+                                    onClick={() => handleDelete("RUTCLB")} 
                                     disabled={saving} 
                                     variant="destructive"
                                     className="flex-1 gap-2"
@@ -569,7 +569,7 @@ export default function DiveCalibrationDialog({
                                 </Button>
                             )}
                             <Button 
-                                onClick={() => handleSave("UTCLB")} 
+                                onClick={() => handleSave("RUTCLB")} 
                                 disabled={saving} 
                                 className={`${utRecordId ? 'flex-1' : 'w-full'} gap-2 bg-blue-600 hover:bg-blue-700`}
                             >

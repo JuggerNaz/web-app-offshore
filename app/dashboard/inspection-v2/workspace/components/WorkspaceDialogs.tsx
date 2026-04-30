@@ -35,7 +35,7 @@ import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components
 
 import DiveJobSetupDialog from "@/app/dashboard/inspection/dive/components/DiveJobSetupDialog";
 import DiveCalibrationDialog from "@/app/dashboard/inspection/dive/components/DiveCalibrationDialog";
-import RovCalibrationDialog from "@/app/dashboard/inspection/dive/components/RovCalibrationDialog";
+import RovCalibrationDialog from "@/app/dashboard/inspection/rov/components/RovCalibrationDialog";
 
 import DiveMovementLog from "@/app/dashboard/inspection/dive/components/DiveMovementLog";
 
@@ -1731,7 +1731,7 @@ export function WorkspaceDialogs({
             <RovCalibrationDialog
                 open={states.rovCalibrationDialogOpen}
                 onOpenChange={setters.setRovCalibrationDialogOpen}
-                diveJob={states.activeDep?.raw}
+                rovJob={states.activeDep?.raw}
                 jobpackId={jobPackId || null}
                 structureId={structureId ? Number(structureId) : null}
                 sowReportNo={headerData?.sowReportNo || null}
