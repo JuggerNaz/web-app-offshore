@@ -444,8 +444,8 @@ export const generateDefectSummaryReport = async (
         const defectType = rec.category || "—";
 
         // Findings + optional rectification info
-        // Prioritize anomaly description over general inspection remarks
-        let findings = rec.description || rec.observations || "—";
+        // Prioritize unified Inspection Findings over legacy anomaly description
+        let findings = rec.observations || rec.description || "—";
         if (isRectified && rec.rectified_remarks) {
             findings += `\n\n✓ Rectified: ${rec.rectified_remarks}`;
         }

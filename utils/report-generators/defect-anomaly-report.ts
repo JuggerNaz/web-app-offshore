@@ -455,16 +455,16 @@ export const generateDefectAnomalyReport = async (
         // 1. Prepare Content
         const defectTitle = anomalyDetails.defect_type || anomalyDetails.defect_type_code || "VARIATION TO SPECIFICATION";
 
-        // 2. Observations (Inspection Findings)
-        const findings = record.observations ? `Inspection Findings: ${record.observations}` : "";
+        // 2. Centralized Inspection Findings
+        const findings = record.observations || "";
 
-        // 3. Remarks (Original Defect Description)
-        const defectDesc = anomalyDetails.description || "";
+        // 3. Remarks (Original Defect Description) - for legacy records
+        const defectDesc = anomalyDetails.description ? `Legacy Anomaly Description: ${anomalyDetails.description}` : "";
 
         // 4. Rectified Remarks (if any)
         const rectRemarks = anomalyDetails.rectified_remarks ? `Rectified Remarks: ${anomalyDetails.rectified_remarks}` : "";
 
-        // Combine: Findings -> Description -> Rectified Remarks
+        // Combine: Findings -> Legacy Description -> Rectified Remarks
         const fullText = [findings, defectDesc, rectRemarks].filter(Boolean).join("\n\n");
 
         // Set font BEFORE splitTextToSize so width calculation matches rendering

@@ -579,7 +579,7 @@ export function InspectionSummaryPanel({
                     <section>
                         <SectionHeader icon={Activity} title="Inspection Overview" color="cyan" count={records?.total} />
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                            <StatCard icon={CheckCircle2} label="Pass Records" value={records?.completed ?? 0} color="green" />
+                            <StatCard icon={CheckCircle2} label="Complete Records" value={records?.completed ?? 0} color="green" />
                             <StatCard icon={Clock} label="Incomplete" value={records?.incomplete ?? 0} color="amber" />
                             <StatCard icon={AlertTriangle} label="Anomalies" value={records?.anomaly ?? 0} color="red" pulse={!!(records?.anomaly && records.anomaly > 0)} />
                             <StatCard icon={Info} label="Findings" value={records?.finding ?? 0} color="violet" />

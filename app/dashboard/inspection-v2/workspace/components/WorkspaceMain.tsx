@@ -59,7 +59,7 @@ interface WorkspaceMainProps {
   setDynamicProps: (props: any) => void;
   handleDynamicPropChange: (e: any, name: string) => void;
   dynamicProps: any;
-  setFindingType: (type: "Pass" | "Anomaly" | "Finding" | "Incomplete") => void;
+  setFindingType: (type: "Complete" | "Anomaly" | "Finding" | "Incomplete") => void;
   setRecordNotes: (notes: string) => void;
   setAnomalyData: (data: any) => void;
   setIsManualOverride: (val: boolean) => void;
@@ -113,7 +113,7 @@ interface WorkspaceMainProps {
   setIsAddInspOpen: (val: boolean) => void;
   inspectionTypeSearch: string;
   setInspectionTypeSearch: (val: string) => void;
-  findingType: "Pass" | "Anomaly" | "Finding" | "Incomplete";
+  findingType: "Complete" | "Anomaly" | "Finding" | "Incomplete";
 }
 
 export function WorkspaceMain(props: WorkspaceMainProps) {
@@ -193,7 +193,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
       const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toLowerCase();
       const componentId = (r.structure_components?.q_id || "").toLowerCase();
       const elev = (r.elevation || "").toString().toLowerCase();
-      const status = r.has_anomaly ? "anomaly" : (r.status === 'COMPLETED' ? "pass" : "incomplete");
+      const status = r.has_anomaly ? "anomaly" : (r.status === 'COMPLETED' ? "complete" : "incomplete");
       const remarks = (r.inspection_data?.observation || r.inspection_data?.findings || "").toLowerCase();
       const refNo = (r.anomaly_ref_no || "").toLowerCase();
 
@@ -338,7 +338,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 }
                               }
                               setDynamicProps(newProps);
-                              setFindingType("Pass");
+                              setFindingType("Complete");
                               setRecordNotes("");
                               setAnomalyData({
                                 defectCode: "",

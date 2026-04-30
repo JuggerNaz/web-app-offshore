@@ -31,8 +31,8 @@ interface InspectionFormProps {
     activeSpec: string | null;
     allInspectionTypes: any[];
     activeFormProps: any[];
-    findingType: 'Pass' | 'Finding' | 'Anomaly' | 'Incomplete';
-    setFindingType: (t: 'Pass' | 'Finding' | 'Anomaly' | 'Incomplete') => void;
+    findingType: 'Complete' | 'Finding' | 'Anomaly' | 'Incomplete';
+    setFindingType: (t: 'Complete' | 'Finding' | 'Anomaly' | 'Incomplete') => void;
     renderInspectionField: (p: any, type: 'primary' | 'secondary') => React.ReactNode;
     anomalyData: any;
     setAnomalyData: (data: any | ((prev: any) => any)) => void;
@@ -980,22 +980,22 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest block border-b border-slate-100 pb-2">Inspection Result</label>
                         <div className="grid grid-cols-4 gap-2">
                             <Button
-                                variant={findingType === 'Pass' ? 'default' : 'outline'}
+                                variant={findingType === 'Complete' ? 'default' : 'outline'}
                                 onClick={() => {
                                     if (findingType === 'Anomaly' || findingType === 'Finding') {
                                         if (anomalyData.defectCode || anomalyData.description) {
-                                            if (!confirm('Switching to Pass will clear the defect/finding details. Continue?')) return;
+                                            if (!confirm('Switching to Complete will clear the defect/finding details. Continue?')) return;
                                         }
                                         setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
                                             rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
                                         setLastAutoMatchedRuleId(null);
                                         setIsManualOverride(false);
                                     }
-                                    setFindingType('Pass');
+                                    setFindingType('Complete');
                                 }}
-                                className={`h-11 text-xs font-bold transition-all ${findingType === 'Pass' ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-green-50'}`}
+                                className={`h-11 text-xs font-bold transition-all ${findingType === 'Complete' ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-green-50'}`}
                             >
-                                <CheckCircle2 className="w-4 h-4 mr-1" /> Pass
+                                <CheckCircle2 className="w-4 h-4 mr-1" /> Complete
                             </Button>
                             <Button
                                 variant={findingType === 'Finding' ? 'default' : 'outline'}
@@ -1102,25 +1102,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     </div>
                                 </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase">{categoryLabel} Description</label>
-                                    <textarea
-                                        value={anomalyData.description}
-                                        onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, description: e.target.value }))}
-                                        placeholder={`Detailed description of the ${categoryLabel.toLowerCase()}...`}
-                                        className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
-                                    ></textarea>
-                                </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Recommended Action</label>
-                                    <textarea
-                                        value={anomalyData.recommendedAction}
-                                        onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, recommendedAction: e.target.value }))}
-                                        placeholder="Recommended remedial action..."
-                                        className={`w-full min-h-[60px] rounded border border-slate-300 p-2 text-xs bg-white ${ringClass}`}
-                                    ></textarea>
-                                </div>
 
                                 <div className="p-3 border border-green-100 bg-green-50/80 rounded-lg space-y-3">
                                     <div className="flex items-center gap-2">

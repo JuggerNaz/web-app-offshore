@@ -307,7 +307,7 @@ function V10PreviewLayout() {
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toLowerCase();
             const componentId = (r.structure_components?.q_id || "").toLowerCase();
             const elev = (r.elevation || "").toString().toLowerCase();
-            const status = r.has_anomaly ? "anomaly" : (r.status === 'COMPLETED' ? "pass" : "incomplete");
+            const status = r.has_anomaly ? "anomaly" : (r.status === 'COMPLETED' ? "complete" : "incomplete");
             const remarks = (r.inspection_data?.observation || r.inspection_data?.findings || "").toLowerCase();
             const refNo = (r.anomaly_ref_no || "").toLowerCase();
 
@@ -541,7 +541,7 @@ function V10PreviewLayout() {
     const [requiredSpec, setRequiredSpec] = useState<any>(null);
     const [requiredProps, setRequiredProps] = useState<Record<string, any>>({});
     const [requiredRecordId, setRequiredRecordId] = useState<number | null>(null);
-    const [findingType, setFindingType] = useState<"Pass" | "Anomaly" | "Finding" | "Incomplete">("Pass");
+    const [findingType, setFindingType] = useState<"Complete" | "Anomaly" | "Finding" | "Incomplete">("Complete");
     const [isUserInteraction, setIsUserInteraction] = useState(false);
     const [anomalyData, setAnomalyData] = useState<{
         defectCode: string,
@@ -1290,7 +1290,7 @@ function V10PreviewLayout() {
         setRecordNotes("");
         setDynamicProps({});
         setDebouncedProps({});
-        setFindingType("Pass");
+        setFindingType("Complete");
         setIncompleteReason("");
         setEditingRecordId(null);
         setRequiredRecordId(null);
@@ -2437,7 +2437,7 @@ function V10PreviewLayout() {
                 type: typeName,
                 diveNo,
                 tapeNo,
-                status: r.has_anomaly ? 'Anomaly' : (r.status === 'INCOMPLETE' ? 'Incomplete' : 'Pass'),
+                status: r.has_anomaly ? 'Anomaly' : (r.status === 'INCOMPLETE' ? 'Incomplete' : 'Complete'),
                 finding: r.description || r.inspection_data?._meta_status || 'No notes',
                 year: r.inspection_date ? new Date(r.inspection_date).getFullYear() : new Date(r.cr_date).getFullYear()
             };
@@ -3460,7 +3460,7 @@ function V10PreviewLayout() {
     const handleConfirmRemoval = () => {
         if (!editingRecordId) {
             // Draft mode - just reset
-            setFindingType("Pass");
+            setFindingType("Complete");
             setAnomalyData({
                 defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
                 rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: ''
@@ -3484,8 +3484,8 @@ function V10PreviewLayout() {
         }
 
         if (!hasNewerAnomalies) {
-            // Rule 1: Delete/Remove (will happen on save if findingType is Pass)
-            setFindingType("Pass");
+            // Rule 1: Delete/Remove (will happen on save if findingType is Complete)
+            setFindingType("Complete");
             setAnomalyData({
                 defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
                 rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: ''
@@ -3956,7 +3956,7 @@ function V10PreviewLayout() {
             queryClient.invalidateQueries({ queryKey: ['inspection-events'] });
                 }
             } else {
-                // If it was an anomaly/finding but now changed to Pass/Incomplete, remove the record
+                // If it was an anomaly/finding but now changed to Complete/Incomplete, remove the record
                 await supabase.from('insp_anomalies').delete().eq('inspection_id', opData.insp_id);
             }
 
@@ -4189,7 +4189,7 @@ function V10PreviewLayout() {
         
         // Determine finding type (Handling both record flags and anomaly categories)
         const isFinding = anomalyObj?.record_category === 'FINDING' || fullRecord.inspection_data?._meta_status === 'Finding';
-        setFindingType(fullRecord.has_anomaly ? (isFinding ? "Finding" : "Anomaly") : (fullRecord.status === 'INCOMPLETE' ? "Incomplete" : "Pass"));
+        setFindingType(fullRecord.has_anomaly ? (isFinding ? "Finding" : "Anomaly") : (fullRecord.status === 'INCOMPLETE' ? "Incomplete" : "Complete"));
         
         setIncompleteReason(fullRecord.inspection_data?.incomplete_reason || "");
 
@@ -5724,7 +5724,7 @@ function V10PreviewLayout() {
                                                     const isRectified = taskRecords.some((r: any) => r.has_anomaly && r.insp_anomalies?.[0]?.status === 'CLOSED');
                                                     const it = allInspectionTypes.find(type => type.code === t || type.name === t);
                                                     
-                                                    // Determine color based on priority: Anomaly (Red) > Finding (Orange) > Pass (Green)
+                                                    // Determine color based on priority: Anomaly (Red) > Finding (Orange) > Complete (Green)
                                                     const statusColor = hasAnomaly && !isRectified ? 'red' :
                                                                        hasFinding ? 'orange' :
                                                                        isRectified ? 'teal' :
@@ -5807,7 +5807,7 @@ function V10PreviewLayout() {
                                                                 }
                                                                 
                                                                 setDynamicProps(newProps);
-                                                                setFindingType("Pass");
+                                                                setFindingType("Complete");
                                                                 setRecordNotes("");
                                                                 setAnomalyData({defectCode: '', priority: '', defectType: '', description: '', recommendedAction: '',
                                                                     rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
@@ -6170,7 +6170,7 @@ function V10PreviewLayout() {
                                                                 <AlertCircle className="w-3.5 h-3.5 text-red-600" />
                                                             </div>
                                                         ) : r.status === 'COMPLETED' ? (
-                                                            <div title="Passed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
+                                                            <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
                                                                 <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
                                                             </div>
                                                         ) : (
@@ -6415,7 +6415,7 @@ function V10PreviewLayout() {
                                                                     <AlertCircle className="w-3.5 h-3.5 text-red-600" />
                                                                 </div>
                                                             ) : r.status === 'COMPLETED' ? (
-                                                                <div title="Passed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
+                                                                <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
                                                                     <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
                                                                 </div>
                                                             ) : (
@@ -6718,7 +6718,7 @@ function V10PreviewLayout() {
                                                 <div key={r.id} className="flex flex-col gap-1 p-2 bg-white rounded border border-slate-100 text-[11px] shadow-sm hover:border-blue-200 transition-colors">
                                                     <div className="flex items-center justify-between">
                                                         <span className="font-bold text-slate-700">{r.type}</span>
-                                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${r.status === 'Pass' ? 'bg-green-100 text-green-700' : (r.status === 'Incomplete' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}`}>{r.status}</span>
+                                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${r.status === 'Complete' ? 'bg-green-100 text-green-700' : (r.status === 'Incomplete' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}`}>{r.status}</span>
                                                     </div>
                                                     <div className="flex justify-between items-center text-[9px] font-bold text-slate-500 uppercase tracking-tight">
                                                         <span>{inspMethod === 'DIVING' ? 'Dive' : 'Dep'}: {r.diveNo || 'N/A'}</span>
@@ -6747,7 +6747,7 @@ function V10PreviewLayout() {
                                                 <div key={i} className="flex flex-col gap-1 p-2 bg-slate-50/50 rounded border border-slate-100 text-[11px] opacity-80 hover:opacity-100 transition-opacity">
                                                     <div className="flex items-center justify-between">
                                                         <span className="font-bold text-slate-600">{r.type} ({r.year})</span>
-                                                        <span className={`px-1 py-0.5 rounded text-[7.5px] font-black uppercase ${r.status === 'Pass' ? 'bg-slate-200 text-slate-600' : 'bg-red-50 text-red-600'}`}>{r.status}</span>
+                                                        <span className={`px-1 py-0.5 rounded text-[7.5px] font-black uppercase ${r.status === 'Complete' ? 'bg-slate-200 text-slate-600' : 'bg-red-50 text-red-600'}`}>{r.status}</span>
                                                     </div>
                                                     <div className="flex justify-between items-center text-[8px] font-bold text-slate-400 uppercase">
                                                         <span>{inspMethod === 'DIVING' ? 'Dive' : 'Dep'}: {r.diveNo || 'N/A'}</span>
