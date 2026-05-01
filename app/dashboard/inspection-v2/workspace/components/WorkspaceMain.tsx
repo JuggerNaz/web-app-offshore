@@ -679,7 +679,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
           <div className="flex items-center gap-2">
             <span>CAPTURED EVENTS</span>
             <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">
-              {recordSearchQuery ? `${displayRecords.length} / ${currentRecords.length}` : currentRecords.length} Captured
+              {recordSearchQuery ? `${displayRecords.length} / ${sortedRecords.length}` : sortedRecords.length} Captured
             </Badge>
           </div>
 
@@ -987,7 +987,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                 <div className="flex items-center gap-2">
                   <span>CAPTURED EVENTS (FLOATING)</span>
                   <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">
-                    {recordSearchQuery ? `${displayRecords.length} / ${currentRecords.length}` : currentRecords.length} Captured
+                    {recordSearchQuery ? `${displayRecords.length} / ${sortedRecords.length}` : sortedRecords.length} Captured
                   </Badge>
                 </div>
 

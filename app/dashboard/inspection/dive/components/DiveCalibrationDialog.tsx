@@ -66,7 +66,7 @@ export default function DiveCalibrationDialog({
         probe_size: "",
         probe_frequency: "",
         calib_block: "",
-        label01: "1.0", label02: "2.0", label03: "3.0", label04: "4.0", label05: "5.0", label06: "6.0",
+        label01: "", label02: "", label03: "", label04: "", label05: "", label06: "",
         reading01: "", reading02: "", reading03: "", reading04: "", reading05: "", reading06: "",
     });
 
@@ -144,7 +144,7 @@ export default function DiveCalibrationDialog({
                         probe_size: "",
                         probe_frequency: "",
                         calib_block: "",
-                        label01: "1.0", label02: "2.0", label03: "3.0", label04: "4.0", label05: "5.0", label06: "6.0",
+                        label01: "", label02: "", label03: "", label04: "", label05: "", label06: "",
                         reading01: "", reading02: "", reading03: "", reading04: "", reading05: "", reading06: "",
                     });
                 }
@@ -200,7 +200,7 @@ export default function DiveCalibrationDialog({
                     probe_size: "",
                     probe_frequency: "",
                     calib_block: "",
-                    label01: "1.0", label02: "2.0", label03: "3.0", label04: "4.0", label05: "5.0", label06: "6.0",
+                    label01: "", label02: "", label03: "", label04: "", label05: "", label06: "",
                     reading01: "", reading02: "", reading03: "", reading04: "", reading05: "", reading06: "",
                 });
             }
@@ -531,29 +531,30 @@ export default function DiveCalibrationDialog({
 
                         <div className="border-t pt-4 mt-2">
                             <h4 className="font-semibold text-sm mb-3 text-blue-600 dark:text-blue-400">Step Wedge Calibration (Pre-Dive)</h4>
-                            <div className="grid grid-cols-6 gap-2 text-center font-medium text-xs mb-1">
-                                <div>Step 1</div>
-                                <div>Step 2</div>
-                                <div>Step 3</div>
-                                <div>Step 4</div>
-                                <div>Step 5</div>
-                                <div>Step 6</div>
-                            </div>
-                            <div className="grid grid-cols-6 gap-2">
-                                <Input value={utData.label01} onChange={(e) => setUtData({ ...utData, label01: e.target.value })} placeholder="Label" className="text-center text-xs h-8" />
-                                <Input value={utData.label02} onChange={(e) => setUtData({ ...utData, label02: e.target.value })} placeholder="Label" className="text-center text-xs h-8" />
-                                <Input value={utData.label03} onChange={(e) => setUtData({ ...utData, label03: e.target.value })} placeholder="Label" className="text-center text-xs h-8" />
-                                <Input value={utData.label04} onChange={(e) => setUtData({ ...utData, label04: e.target.value })} placeholder="Label" className="text-center text-xs h-8" />
-                                <Input value={utData.label05} onChange={(e) => setUtData({ ...utData, label05: e.target.value })} placeholder="Label" className="text-center text-xs h-8" />
-                                <Input value={utData.label06} onChange={(e) => setUtData({ ...utData, label06: e.target.value })} placeholder="Label" className="text-center text-xs h-8" />
-                            </div>
-                            <div className="grid grid-cols-6 gap-2 mt-2">
-                                <Input type="number" value={utData.reading01} onChange={(e) => setUtData({ ...utData, reading01: e.target.value })} placeholder="Rdg" className="text-center text-xs h-8" />
-                                <Input type="number" value={utData.reading02} onChange={(e) => setUtData({ ...utData, reading02: e.target.value })} placeholder="Rdg" className="text-center text-xs h-8" />
-                                <Input type="number" value={utData.reading03} onChange={(e) => setUtData({ ...utData, reading03: e.target.value })} placeholder="Rdg" className="text-center text-xs h-8" />
-                                <Input type="number" value={utData.reading04} onChange={(e) => setUtData({ ...utData, reading04: e.target.value })} placeholder="Rdg" className="text-center text-xs h-8" />
-                                <Input type="number" value={utData.reading05} onChange={(e) => setUtData({ ...utData, reading05: e.target.value })} placeholder="Rdg" className="text-center text-xs h-8" />
-                                <Input type="number" value={utData.reading06} onChange={(e) => setUtData({ ...utData, reading06: e.target.value })} placeholder="Rdg" className="text-center text-xs h-8" />
+                            <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr_1fr_1fr] gap-2 items-center">
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider"></div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 1</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 2</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 3</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 4</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 5</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 6</div>
+
+                                <div className="text-[11px] font-bold text-slate-600 uppercase tracking-tight">Label</div>
+                                <Input value={utData.label01} onChange={(e) => setUtData({ ...utData, label01: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input value={utData.label02} onChange={(e) => setUtData({ ...utData, label02: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input value={utData.label03} onChange={(e) => setUtData({ ...utData, label03: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input value={utData.label04} onChange={(e) => setUtData({ ...utData, label04: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input value={utData.label05} onChange={(e) => setUtData({ ...utData, label05: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input value={utData.label06} onChange={(e) => setUtData({ ...utData, label06: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+
+                                <div className="text-[11px] font-bold text-slate-600 uppercase tracking-tight">Readings</div>
+                                <Input type="number" value={utData.reading01} onChange={(e) => setUtData({ ...utData, reading01: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input type="number" value={utData.reading02} onChange={(e) => setUtData({ ...utData, reading02: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input type="number" value={utData.reading03} onChange={(e) => setUtData({ ...utData, reading03: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input type="number" value={utData.reading04} onChange={(e) => setUtData({ ...utData, reading04: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input type="number" value={utData.reading05} onChange={(e) => setUtData({ ...utData, reading05: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
+                                <Input type="number" value={utData.reading06} onChange={(e) => setUtData({ ...utData, reading06: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
                             </div>
                         </div>
 

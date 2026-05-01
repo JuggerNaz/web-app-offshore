@@ -306,7 +306,14 @@ function V10PreviewLayout() {
     const sortedRecords = useMemo(() => {
         if (!currentRecords || currentRecords.length === 0) return [];
         
-        const sortableRecords = [...currentRecords];
+        // Filter out calibration/test records as requested
+        const excludedCodes = ['RCPCLB', 'RUTCLB', 'CPCLB', 'UTCLB'];
+        const filtered = currentRecords.filter((r: any) => {
+            const code = r.inspection_type_code || r.inspection_type?.code;
+            return !excludedCodes.includes(code);
+        });
+
+        const sortableRecords = [...filtered];
         sortableRecords.sort((a, b) => {
             let aVal: any;
             let bVal: any;
@@ -6132,7 +6139,7 @@ function V10PreviewLayout() {
                                 <span>CAPTURED EVENTS</span>
                                 <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
                                     {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                                    {recordSearchQuery ? `${displayRecords.length} / ${currentRecords.length}` : currentRecords.length} Captured
+                                    {recordSearchQuery ? `${displayRecords.length} / ${sortedRecords.length}` : sortedRecords.length} Captured
                                 </Badge>
                             </div>
 
@@ -6732,7 +6739,7 @@ function V10PreviewLayout() {
                             <span>CAPTURED EVENTS (FLOATING)</span>
                             <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
                                 {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                                {recordSearchQuery ? `${displayRecords.length} / ${currentRecords.length}` : currentRecords.length} Captured
+                                {recordSearchQuery ? `${displayRecords.length} / ${sortedRecords.length}` : sortedRecords.length} Captured
                             </Badge>
                         </div>
                         
