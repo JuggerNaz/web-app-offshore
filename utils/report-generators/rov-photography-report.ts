@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import { format } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";

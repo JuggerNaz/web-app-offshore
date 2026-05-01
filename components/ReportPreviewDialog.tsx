@@ -51,17 +51,41 @@ export function ReportPreviewDialog({
             setBlob(null);
         }
         try {
-            const result = await generateReport(isPrintFriendly, isShowSignatures);
-            if (result instanceof Blob) {
-                setBlob(result);
-                const url = URL.createObjectURL(result);
+            console.log("ReportPreviewDialog: Calling generateReport...", { isPrintFriendly, isShowSignatures });
+            console.log("ReportPreviewDialog: Generator function source:", generateReport.toString().substring(0, 500));
+            
+            const result: any = await generateReport(isPrintFriendly, isShowSignatures);
+            console.log("ReportPreviewDialog: Generator result:", typeof result, result);
+            
+            let finalBlob: Blob | null = null;
+
+            // 1. Check if it's already a Blob (with duck-typing for safety)
+            if (result instanceof Blob || (result && result.size && result.type)) {
+                finalBlob = result as Blob;
+            } 
+            // 2. Check if it's a jsPDF object that can output a blob
+            else if (result && typeof result.output === 'function') {
+                try {
+                    finalBlob = (result as any).output('blob');
+                } catch (e) {
+                    console.error("Failed to extract blob from jsPDF object:", e);
+                }
+            }
+
+            if (finalBlob) {
+                setBlob(finalBlob);
+                const url = URL.createObjectURL(finalBlob);
                 setPreviewUrl(url);
             } else {
-                toast.error("Failed to generate report preview.");
+                console.error("ReportPreviewDialog: Generator returned invalid result type:", typeof result, result);
+                if (result === undefined) {
+                    console.warn("ReportPreviewDialog: Generator returned undefined. This usually means the report has no data or the returnBlob:true flag was not handled.");
+                }
+                toast.error(result === undefined ? "No data found for this report preview." : "Failed to generate report preview.");
             }
         } catch (error) {
-            console.error("Preview generation error:", error);
-            toast.error("Error generating report preview.");
+            console.error("ReportPreviewDialog: Preview generation error:", error);
+            toast.error("Error generating report preview. Please check the console for details.");
         } finally {
             setIsGenerating(false);
         }

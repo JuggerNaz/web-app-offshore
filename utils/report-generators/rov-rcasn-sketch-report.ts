@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
@@ -363,7 +363,16 @@ export const generateROVCasnSketchReport = async (
             drawFooter(doc, j, totalPages);
         }
 
-        if (config.returnBlob) return doc.output("blob");
+        console.log("[ROV Caisson Sketch Report] Generation complete, returnBlob:", config?.returnBlob);
+        if (config?.returnBlob !== false) {
+            console.log("[ROV Caisson Sketch Report] Returning Blob");
+            return doc.output("blob");
+        }
+        
+        console.log("[ROV Caisson Sketch Report] Saving PDF to file");
         doc.save(`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
-    } catch (e) { console.error("ROV Caisson Sketch Report Error", e); throw e; }
+    } catch (e) { 
+        console.error("ROV Caisson Sketch Report Error", e); 
+        throw e; 
+    }
 };

@@ -1,5 +1,5 @@
 
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";

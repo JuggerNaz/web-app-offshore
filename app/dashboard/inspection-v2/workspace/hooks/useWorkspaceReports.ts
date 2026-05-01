@@ -128,7 +128,7 @@ export function useWorkspaceReports(
 
         if (!jobPack || !structure) return;
 
-        return await generateSeabedSurveyReport(
+        const result = await generateSeabedSurveyReport(
             { ...jobPack, id: jobPack.id },
             { ...structure, id: structure.str_id },
             headerData.sowReportNo,
@@ -143,7 +143,8 @@ export function useWorkspaceReports(
                 returnBlob: true
             },
             itemTypeFilter
-        ) as Blob;
+        );
+        return result as Blob;
     };
 
     const generateMGIReport = async () => {
@@ -175,7 +176,7 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
-        return (await generateROVMGIReport(
+        const result = await generateROVMGIReport(
             mgiRecords,
             profile,
             { 
@@ -191,7 +192,8 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true
             }
-        )) as Blob;
+        );
+        return result as Blob;
     };
 
     const generateFMDReport = async () => {
@@ -216,7 +218,7 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
-        return (await generateROVFMDReport(
+        const result = await generateROVFMDReport(
             fmdRecords,
             { 
                 ...headerData, 
@@ -231,7 +233,8 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true
             }
-        )) as Blob;
+        );
+        return result as Blob;
     };
 
     const generateSZCIReport = async () => {
@@ -256,7 +259,7 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
-        return (await generateROVSZCIReport(
+        const result = await generateROVSZCIReport(
             szciRecords,
             { 
                 ...headerData, 
@@ -271,7 +274,8 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true
             }
-        )) as Blob;
+        );
+        return result as Blob;
     };
 
     const generateUTWTReport = async () => {
@@ -296,7 +300,7 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
-        return (await generateROVUTWTReport(
+        const result = await generateROVUTWTReport(
             utwtRecords,
             { 
                 ...headerData, 
@@ -311,7 +315,8 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true
             }
-        )) as Blob;
+        );
+        return result as Blob;
     };
 
     const generateInspectionReportByType = async (typeId: number) => {
