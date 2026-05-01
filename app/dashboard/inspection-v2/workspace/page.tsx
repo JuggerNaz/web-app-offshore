@@ -33,6 +33,7 @@ import {
     Edit2,
     ExternalLink,
     Eye,
+    EyeOff,
     FileClock,
     FileSpreadsheet,
     FileText,
@@ -74,7 +75,9 @@ import {
     Wifi,
     X,
     ArrowUpDown,
-    Wrench
+    Wrench,
+    Settings2,
+    GripVertical
 } from "lucide-react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -113,7 +116,7 @@ import ROVMovementLog from "../../inspection/rov/components/ROVMovementLog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -223,6 +226,58 @@ function V10PreviewLayout() {
     const [unitSystem, setUnitSystem] = useState<"METRIC" | "IMPERIAL">("METRIC");
     const [recordSearchQuery, setRecordSearchQuery] = useState("");
 
+    // Column Settings for Captured Events
+    const [columnSettings, setColumnSettings] = useState(() => {
+        const defaultCols = [
+            { id: 'cr_date', label: 'Date', visible: true },
+            { id: 'type', label: 'Type', visible: true },
+            { id: 'component', label: 'Component', visible: true },
+            { id: 'elev', label: 'Elev/KP', visible: true },
+            { id: 'anomaly_ref', label: 'Anom. Ref', visible: true },
+            { id: 'cp_reading', label: 'CP (mV)', visible: true },
+            { id: 'dive_no', label: 'Dive No', visible: true },
+            { id: 'tape_no', label: 'Tape No', visible: true },
+        ];
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('capturedEventsColumns');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    // Merge with defaults to ensure all keys exist
+                    return defaultCols.map(dc => {
+                        const s = parsed.find((p: any) => p.id === dc.id);
+                        return s ? { ...dc, ...s } : dc;
+                    });
+                } catch (e) { console.error("Error parsing columns", e); }
+            }
+        }
+        return defaultCols;
+    });
+
+    useEffect(() => {
+        localStorage.setItem('capturedEventsColumns', JSON.stringify(columnSettings));
+    }, [columnSettings]);
+
+    const handleMoveColumn = (index: number, direction: 'up' | 'down') => {
+        const newCols = [...columnSettings];
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= newCols.length) return;
+        [newCols[index], newCols[targetIndex]] = [newCols[targetIndex], newCols[index]];
+        setColumnSettings(newCols);
+    };
+
+    const toggleColumnVisibility = (id: string) => {
+        setColumnSettings(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c));
+    };
+
+    const activeTableColumns = useMemo(() => {
+        return [
+            { id: 'actions', label: 'Actions', fixed: true },
+            { id: 'status', label: 'Status', fixed: true },
+            ...columnSettings.filter(c => c.visible)
+        ];
+    }, [columnSettings]);
+
     // Fetch Global Unit Preference
     useEffect(() => {
         async function fetchSettings() {
@@ -286,6 +341,24 @@ function V10PreviewLayout() {
                     aVal = getStatusWeight(a);
                     bVal = getStatusWeight(b);
                     break;
+                case 'anomaly_ref':
+                    aVal = (a.insp_anomalies?.[0]?.anomaly_ref_no || '').toLowerCase();
+                    bVal = (b.insp_anomalies?.[0]?.anomaly_ref_no || '').toLowerCase();
+                    break;
+                case 'cp_reading':
+                    const aCp = parseFloat(a.inspection_data?.cp_rdg ?? a.inspection_data?.cp_reading_mv ?? a.inspection_data?.cp ?? '');
+                    const bCp = parseFloat(b.inspection_data?.cp_rdg ?? b.inspection_data?.cp_reading_mv ?? b.inspection_data?.cp ?? '');
+                    aVal = isNaN(aCp) ? -Infinity : aCp;
+                    bVal = isNaN(bCp) ? -Infinity : bCp;
+                    break;
+                case 'dive_no':
+                    aVal = (a.insp_dive_jobs?.job_no || a.insp_rov_jobs?.job_no || '').toLowerCase();
+                    bVal = (b.insp_dive_jobs?.job_no || b.insp_rov_jobs?.job_no || '').toLowerCase();
+                    break;
+                case 'tape_no':
+                    aVal = (a.insp_video_tapes?.tape_no || '').toLowerCase();
+                    bVal = (b.insp_video_tapes?.tape_no || '').toLowerCase();
+                    break;
                 default:
                     aVal = a[sortConfig.key];
                     bVal = b[sortConfig.key];
@@ -309,7 +382,14 @@ function V10PreviewLayout() {
             const elev = (r.elevation || "").toString().toLowerCase();
             const status = r.has_anomaly ? "anomaly" : (r.status === 'COMPLETED' ? "complete" : "incomplete");
             const remarks = (r.inspection_data?.observation || r.inspection_data?.findings || "").toLowerCase();
-            const refNo = (r.anomaly_ref_no || "").toLowerCase();
+            const refNo = (r.insp_anomalies?.[0]?.anomaly_ref_no || "").toLowerCase();
+            const cpReading = (r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp ?? "").toString().toLowerCase();
+            const diveNo = (r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "").toLowerCase();
+            const tapeNo = (r.insp_video_tapes?.tape_no || "").toLowerCase();
+            
+            // Add date and timecode for completeness
+            const crDateStr = r.cr_date ? new Date(r.cr_date).toLocaleDateString() + " " + new Date(r.cr_date).toLocaleTimeString() : "";
+            const timecode = (r.inspection_data?._meta_timecode || r.tape_count_no || "").toString().toLowerCase();
 
             return typeName.includes(q) || 
                    typeCode.includes(q) || 
@@ -317,7 +397,12 @@ function V10PreviewLayout() {
                    elev.includes(q) || 
                    status.includes(q) || 
                    remarks.includes(q) ||
-                   refNo.includes(q);
+                   refNo.includes(q) ||
+                   cpReading.includes(q) ||
+                   diveNo.includes(q) ||
+                   tapeNo.includes(q) ||
+                   crDateStr.toLowerCase().includes(q) ||
+                   timecode.includes(q);
         });
     }, [sortedRecords, recordSearchQuery]);
     const [isFetchingDeps, setIsFetchingDeps] = useState(true);
@@ -6041,15 +6126,13 @@ function V10PreviewLayout() {
                             </div>
                         )}
                     </Card>
-
-                    {/* Session Records Table (Records session completed before in the current dive) */}
-                    <Card className={`flex flex-col ${capturedEventsPipWindow ? 'h-[40px]' : 'h-[280px]'} border-slate-200 shadow-sm rounded-md bg-white overflow-hidden shrink-0 transition-all duration-500 ease-in-out`}>
+                       <Card className={`flex flex-col ${capturedEventsPipWindow ? 'h-[40px]' : 'h-[280px]'} border-slate-200 shadow-sm rounded-md bg-white overflow-hidden shrink-0 transition-all duration-500 ease-in-out`}>
                         <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
                             <div className="flex items-center gap-2">
                                 <span>CAPTURED EVENTS</span>
                                 <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
                                     {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                                    {currentRecords.length} Captured
+                                    {recordSearchQuery ? `${displayRecords.length} / ${currentRecords.length}` : currentRecords.length} Captured
                                 </Badge>
                             </div>
 
@@ -6070,428 +6153,300 @@ function V10PreviewLayout() {
                                     </button>
                                 )}
                             </div>
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-6 px-2 text-[10px] text-slate-300 hover:text-white hover:bg-slate-700" 
-                                onClick={handlePopoutCapturedEvents} 
-                                title={capturedEventsPipWindow ? "Close Floating Window" : "Float as Window"}
-                            >
-                                {capturedEventsPipWindow ? <X className="w-3.5 h-3.5 mr-1" /> : <Maximize2 className="w-3.5 h-3.5 mr-1" />}
-                                {capturedEventsPipWindow ? "Dock" : "Float"}
-                            </Button>
+
+                            <div className="flex items-center gap-1">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-white hover:bg-slate-700">
+                                            <Settings2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-64 p-0 shadow-2xl border-slate-700 bg-slate-900 text-slate-200" align="end">
+                                        <div className="p-3 border-b border-slate-800 bg-slate-950/50">
+                                            <div className="flex items-center justify-between">
+                                                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Table Configuration</h3>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    className="h-5 text-[9px] uppercase font-bold text-blue-400 hover:text-blue-300 p-0"
+                                                    onClick={() => {
+                                                        const defaultCols = [
+                                                            { id: 'cr_date', label: 'Date', visible: true },
+                                                            { id: 'type', label: 'Type', visible: true },
+                                                            { id: 'component', label: 'Component', visible: true },
+                                                            { id: 'elev', label: 'Elev/KP', visible: true },
+                                                            { id: 'anomaly_ref', label: 'Anom. Ref', visible: true },
+                                                            { id: 'cp_reading', label: 'CP (mV)', visible: true },
+                                                            { id: 'dive_no', label: 'Dive No', visible: true },
+                                                            { id: 'tape_no', label: 'Tape No', visible: true },
+                                                        ];
+                                                        setColumnSettings(defaultCols);
+                                                    }}
+                                                >
+                                                    Reset
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <ScrollArea className="h-72">
+                                            <div className="p-1.5 space-y-0.5">
+                                                {columnSettings.map((col, idx) => (
+                                                    <div key={col.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-slate-800 group">
+                                                        <GripVertical className="w-3 h-3 text-slate-600 shrink-0" />
+                                                        <button 
+                                                            onClick={() => toggleColumnVisibility(col.id)}
+                                                            className={`flex-1 flex items-center gap-2 text-left transition-opacity ${col.visible ? 'opacity-100' : 'opacity-40'}`}
+                                                        >
+                                                            {col.visible ? <Eye className="w-3.5 h-3.5 text-blue-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-500" />}
+                                                            <span className="text-[11px] font-bold tracking-tight">{col.label}</span>
+                                                        </button>
+                                                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="sm" 
+                                                                className="h-5 w-5 p-0 hover:bg-slate-700"
+                                                                disabled={idx === 0}
+                                                                onClick={() => handleMoveColumn(idx, 'up')}
+                                                            >
+                                                                <ChevronUp className="w-3 h-3" />
+                                                            </Button>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="sm" 
+                                                                className="h-5 w-5 p-0 hover:bg-slate-700"
+                                                                disabled={idx === columnSettings.length - 1}
+                                                                onClick={() => handleMoveColumn(idx, 'down')}
+                                                            >
+                                                                <ChevronDown className="w-3 h-3" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </ScrollArea>
+                                        <div className="p-2 border-t border-slate-800 bg-slate-950/30">
+                                            <p className="text-[9px] text-slate-500 italic text-center">Actions & Status columns are fixed at start.</p>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-6 px-2 text-[10px] text-slate-300 hover:text-white hover:bg-slate-700" 
+                                    onClick={handlePopoutCapturedEvents} 
+                                    title={capturedEventsPipWindow ? "Close Floating Window" : "Float as Window"}
+                                >
+                                    {capturedEventsPipWindow ? <X className="w-3.5 h-3.5 mr-1" /> : <Maximize2 className="w-3.5 h-3.5 mr-1" />}
+                                    {capturedEventsPipWindow ? "Dock" : "Float"}
+                                </Button>
+                            </div>
                         </div>
                         
                         {!capturedEventsPipWindow && (
                             <ScrollArea className="flex-1 w-full relative">
-                                <table className="w-full text-left text-xs whitespace-nowrap">
-                                    <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
-                                        <tr>
-                                            <th className="px-3 py-3 w-20 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('cr_date')}>
-                                                <div className="flex items-center gap-1.5">
-                                                    Date {sortConfig.key === 'cr_date' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('type')}>
-                                                <div className="flex items-center gap-1.5">
-                                                    Type {sortConfig.key === 'type' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('component')}>
-                                                <div className="flex items-center gap-1.5">
-                                                    Component {sortConfig.key === 'component' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('elev')}>
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    Elev/KP {sortConfig.key === 'elev' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('status')}>
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    Status {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {displayRecords.map((r: any) => {
-                                            const formatCounter = (val: any) => {
-                                                if (!val) return null;
-                                                if (typeof val === 'string' && val.includes(':')) return val;
-                                                const sec = Number(val);
-                                                if (!isNaN(sec)) {
-                                                    const h = Math.floor(sec / 3600).toString().padStart(2, '0');
-                                                    const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
-                                                    const s = Math.floor(sec % 60).toString().padStart(2, '0');
-                                                    return `${h}:${m}:${s}`;
-                                                }
-                                                return val;
-                                            };
-                                            return (
-                                                <tr key={r.insp_id} className="hover:bg-slate-50 group">
-                                                    <td className="px-3 py-3 text-slate-600 align-top">
-                                                        <div className="text-sm font-medium">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
-                                                        <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), 'HH:mm') : '-'}</div>
-                                                    </td>
-                                                <td className="px-3 py-3 font-bold text-slate-800 align-top">
-                                                    <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
-                                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
-                                                        {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
-                                                    </Badge>
-                                                    {(r.tape_id || r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                                        <div className="mt-1.5 flex flex-col gap-1">
-                                                            {r.tape_id && (
-                                                                <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
-                                                                    {jobTapes.find(t => t.tape_id === r.tape_id)?.tape_no || `TAPE ID: ${r.tape_id}`}
-                                                                </span>
-                                                            )}
-                                                            {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                                                <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5">
-                                                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                                                    {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td className="px-3 py-3 align-top text-slate-700">
-                                                    <div className="font-bold text-sm">{r.structure_components?.q_id || '-'}</div>
-                                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
-                                                </td>
-                                                <td className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
-                                                    {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
-                                                </td>
-                                                <td className="px-3 py-3 align-top text-center">
-                                                    <div className="flex flex-col items-center gap-1.5 mt-0.5">
-                                                        {r.has_anomaly ? (
-                                                            <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
-                                                                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                                                            </div>
-                                                        ) : r.status === 'COMPLETED' ? (
-                                                            <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
-                                                                <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                                                            </div>
-                                                        ) : (
-                                                            <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100">
-                                                                <FileClock className="w-3.5 h-3.5 text-amber-600" />
-                                                            </div>
-                                                        )}
-
-                                                        {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="sm" 
-                                                                className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
-                                                                onClick={async () => {
-                                                                    const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
-                                                                    if (data) setViewingRecordAttachments(data);
-                                                                }}
-                                                            >
-                                                                <Paperclip className="w-3 h-3" />
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-3 py-3 text-right align-top">
-                                                    <div className="flex items-center justify-end gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild>
-                                                                <button className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-white" title="Report Options">
-                                                                    <FileText className="w-3.5 h-3.5" /> Actions
-                                                                </button>
-                                                            </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end" className="w-48">
-                                                                {r.has_anomaly && (
-                                                                    <>
-                                                                        <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Reports</div>
-                                                                        {r.inspection_data?._meta_status === 'Finding' ? (
-                                                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700">
-                                                                                <ClipboardCheck className="w-3.5 h-3.5 mr-2" /> Print Finding Report
-                                                                            </DropdownMenuItem>
-                                                                        ) : (
-                                                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
-                                                                                <AlertTriangle className="w-3.5 h-3.5 mr-2" /> Print {r.inspection_data?._meta_status || 'Defect'} Report
-                                                                            </DropdownMenuItem>
-                                                                        )}
-                                                                        <div className="border-t border-slate-50 my-1"></div>
-                                                                    </>
-                                                                )}
-                                                                <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Details</div>
-                                                                <DropdownMenuItem onClick={() => {
-                                                                    const comp = (allComps || []).find((c: any) => c.id === r.component_id);
-                                                                    if (comp) {
-                                                                        setSelectedComp(comp);
-                                                                        setCompSpecDialogOpen(true);
-                                                                    }
-                                                                }} className="text-xs py-2 cursor-pointer">
-                                                                    <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" /> View Component Spec
-                                                                </DropdownMenuItem>
-                                                                <div className="border-t border-slate-50 my-1"></div>
-                                                                <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Modify</div>
-                                                                <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer">
-                                                                    <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" /> Edit Record
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
-                                                                    <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
-                                                                </DropdownMenuItem>
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
-                                                    </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-
-                                        {displayRecords.length === 0 && (
+                                <div className="min-w-full inline-block align-middle overflow-x-auto">
+                                    <table className="w-full text-left text-xs whitespace-nowrap table-auto">
+                                        <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider z-20">
                                             <tr>
-                                                <td colSpan={6} className="px-3 py-12 text-center bg-white/50">
-                                                    {syncLoading ? (
-                                                        <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
-                                                            <div className="relative">
-                                                                <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
-                                                                <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
-                                                            </div>
-                                                            <div className="flex flex-col gap-1">
-                                                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Synchronizing</span>
-                                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fetching live workspace data...</span>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex flex-col items-center gap-2 text-slate-300">
-                                                            <Search className="w-8 h-8 opacity-20" />
-                                                            <div className="flex flex-col gap-1">
-                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inventory Empty</span>
-                                                                <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">No events match your current filter or session</p>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                            </table>
-                        </ScrollArea>
-                        )}
-                    </Card>
-
-                    {/* Captured Events PiP Portal */}
-                    {capturedEventsPipWindow && createPortal(
-                        <div className="h-screen w-screen flex flex-col bg-white overflow-hidden">
-                            <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
-                                <div className="flex items-center gap-2">
-                                    <span>CAPTURED EVENTS (FLOATING)</span>
-                                    <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
-                                        {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                                        {currentRecords.length} Captured
-                                    </Badge>
-                                </div>
-                                
-                                <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
-                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                                    <Input 
-                                        placeholder="Smart Filter..."
-                                        className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
-                                        value={recordSearchQuery}
-                                        onChange={(e) => setRecordSearchQuery(e.target.value)}
-                                    />
-                                    {recordSearchQuery && (
-                                        <button 
-                                            onClick={() => setRecordSearchQuery("")}
-                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
-                                        >
-                                            <X className="w-2.5 h-2.5 text-slate-500" />
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => {
-                                        if (capturedEventsPipWindow) {
-                                            const s = capturedEventsPipWindow.screen;
-                                            capturedEventsPipWindow.moveTo(s.availLeft || 0, s.availTop || 0);
-                                            capturedEventsPipWindow.resizeTo(s.availWidth, s.availHeight);
-                                        }
-                                    }} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Maximize">
-                                        <Maximize2 className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => {
-                                        if (capturedEventsPipWindow) {
-                                            const s = capturedEventsPipWindow.screen;
-                                            capturedEventsPipWindow.resizeTo(1000, 600);
-                                            capturedEventsPipWindow.moveTo((s.availLeft || 0) + (s.availWidth - 1000) / 2, (s.availTop || 0) + (s.availHeight - 600) / 2);
-                                        }
-                                    }} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Restore Size">
-                                        <Minimize2 className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => capturedEventsPipWindow.close()} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Close"><X className="w-4 h-4" /></button>
-                                </div>
-                            </div>
-                            <ScrollArea className="flex-1 w-full relative">
-                                <table className="w-full text-left text-xs whitespace-nowrap">
-                                    <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
-                                        <tr>
-                                            <th className="px-3 py-3 w-20 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('cr_date')}>
-                                                <div className="flex items-center gap-1.5">
-                                                    Date {sortConfig.key === 'cr_date' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('type')}>
-                                                <div className="flex items-center gap-1.5">
-                                                    Type {sortConfig.key === 'type' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('component')}>
-                                                <div className="flex items-center gap-1.5">
-                                                    Component {sortConfig.key === 'component' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('elev')}>
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    Elev/KP {sortConfig.key === 'elev' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 text-center cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort('status')}>
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    Status {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />) : <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-3 py-3 text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {displayRecords.map((r: any) => {
-                                            const formatCounter = (val: any) => {
-                                                if (!val) return null;
-                                                if (typeof val === 'string' && val.includes(':')) return val;
-                                                const sec = Number(val);
-                                                if (!isNaN(sec)) {
-                                                    const h = Math.floor(sec / 3600).toString().padStart(2, '0');
-                                                    const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
-                                                    const s = Math.floor(sec % 60).toString().padStart(2, '0');
-                                                    return `${h}:${m}:${s}`;
-                                                }
-                                                return val;
-                                            };
-                                            return (
-                                                <tr key={r.insp_id} className="hover:bg-slate-50 group">
-                                                    <td className="px-3 py-3 text-slate-600 align-top">
-                                                        <div className="text-sm font-medium">{r.inspection_date ? format(new Date(r.inspection_date), 'dd MMM') : '-'}</div>
-                                                        <div className="text-[10px] opacity-70 mt-0.5">{r.inspection_time?.slice(0, 5)}</div>
-                                                    </td>
-                                                    <td className="px-3 py-3 font-bold text-slate-800 align-top">
-                                                        <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
-                                                        <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
-                                                            {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
-                                                        </Badge>
-                                                        {(r.tape_id || r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                                            <div className="mt-1.5 flex flex-col gap-1">
-                                                                {r.tape_id && (
-                                                                    <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
-                                                                        {jobTapes.find(t => t.tape_id === r.tape_id)?.tape_no || `TAPE ID: ${r.tape_id}`}
-                                                                    </span>
-                                                                )}
-                                                                {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                                                    <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5">
-                                                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                                                        {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-3 py-3 align-top text-slate-700">
-                                                        <div className="font-bold text-sm">{r.structure_components?.q_id || '-'}</div>
-                                                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
-                                                    </td>
-                                                    <td className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
-                                                        {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
-                                                    </td>
-                                                    <td className="px-3 py-3 align-top text-center">
-                                                        <div className="flex flex-col items-center gap-1.5 mt-0.5">
-                                                            {r.has_anomaly ? (
-                                                                <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
-                                                                    <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                                                                </div>
-                                                            ) : r.status === 'COMPLETED' ? (
-                                                                <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
-                                                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                                                                </div>
+                                                {activeTableColumns.map(col => (
+                                                    <th 
+                                                        key={col.id} 
+                                                        className={`px-3 py-3 transition-colors group ${
+                                                            col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-100' : ''
+                                                        } ${
+                                                            col.id === 'cr_date' ? 'w-20' : ''
+                                                        } ${
+                                                            ['elev', 'cp_reading', 'status'].includes(col.id) ? 'text-center' : ''
+                                                        }`}
+                                                        onClick={() => col.id !== 'actions' && col.id !== 'status' && handleSort(col.id)}
+                                                    >
+                                                        <div className={`flex items-center gap-1.5 ${['elev', 'cp_reading', 'status'].includes(col.id) ? 'justify-center' : ''}`}>
+                                                            {col.label} 
+                                                            {sortConfig.key === col.id ? (
+                                                                sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />
                                                             ) : (
-                                                                <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100">
-                                                                    <FileClock className="w-3.5 h-3.5 text-amber-600" />
-                                                                </div>
+                                                                col.id !== 'actions' && col.id !== 'status' && <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
                                                             )}
+                                                        </div>
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {displayRecords.map((r: any) => {
+                                                const formatCounter = (val: any) => {
+                                                    if (!val) return null;
+                                                    if (typeof val === 'string' && val.includes(':')) return val;
+                                                    const sec = Number(val);
+                                                    if (!isNaN(sec)) {
+                                                        const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+                                                        const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+                                                        const s = Math.floor(sec % 60).toString().padStart(2, '0');
+                                                        return `${h}:${m}:${s}`;
+                                                    }
+                                                    return val;
+                                                };
 
-                                                            {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
-                                                                <Button 
-                                                                    variant="ghost" 
-                                                                    size="sm" 
-                                                                    className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
-                                                                    onClick={async () => {
-                                                                        const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
-                                                                        if (data) setViewingRecordAttachments(data);
-                                                                    }}
-                                                                >
-                                                                    <Paperclip className="w-3 h-3" />
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-3 py-3 text-right align-top">
-                                                        <div className="flex items-center justify-end gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger asChild>
-                                                                    <button className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-white" title="Report Options">
-                                                                        <FileText className="w-3.5 h-3.5" /> Actions
-                                                                    </button>
-                                                                </DropdownMenuTrigger>
-                                                                <DropdownMenuContent align="end" className="w-48">
-                                                                    {r.has_anomaly && (
-                                                                        <>
-                                                                            <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Reports</div>
-                                                                            {r.inspection_data?._meta_status === 'Finding' ? (
-                                                                                <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700">
-                                                                                    <ClipboardCheck className="w-3.5 h-3.5 mr-2" /> Print Finding Report
-                                                                                </DropdownMenuItem>
-                                                                            ) : (
-                                                                                <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
-                                                                                    <AlertTriangle className="w-3.5 h-3.5 mr-2" /> Print {r.inspection_data?._meta_status || 'Defect'} Report
-                                                                                </DropdownMenuItem>
+                                                return (
+                                                    <tr key={r.insp_id} className="hover:bg-slate-50 group">
+                                                        {activeTableColumns.map(col => {
+                                                            switch (col.id) {
+                                                                case 'actions':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 text-right align-top">
+                                                                            <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
+                                                                                <DropdownMenu>
+                                                                                    <DropdownMenuTrigger asChild>
+                                                                                        <button className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600" title="Report Options">
+                                                                                            <FileText className="w-3.5 h-3.5" /> Actions
+                                                                                        </button>
+                                                                                    </DropdownMenuTrigger>
+                                                                                    <DropdownMenuContent align="start" className="w-48">
+                                                                                        {r.has_anomaly && (
+                                                                                            <>
+                                                                                                <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Reports</div>
+                                                                                                {r.inspection_data?._meta_status === 'Finding' ? (
+                                                                                                    <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700">
+                                                                                                        <ClipboardCheck className="w-3.5 h-3.5 mr-2" /> Print Finding Report
+                                                                                                    </DropdownMenuItem>
+                                                                                                ) : (
+                                                                                                    <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                                                                                        <AlertTriangle className="w-3.5 h-3.5 mr-2" /> Print {r.inspection_data?._meta_status || 'Defect'} Report
+                                                                                                    </DropdownMenuItem>
+                                                                                                )}
+                                                                                                <div className="border-t border-slate-50 my-1"></div>
+                                                                                            </>
+                                                                                        )}
+                                                                                        <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Details</div>
+                                                                                        <DropdownMenuItem onClick={() => {
+                                                                                            const comp = (allComps || []).find((c: any) => c.id === r.component_id);
+                                                                                            if (comp) {
+                                                                                                setSelectedComp(comp);
+                                                                                                setCompSpecDialogOpen(true);
+                                                                                            }
+                                                                                        }} className="text-xs py-2 cursor-pointer">
+                                                                                            <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" /> View Component Spec
+                                                                                        </DropdownMenuItem>
+                                                                                        <div className="border-t border-slate-50 my-1"></div>
+                                                                                        <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Modify</div>
+                                                                                        <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer">
+                                                                                            <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" /> Edit Record
+                                                                                        </DropdownMenuItem>
+                                                                                        <DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                                                                            <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
+                                                                                        </DropdownMenuItem>
+                                                                                    </DropdownMenuContent>
+                                                                                </DropdownMenu>
+                                                                            </div>
+                                                                        </td>
+                                                                    );
+                                                                case 'status':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 align-top text-center">
+                                                                            <div className="flex flex-col items-center gap-1.5 mt-0.5">
+                                                                                {r.has_anomaly ? (
+                                                                                    <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
+                                                                                        <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                                                                    </div>
+                                                                                ) : r.status === 'COMPLETED' ? (
+                                                                                    <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
+                                                                                        <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100">
+                                                                                        <FileClock className="w-3.5 h-3.5 text-amber-600" />
+                                                                                    </div>
+                                                                                )}
+                                                                                {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
+                                                                                    <Button 
+                                                                                        variant="ghost" 
+                                                                                        size="sm" 
+                                                                                        className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
+                                                                                        onClick={async () => {
+                                                                                            const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
+                                                                                            if (data) setViewingRecordAttachments(data);
+                                                                                        }}
+                                                                                    >
+                                                                                        <Paperclip className="w-3 h-3" />
+                                                                                    </Button>
+                                                                                )}
+                                                                            </div>
+                                                                        </td>
+                                                                    );
+                                                                case 'cr_date':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 text-slate-600 align-top">
+                                                                            <div className="text-sm font-medium">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
+                                                                            <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), 'HH:mm') : '-'}</div>
+                                                                        </td>
+                                                                    );
+                                                                case 'type':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 font-bold text-slate-800 align-top">
+                                                                            <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
+                                                                            <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
+                                                                                {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
+                                                                            </Badge>
+                                                                        </td>
+                                                                    );
+                                                                case 'component':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                            <div className="font-bold text-sm">{r.structure_components?.q_id || '-'}</div>
+                                                                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
+                                                                        </td>
+                                                                    );
+                                                                case 'elev':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                                                                            {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
+                                                                        </td>
+                                                                    );
+                                                                case 'anomaly_ref':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                            {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
+                                                                                <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{r.insp_anomalies[0].anomaly_ref_no}</span>
+                                                                            ) : <span className="text-slate-300">-</span>}
+                                                                        </td>
+                                                                    );
+                                                                case 'cp_reading':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                                                                            {(() => {
+                                                                                const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp;
+                                                                                return cp ? <span className="font-mono text-xs">{cp}</span> : <span className="text-slate-300">-</span>;
+                                                                            })()}
+                                                                        </td>
+                                                                    );
+                                                                case 'dive_no':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                            <span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300">-</span>}</span>
+                                                                        </td>
+                                                                    );
+                                                                case 'tape_no':
+                                                                    return (
+                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                            <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300">-</span>}</span>
+                                                                            {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
+                                                                                <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
+                                                                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                                                                    {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
+                                                                                </div>
                                                                             )}
-                                                                            <div className="border-t border-slate-50 my-1"></div>
-                                                                        </>
-                                                                    )}
-                                                                    <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Details</div>
-                                                                    <DropdownMenuItem onClick={() => {
-                                                                        const comp = (allComps || []).find((c: any) => c.id === r.component_id);
-                                                                        if (comp) {
-                                                                            setSelectedComp(comp);
-                                                                            setCompSpecDialogOpen(true);
-                                                                        }
-                                                                    }} className="text-xs py-2 cursor-pointer">
-                                                                        <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" /> View Component Spec
-                                                                    </DropdownMenuItem>
-                                                                    <div className="border-t border-slate-50 my-1"></div>
-                                                                    <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Modify</div>
-                                                                    <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer">
-                                                                        <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" /> Edit Record
-                                                                    </DropdownMenuItem>
-                                                                    <DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
-                                                                        <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
-                                                                    </DropdownMenuItem>
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
+                                                                        </td>
+                                                                    );
+                                                                default: return null;
+                                                            }
+                                                        })}
+                                                    </tr>
+                                                );
+                                            })}
 
                                         {displayRecords.length === 0 && (
                                             <tr>
-                                                <td colSpan={6} className="px-3 py-12 text-center bg-white/50">
+                                                <td colSpan={10} className="px-3 py-12 text-center bg-white/50">
                                                     {syncLoading ? (
                                                         <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
                                                             <div className="relative">
@@ -6517,13 +6472,14 @@ function V10PreviewLayout() {
                                         )}
                                     </tbody>
                                 </table>
-                            </ScrollArea>
-                        </div>,
-                        capturedEventsPipWindow.document.body
+                            </div>
+                            <ScrollBar orientation="horizontal" />
+                        </ScrollArea>
                     )}
+                </Card>
+
                 </div>
 
-                {/* ======== COL 3: SELECTION & HISTORY (RIGHT) ======== */}
                 <div className="w-[360px] flex flex-col gap-3 shrink-0 overflow-hidden">
 
                     {/* 3. Component Target Selection */}
@@ -6768,6 +6724,368 @@ function V10PreviewLayout() {
                 </div>
 
             </div>
+
+            {capturedEventsPipWindow && createPortal(
+                <div className="h-screen w-screen flex flex-col bg-white overflow-hidden">
+                    <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
+                        <div className="flex items-center gap-2">
+                            <span>CAPTURED EVENTS (FLOATING)</span>
+                            <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                {recordSearchQuery ? `${displayRecords.length} / ${currentRecords.length}` : currentRecords.length} Captured
+                            </Badge>
+                        </div>
+                        
+                        <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                            <Input 
+                                placeholder="Smart Filter..."
+                                className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
+                                value={recordSearchQuery}
+                                onChange={(e) => setRecordSearchQuery(e.target.value)}
+                            />
+                            {recordSearchQuery && (
+                                <button 
+                                    onClick={() => setRecordSearchQuery("")}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
+                                >
+                                    <X className="w-2.5 h-2.5 text-slate-500" />
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-white hover:bg-slate-700">
+                                        <Settings2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-64 p-0 shadow-2xl border-slate-700 bg-slate-900 text-slate-200" align="end" container={capturedEventsPipWindow?.document.body}>
+                                    <div className="p-3 border-b border-slate-800 bg-slate-950/50">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Table Configuration</h3>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="sm" 
+                                                className="h-5 text-[9px] uppercase font-bold text-blue-400 hover:text-blue-300 p-0"
+                                                onClick={() => {
+                                                    const defaultCols = [
+                                                        { id: 'cr_date', label: 'Date', visible: true },
+                                                        { id: 'type', label: 'Type', visible: true },
+                                                        { id: 'component', label: 'Component', visible: true },
+                                                        { id: 'elev', label: 'Elev/KP', visible: true },
+                                                        { id: 'anomaly_ref', label: 'Anom. Ref', visible: true },
+                                                        { id: 'cp_reading', label: 'CP (mV)', visible: true },
+                                                        { id: 'dive_no', label: 'Dive No', visible: true },
+                                                        { id: 'tape_no', label: 'Tape No', visible: true },
+                                                    ];
+                                                    setColumnSettings(defaultCols);
+                                                }}
+                                            >
+                                                Reset
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <ScrollArea className="h-72">
+                                        <div className="p-1.5 space-y-0.5">
+                                            {columnSettings.map((col, idx) => (
+                                                <div key={col.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-slate-800 group">
+                                                    <GripVertical className="w-3 h-3 text-slate-600 shrink-0" />
+                                                    <button 
+                                                        onClick={() => toggleColumnVisibility(col.id)}
+                                                        className={`flex-1 flex items-center gap-2 text-left transition-opacity ${col.visible ? 'opacity-100' : 'opacity-40'}`}
+                                                    >
+                                                        {col.visible ? <Eye className="w-3.5 h-3.5 text-blue-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-500" />}
+                                                        <span className="text-[11px] font-bold tracking-tight">{col.label}</span>
+                                                    </button>
+                                                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="sm" 
+                                                            className="h-5 w-5 p-0 hover:bg-slate-700"
+                                                            disabled={idx === 0}
+                                                            onClick={() => handleMoveColumn(idx, 'up')}
+                                                        >
+                                                            <ChevronUp className="w-3 h-3" />
+                                                        </Button>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="sm" 
+                                                            className="h-5 w-5 p-0 hover:bg-slate-700"
+                                                            disabled={idx === columnSettings.length - 1}
+                                                            onClick={() => handleMoveColumn(idx, 'down')}
+                                                        >
+                                                            <ChevronDown className="w-3 h-3" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                    <div className="p-2 border-t border-slate-800 bg-slate-950/30">
+                                        <p className="text-[9px] text-slate-500 italic text-center">Actions & Status columns are fixed at start.</p>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+
+                            <button onClick={() => {
+                                if (capturedEventsPipWindow) {
+                                    const s = capturedEventsPipWindow.screen;
+                                    capturedEventsPipWindow.moveTo(s.availLeft || 0, s.availTop || 0);
+                                    capturedEventsPipWindow.resizeTo(s.availWidth, s.availHeight);
+                                }
+                            }} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Maximize">
+                                <Maximize2 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => {
+                                if (capturedEventsPipWindow) {
+                                    const s = capturedEventsPipWindow.screen;
+                                    capturedEventsPipWindow.resizeTo(1000, 600);
+                                    capturedEventsPipWindow.moveTo((s.availLeft || 0) + (s.availWidth - 1000) / 2, (s.availTop || 0) + (s.availHeight - 600) / 2);
+                                }
+                            }} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Restore Size">
+                                <Minimize2 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => capturedEventsPipWindow.close()} className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all" title="Close"><X className="w-4 h-4" /></button>
+                        </div>
+                    </div>
+
+                    <ScrollArea className="flex-1 w-full relative">
+                        <div className="min-w-full inline-block align-middle overflow-x-auto">
+                        <table className="w-full text-left text-xs whitespace-nowrap table-auto">
+                            <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider z-20">
+                                <tr>
+                                    {activeTableColumns.map(col => (
+                                        <th 
+                                            key={col.id} 
+                                            className={`px-3 py-3 transition-colors group ${
+                                                col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-100' : ''
+                                            } ${
+                                                col.id === 'cr_date' ? 'w-20' : ''
+                                            } ${
+                                                ['elev', 'cp_reading', 'status'].includes(col.id) ? 'text-center' : ''
+                                            }`}
+                                            onClick={() => col.id !== 'actions' && col.id !== 'status' && handleSort(col.id)}
+                                        >
+                                            <div className={`flex items-center gap-1.5 ${['elev', 'cp_reading', 'status'].includes(col.id) ? 'justify-center' : ''}`}>
+                                                {col.label} 
+                                                {sortConfig.key === col.id ? (
+                                                    sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />
+                                                ) : (
+                                                    col.id !== 'actions' && col.id !== 'status' && <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
+                                                )}
+                                            </div>
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                    {displayRecords.map((r: any) => {
+                                        const formatCounter = (val: any) => {
+                                            if (!val) return null;
+                                            if (typeof val === 'string' && val.includes(':')) return val;
+                                            const sec = Number(val);
+                                            if (!isNaN(sec)) {
+                                                const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+                                                const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+                                                const s = Math.floor(sec % 60).toString().padStart(2, '0');
+                                                return `${h}:${m}:${s}`;
+                                            }
+                                            return val;
+                                        };
+
+                                        return (
+                                            <tr key={r.insp_id} className="hover:bg-slate-50 group">
+                                                {activeTableColumns.map(col => {
+                                                    switch (col.id) {
+                                                        case 'actions':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 text-right align-top">
+                                                                    <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
+                                                                        <DropdownMenu>
+                                                                            <DropdownMenuTrigger asChild>
+                                                                                <button className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600" title="Report Options">
+                                                                                    <FileText className="w-3.5 h-3.5" /> Actions
+                                                                                </button>
+                                                                            </DropdownMenuTrigger>
+                                                                            <DropdownMenuContent align="start" className="w-48" container={capturedEventsPipWindow?.document.body}>
+                                                                                {r.has_anomaly && (
+                                                                                    <>
+                                                                                        <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Reports</div>
+                                                                                        {r.inspection_data?._meta_status === 'Finding' ? (
+                                                                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700">
+                                                                                                <ClipboardCheck className="w-3.5 h-3.5 mr-2" /> Print Finding Report
+                                                                                            </DropdownMenuItem>
+                                                                                        ) : (
+                                                                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                                                                                <AlertTriangle className="w-3.5 h-3.5 mr-2" /> Print {r.inspection_data?._meta_status || 'Defect'} Report
+                                                                                            </DropdownMenuItem>
+                                                                                        )}
+                                                                                        <div className="border-t border-slate-50 my-1"></div>
+                                                                                    </>
+                                                                                )}
+                                                                                <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Details</div>
+                                                                                <DropdownMenuItem onClick={() => {
+                                                                                    const comp = (allComps || []).find((c: any) => c.id === r.component_id);
+                                                                                    if (comp) {
+                                                                                        setSelectedComp(comp);
+                                                                                        setCompSpecDialogOpen(true);
+                                                                                    }
+                                                                                }} className="text-xs py-2 cursor-pointer">
+                                                                                    <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" /> View Component Spec
+                                                                                </DropdownMenuItem>
+                                                                                <div className="border-t border-slate-50 my-1"></div>
+                                                                                <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Modify</div>
+                                                                                <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer">
+                                                                                    <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" /> Edit Record
+                                                                                </DropdownMenuItem>
+                                                                                <DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                                                                    <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
+                                                                                </DropdownMenuItem>
+                                                                            </DropdownMenuContent>
+                                                                        </DropdownMenu>
+                                                                    </div>
+                                                                </td>
+                                                            );
+                                                        case 'status':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 align-top text-center">
+                                                                    <div className="flex flex-col items-center gap-1.5 mt-0.5">
+                                                                        {r.has_anomaly ? (
+                                                                            <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
+                                                                                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                                                            </div>
+                                                                        ) : r.status === 'COMPLETED' ? (
+                                                                            <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
+                                                                                <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100">
+                                                                                <FileClock className="w-3.5 h-3.5 text-amber-600" />
+                                                                            </div>
+                                                                        )}
+                                                                        {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
+                                                                            <Button 
+                                                                                variant="ghost" 
+                                                                                size="sm" 
+                                                                                className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
+                                                                                onClick={async () => {
+                                                                                    const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
+                                                                                    if (data) setViewingRecordAttachments(data);
+                                                                                }}
+                                                                            >
+                                                                                <Paperclip className="w-3 h-3" />
+                                                                            </Button>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                            );
+                                                        case 'cr_date':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 text-slate-600 align-top">
+                                                                    <div className="text-sm font-medium">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
+                                                                    <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), 'HH:mm') : '-'}</div>
+                                                                </td>
+                                                            );
+                                                        case 'type':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 font-bold text-slate-800 align-top">
+                                                                    <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
+                                                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
+                                                                        {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
+                                                                    </Badge>
+                                                                </td>
+                                                            );
+                                                        case 'component':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                    <div className="font-bold text-sm">{r.structure_components?.q_id || '-'}</div>
+                                                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
+                                                                </td>
+                                                            );
+                                                        case 'elev':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                                                                    {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
+                                                                </td>
+                                                            );
+                                                        case 'anomaly_ref':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                    {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
+                                                                        <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{r.insp_anomalies[0].anomaly_ref_no}</span>
+                                                                    ) : <span className="text-slate-300">-</span>}
+                                                                </td>
+                                                            );
+                                                        case 'cp_reading':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                                                                    {(() => {
+                                                                        const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp;
+                                                                        return cp ? <span className="font-mono text-xs">{cp}</span> : <span className="text-slate-300">-</span>;
+                                                                    })()}
+                                                                </td>
+                                                            );
+                                                        case 'dive_no':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                    <span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300">-</span>}</span>
+                                                                </td>
+                                                            );
+                                                        case 'tape_no':
+                                                            return (
+                                                                <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                    <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300">-</span>}</span>
+                                                                    {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
+                                                                        <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                                                            {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        default: return null;
+                                                    }
+                                                })}
+                                            </tr>
+                                        );
+                                    })}
+
+                                {displayRecords.length === 0 && (
+                                    <tr>
+                                        <td colSpan={10} className="px-3 py-12 text-center bg-white/50">
+                                            {syncLoading ? (
+                                                <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
+                                                    <div className="relative">
+                                                        <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
+                                                        <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
+                                                    </div>
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Synchronizing</span>
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fetching live workspace data...</span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center gap-2 text-slate-300">
+                                                    <Search className="w-8 h-8 opacity-20" />
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inventory Empty</span>
+                                                        <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">No events match your current filter or session</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                        </div>
+                        <ScrollBar orientation="horizontal" />
+                    </ScrollArea>
+                </div>,
+                capturedEventsPipWindow.document.body
+            )}
 
             <WorkspaceDialogs
                 supabase={supabase}

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Edit2, Trash2, Eye, EyeOff, AlertTriangle, CheckCircle2, FileClock, History, Paperclip, FileText } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Edit2, Trash2, Eye, EyeOff, AlertTriangle, CheckCircle2, FileClock, History, Paperclip, FileText, Search, ArrowUpDown } from "lucide-react";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +51,11 @@ export default function ROVInspectionList({
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewRecord, setPreviewRecord] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+        key: 'inspection_date',
+        direction: 'desc'
+    });
 
     useEffect(() => {
         if (rovJobId || componentId || (diveNo && jobpackId)) {
@@ -92,7 +98,9 @@ export default function ROVInspectionList({
                     *,
                     inspection_type!left(id, code, name),
                     structure_components:component_id!left (q_id),
-                    insp_rov_jobs!left(deployment_no, jobpack_id)
+                    insp_rov_jobs!left(deployment_no, jobpack_id, job_no),
+                    insp_video_tapes!left(tape_no),
+                    insp_anomalies!left(anomaly_ref_no)
                 `)
                 .order('inspection_date', { ascending: false })
                 .order('inspection_time', { ascending: false })
@@ -307,6 +315,82 @@ export default function ROVInspectionList({
         }
     }
 
+    const handleSort = (key: string) => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    const sortedRecords = useMemo(() => {
+        const sorted = [...records];
+        sorted.sort((a, b) => {
+            let aVal: any;
+            let bVal: any;
+
+            switch (sortConfig.key) {
+                case 'inspection_date':
+                    aVal = new Date(`${a.inspection_date}T${a.inspection_time || '00:00:00'}`).getTime();
+                    bVal = new Date(`${b.inspection_date}T${b.inspection_time || '00:00:00'}`).getTime();
+                    break;
+                case 'type':
+                    aVal = (a.inspection_type?.name || '').toLowerCase();
+                    bVal = (b.inspection_type?.name || '').toLowerCase();
+                    break;
+                case 'component':
+                    aVal = (a.structure_components?.q_id || '').toLowerCase();
+                    bVal = (b.structure_components?.q_id || '').toLowerCase();
+                    break;
+                case 'elev':
+                    aVal = parseFloat(a.elevation || a.fp_kp || 0);
+                    bVal = parseFloat(b.elevation || b.fp_kp || 0);
+                    break;
+                case 'status':
+                    aVal = a.has_anomaly ? 2 : (a.status === 'COMPLETED' ? 1 : 0);
+                    bVal = b.has_anomaly ? 2 : (b.status === 'COMPLETED' ? 1 : 0);
+                    break;
+                case 'anomaly_ref':
+                    aVal = (a.insp_anomalies?.[0]?.anomaly_ref_no || '').toLowerCase();
+                    bVal = (b.insp_anomalies?.[0]?.anomaly_ref_no || '').toLowerCase();
+                    break;
+                case 'cp_reading':
+                    aVal = parseFloat(a.inspection_data?.cp_rdg ?? a.inspection_data?.cp_reading_mv ?? a.inspection_data?.cp ?? -9999);
+                    bVal = parseFloat(b.inspection_data?.cp_rdg ?? b.inspection_data?.cp_reading_mv ?? b.inspection_data?.cp ?? -9999);
+                    break;
+                case 'dive_no':
+                    aVal = (a.insp_rov_jobs?.deployment_no || a.insp_rov_jobs?.job_no || '').toLowerCase();
+                    bVal = (b.insp_rov_jobs?.deployment_no || b.insp_rov_jobs?.job_no || '').toLowerCase();
+                    break;
+                case 'tape_no':
+                    aVal = (a.insp_video_tapes?.tape_no || '').toLowerCase();
+                    bVal = (b.insp_video_tapes?.tape_no || '').toLowerCase();
+                    break;
+                default:
+                    return 0;
+            }
+
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+        return sorted;
+    }, [records, sortConfig]);
+
+    const displayRecords = useMemo(() => {
+        if (!searchQuery) return sortedRecords;
+        const q = searchQuery.toLowerCase();
+        return sortedRecords.filter(r => {
+            const type = (r.inspection_type?.name || "").toLowerCase();
+            const component = (r.structure_components?.q_id || "").toLowerCase();
+            const refNo = (r.insp_anomalies?.[0]?.anomaly_ref_no || "").toLowerCase();
+            const cp = (r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp ?? "").toString().toLowerCase();
+            const diveNo = (r.insp_rov_jobs?.deployment_no || r.insp_rov_jobs?.job_no || "").toLowerCase();
+            const tapeNo = (r.insp_video_tapes?.tape_no || "").toLowerCase();
+
+            return type.includes(q) || component.includes(q) || refNo.includes(q) || cp.includes(q) || diveNo.includes(q) || tapeNo.includes(q);
+        });
+    }, [sortedRecords, searchQuery]);
+
     if (loading) {
         return <div className="p-4 text-center text-sm text-muted-foreground animate-pulse">Refreshing records...</div>;
     }
@@ -322,24 +406,71 @@ export default function ROVInspectionList({
 
     return (
         <div className="border-t border-slate-100 dark:border-slate-900 bg-white dark:bg-slate-950/20">
-            <div className="max-h-[300px] overflow-auto">
+            <div className="p-2 border-b bg-slate-50/50 dark:bg-slate-900/50 flex items-center gap-2">
+                <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                        placeholder="Smart filter records..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-8 h-8 text-xs bg-white dark:bg-slate-950"
+                    />
+                </div>
+            </div>
+            <div className="max-h-[400px] overflow-auto">
                 <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider border-b">
+                    <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider border-b z-10">
                         <tr>
-                            <th className="px-2 py-1.5 text-left w-22">
-                                <span className="flex items-center gap-1 cursor-pointer hover:text-blue-600" onClick={fetchRecords} title="Click to refresh">
-                                    Date <History className="h-3 w-3" />
-                                </span>
+                            <th className="px-2 py-1.5 text-left w-22 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('inspection_date')}>
+                                <div className="flex items-center gap-1">
+                                    Date <ArrowUpDown className="h-3 w-3" />
+                                </div>
                             </th>
-                            <th className="px-2 py-1.5 text-left w-24">Type</th>
-                            <th className="px-2 py-1.5 text-left w-24">Component</th>
-                            <th className="px-2 py-1.5 text-center w-16">Elev/KP</th>
-                            <th className="px-2 py-1.5 text-center w-20">Status</th>
+                            <th className="px-2 py-1.5 text-left w-32 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('type')}>
+                                <div className="flex items-center gap-1">
+                                    Type <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                            </th>
+                            <th className="px-2 py-1.5 text-left w-24 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('component')}>
+                                <div className="flex items-center gap-1">
+                                    Component <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                            </th>
+                            <th className="px-2 py-1.5 text-left w-28 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('anomaly_ref')}>
+                                <div className="flex items-center gap-1">
+                                    Anomaly Ref <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                            </th>
+                            <th className="px-2 py-1.5 text-center w-20 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('cp_reading')}>
+                                <div className="flex items-center gap-1 justify-center">
+                                    CP <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                            </th>
+                            <th className="px-2 py-1.5 text-center w-20 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('dive_no')}>
+                                <div className="flex items-center gap-1 justify-center">
+                                    Dive <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                            </th>
+                            <th className="px-2 py-1.5 text-center w-20 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('tape_no')}>
+                                <div className="flex items-center gap-1 justify-center">
+                                    Tape <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                            </th>
+                            <th className="px-2 py-1.5 text-center w-16 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('elev')}>
+                                <div className="flex items-center gap-1 justify-center">
+                                    Elev <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                            </th>
+                            <th className="px-2 py-1.5 text-center w-20 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('status')}>
+                                <div className="flex items-center gap-1 justify-center">
+                                    Status <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                            </th>
                             <th className="px-2 py-1.5 text-right w-16">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {records.map((record) => {
+                        {displayRecords.map((record) => {
                             const isSelected = componentId && record.component_id === componentId;
 
                             // Format helper for counter
@@ -405,6 +536,22 @@ export default function ROVInspectionList({
                                                 </div>
                                             )}
                                         </div>
+                                    </td>
+                                    <td className="px-2 py-1.5 align-top">
+                                        {record.insp_anomalies?.[0]?.anomaly_ref_no ? (
+                                            <Badge variant="destructive" className="text-[9px] h-4 px-1 font-mono">
+                                                {record.insp_anomalies[0].anomaly_ref_no}
+                                            </Badge>
+                                        ) : '-'}
+                                    </td>
+                                    <td className="px-2 py-1.5 align-top text-center font-mono text-[10px]">
+                                        {record.inspection_data?.cp_rdg ?? record.inspection_data?.cp_reading_mv ?? record.inspection_data?.cp ?? '-'}
+                                    </td>
+                                    <td className="px-2 py-1.5 align-top text-center text-[10px]">
+                                        {record.insp_rov_jobs?.deployment_no || record.insp_rov_jobs?.job_no || '-'}
+                                    </td>
+                                    <td className="px-2 py-1.5 align-top text-center text-[10px] whitespace-nowrap">
+                                        {record.insp_video_tapes?.tape_no || '-'}
                                     </td>
                                     <td className="px-2 py-1.5 align-top text-center text-[10px] text-muted-foreground whitespace-nowrap">
                                         {record.elevation ? `${record.elevation}m` : (record.fp_kp || '-')}
