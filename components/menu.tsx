@@ -207,6 +207,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<Sparkles className="h-[18px] w-[18px]" />}
             text="Smart Query"
           />
+          <MenuLink
+            href="/dashboard/utilities/qa-qc"
+            isCollapsed={isCollapsed}
+            label="QA-QC"
+            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+            text="QA-QC"
+          />
         </div>
 
       </nav>

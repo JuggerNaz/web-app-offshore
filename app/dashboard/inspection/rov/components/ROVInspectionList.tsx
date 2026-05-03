@@ -461,6 +461,7 @@ export default function ROVInspectionList({
                                     Elev <ArrowUpDown className="h-3 w-3" />
                                 </div>
                             </th>
+                            <th className="px-2 py-1.5 text-left w-48">Findings</th>
                             <th className="px-2 py-1.5 text-center w-20 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('status')}>
                                 <div className="flex items-center gap-1 justify-center">
                                     Status <ArrowUpDown className="h-3 w-3" />
@@ -555,6 +556,11 @@ export default function ROVInspectionList({
                                     </td>
                                     <td className="px-2 py-1.5 align-top text-center text-[10px] text-muted-foreground whitespace-nowrap">
                                         {record.elevation ? `${record.elevation}m` : (record.fp_kp || '-')}
+                                    </td>
+                                    <td className="px-2 py-1.5 align-top">
+                                        <div className="text-[10px] line-clamp-2 text-slate-600 dark:text-slate-400 italic" title={record.description || record.inspection_data?.findings || record.inspection_data?.remarks || ""}>
+                                            {record.description || record.inspection_data?.findings || record.inspection_data?.remarks || "-"}
+                                        </div>
                                     </td>
                                     <td className="px-2 py-1.5 align-top text-center flex justify-center">
                                         {record.has_anomaly ? (

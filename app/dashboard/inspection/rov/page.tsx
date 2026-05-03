@@ -1750,7 +1750,7 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <ClipboardList className="h-4 w-4 text-orange-600 shrink-0" />
-                            <h3 className="font-bold text-sm truncate">Inspection Records</h3>
+                            <h3 className="font-bold text-sm truncate">Captured Events</h3>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <Badge variant="secondary" className="h-5 text-[10px] px-1.5">
