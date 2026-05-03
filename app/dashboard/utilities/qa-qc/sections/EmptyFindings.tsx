@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { FindingsSuggestionEngine } from "../../../inspection-v2/workspace/components/FindingsSuggestionEngine";
 
 interface EmptyFindingsProps {
   jobpackId: string;
@@ -49,7 +50,8 @@ export default function EmptyFindingsSection({ jobpackId, structureId, sowId, re
             code
           ),
           component:component_id (
-            q_id
+            q_id,
+            metadata
           )
         `)
         .eq("jobpack_id", jobpackId)
@@ -220,7 +222,24 @@ export default function EmptyFindingsSection({ jobpackId, structureId, sowId, re
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="findings" className="text-xs font-bold uppercase text-slate-500">Inspection Findings / Remarks</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="findings" className="text-xs font-bold uppercase text-slate-500">Inspection Findings / Remarks</Label>
+                {updatingRec && (
+                  <FindingsSuggestionEngine 
+                    supabase={supabase}
+                    componentType={updatingRec.component?.metadata?.type || ""}
+                    inspectionTypeCode={(Array.isArray(updatingRec.inspection_type) ? updatingRec.inspection_type[0] : updatingRec.inspection_type)?.code || ""}
+                    onSelect={(val: string) => {
+                      if (newFinding && newFinding.trim()) {
+                        setNewFinding(`${newFinding.trim()}\n${val}`);
+                      } else {
+                        setNewFinding(val);
+                      }
+                    }}
+                    currentFinding={newFinding}
+                  />
+                )}
+              </div>
               <Textarea
                 id="findings"
                 placeholder="Enter findings based on visual inspection..."

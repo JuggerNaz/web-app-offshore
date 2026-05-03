@@ -94,7 +94,6 @@ export default function QAQCPage() {
     setLoading(true);
     try {
       // Get only jobpacks that HAVE inspection records
-      // We use a join or in-filter for this
       const { data: records, error: rError } = await supabase
         .from("insp_records")
         .select("jobpack_id");
@@ -343,7 +342,7 @@ export default function QAQCPage() {
               </TabsList>
             </div>
 
-            {/* Sections with separated SOW ID and Report Number */}
+            {/* Sections Content */}
             <TabsContent value="spellcheck">
               <SpellCheckSection jobpackId={selectedJobpack} structureId={selectedStructure} sowId={currentSowId} reportNo={currentReportNo} />
             </TabsContent>

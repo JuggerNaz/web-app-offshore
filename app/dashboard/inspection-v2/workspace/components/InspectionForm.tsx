@@ -19,12 +19,14 @@ import {
     Paperclip, 
     Camera, 
     CloudUpload,
-    Search
+    Search,
+    Loader2
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
+import { FindingsSuggestionEngine } from "./FindingsSuggestionEngine";
 
 interface InspectionFormProps {
     selectedComp: any;
@@ -70,6 +72,7 @@ interface InspectionFormProps {
     dynamicProps?: any;
     handleDynamicPropChange?: (name: string, value: any) => void;
     activeMGIProfile?: any;
+    supabase?: any;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -115,7 +118,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     isEditing = false,
     dynamicProps = {},
     handleDynamicPropChange,
-    activeMGIProfile
+    activeMGIProfile,
+    supabase
 }) => {
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
@@ -393,7 +397,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 </div>
             </div>
 
-            <ScrollArea className="flex-1 p-5">
+            <ScrollArea className="flex-1">
+                <div className="p-5">
                 <div className="space-y-5 max-w-2xl mx-auto">
                     <div className="grid grid-cols-2 gap-5">
                         <div className="space-y-1">
@@ -1155,8 +1160,29 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     )}
 
                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><FileText className="w-3 h-3" /> Findings</label>
-                        <textarea value={recordNotes} onChange={(e) => setRecordNotes(e.target.value)} placeholder="Observation specifics, dimensions, characteristics..." className="w-full min-h-[100px] rounded-lg border border-slate-300 p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50"></textarea>
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><FileText className="w-3 h-3" /> Findings</label>
+                            <FindingsSuggestionEngine 
+                                supabase={supabase}
+                                componentType={selectedComp?.raw?.type || ""}
+                                inspectionTypeCode={activeSpec || ""}
+                                onSelect={(val) => {
+                                    // Append if existing, otherwise set
+                                    if (recordNotes && recordNotes.trim()) {
+                                        setRecordNotes(`${recordNotes.trim()}\n${val}`);
+                                    } else {
+                                        setRecordNotes(val);
+                                    }
+                                }}
+                                currentFinding={recordNotes}
+                            />
+                        </div>
+                        <textarea 
+                            value={recordNotes} 
+                            onChange={(e) => setRecordNotes(e.target.value)} 
+                            placeholder="Observation specifics, dimensions, characteristics..." 
+                            className="w-full min-h-[120px] rounded-lg border border-slate-300 p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50 shadow-inner"
+                        ></textarea>
                     </div>
 
                     <div className="space-y-3">
@@ -1264,44 +1290,46 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             </div>
                         )}
                     </div>
-
-                    <div className="pt-2 pb-6">
-                        {(() => {
-                            const isDepActive = !!activeDep && activeDep.raw?.status !== 'COMPLETED';
-                            const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
-                            const hasTape = !!tapeId;
-                            const isRecording = vidState === 'RECORDING';
-                            const canCommit = (isDepActive && isAtWorksite && hasTape && isRecording) || isManualOverride || isEditing;
-
-                            const issues: string[] = [];
-                            if (!isDepActive) issues.push('Deployment record not active');
-                            if (!isAtWorksite) issues.push('Not at worksite yet');
-                            if (!hasTape) issues.push('No tape selected');
-                            if (!isRecording) issues.push('Video not recording');
-
-                            return (
-                                <>
-                                    {!canCommit && !isEditing && (
-                                        <div className="mb-2 p-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-semibold flex items-start gap-2">
-                                            <span className="text-amber-500 text-sm leading-none mt-0.5">⚠</span>
-                                            <div>
-                                                <span className="font-black uppercase text-[9px] tracking-wider block mb-0.5">Checklist incomplete</span>
-                                                {issues.map((issue, i) => (
-                                                    <span key={i} className="block text-amber-700">• {issue}</span>
-                                                ))}
-                                                <span className="block mt-1 text-[9px] text-amber-500">Enable <b>Manual Entry</b> mode in the header to bypass.</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <Button disabled={isCommitting || !canCommit} onClick={handleCommitRecord} className={`w-full h-14 font-black shadow-lg text-white text-base tracking-wide rounded-xl transition-all ${canCommit ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300 cursor-not-allowed'}`}>
-                                        <Save className="w-5 h-5 mr-2" /> {isCommitting ? "Committing..." : "Commit Record & Reset"}
-                                    </Button>
-                                </>
-                            );
-                        })()}
-                    </div>
                 </div>
-            </ScrollArea>
+            </div>
+        </ScrollArea>
+
+            <div className="p-4 border-t border-slate-100 bg-white shrink-0">
+                {(() => {
+                    const isDepActive = !!activeDep && activeDep.raw?.status !== 'COMPLETED';
+                    const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
+                    const hasTape = !!tapeId;
+                    const isRecording = vidState === 'RECORDING';
+                    const canCommit = (isDepActive && isAtWorksite && hasTape && isRecording) || isManualOverride || isEditing;
+
+                    const issues: string[] = [];
+                    if (!isDepActive) issues.push('Deployment record not active');
+                    if (!isAtWorksite) issues.push('Not at worksite yet');
+                    if (!hasTape) issues.push('No tape selected');
+                    if (!isRecording) issues.push('Video not recording');
+
+                    return (
+                        <div className="max-w-2xl mx-auto w-full">
+                            {!canCommit && !isEditing && (
+                                <div className="mb-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-semibold flex items-start gap-2 shadow-sm">
+                                    <span className="text-amber-500 text-sm leading-none mt-0.5">⚠</span>
+                                    <div>
+                                        <span className="font-black uppercase text-[9px] tracking-wider block mb-0.5">Checklist incomplete</span>
+                                        {issues.map((issue, i) => (
+                                            <span key={i} className="block text-amber-700">• {issue}</span>
+                                        ))}
+                                        <span className="block mt-1 text-[9px] text-amber-500 italic">Enable <b>Manual Entry</b> mode in the header to bypass.</span>
+                                    </div>
+                                </div>
+                            )}
+                            <Button disabled={isCommitting || !canCommit} onClick={handleCommitRecord} className={`w-full h-14 font-black shadow-lg text-white text-base tracking-wide rounded-xl transition-all ${canCommit ? 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98]' : 'bg-slate-300 cursor-not-allowed'}`}>
+                                {isCommitting ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />} 
+                                {isCommitting ? "Committing..." : (isEditing ? "Update Record" : "Commit Record & Reset")}
+                            </Button>
+                        </div>
+                    );
+                })()}
+            </div>
         </Card>
     );
 };
