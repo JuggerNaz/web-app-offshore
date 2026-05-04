@@ -49,6 +49,9 @@ const TOC_SECTIONS = [
       { id: "rov-rcond-report", name: "ROV Conductor Survey Report", mode: "ROV" },
       { id: "rov-rcasn-report", name: "ROV Caisson Survey Report", mode: "ROV" },
       { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", mode: "ROV" },
+      { id: "rov-rg-report", name: "ROV Riser Guard Survey Report", mode: "ROV" },
+      { id: "rov-sg-report", name: "ROV Caisson Guard Survey Report", mode: "ROV" },
+      { id: "rov-cu-report", name: "ROV Conductor Guard Survey Report", mode: "ROV" },
       { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", mode: "ROV" },
       { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" }
   ]},
@@ -72,7 +75,8 @@ const TOC_SECTIONS = [
   { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
       { id: "seabed-survey-debris", name: "Seabed Survey For Debris", mode: "General" },
       { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", mode: "General" },
-      { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" }
+      { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" },
+      { id: "rov-seabed-report", name: "ROV Seabed Survey Report", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [] },
   { id: 13, name: "Additional Wall Thickness Inspection", templates: [

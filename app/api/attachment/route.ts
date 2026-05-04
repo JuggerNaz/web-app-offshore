@@ -412,3 +412,99 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json({ success: true, data });
 }
 
+/**
+ * PUT /api/attachment
+ * Overwrite an existing attachment file
+ */
+export async function PUT(request: NextRequest) {
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
+  
+  try {
+    const formData = await request.formData();
+    const id = formData.get("id") as string;
+    const filePath = formData.get("filePath") as string;
+    const file = formData.get("file") as File;
+
+    if (!id || !filePath || !file) {
+      return NextResponse.json({ error: "Missing id, filePath, or file" }, { status: 400 });
+    }
+
+    const attachmentId = Number(id);
+
+    // Identify relative path of the existing file
+    let relativePath = filePath;
+    if (filePath.startsWith("http")) {
+      const parts = filePath.split("/");
+      const bucketIndex = parts.indexOf("attachments");
+      if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
+        relativePath = parts.slice(bucketIndex + 1).join("/");
+      }
+    }
+
+    // Instead of using upsert (which triggers UPDATE RLS on storage.objects that users might not have),
+    // we upload the edited image to a NEW path, and then update the database record.
+    
+    // 1. Attempt to delete the old file (this might fail if they don't have DELETE permissions, but that's okay, we ignore it)
+    await supabase.storage.from("attachments").remove([relativePath]);
+
+    // 2. Upload to a new path
+    const fileExt = file.name.includes('.') ? file.name.split(".").pop() : "png";
+    const newFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}_edited.${fileExt}`;
+    const newRelativePath = `uploads/${newFileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("attachments")
+      .upload(newRelativePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type,
+      });
+
+    if (uploadError) {
+      console.error("Overwrite storage upload error:", uploadError);
+      return NextResponse.json(
+        { error: `Failed to upload edited file: ${uploadError.message}` },
+        { status: 500 }
+      );
+    }
+
+    // 3. Get the new public URL
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("attachments").getPublicUrl(newRelativePath);
+
+    // 4. Update the database record with the new path and URL
+    // First, fetch existing meta to preserve other fields
+    const { data: currentAttachment } = await supabase
+      .from("attachment")
+      .select("meta")
+      .eq("id", attachmentId)
+      .single();
+
+    const updatedMeta = {
+      ...(currentAttachment?.meta as object || {}),
+      file_path: newRelativePath,
+      file_url: publicUrl,
+    };
+
+    const { error: dbError } = await supabase
+      .from("attachment")
+      .update({
+        path: publicUrl,
+        meta: updatedMeta
+      })
+      .eq("id", attachmentId);
+
+    if (dbError) {
+      console.error("Failed to update database record after upload:", dbError);
+      return handleSupabaseError(dbError, "Failed to update attachment record with new file");
+    }
+
+    return NextResponse.json({ success: true, url: publicUrl });
+  } catch (err: any) {
+    console.error("Exception in PUT /api/attachment:", err);
+    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+  }
+}
+

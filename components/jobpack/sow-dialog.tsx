@@ -14,7 +14,7 @@ import {
     ChevronRightSquare, KanbanSquare, Sliders, Waves, PlaneTakeoff, Zap,
     Anchor, Target, Eye, Navigation, Box, ClipboardCheck, BarChart
 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SOW, SOWItem, ReportNumber, InspectionStatus } from "@/types/sow";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -101,6 +101,7 @@ export function SOWDialog({
     const [newElevationInput, setNewElevationInput] = useState<Record<number, string>>({});
     const [copyDialogOpen, setCopyDialogOpen] = useState(false);
     const [pendingReportToAdd, setPendingReportToAdd] = useState<ReportNumber | null>(null);
+    const [selectedInspectionFilter, setSelectedInspectionFilter] = useState<number | 'all'>('all');
 
     const activeReport = activeReportNumber || 'null';
 
@@ -272,8 +273,17 @@ export function SOWDialog({
     }, [sowItems, activeReport]);
 
     const validInspections = useMemo(() => {
-        return inspectionTypes.filter(t => !['EXSUM', 'LOG', 'CALIB', 'SETUP'].some(k => t.code.toUpperCase().includes(k)))
-            .map(it => ({ ...it, mode: getTaskMode(it) }));
+        return inspectionTypes
+            .filter(t => !['EXSUM', 'LOG', 'CALIB', 'SETUP'].some(k => t.code.toUpperCase().includes(k)))
+            .map(it => ({ ...it, mode: getTaskMode(it) }))
+            .sort((a, b) => {
+                // Group by mode (ROV vs DIVING)
+                if (a.mode !== b.mode) {
+                    return a.mode.localeCompare(b.mode);
+                }
+                // Then sort alphabetically by name
+                return (a.name || '').localeCompare(b.name || '');
+            });
     }, [inspectionTypes]);
 
     const getItemStatus = (compId: number, typeId: number, s: number, e: number): InspectionStatus => {
@@ -298,27 +308,28 @@ export function SOWDialog({
             ].some(val => val && val.toString().toLowerCase().includes(s));
         }
         if (!matchesSearch) return false;
-
-        if (scopeStatusFilter === 'all') return true;
-
+        
+        // Combine status and inspection filters
+        let matchesStatus = true;
         if (scopeStatusFilter === 'selected') {
-            return validInspections.some(it => isSelected(c.id, it.id, 0, 0));
+            matchesStatus = validInspections.some(it => isSelected(c.id, it.id, 0, 0));
+        } else if (scopeStatusFilter === 'pending') {
+            matchesStatus = validInspections.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'pending');
+        } else if (scopeStatusFilter === 'completed') {
+            matchesStatus = validInspections.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'completed');
+        } else if (scopeStatusFilter === 'incomplete') {
+            matchesStatus = validInspections.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'incomplete');
         }
+        
+        if (!matchesStatus) return false;
 
-        if (scopeStatusFilter === 'pending') {
-            return validInspections.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'pending');
-        }
-
-        if (scopeStatusFilter === 'completed') {
-            return validInspections.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'completed');
-        }
-
-        if (scopeStatusFilter === 'incomplete') {
-            return validInspections.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'incomplete');
+        // Inspection filter (additive)
+        if (selectedInspectionFilter !== 'all') {
+            return isSelected(c.id, Number(selectedInspectionFilter), 0, 0);
         }
 
         return true;
-    }), [components, componentSearch, scopeStatusFilter, validInspections, selectedItems, sowItems, activeReport]);
+    }), [components, componentSearch, scopeStatusFilter, selectedInspectionFilter, validInspections, selectedItems, sowItems, activeReport]);
 
     // ── ACTIONS ──
     const handleAddReportNumber = () => {
@@ -571,6 +582,61 @@ export function SOWDialog({
                                     <span className="text-[11px] font-black text-slate-700 uppercase flex items-center gap-2"><AlertCircle className="h-4 w-4 text-rose-500" /> Incomplete / Anomalies</span>
                                 </label>
                             </div>
+                            
+                            <div className="mb-6 space-y-3">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                    <ListFilter className="h-3.5 w-3.5 text-blue-500" /> Filter By Inspection
+                                </h4>
+                                <Select 
+                                    value={selectedInspectionFilter.toString()} 
+                                    onValueChange={(v) => setSelectedInspectionFilter(v === 'all' ? 'all' : Number(v))}
+                                >
+                                    <SelectTrigger className="w-full h-11 rounded-2xl bg-slate-50 border-none text-[11px] font-black shadow-inner focus:ring-0 focus:ring-offset-0">
+                                        <SelectValue placeholder="Select Inspection Type..." />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-[300px]">
+                                        <SelectItem value="all" className="text-[11px] font-black uppercase">All Inspections</SelectItem>
+                                        
+                                        <SelectGroup>
+                                            <SelectLabel className="text-[10px] font-black text-slate-400 uppercase px-2 py-1.5 flex items-center gap-1.5 bg-slate-50/50">
+                                                <Waves className="h-3 w-3 text-emerald-500" /> Diving Mode
+                                            </SelectLabel>
+                                            {validInspections.filter(it => it.mode === 'DIVING').map(it => (
+                                                <SelectItem key={it.id} value={it.id.toString()} className="text-[11px] font-bold">
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge className={cn("h-1.5 w-1.5 rounded-full p-0", getModeStyles(it.mode as any).bg)} />
+                                                        <span>{it.name}</span>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectGroup>
+
+                                        <SelectGroup>
+                                            <SelectLabel className="text-[10px] font-black text-slate-400 uppercase px-2 py-1.5 flex items-center gap-1.5 bg-slate-50/50">
+                                                <PlaneTakeoff className="h-3 w-3 text-blue-500" /> ROV Mode
+                                            </SelectLabel>
+                                            {validInspections.filter(it => it.mode === 'ROV').map(it => (
+                                                <SelectItem key={it.id} value={it.id.toString()} className="text-[11px] font-bold">
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge className={cn("h-1.5 w-1.5 rounded-full p-0", getModeStyles(it.mode as any).bg)} />
+                                                        <span>{it.name}</span>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
+                                {selectedInspectionFilter !== 'all' && (
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        onClick={() => setSelectedInspectionFilter('all')}
+                                        className="w-full h-8 text-[10px] font-black text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl"
+                                    >
+                                        Clear Inspection Filter
+                                    </Button>
+                                )}
+                            </div>
 
                             <div className="p-8 flex flex-col items-center justify-center bg-slate-50/50 mt-auto rounded-[2rem] mx-4 mb-6 border border-slate-100 shadow-inner">
                                 <div className="h-12 w-12 rounded-2xl bg-blue-50 flex items-center justify-center mb-3">
@@ -594,22 +660,24 @@ export function SOWDialog({
                                 <thead className="bg-[#fbfcff] sticky top-0 z-40">
                                     <tr>
                                         <th className="p-4 text-left border-r border-b border-slate-50 sticky left-0 bg-[#fbfcff] w-[260px] z-50"><div className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-2 group flex items-center gap-2">Component Identifier <ChevronDown className="h-3 w-3" /></div></th>
-                                        {validInspections.map(it => {
-                                            const styles = getModeStyles(it.mode as any);
-                                            const allSelectedInType = activeComponents.every(c => isSelected(c.id, it.id, 0, 0));
-                                            return (
-                                                <th key={it.id} className="p-2 border-b border-slate-50 min-w-[75px] h-52 relative group hover:bg-slate-50 transition-colors">
-                                                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <input type="checkbox" checked={allSelectedInType && activeComponents.length > 0} 
-                                                            onChange={e => handleBulkSelect(it.id, e.target.checked)}
-                                                            className={cn("h-5 w-5 rounded-lg border-2 accent-current cursor-pointer transition-transform shadow-sm", styles.text)} />
-                                                    </div>
-                                                    <div className={cn("writing-mode-vertical text-[11px] font-black uppercase transform rotate-180 w-full flex items-center justify-center text-center tracking-tighter h-full py-8 transition-colors", styles.text)} 
-                                                        style={{ writingMode: 'vertical-rl' }}>{it.name}</div>
-                                                    <div className={cn("absolute inset-x-0 bottom-0 h-1", styles.bg, "opacity-20")} />
-                                                </th>
-                                            );
-                                        })}
+                                        {validInspections
+                                            .filter(it => selectedInspectionFilter === 'all' || String(it.id) === String(selectedInspectionFilter))
+                                            .map(it => {
+                                                const styles = getModeStyles(it.mode as any);
+                                                const allSelectedInType = activeComponents.every(c => isSelected(c.id, it.id, 0, 0));
+                                                return (
+                                                    <th key={it.id} className="p-2 border-b border-slate-50 min-w-[75px] h-52 relative group hover:bg-slate-50 transition-colors">
+                                                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <input type="checkbox" checked={allSelectedInType && activeComponents.length > 0} 
+                                                                onChange={e => handleBulkSelect(it.id, e.target.checked)}
+                                                                className={cn("h-5 w-5 rounded-lg border-2 accent-current cursor-pointer transition-transform shadow-sm", styles.text)} />
+                                                        </div>
+                                                        <div className={cn("writing-mode-vertical text-[11px] font-black uppercase transform rotate-180 w-full flex items-center justify-center text-center tracking-tighter h-full py-8 transition-colors", styles.text)} 
+                                                            style={{ writingMode: 'vertical-rl' }}>{it.name}</div>
+                                                        <div className={cn("absolute inset-x-0 bottom-0 h-1", styles.bg, "opacity-20")} />
+                                                    </th>
+                                                );
+                                            })}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
@@ -626,23 +694,25 @@ export function SOWDialog({
                                                     </div>
                                                 </div>
                                             </td>
-                                            {validInspections.map(it => {
-                                                const styles = getModeStyles(it.mode as any);
-                                                const s = getItemStatus(comp.id, it.id, 0, 0);
-                                                const sel = isSelected(comp.id, it.id, 0, 0);
-                                                return (
-                                                    <td key={it.id} className="p-3 border-r border-slate-50 text-center bg-white group-hover:bg-slate-50 transition-colors">
-                                                        <div className="flex flex-col items-center justify-center gap-2.5">
-                                                            <input type="checkbox" checked={sel} disabled={readOnly || s==='completed' || s==='incomplete'}
-                                                                onChange={() => !readOnly && toggleSelection(comp.id, it.id, 0, 0)}
-                                                                className={cn("h-8 w-8 rounded-[10px] border-2 transition-all cursor-pointer shadow-sm",
-                                                                    sel ? `${styles.bg} border-transparent shadow-lg scale-105` : "bg-white border-slate-200 hover:border-slate-300"
-                                                                )} />
-                                                            {sel && <div className={cn("h-2 w-full rounded-full transition-all", s === 'completed' ? "bg-emerald-500" : s === 'incomplete' ? "bg-rose-500" : styles.bg)} />}
-                                                        </div>
-                                                    </td>
-                                                );
-                                            })}
+                                            {validInspections
+                                                .filter(it => selectedInspectionFilter === 'all' || String(it.id) === String(selectedInspectionFilter))
+                                                .map(it => {
+                                                    const styles = getModeStyles(it.mode as any);
+                                                    const s = getItemStatus(comp.id, it.id, 0, 0);
+                                                    const sel = isSelected(comp.id, it.id, 0, 0);
+                                                    return (
+                                                        <td key={it.id} className="p-3 border-r border-slate-50 text-center bg-white group-hover:bg-slate-50 transition-colors">
+                                                            <div className="flex flex-col items-center justify-center gap-2.5">
+                                                                <input type="checkbox" checked={sel} disabled={readOnly || s==='completed' || s==='incomplete'}
+                                                                    onChange={() => !readOnly && toggleSelection(comp.id, it.id, 0, 0)}
+                                                                    className={cn("h-8 w-8 rounded-[10px] border-2 transition-all cursor-pointer shadow-sm",
+                                                                        sel ? `${styles.bg} border-transparent shadow-lg scale-105` : "bg-white border-slate-200 hover:border-slate-300"
+                                                                    )} />
+                                                                {sel && <div className={cn("h-2 w-full rounded-full transition-all", s === 'completed' ? "bg-emerald-500" : s === 'incomplete' ? "bg-rose-500" : styles.bg)} />}
+                                                            </div>
+                                                        </td>
+                                                    );
+                                                })}
                                         </tr>
                                     ))}
                                 </tbody>

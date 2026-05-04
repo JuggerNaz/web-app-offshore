@@ -9,7 +9,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     .from("attachment")
     .select("*")
     .eq("source_id", Number(id))
-    .eq("source_type", type);
+    .in("source_type", [type.toLowerCase(), type.toUpperCase()]);
 
   if (error) {
     if (error.code === "PGRST116") {
