@@ -1,23 +1,26 @@
-const fs = require('fs');
-const envContent = fs.readFileSync('.env.local', 'utf8');
-const env = {};
-envContent.split('\n').forEach(line => {
-    const [key, ...val] = line.split('=');
-    if (key && val) env[key.trim()] = val.join('=').trim().replace(/^['"]|['"]$/g, '');
-});
 
 const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-async function checkStructure() {
-    const { data: str } = await supabase
-        .from('platform')
-        .select('*')
-        .eq('id', 234)
-        .maybeSingle();
-    
-    console.log("Structure ID 234:");
-    console.log(JSON.stringify(str, null, 2));
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+async function check() {
+    const { data: comps, error } = await supabase
+        .from('structure_components')
+        .select('id, q_id, code, comp_name, metadata')
+        .eq('structure_id', 234);
+
+    if (error) {
+        console.error(error);
+        return;
+    }
+
+    console.log('Components for structure 234:');
+    comps.forEach(c => {
+        console.log(`ID: ${c.id} | QID: ${c.q_id} | Code: ${c.code} | CompName: ${c.comp_name} | Metadata: ${JSON.stringify(c.metadata)}`);
+    });
 }
 
-checkStructure();
+check();

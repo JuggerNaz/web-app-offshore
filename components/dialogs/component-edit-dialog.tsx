@@ -57,6 +57,7 @@ interface ComponentEditDialogProps {
   onOpenChange: (open: boolean) => void;
   listKey?: string | null; // SWR key for revalidation
   typeName?: string | null;
+  defaultTab?: string;
 }
 
 // Helper to build ID No
@@ -82,15 +83,13 @@ const buildIdNoEdit = (
   return `${code}/${startNode}-${endNode}/${distance}/${clockPos}`;
 };
 
-export function ComponentEditDialog({
-  component,
-  open,
-  onOpenChange,
-  listKey,
-  typeName,
-}: ComponentEditDialogProps) {
-  const [structureId] = useAtom(urlId);
-  const [pageType] = useAtom(urlType);
+export function ComponentEditDialog({ component, open, onOpenChange, listKey, typeName, defaultTab }: ComponentEditDialogProps) {
+  const [atomStructureId] = useAtom(urlId);
+  const [atomPageType] = useAtom(urlType);
+  
+  const structureId = component?.structure_id || atomStructureId;
+  const pageType = atomPageType || (component?.code?.toLowerCase() === 'pp' ? 'pipeline' : 'platform');
+  
   const [isSaving, setIsSaving] = useState(false);
 
   // POSITION options
@@ -935,7 +934,7 @@ export function ComponentEditDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto p-8 pt-6">
-          <Tabs defaultValue="specifications" className="w-full">
+          <Tabs defaultValue={defaultTab || "specifications"} className="w-full">
             <TabsList className="grid w-full mb-8 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl grid-cols-4 h-12">
               <TabsTrigger
                 value="specifications"

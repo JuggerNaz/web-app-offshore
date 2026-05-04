@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
@@ -354,22 +354,24 @@ export const generateROVRSCORReport = async (
             });
         }
 
-        const sigY = pageHeight - 22;
-        const sigW = (contentWidth / 3) - 2;
-        const drawSigBlock = (label: string, lx: number) => {
-            const isPF = config.printFriendly;
-            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW, 11, 'S');
-            if (!isPF) {
-                doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW, 3, 'F');
-                doc.setTextColor(255);
-            } else {
-                doc.setTextColor(...colors.navy);
-            }
-            doc.setFontSize(6); doc.text(label, lx + 2, sigY + 2.2);
-            doc.setTextColor(...colors.text); doc.setFontSize(5); 
-            doc.text('Name:', lx + 2, sigY + 6.5); doc.text('Date:', lx + 2, sigY + 9);
-        };
-        drawSigBlock('PREPARED BY', margin); drawSigBlock('REVIEWED BY', margin + sigW + 3); drawSigBlock('APPROVED BY', margin + (sigW * 2) + 6);
+        if (config.showSignatures !== false) {
+            const sigY = pageHeight - 22;
+            const sigW = (contentWidth / 3) - 2;
+            const drawSigBlock = (label: string, lx: number) => {
+                const isPF = config.printFriendly;
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW, 11, 'S');
+                if (!isPF) {
+                    doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW, 3, 'F');
+                    doc.setTextColor(255);
+                } else {
+                    doc.setTextColor(...colors.navy);
+                }
+                doc.setFontSize(6); doc.text(label, lx + 2, sigY + 2.2);
+                doc.setTextColor(...colors.text); doc.setFontSize(5); 
+                doc.text('Name:', lx + 2, sigY + 6.5); doc.text('Date:', lx + 2, sigY + 9);
+            };
+            drawSigBlock('PREPARED BY', margin); drawSigBlock('REVIEWED BY', margin + sigW + 3); drawSigBlock('APPROVED BY', margin + (sigW * 2) + 6);
+        }
 
         if (config.returnBlob) return doc.output("blob");
         doc.save(`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);

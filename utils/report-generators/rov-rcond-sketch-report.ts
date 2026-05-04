@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
@@ -292,8 +292,12 @@ export const generateROVCondSketchReport = async (
                     doc.setFillColor(255, 255, 255); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'F');
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.8); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
                     doc.rect(cX - cw/2 - 2, py - 1, 2, 2, 'S'); doc.rect(cX + cw/2, py - 1, 2, 2, 'S');
-                    doc.setLineWidth(0.2); doc.line(cX + cw/2 + 2, py, dX - 5, py);
-                    doc.setFontSize(6); doc.setTextColor(...colors.navy); doc.text(c.q_id || 'Clamp', dX - 3, py + 1.5, { align: 'right' });
+                    doc.setLineWidth(0.2); 
+                    const lineEnd = cX + cw/2 + 2 + 10;
+                    doc.line(cX + cw/2 + 2, py, lineEnd, py);
+                    doc.setFontSize(6); doc.setTextColor(...colors.navy); 
+                    doc.text(`${el}m`, lineEnd + 1, py + 1);
+                    doc.text(c.q_id || 'Clamp', lineEnd + 1, py + 3);
                 } else if (isGuide) {
                     const gw = rWidth + 16; const gh = 6;
                     doc.setFillColor(230, 235, 245); doc.rect(cX - gw/2, py - gh/2, gw, gh, 'F');
@@ -301,11 +305,19 @@ export const generateROVCondSketchReport = async (
                     doc.setLineWidth(0.3);
                     doc.line(cX - gw/2, py - gh/2, cX + gw/2, py + gh/2);
                     doc.line(cX - gw/2, py + gh/2, cX + gw/2, py - gh/2);
-                    doc.setLineWidth(0.2); doc.line(cX + gw/2, py, dX - 5, py);
-                    doc.setFontSize(6); doc.setTextColor(...colors.navy); doc.text(c.q_id || 'Guide Frame', dX - 3, py + 1.5, { align: 'right' });
+                    doc.setLineWidth(0.2); 
+                    const lineEnd = cX + gw/2 + 10;
+                    doc.line(cX + gw/2, py, lineEnd, py);
+                    doc.setFontSize(6); doc.setTextColor(...colors.navy); 
+                    doc.text(`${el}m`, lineEnd + 1, py + 1);
+                    doc.text(c.q_id || 'Guide Frame', lineEnd + 1, py + 3);
                 } else {
                     doc.setFillColor(...col); doc.circle(cX, py, 2, 'F');
-                    doc.setDrawColor(...col); doc.setLineWidth(0.1); doc.line(cX + 3, py, dX - 5, py);
+                    doc.setDrawColor(...col); doc.setLineWidth(0.1); 
+                    const lineEnd = cX + 3 + 10;
+                    doc.line(cX + 3, py, lineEnd, py);
+                    doc.setFontSize(6); doc.setTextColor(...col);
+                    doc.text(`${el}m`, lineEnd + 1, py + 1);
                 }
             });
 
