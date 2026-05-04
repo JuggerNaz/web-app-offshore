@@ -9,17 +9,17 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 async function check() {
     const { data: comps, error } = await supabase
         .from('structure_components')
-        .select('id, q_id, code, comp_name, metadata')
-        .eq('structure_id', 234);
+        .select('id, q_id, code, name, metadata')
+        .eq('structure_id', 2344);
 
     if (error) {
         console.error(error);
         return;
     }
 
-    console.log('Components for structure 234:');
+    console.log('Components for structure 2344:');
     comps.forEach(c => {
-        console.log(`ID: ${c.id} | QID: ${c.q_id} | Code: ${c.code} | CompName: ${c.comp_name} | Metadata: ${JSON.stringify(c.metadata)}`);
+        console.log(`ID: ${c.id} | QID: ${c.q_id} | Code: ${c.code} | Name: ${c.name} | Parent: ${c.metadata?.parent_id || c.metadata?.associated_comp_id}`);
     });
 }
 

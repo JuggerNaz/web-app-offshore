@@ -130,6 +130,7 @@ interface WorkspaceDialogsProps {
         rrisiPreviewOpen: boolean;
         jtisiPreviewOpen: boolean;
         itisiPreviewOpen: boolean;
+        rgPreviewOpen: boolean;
         calibrationDialogOpen: boolean;
         rovCalibrationDialogOpen: boolean;
     };
@@ -184,6 +185,7 @@ interface WorkspaceDialogsProps {
         setRrisiPreviewOpen: (open: boolean) => void;
         setJtisiPreviewOpen: (open: boolean) => void;
         setItisiPreviewOpen: (open: boolean) => void;
+        setRgPreviewOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
         setRovCalibrationDialogOpen: (open: boolean) => void;
     };
@@ -203,11 +205,27 @@ interface WorkspaceDialogsProps {
         handleLinkToRecord: (file: any) => void;
         syncDeploymentState: () => void;
         queryClient: any;
-        generateAnomalyReportBlob: (printFriendly?: boolean) => Promise<Blob | void>;
-        generateMGIReportBlob: () => Promise<Blob | void>;
-        generateFMDReportBlob: () => Promise<Blob | void>;
-        generateUTWTReportBlob: () => Promise<Blob | void>;
-        generateSZCIReportBlob: () => Promise<Blob | void>;
+        generateAnomalyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateFMDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateUTWTReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSZCIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRGReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateBLReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRSCORReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRRISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateJTISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateITISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateCPReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRGVIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRCASNReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRCASNSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRCONDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRCONDSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSeabedReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generatePhotographyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generatePhotographyLogReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
     
     refs: {
@@ -297,7 +315,8 @@ export function WorkspaceDialogs({
         rcasnSketchPreviewOpen,
         rrisiPreviewOpen,
         jtisiPreviewOpen,
-        itisiPreviewOpen
+        itisiPreviewOpen,
+        rgPreviewOpen
     } = states;
 
     const {
@@ -346,7 +365,8 @@ export function WorkspaceDialogs({
         setRcasnSketchPreviewOpen,
         setRrisiPreviewOpen,
         setJtisiPreviewOpen,
-        setItisiPreviewOpen
+        setItisiPreviewOpen,
+        setRgPreviewOpen
     } = setters;
 
     const {
@@ -365,7 +385,23 @@ export function WorkspaceDialogs({
         generateMGIReportBlob,
         generateFMDReportBlob,
         generateUTWTReportBlob,
-        generateSZCIReportBlob
+        generateSZCIReportBlob,
+        generateRGReportBlob,
+        generateBLReportBlob,
+        generateRSCORReportBlob,
+        generateRRISIReportBlob,
+        generateJTISIReportBlob,
+        generateITISIReportBlob,
+        generateAnodeReportBlob,
+        generateCPReportBlob,
+        generateRGVIReportBlob,
+        generateRCASNReportBlob,
+        generateRCASNSketchReportBlob,
+        generateRCONDReportBlob,
+        generateRCONDSketchReportBlob,
+        generateSeabedReportBlob,
+        generatePhotographyReportBlob,
+        generatePhotographyLogReportBlob
     } = handlers;
 
     const { fileInputRef } = refs;
@@ -1574,6 +1610,118 @@ export function WorkspaceDialogs({
                 title="ROV SZCI Survey Report Preview" 
                 fileName={`ROV_SZCI_Report_${headerData.sowReportNo}`} 
                 generateReport={handlers.generateSZCIReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={rgPreviewOpen} 
+                onOpenChange={setRgPreviewOpen} 
+                title="ROV Riser Guard Survey Report Preview" 
+                fileName={`ROV_RiserGuard_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRGReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={blPreviewOpen} 
+                onOpenChange={setBlPreviewOpen} 
+                title="ROV Boatlanding Survey Report Preview" 
+                fileName={`ROV_Boatlanding_Report_${headerData.sowReportNo}`} 
+                generateReport={generateBLReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={rscorPreviewOpen} 
+                onOpenChange={setRscorPreviewOpen} 
+                title="ROV Scour Survey Report Preview" 
+                fileName={`ROV_Scour_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRSCORReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={rrisiPreviewOpen} 
+                onOpenChange={setRrisiPreviewOpen} 
+                title="ROV Riser Survey Report Preview" 
+                fileName={`ROV_Riser_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRRISIReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={jtisiPreviewOpen} 
+                onOpenChange={setJtisiPreviewOpen} 
+                title="ROV J-Tube Inspection Report Preview" 
+                fileName={`ROV_JTube_Report_${headerData.sowReportNo}`} 
+                generateReport={generateJTISIReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={itisiPreviewOpen} 
+                onOpenChange={setItisiPreviewOpen} 
+                title="ROV I-Tube Inspection Report Preview" 
+                fileName={`ROV_ITube_Report_${headerData.sowReportNo}`} 
+                generateReport={generateITISIReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={anodePreviewOpen} 
+                onOpenChange={setAnodePreviewOpen} 
+                title="ROV Anode Survey Report Preview" 
+                fileName={`ROV_Anode_Report_${headerData.sowReportNo}`} 
+                generateReport={generateAnodeReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={cpPreviewOpen} 
+                onOpenChange={setCpPreviewOpen} 
+                title="ROV CP Survey Report Preview" 
+                fileName={`ROV_CP_Report_${headerData.sowReportNo}`} 
+                generateReport={generateCPReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={rgviPreviewOpen} 
+                onOpenChange={setRgviPreviewOpen} 
+                title="ROV General Visual Inspection Report Preview" 
+                fileName={`ROV_RGVI_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRGVIReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={rcasnPreviewOpen} 
+                onOpenChange={setRcasnPreviewOpen} 
+                title="ROV Caisson Inspection Report Preview" 
+                fileName={`ROV_Caisson_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRCASNReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={rcasnSketchPreviewOpen} 
+                onOpenChange={setRcasnSketchPreviewOpen} 
+                title="ROV Caisson Sketch Report Preview" 
+                fileName={`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRCASNSketchReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={rcondPreviewOpen} 
+                onOpenChange={setRcondPreviewOpen} 
+                title="ROV Conductor Inspection Report Preview" 
+                fileName={`ROV_Conductor_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRCONDReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={rcondSketchPreviewOpen} 
+                onOpenChange={setRcondSketchPreviewOpen} 
+                title="ROV Conductor Sketch Report Preview" 
+                fileName={`ROV_Conductor_Sketch_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRCONDSketchReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={seabedPreviewOpen} 
+                onOpenChange={setSeabedPreviewOpen} 
+                title="ROV Seabed Survey Report Preview" 
+                fileName={`ROV_Seabed_Report_${headerData.sowReportNo}`} 
+                generateReport={generateSeabedReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={photographyPreviewOpen} 
+                onOpenChange={setPhotographyPreviewOpen} 
+                title="ROV Photography Report Preview" 
+                fileName={`ROV_Photography_Report_${headerData.sowReportNo}`} 
+                generateReport={generatePhotographyReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={photographyLogPreviewOpen} 
+                onOpenChange={setPhotographyLogPreviewOpen} 
+                title="ROV Photography Log Report Preview" 
+                fileName={`ROV_Photography_Log_Report_${headerData.sowReportNo}`} 
+                generateReport={generatePhotographyLogReportBlob} 
             />
 
             <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>

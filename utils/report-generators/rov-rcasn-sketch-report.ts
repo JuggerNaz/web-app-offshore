@@ -347,14 +347,16 @@ export const generateROVCasnSketchReport = async (
             });
 
             // Signatures
-            const sigY = pageHeight - 32; const sigW = contentWidth / 3;
-            const drawS = (l: string, lx: number) => {
-                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 4, 15, 'S');
-                if (!config.printFriendly) { doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 4, 4, 'F'); doc.setTextColor(255, 255, 255); }
-                else doc.setTextColor(...colors.navy);
-                doc.setFontSize(7); doc.text(l, lx + 2, sigY + 3);
-            };
-            drawS('PREPARED BY', margin); drawS('REVIEWED BY', margin + sigW); drawS('APPROVED BY', margin + (sigW * 2));
+            if (config.showSignatures !== false) {
+                const sigY = pageHeight - 32; const sigW = contentWidth / 3;
+                const drawS = (l: string, lx: number) => {
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 4, 15, 'S');
+                    if (!config.printFriendly) { doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 4, 4, 'F'); doc.setTextColor(255, 255, 255); }
+                    else doc.setTextColor(...colors.navy);
+                    doc.setFontSize(7); doc.text(l, lx + 2, sigY + 3);
+                };
+                drawS('PREPARED BY', margin); drawS('REVIEWED BY', margin + sigW); drawS('APPROVED BY', margin + (sigW * 2));
+            }
         }
 
         const totalPages = doc.getNumberOfPages();

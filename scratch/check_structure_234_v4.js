@@ -9,7 +9,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 async function check() {
     const { data: comps, error } = await supabase
         .from('structure_components')
-        .select('id, q_id, code, comp_name, metadata')
+        .select('id, q_id, code, metadata')
         .eq('structure_id', 234);
 
     if (error) {
@@ -19,7 +19,7 @@ async function check() {
 
     console.log('Components for structure 234:');
     comps.forEach(c => {
-        console.log(`ID: ${c.id} | QID: ${c.q_id} | Code: ${c.code} | CompName: ${c.comp_name} | Metadata: ${JSON.stringify(c.metadata)}`);
+        console.log(`ID: ${c.id} | QID: ${c.q_id} | Code: ${c.code} | Metadata: ${JSON.stringify(c.metadata)}`);
     });
 }
 

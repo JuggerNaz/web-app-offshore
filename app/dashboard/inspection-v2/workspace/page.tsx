@@ -905,14 +905,13 @@ function V10PreviewLayout() {
         rcondPreviewOpen, setRcondPreviewOpen,
         rcondSketchPreviewOpen, setRcondSketchPreviewOpen,
         blPreviewOpen, setBlPreviewOpen,
+        rgPreviewOpen, setRgPreviewOpen,
         seabedPreviewOpen, setSeabedPreviewOpen,
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
         generateAnomalyReportBlob,
-        generateSeabedReport,
-        generateSeabedReportBlob,
         generateMGIReport,
         generateMGIReportBlob,
         generateFMDReport,
@@ -921,6 +920,38 @@ function V10PreviewLayout() {
         generateSZCIReportBlob,
         generateUTWTReport,
         generateUTWTReportBlob,
+        generateRGReport,
+        generateRGReportBlob,
+        generateBLReport,
+        generateBLReportBlob,
+        generateRSCORReport,
+        generateRSCORReportBlob,
+        generateRRISIReport,
+        generateRRISIReportBlob,
+        generateJTISIReport,
+        generateJTISIReportBlob,
+        generateITISIReport,
+        generateITISIReportBlob,
+        generateAnodeReport,
+        generateAnodeReportBlob,
+        generateCPReport,
+        generateCPReportBlob,
+        generateRGVIReport,
+        generateRGVIReportBlob,
+        generateRCASNReport,
+        generateRCASNReportBlob,
+        generateRCASNSketchReport,
+        generateRCASNSketchReportBlob,
+        generateRCONDReport,
+        generateRCONDReportBlob,
+        generateRCONDSketchReport,
+        generateRCONDSketchReportBlob,
+        generateSeabedReport,
+        generateSeabedReportBlob,
+        generatePhotographyReport,
+        generatePhotographyReportBlob,
+        generatePhotographyLogReport,
+        generatePhotographyLogReportBlob,
         generateInspectionReportByType,
         generateFullInspectionReport
     } = useWorkspaceReports(
@@ -4661,665 +4692,6 @@ function V10PreviewLayout() {
 
     return (
         <div className="flex flex-col h-[calc(100vh)] bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 overflow-hidden">
-            {/* HELPER FOR REPORT GENERATION (MATCHING REPORT WIZARD) */}
-            {(() => {
-                const resolveVessel = (jobPack: any) => {
-                    if (!jobPack?.metadata) return "N/A";
-                    const history = jobPack.metadata.vessel_history;
-                    if (Array.isArray(history) && history.length > 0) {
-                        return history.map((v: any) => v.name || v).join(", ");
-                    }
-                    return jobPack.metadata.vessel || "N/A";
-                };
-
-                return null;
-            })()}
-            <ReportPreviewDialog 
-                open={rrisiPreviewOpen} 
-                onOpenChange={setRrisiPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const riserRecords = (allRecords || []).filter(r => 
-                        ((r.inspection_type?.code || '').toUpperCase() === 'RRISI' || (r.inspection_type?.code || '').toUpperCase() === 'RSI') && 
-                        (r.structure_components?.q_id || '').toUpperCase().startsWith('R')
-                    );
-                    
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const resolveVessel = (jp: any) => {
-                        if (!jp?.metadata) return "N/A";
-                        const history = jp.metadata.vessel_history;
-                        if (Array.isArray(history) && history.length > 0) {
-                            return history.map((v: any) => v.name || v).join(", ");
-                        }
-                        return jp.metadata.vessel || "N/A";
-                    };
-
-                    return await generateROVRRISIReport(
-                        riserRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        { 
-                            ...headerData, 
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: "Inspector", date: format(new Date(), 'dd MMM yyyy') },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            reportType: 'R',
-                            showSignatures
-                        }
-                    );
-                }}
-                title="ROV Riser Survey Report"
-                fileName={`ROV_Riser_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={jtisiPreviewOpen} 
-                onOpenChange={setJtisiPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const jtisiRecords = (allRecords || []).filter(r => 
-                        ((r.inspection_type?.code || '').toUpperCase() === 'RRISI' || (r.inspection_type?.code || '').toUpperCase() === 'RSI') && 
-                        (r.structure_components?.q_id || '').toUpperCase().startsWith('J')
-                    );
-                    
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const resolveVessel = (jp: any) => {
-                        if (!jp?.metadata) return "N/A";
-                        const history = jp.metadata.vessel_history;
-                        if (Array.isArray(history) && history.length > 0) {
-                            return history.map((v: any) => v.name || v).join(", ");
-                        }
-                        return jp.metadata.vessel || "N/A";
-                    };
-
-                    return await generateROVRRISIReport(
-                        jtisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        { 
-                            ...headerData, 
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: "Inspector", date: format(new Date(), 'dd MMM yyyy') },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            reportType: 'J',
-                            showSignatures
-                        }
-                    );
-                }}
-                title="ROV J-Tube Inspection Report"
-                fileName={`ROV_JTube_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={itisiPreviewOpen} 
-                onOpenChange={setItisiPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const itisiRecords = (allRecords || []).filter(r => 
-                        ((r.inspection_type?.code || '').toUpperCase() === 'RRISI' || (r.inspection_type?.code || '').toUpperCase() === 'RSI') && 
-                        (r.structure_components?.q_id || '').toUpperCase().startsWith('I')
-                    );
-                    
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const resolveVessel = (jp: any) => {
-                        if (!jp?.metadata) return "N/A";
-                        const history = jp.metadata.vessel_history;
-                        if (Array.isArray(history) && history.length > 0) {
-                            return history.map((v: any) => v.name || v).join(", ");
-                        }
-                        return jp.metadata.vessel || "N/A";
-                    };
-
-                    return await generateROVRRISIReport(
-                        itisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        { 
-                            ...headerData, 
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: "Inspector", date: format(new Date(), 'dd MMM yyyy') },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            reportType: 'I',
-                            showSignatures
-                        }
-                    );
-                }}
-                title="ROV I-Tube Inspection Report"
-                fileName={`ROV_ITube_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={anodePreviewOpen} 
-                onOpenChange={setAnodePreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const anodeRecords = currentRecords.filter(r => {
-                        const isRGVI = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'RGVI';
-                        const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
-                                     (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
-                        return isRGVI && isAN;
-                    });
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.lib_path || '';
-                    }
-
-                    const headerDataObj = {
-                        ...headerData,
-                        vessel: headerData.vessel,
-                        contractorLogoUrl
-                    };
-
-                    return await generateROVAnodeReport(
-                        anodeRecords,
-                        headerDataObj,
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        { printFriendly: isPrintFriendly, returnBlob: true }
-                    );
-                }}
-                title="ROV Anode Inspection Report"
-                fileName={`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={seabedPreviewOpen} 
-                onOpenChange={setSeabedPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    return await generateSeabedReportBlob(seabedTemplateType, isPrintFriendly);
-                }}
-                title={`Seabed Survey Report - ${seabedTemplateType === 'seabed-survey-debris' ? 'Debris' : seabedTemplateType === 'seabed-survey-gas' ? 'Gas Seepage' : 'Crater'}`}
-                fileName={`Seabed_Survey_${seabedTemplateType.replace('seabed-survey-', '')}_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={rcasnPreviewOpen} 
-                onOpenChange={setRcasnPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const rcasnRecords = (allRecords || []).filter(r => {
-                        const sowMatches = !headerData.sowReportNo || 
-                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
-                        
-                        // For Caisson report, we fetch all records for this SOW/Structure 
-                        // and let the generator's hierarchy logic group them by CS.
-                        return sowMatches;
-                    });
-
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const resolveVessel = (jp: any) => {
-                        if (!jp?.metadata) return "N/A";
-                        const history = jp.metadata.vessel_history;
-                        if (Array.isArray(history) && history.length > 0) {
-                            return history.map((v: any) => v.name || v).join(", ");
-                        }
-                        return jp.metadata.vessel || "N/A";
-                    };
-
-                    const headerDataObj = {
-                        ...headerData,
-                        vessel: headerData.vessel,
-                        contractorLogoUrl
-                    };
-                    return await generateROVCasnReport(
-                        rcasnRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        headerDataObj,
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
-                    );
-                }}
-                title="ROV Caisson Survey Report"
-                fileName={`ROV_Caisson_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={rcondPreviewOpen} 
-                onOpenChange={setRcondPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_video_tapes:tape_id!left(tape_no),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const rcondRecords = (allRecords || []).filter(r => {
-                        const sowMatches = !headerData.sowReportNo || 
-                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
-                        
-                        // For Conductor report, we fetch all records for this SOW/Structure 
-                        // and let the generator's hierarchy logic group them by CD.
-                        return sowMatches;
-                    });
-                    
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const resolveVessel = (jp: any) => {
-                        if (!jp?.metadata) return "N/A";
-                        const history = jp.metadata.vessel_history;
-                        if (Array.isArray(history) && history.length > 0) {
-                            return history.map((v: any) => v.name || v).join(", ");
-                        }
-                        return jp.metadata.vessel || "N/A";
-                    };
-
-                    const headerDataObj = {
-                        ...headerData,
-                        vessel: headerData.vessel,
-                        contractorLogoUrl
-                    };
-                    return await generateROVCondReport(
-                        rcondRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        headerDataObj,
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
-                    );
-                }}
-                title="ROV Conductor Survey Report"
-                fileName={`ROV_Conductor_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={rcasnSketchPreviewOpen} 
-                onOpenChange={setRcasnSketchPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    // Separate fetch for caisson records
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id(id, code, name),
-                            structure_components:component_id(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id(job_no:deployment_no),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const caissonRecords = (allRecords || []).filter(r => {
-                        const sowMatches = !headerData.sowReportNo || 
-                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
-                        return sowMatches;
-                    });
-
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const resolveVessel = (jp: any) => {
-                        if (!jp?.metadata) return "N/A";
-                        const history = jp.metadata.vessel_history;
-                        if (Array.isArray(history) && history.length > 0) {
-                            return history.map((v: any) => v.name || v).join(", ");
-                        }
-                        return jp.metadata.vessel || "N/A";
-                    };
-
-                    return await generateROVCasnSketchReport(
-                        caissonRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        {
-                            ...headerData,
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showSignatures
-                        }
-                    );
-                }}
-                title="ROV Caisson Survey (Sketch) Report"
-                fileName={`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={blPreviewOpen} 
-                onOpenChange={setBlPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_video_tapes:tape_id!left(tape_no),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const blRecords = (allRecords || []).filter(r => {
-                        const sowMatches = !headerData.sowReportNo || 
-                            String(r.sow_report_no || "").toLowerCase().includes(headerData.sowReportNo.toLowerCase());
-                        return sowMatches;
-                    });
-                    
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const resolveVessel = (jp: any) => {
-                        if (!jp?.metadata) return "N/A";
-                        const history = jp.metadata.vessel_history;
-                        if (Array.isArray(history) && history.length > 0) {
-                            return history.map((v: any) => v.name || v).join(", ");
-                        }
-                        return jp.metadata.vessel || "N/A";
-                    };
-
-                    const headerDataObj = {
-                        ...headerData,
-                        vessel: headerData.vessel,
-                        contractorLogoUrl
-                    };
-                    return await generateROVBoatlandingReport(
-                        blRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        headerDataObj,
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
-                    );
-                }}
-                title="ROV Boatlanding Survey Report"
-                fileName={`ROV_Boatlanding_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={photographyPreviewOpen} 
-                onOpenChange={setPhotographyPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: records } = await supabase
-                        .from('insp_records')
-                        .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
-                        .eq('structure_id', Number(structureId))
-                        .eq('jobpack_id', Number(jobPackId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    if (!records || records.length === 0) {
-                        return await generateROVPhotographyReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
-                    }
-
-                    const recordIds = records.map(r => r.insp_id);
-
-                    const { data: attachments } = await supabase
-                        .from('attachment')
-                        .select('*')
-                        .in('source_id', recordIds)
-                        .ilike('source_type', 'inspection')
-                        .order('created_at', { ascending: true });
-
-                    const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
-                        const record = records?.find(r => r.insp_id === a.source_id);
-                        return {
-                            ...a,
-                            anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
-                        };
-                    });
-
-                    if (photoData.length === 0) {
-                        return await generateROVPhotographyReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
-                    }
-                    
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const resolveVessel = (jp: any) => {
-                        if (!jp?.metadata) return "N/A";
-                        const history = jp.metadata.vessel_history;
-                        if (Array.isArray(history) && history.length > 0) {
-                            return history.map((v: any) => v.name || v).join(", ");
-                        }
-                        return jp.metadata.vessel || "N/A";
-                    };
-
-                    const headerDataObj = {
-                        ...headerData,
-                        vessel: headerData.vessel,
-                        contractorLogoUrl
-                    };
-                    return await generateROVPhotographyReport(
-                        photoData,
-                        headerDataObj,
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
-                    );
-                }}
-                title="ROV Photography Report"
-                fileName={`ROV_Photography_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog 
-                open={photographyLogPreviewOpen} 
-                onOpenChange={setPhotographyLogPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: records } = await supabase
-                        .from('insp_records')
-                        .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
-                        .eq('structure_id', Number(structureId))
-                        .eq('jobpack_id', Number(jobPackId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    if (!records || records.length === 0) {
-                        return await generateROVPhotographyLogReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
-                    }
-
-                    const recordIds = records.map(r => r.insp_id);
-
-                    const { data: attachments } = await supabase
-                        .from('attachment')
-                        .select('*')
-                        .in('source_id', recordIds)
-                        .ilike('source_type', 'inspection')
-                        .order('created_at', { ascending: true });
-
-                    const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
-                        const record = records?.find(r => r.insp_id === a.source_id);
-                        return {
-                            ...a,
-                            anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
-                        };
-                    });
-
-                    if (photoData.length === 0) {
-                        return await generateROVPhotographyLogReport([], headerData, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true });
-                    }
-                    
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const headerDataObj = {
-                        ...headerData,
-                        vessel: headerData.vessel,
-                        contractorLogoUrl
-                    };
-                    return await generateROVPhotographyLogReport(
-                        photoData,
-                        headerDataObj,
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures: showSignatures, structureId: Number(structureId), jobPackId: Number(jobPackId) }
-                    );
-                }}
-                title="ROV Photography Log Report"
-                fileName={`ROV_Photography_Log_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
 
             <InspectionHeader 
                 headerData={headerData}
@@ -5347,6 +4719,7 @@ function V10PreviewLayout() {
                 generateRCONDReport={() => setRcondPreviewOpen(true)}
                 generateRCONDSketchReport={() => setRcondSketchPreviewOpen(true)}
                 generateBLReport={() => setBlPreviewOpen(true)}
+                generateRGReport={generateRGReport}
                 generatePhotographyReport={() => setPhotographyPreviewOpen(true)}
                 generatePhotographyLogReport={() => setPhotographyLogPreviewOpen(true)}
                 generateFullInspectionReport={generateFullInspectionReport}
@@ -7206,6 +6579,7 @@ function V10PreviewLayout() {
                     manualOverride,
                     vidState,
                     blPreviewOpen,
+                    rgPreviewOpen,
                     photographyPreviewOpen,
                     photographyLogPreviewOpen,
                     seabedPreviewOpen,
@@ -7258,6 +6632,7 @@ function V10PreviewLayout() {
                     setSelectorShowAll,
                     setIsSeabedGuiOpen,
                     setBlPreviewOpen,
+                    setRgPreviewOpen,
                     setPhotographyPreviewOpen,
                     setPhotographyLogPreviewOpen,
                     setSeabedPreviewOpen,
@@ -7284,7 +6659,23 @@ function V10PreviewLayout() {
                     generateMGIReportBlob,
                     generateFMDReportBlob,
                     generateUTWTReportBlob,
-                    generateSZCIReportBlob
+                    generateSZCIReportBlob,
+                    generateRGReportBlob,
+                    generateBLReportBlob,
+                    generateRSCORReportBlob,
+                    generateRRISIReportBlob,
+                    generateJTISIReportBlob,
+                    generateITISIReportBlob,
+                    generateAnodeReportBlob,
+                    generateCPReportBlob,
+                    generateRGVIReportBlob,
+                    generateRCASNReportBlob,
+                    generateRCASNSketchReportBlob,
+                    generateRCONDReportBlob,
+                    generateRCONDSketchReportBlob,
+                    generateSeabedReportBlob,
+                    generatePhotographyReportBlob,
+                    generatePhotographyLogReportBlob
                 }}
                 refs={{
                     fileInputRef

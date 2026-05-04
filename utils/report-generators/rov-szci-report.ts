@@ -255,20 +255,22 @@ export const generateROVSZCIReport = async (
         });
 
         // Signatures
-        const sigY = pageHeight - 35;
-        const sigW = contentWidth / 3;
-        const drawSig = (label: string, lx: number) => {
-            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15);
-            doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 4, 'F');
-            doc.setTextColor(255); doc.setFontSize(7); doc.text(label, lx + 2, sigY + 3);
-            doc.setTextColor(...colors.text); doc.setFontSize(6); 
-            doc.text('Name:', lx + 2, sigY + 10);
-            doc.text('Date:', lx + 2, sigY + 13);
-        };
+        if (config.showSignatures !== false) {
+            const sigY = pageHeight - 35;
+            const sigW = contentWidth / 3;
+            const drawSig = (label: string, lx: number) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15);
+                doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 4, 'F');
+                doc.setTextColor(255); doc.setFontSize(7); doc.text(label, lx + 2, sigY + 3);
+                doc.setTextColor(...colors.text); doc.setFontSize(6); 
+                doc.text('Name:', lx + 2, sigY + 10);
+                doc.text('Date:', lx + 2, sigY + 13);
+            };
 
-        drawSig('PREPARED BY', margin);
-        drawSig('REVIEWED BY', margin + sigW);
-        drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig('PREPARED BY', margin);
+            drawSig('REVIEWED BY', margin + sigW);
+            drawSig('APPROVED BY', margin + (sigW * 2));
+        }
 
         if (config.returnBlob) return doc.output("blob");
         doc.save(`ROV_SZCI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
