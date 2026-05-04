@@ -134,11 +134,23 @@
                 "memb_mat": "",
                 "corr_ctg": "",
                 "length": "",
-                "nominal_diam": "",
-                "out_diam": "",
+                "stiffening": false,
+                "del": false,
+                "desig": "",
+                "beam_desig": "",
+                "chan_desig": "",
+                "ang_desig": "",
+                "v_chan_desig": "",
+                "h_chan_desig": "",
+                "nom_size": "",
                 "wall_thk": "",
-                "stiffening": "",
-                "del": false
+                "out_diam": "",
+                "flan_wid": "",
+                "flan_thk": "",
+                "flan_avg_thk": "",
+                "depth": "",
+                "web_thk": "",
+                "stem_thk": ""
             }
         },
         {
@@ -244,11 +256,23 @@
                 "memb_mat": "",
                 "corr_ctg": "",
                 "length": "",
-                "nominal_diam": "",
-                "out_diam": "",
+                "stiffening": false,
+                "del": false,
+                "desig": "",
+                "beam_desig": "",
+                "chan_desig": "",
+                "ang_desig": "",
+                "v_chan_desig": "",
+                "h_chan_desig": "",
+                "nom_size": "",
                 "wall_thk": "",
-                "stiffening": "",
-                "del": false
+                "out_diam": "",
+                "flan_wid": "",
+                "flan_thk": "",
+                "flan_avg_thk": "",
+                "depth": "",
+                "web_thk": "",
+                "stem_thk": ""
             }
         },
         {
@@ -259,11 +283,23 @@
                 "memb_mat": "",
                 "corr_ctg": "",
                 "length": "",
-                "nominal_diam": "",
-                "out_diam": "",
+                "stiffening": false,
+                "del": false,
+                "desig": "",
+                "beam_desig": "",
+                "chan_desig": "",
+                "ang_desig": "",
+                "v_chan_desig": "",
+                "h_chan_desig": "",
+                "nom_size": "",
                 "wall_thk": "",
-                "stiffening": "",
-                "del": false
+                "out_diam": "",
+                "flan_wid": "",
+                "flan_thk": "",
+                "flan_avg_thk": "",
+                "depth": "",
+                "web_thk": "",
+                "stem_thk": ""
             }
         },
         {
@@ -305,11 +341,23 @@
                 "memb_mat": "",
                 "corr_ctg": "",
                 "length": "",
-                "nominal_diam": "",
-                "out_diam": "",
+                "stiffening": false,
+                "del": false,
+                "desig": "",
+                "beam_desig": "",
+                "chan_desig": "",
+                "ang_desig": "",
+                "v_chan_desig": "",
+                "h_chan_desig": "",
+                "nom_size": "",
                 "wall_thk": "",
-                "stiffening": "",
-                "del": false
+                "out_diam": "",
+                "flan_wid": "",
+                "flan_thk": "",
+                "flan_avg_thk": "",
+                "depth": "",
+                "web_thk": "",
+                "stem_thk": ""
             }
         },
         {
@@ -424,11 +472,23 @@
                 "memb_mat": "",
                 "corr_ctg": "",
                 "length": "",
-                "nominal_diam": "",
-                "out_diam": "",
+                "stiffening": false,
+                "del": false,
+                "desig": "",
+                "beam_desig": "",
+                "chan_desig": "",
+                "ang_desig": "",
+                "v_chan_desig": "",
+                "h_chan_desig": "",
+                "nom_size": "",
                 "wall_thk": "",
-                "stiffening": "",
-                "del": false
+                "out_diam": "",
+                "flan_wid": "",
+                "flan_thk": "",
+                "flan_avg_thk": "",
+                "depth": "",
+                "web_thk": "",
+                "stem_thk": ""
             }
         },
         {
@@ -439,11 +499,23 @@
                 "memb_mat": "",
                 "corr_ctg": "",
                 "length": "",
-                "nominal_diam": "",
-                "out_diam": "",
+                "stiffening": false,
+                "del": false,
+                "desig": "",
+                "beam_desig": "",
+                "chan_desig": "",
+                "ang_desig": "",
+                "v_chan_desig": "",
+                "h_chan_desig": "",
+                "nom_size": "",
                 "wall_thk": "",
-                "stiffening": "",
-                "del": false
+                "out_diam": "",
+                "flan_wid": "",
+                "flan_thk": "",
+                "flan_avg_thk": "",
+                "depth": "",
+                "web_thk": "",
+                "stem_thk": ""
             }
         },
         {
@@ -558,7 +630,29 @@
                 "weld_typ": "",
                 "weld_mat": "",
                 "fj_typ": "",
-                "del": false
+                "del": false,
+                "diameter": "",
+                "wall_thk": "",
+                "condition": ""
+            }
+        },
+        {
+            "code": "rc",
+            "componentType": "rc_comp",
+            "additionalDataTemplate": {
+                "manufacture": "",
+                "model_type": "",
+                "material": "",
+                "pipe_cls": "",
+                "serial_no": "",
+                "repair_comp_t": "",
+                "po_no": "",
+                "installed_date": "",
+                "desg_press": "",
+                "op_press": "",
+                "no_bolts": "",
+                "del": false,
+                "diameter": ""
             }
         }
     ]

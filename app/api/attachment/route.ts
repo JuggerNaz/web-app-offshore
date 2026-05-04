@@ -70,25 +70,25 @@ export async function GET(request: NextRequest) {
         }
         // Case 3: Component (Structure Component)
         else if (attachment.source_type === "component" || attachment.source_type === "structure_component") {
-          // Fetch component
+          // Fetch component from structure_components
           const { data: component } = await supabase
-            .from("components")
-            .select("name, id, plat")
+            .from("structure_components")
+            .select("q_id, id, structure_id")
             .eq("id", attachment.source_id)
             .single();
 
           if (component) {
-            enrichment.source_name = component.name;
-            enrichment.component_name = component.name;
+            const compName = component.q_id || "Component";
+            enrichment.source_name = compName;
+            enrichment.component_name = compName;
             enrichment.component_id = component.id;
 
-            // Fetch parent platform (assuming 'plat' relates to plat_id)
-            // Note: need to check if 'plat' is the column name for platform relationship
-            if (component.plat) {
+            // Fetch parent platform using structure_id
+            if (component.structure_id) {
               const { data: platform } = await supabase
                 .from("platform")
                 .select("title, plat_id")
-                .eq("plat_id", component.plat)
+                .eq("plat_id", component.structure_id)
                 .single();
               if (platform) {
                 enrichment.structure_name = platform.title;
@@ -98,8 +98,50 @@ export async function GET(request: NextRequest) {
             }
           }
         }
-        // Case 4: Inspection (Inspection Planning)
-        else if (attachment.source_type === "inspection" || attachment.source_type === "inspection_planning") {
+        // Case 4a: Inspection Record
+        else if (attachment.source_type?.toLowerCase() === "inspection") {
+          const { data: inspRecord } = await (supabase as any)
+            .from("insp_records")
+            .select("insp_id, jobpack_id, structure_id, component_id")
+            .eq("insp_id", attachment.source_id)
+            .single();
+
+          if (inspRecord) {
+            let jpName = null;
+            let platName = null;
+            
+            if (inspRecord.jobpack_id) {
+              const { data: jp } = await supabase.from("jobpack").select("name").eq("id", inspRecord.jobpack_id).single();
+              if (jp) jpName = jp.name;
+            }
+            if (inspRecord.structure_id) {
+              const { data: plat } = await (supabase as any).from("platform").select("title").eq("plat_id", inspRecord.structure_id).single();
+              if (plat) {
+                platName = plat.title;
+                enrichment.structure_name = plat.title;
+                enrichment.structure_id = inspRecord.structure_id;
+                enrichment.structure_type = "Platform";
+              }
+            }
+            if (inspRecord.component_id) {
+              enrichment.component_id = inspRecord.component_id;
+              const { data: comp } = await supabase.from("structure_components").select("q_id").eq("id", inspRecord.component_id).single();
+              if (comp) {
+                enrichment.component_name = comp.q_id;
+              }
+            }
+            
+            let sourceStr = "Inspection";
+            if (jpName && platName) sourceStr = `${jpName} | ${platName}`;
+            else if (jpName) sourceStr = `JP: ${jpName}`;
+            else if (platName) sourceStr = `Plat: ${platName}`;
+
+            enrichment.source_name = sourceStr;
+            enrichment.inspection_id = inspRecord.insp_id;
+          }
+        }
+        // Case 4b: Inspection Planning
+        else if (attachment.source_type === "inspection_planning") {
           const { data: inspection } = await supabase
             .from("inspection_planning")
             .select("name, id, metadata")

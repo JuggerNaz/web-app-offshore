@@ -76,22 +76,32 @@ export default function Spec1({ data }: Props) {
     .filter((opt, i) => i < legsCount && opt.value !== "");
 
   // Automatically synchronize North Side leg selection with first/last active legs
+  // We stringify legValues to avoid running this effect on every render due to array reference changes.
+  const legValuesStr = JSON.stringify(legValues);
+
   useEffect(() => {
-    const activeLegs = legValues.filter((_, i) => i < legsCount && legValues[i]);
+    const parsedLegValues = JSON.parse(legValuesStr);
+    const activeLegs = parsedLegValues.filter((val: any, i: number) => i < legsCount && val);
     if (activeLegs.length > 0) {
       const currentN1 = form.getValues("nleg_t1");
       const currentN2 = form.getValues("nleg_t2");
       const firstLeg = activeLegs[0];
       const lastLeg = activeLegs[activeLegs.length - 1];
 
-      if (firstLeg && firstLeg !== currentN1) {
-        form.setValue("nleg_t1", firstLeg, { shouldDirty: true });
+      // Auto-detect only if current selection is empty or no longer in the active legs list
+      if (!currentN1 || !activeLegs.includes(currentN1)) {
+        if (firstLeg && firstLeg !== currentN1) {
+          form.setValue("nleg_t1", firstLeg, { shouldDirty: true });
+        }
       }
-      if (lastLeg && lastLeg !== currentN2) {
-        form.setValue("nleg_t2", lastLeg, { shouldDirty: true });
+      
+      if (!currentN2 || !activeLegs.includes(currentN2)) {
+        if (lastLeg && lastLeg !== currentN2) {
+          form.setValue("nleg_t2", lastLeg, { shouldDirty: true });
+        }
       }
     }
-  }, [legValues, legsCount, form.setValue]);
+  }, [legValuesStr, legsCount, form]);
 
   const defUnit = form.watch("def_unit") || settingsData?.data?.def_unit || "METRIC";
   const isImperial = defUnit === "IMPERIAL";
