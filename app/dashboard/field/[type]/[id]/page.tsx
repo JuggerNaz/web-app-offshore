@@ -100,7 +100,7 @@ export default function DetailPage() {
 
   const isNew = id === "new";
   const title = data?.data?.title || (isNew ? `New ${type}` : "Loading...");
-  const fieldId = data?.data?.pfield;
+  const fieldId = data?.data?.pfield || searchParams.get("field");
 
   return (
     <div className="flex-1 w-full flex flex-col animate-in fade-in duration-700 h-full overflow-hidden">

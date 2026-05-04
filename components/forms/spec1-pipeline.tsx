@@ -84,7 +84,7 @@ export default function Spec1Pipeline({ data }: Props) {
     end_y: "m",
     plength: "km",
     line_diam: "mm",
-    wall_thk: "mm",
+
     conc_ctg_per: "%",
     desg_press: "bar",
     oper_press: "bar",
@@ -106,7 +106,7 @@ export default function Spec1Pipeline({ data }: Props) {
         end_y: getDefaultUnit("LENGTH", isImperial, "end_y") || "m",
         plength: getDefaultUnit("DISTANCE", isImperial, "plength") || "km",
         line_diam: getDefaultUnit("LENGTH", isImperial, "line_diam") || "mm",
-        wall_thk: getDefaultUnit("LENGTH", isImperial, "wall_thk") || "mm",
+
         conc_ctg_per: getDefaultUnit("PERCENT", isImperial) || "%",
         desg_press: getDefaultUnit("PRESSURE", isImperial) || "bar",
         oper_press: getDefaultUnit("PRESSURE", isImperial) || "bar",
@@ -300,7 +300,7 @@ export default function Spec1Pipeline({ data }: Props) {
                 <CardTitle className="text-lg">Technical Parameters</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6 pt-2">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-x-6 gap-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <FormFieldWrap label="Length" name="plength" form={form} type="number" />
@@ -313,12 +313,7 @@ export default function Spec1Pipeline({ data }: Props) {
                     </div>
                     {renderUnitSelect("line_diam", "LENGTH")}
                   </div>
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <FormFieldWrap label="Wall Thkns." name="wall_thk" form={form} type="number" />
-                    </div>
-                    {renderUnitSelect("wall_thk", "LENGTH")}
-                  </div>
+
                   <FormFieldWrap label="Material" name="material" form={form} placeholder="e.g. API 5L G X65" />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">

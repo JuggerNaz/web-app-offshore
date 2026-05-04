@@ -404,7 +404,39 @@
           "unitcategory": "length"
         },
         {
-          "name": "nominal_diam",
+          "name": "stiffening",
+          "type": "boolean"
+        },
+        {
+          "name": "desig",
+          "type": "string"
+        },
+        {
+          "name": "beam_desig",
+          "type": "string"
+        },
+        {
+          "name": "chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "ang_desig",
+          "type": "string"
+        },
+        {
+          "name": "v_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "h_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "nom_size",
+          "type": "string"
+        },
+        {
+          "name": "wall_thk",
           "type": "string",
           "unitcategory": "length"
         },
@@ -414,13 +446,34 @@
           "unitcategory": "length"
         },
         {
-          "name": "wall_thk",
+          "name": "flan_wid",
           "type": "string",
           "unitcategory": "length"
         },
         {
-          "name": "stiffening",
-          "type": "string"
+          "name": "flan_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "flan_avg_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "web_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "stem_thk",
+          "type": "string",
+          "unitcategory": "length"
         }
       ]
     },
@@ -765,7 +818,39 @@
           "unitcategory": "length"
         },
         {
-          "name": "nominal_diam",
+          "name": "stiffening",
+          "type": "boolean"
+        },
+        {
+          "name": "desig",
+          "type": "string"
+        },
+        {
+          "name": "beam_desig",
+          "type": "string"
+        },
+        {
+          "name": "chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "ang_desig",
+          "type": "string"
+        },
+        {
+          "name": "v_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "h_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "nom_size",
+          "type": "string"
+        },
+        {
+          "name": "wall_thk",
           "type": "string",
           "unitcategory": "length"
         },
@@ -775,13 +860,34 @@
           "unitcategory": "length"
         },
         {
-          "name": "wall_thk",
+          "name": "flan_wid",
           "type": "string",
           "unitcategory": "length"
         },
         {
-          "name": "stiffening",
-          "type": "string"
+          "name": "flan_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "flan_avg_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "web_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "stem_thk",
+          "type": "string",
+          "unitcategory": "length"
         }
       ]
     },
@@ -813,7 +919,39 @@
           "unitcategory": "length"
         },
         {
-          "name": "nominal_diam",
+          "name": "stiffening",
+          "type": "boolean"
+        },
+        {
+          "name": "desig",
+          "type": "string"
+        },
+        {
+          "name": "beam_desig",
+          "type": "string"
+        },
+        {
+          "name": "chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "ang_desig",
+          "type": "string"
+        },
+        {
+          "name": "v_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "h_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "nom_size",
+          "type": "string"
+        },
+        {
+          "name": "wall_thk",
           "type": "string",
           "unitcategory": "length"
         },
@@ -823,13 +961,34 @@
           "unitcategory": "length"
         },
         {
-          "name": "wall_thk",
+          "name": "flan_wid",
           "type": "string",
           "unitcategory": "length"
         },
         {
-          "name": "stiffening",
-          "type": "string"
+          "name": "flan_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "flan_avg_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "web_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "stem_thk",
+          "type": "string",
+          "unitcategory": "length"
         }
       ]
     },
@@ -961,7 +1120,39 @@
           "unitcategory": "length"
         },
         {
-          "name": "nominal_diam",
+          "name": "stiffening",
+          "type": "boolean"
+        },
+        {
+          "name": "desig",
+          "type": "string"
+        },
+        {
+          "name": "beam_desig",
+          "type": "string"
+        },
+        {
+          "name": "chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "ang_desig",
+          "type": "string"
+        },
+        {
+          "name": "v_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "h_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "nom_size",
+          "type": "string"
+        },
+        {
+          "name": "wall_thk",
           "type": "string",
           "unitcategory": "length"
         },
@@ -971,13 +1162,34 @@
           "unitcategory": "length"
         },
         {
-          "name": "wall_thk",
+          "name": "flan_wid",
           "type": "string",
           "unitcategory": "length"
         },
         {
-          "name": "stiffening",
-          "type": "string"
+          "name": "flan_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "flan_avg_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "web_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "stem_thk",
+          "type": "string",
+          "unitcategory": "length"
         }
       ]
     },
@@ -1295,7 +1507,39 @@
           "unitcategory": "length"
         },
         {
-          "name": "nominal_diam",
+          "name": "stiffening",
+          "type": "boolean"
+        },
+        {
+          "name": "desig",
+          "type": "string"
+        },
+        {
+          "name": "beam_desig",
+          "type": "string"
+        },
+        {
+          "name": "chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "ang_desig",
+          "type": "string"
+        },
+        {
+          "name": "v_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "h_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "nom_size",
+          "type": "string"
+        },
+        {
+          "name": "wall_thk",
           "type": "string",
           "unitcategory": "length"
         },
@@ -1305,13 +1549,34 @@
           "unitcategory": "length"
         },
         {
-          "name": "wall_thk",
+          "name": "flan_wid",
           "type": "string",
           "unitcategory": "length"
         },
         {
-          "name": "stiffening",
-          "type": "string"
+          "name": "flan_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "flan_avg_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "web_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "stem_thk",
+          "type": "string",
+          "unitcategory": "length"
         }
       ]
     },
@@ -1343,7 +1608,39 @@
           "unitcategory": "length"
         },
         {
-          "name": "nominal_diam",
+          "name": "stiffening",
+          "type": "boolean"
+        },
+        {
+          "name": "desig",
+          "type": "string"
+        },
+        {
+          "name": "beam_desig",
+          "type": "string"
+        },
+        {
+          "name": "chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "ang_desig",
+          "type": "string"
+        },
+        {
+          "name": "v_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "h_chan_desig",
+          "type": "string"
+        },
+        {
+          "name": "nom_size",
+          "type": "string"
+        },
+        {
+          "name": "wall_thk",
           "type": "string",
           "unitcategory": "length"
         },
@@ -1353,13 +1650,34 @@
           "unitcategory": "length"
         },
         {
-          "name": "wall_thk",
+          "name": "flan_wid",
           "type": "string",
           "unitcategory": "length"
         },
         {
-          "name": "stiffening",
-          "type": "string"
+          "name": "flan_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "flan_avg_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "web_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "stem_thk",
+          "type": "string",
+          "unitcategory": "length"
         }
       ]
     },
@@ -1672,6 +1990,77 @@
         {
           "name": "fj_typ",
           "type": "string"
+        },
+        {
+          "name": "diameter",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "wall_thk",
+          "type": "string",
+          "unitcategory": "length"
+        },
+        {
+          "name": "condition",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "code": "rc",
+      "componentType": "rc_comp",
+      "fields": [
+        {
+          "name": "manufacture",
+          "type": "string"
+        },
+        {
+          "name": "model_type",
+          "type": "string"
+        },
+        {
+          "name": "material",
+          "type": "string"
+        },
+        {
+          "name": "pipe_cls",
+          "type": "string"
+        },
+        {
+          "name": "serial_no",
+          "type": "string"
+        },
+        {
+          "name": "repair_comp_t",
+          "type": "string"
+        },
+        {
+          "name": "po_no",
+          "type": "string"
+        },
+        {
+          "name": "installed_date",
+          "type": "string"
+        },
+        {
+          "name": "desg_press",
+          "type": "string",
+          "unitcategory": "pressure"
+        },
+        {
+          "name": "op_press",
+          "type": "string",
+          "unitcategory": "pressure"
+        },
+        {
+          "name": "no_bolts",
+          "type": "string"
+        },
+        {
+          "name": "diameter",
+          "type": "string",
+          "unitcategory": "length"
         }
       ]
     }
