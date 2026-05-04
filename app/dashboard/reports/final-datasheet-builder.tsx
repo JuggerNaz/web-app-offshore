@@ -49,6 +49,9 @@ const TOC_SECTIONS = [
       { id: "rov-rcond-report", name: "ROV Conductor Survey Report", mode: "ROV" },
       { id: "rov-rcasn-report", name: "ROV Caisson Survey Report", mode: "ROV" },
       { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", mode: "ROV" },
+      { id: "rov-rg-report", name: "ROV Riser Guard Survey Report", mode: "ROV" },
+      { id: "rov-sg-report", name: "ROV Caisson Guard Survey Report", mode: "ROV" },
+      { id: "rov-cu-report", name: "ROV Conductor Guard Survey Report", mode: "ROV" },
       { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", mode: "ROV" },
       { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" }
   ]},

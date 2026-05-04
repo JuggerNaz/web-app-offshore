@@ -131,6 +131,8 @@ interface WorkspaceDialogsProps {
         jtisiPreviewOpen: boolean;
         itisiPreviewOpen: boolean;
         rgPreviewOpen: boolean;
+        sgPreviewOpen: boolean;
+        cuPreviewOpen: boolean;
         calibrationDialogOpen: boolean;
         rovCalibrationDialogOpen: boolean;
     };
@@ -186,6 +188,8 @@ interface WorkspaceDialogsProps {
         setJtisiPreviewOpen: (open: boolean) => void;
         setItisiPreviewOpen: (open: boolean) => void;
         setRgPreviewOpen: (open: boolean) => void;
+        setSgPreviewOpen: (open: boolean) => void;
+        setCuPreviewOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
         setRovCalibrationDialogOpen: (open: boolean) => void;
     };
@@ -211,6 +215,8 @@ interface WorkspaceDialogsProps {
         generateUTWTReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZCIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRGReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSGReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateCUReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateBLReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSCORReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRRISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -316,7 +322,9 @@ export function WorkspaceDialogs({
         rrisiPreviewOpen,
         jtisiPreviewOpen,
         itisiPreviewOpen,
-        rgPreviewOpen
+        rgPreviewOpen,
+        sgPreviewOpen,
+        cuPreviewOpen
     } = states;
 
     const {
@@ -366,7 +374,9 @@ export function WorkspaceDialogs({
         setRrisiPreviewOpen,
         setJtisiPreviewOpen,
         setItisiPreviewOpen,
-        setRgPreviewOpen
+        setRgPreviewOpen,
+        setSgPreviewOpen,
+        setCuPreviewOpen
     } = setters;
 
     const {
@@ -387,6 +397,8 @@ export function WorkspaceDialogs({
         generateUTWTReportBlob,
         generateSZCIReportBlob,
         generateRGReportBlob,
+        generateSGReportBlob,
+        generateCUReportBlob,
         generateBLReportBlob,
         generateRSCORReportBlob,
         generateRRISIReportBlob,
@@ -1609,14 +1621,28 @@ export function WorkspaceDialogs({
                 onOpenChange={setSzciPreviewOpen} 
                 title="ROV SZCI Survey Report Preview" 
                 fileName={`ROV_SZCI_Report_${headerData.sowReportNo}`} 
-                generateReport={handlers.generateSZCIReportBlob} 
+                generateReport={generateSZCIReportBlob} 
             />
             <ReportPreviewDialog 
                 open={rgPreviewOpen} 
                 onOpenChange={setRgPreviewOpen} 
-                title="ROV Riser Guard Survey Report Preview" 
-                fileName={`ROV_RiserGuard_Report_${headerData.sowReportNo}`} 
+                title="ROV Riser Guard Inspection Report Preview" 
+                fileName={`ROV_Riser_Guard_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRGReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={sgPreviewOpen} 
+                onOpenChange={setSgPreviewOpen} 
+                title="ROV Caisson Guard Inspection Report Preview" 
+                fileName={`ROV_Caisson_Guard_Report_${headerData.sowReportNo}`} 
+                generateReport={generateSGReportBlob} 
+            />
+            <ReportPreviewDialog 
+                open={cuPreviewOpen} 
+                onOpenChange={setCuPreviewOpen} 
+                title="ROV Conductor Guard Inspection Report Preview" 
+                fileName={`ROV_Conductor_Guard_Report_${headerData.sowReportNo}`} 
+                generateReport={generateCUReportBlob} 
             />
             <ReportPreviewDialog 
                 open={blPreviewOpen} 

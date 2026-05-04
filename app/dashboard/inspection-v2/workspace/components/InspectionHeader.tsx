@@ -53,6 +53,8 @@ interface InspectionHeaderProps {
     generateRCONDSketchReport: () => void;
     generateBLReport: () => void;
     generateRGReport: () => void;
+    generateSGReport: () => void;
+    generateCUReport: () => void;
     generatePhotographyReport: () => void;
     generatePhotographyLogReport: () => void;
     generateFullInspectionReport: () => void;
@@ -88,6 +90,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateRCONDSketchReport,
     generateBLReport,
     generateRGReport,
+    generateSGReport,
+    generateCUReport,
     generatePhotographyReport,
     generatePhotographyLogReport,
     generateFullInspectionReport,
@@ -178,7 +182,10 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 t.code !== 'RGVI' && 
                                 t.code !== 'RSEAB' && t.code !== 'RMGI' && t.code !== 'RFMD' && t.code !== 'RSZCI' && 
                                 t.code !== 'RUTWT' && t.code !== 'RSCOR' && t.code !== 'RRISI' && t.code !== 'RCOND' && t.code !== 'RCON' &&
-                                t.code !== 'RG' && t.code !== 'RISERGUARD' && t.code !== 'BL' &&
+                                t.code !== 'RG' && t.code !== 'RISERGUARD' && 
+                                t.code !== 'SG' && t.code !== 'CAISSONGUARD' &&
+                                t.code !== 'CU' && t.code !== 'CONDUCTORGUARD' &&
+                                t.code !== 'BL' &&
                                 currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))
                             );
 
@@ -333,6 +340,28 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         }) && (
                             <DropdownMenuItem onClick={() => generateRGReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
                                 <Activity className="w-3.5 h-3.5 mr-2" /> ROV Riser Guard Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => {
+                            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+                            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                            return qid.startsWith("SG") || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG";
+                        }) && (
+                            <DropdownMenuItem onClick={() => generateSGReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV Caisson Guard Survey Report
+                            </DropdownMenuItem>
+                        )}
+
+                        {currentRecords.some(r => {
+                            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+                            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                            return qid.startsWith("CU") || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU";
+                        }) && (
+                            <DropdownMenuItem onClick={() => generateCUReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-700 border-t border-slate-50 mt-1">
+                                <Activity className="w-3.5 h-3.5 mr-2" /> ROV Conductor Guard Survey Report
                             </DropdownMenuItem>
                         )}
 

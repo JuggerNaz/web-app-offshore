@@ -19,6 +19,8 @@ import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-repor
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
 import { generateROVRiserGuardReport } from "@/utils/report-generators/rov-riser-guard-report";
+import { generateROVCaissonGuardReport } from "@/utils/report-generators/rov-caisson-guard-report";
+import { generateROVConductorGuardReport } from "@/utils/report-generators/rov-conductor-guard-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
 import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
@@ -49,6 +51,8 @@ export function useWorkspaceReports(
     const [rcondSketchPreviewOpen, setRcondSketchPreviewOpen] = useState(false);
     const [blPreviewOpen, setBlPreviewOpen] = useState(false);
     const [rgPreviewOpen, setRgPreviewOpen] = useState(false);
+    const [sgPreviewOpen, setSgPreviewOpen] = useState(false);
+    const [cuPreviewOpen, setCuPreviewOpen] = useState(false);
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
@@ -365,6 +369,110 @@ export function useWorkspaceReports(
 
         const result = await generateROVRiserGuardReport(
             rgRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: headerData.vessel
+            },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true,
+                printFriendly: printFriendly || false,
+                showSignatures: showSignatures ?? true
+            }
+        );
+        return result as Blob;
+    };
+
+    const generateSGReport = async () => {
+        const sgRecords = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return qid.startsWith("SG") || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG";
+        });
+        if (sgRecords.length === 0) {
+            toast.error("No Caisson Guard records found to generate report");
+            return;
+        }
+        setSgPreviewOpen(true);
+    };
+
+    const generateSGReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const sgRecords = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return qid.startsWith("SG") || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG";
+        });
+        if (sgRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        const result = await generateROVCaissonGuardReport(
+            sgRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { 
+                ...headerData, 
+                contractorLogoUrl,
+                vessel: headerData.vessel
+            },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                returnBlob: true,
+                printFriendly: printFriendly || false,
+                showSignatures: showSignatures ?? true
+            }
+        );
+        return result as Blob;
+    };
+
+    const generateCUReport = async () => {
+        const cuRecords = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return qid.startsWith("CU") || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU";
+        });
+        if (cuRecords.length === 0) {
+            toast.error("No Conductor Guard records found to generate report");
+            return;
+        }
+        setCuPreviewOpen(true);
+    };
+
+    const generateCUReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const cuRecords = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return qid.startsWith("CU") || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU";
+        });
+        if (cuRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData = null } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        const result = await generateROVConductorGuardReport(
+            cuRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
             { 
                 ...headerData, 
                 contractorLogoUrl,
@@ -763,6 +871,14 @@ export function useWorkspaceReports(
             await generateRGReport();
             return;
         }
+        if (typeCode === 'SG' || typeCode === 'CAISSONGUARD') {
+            await generateSGReport();
+            return;
+        }
+        if (typeCode === 'CU' || typeCode === 'CONDUCTORGUARD') {
+            await generateCUReport();
+            return;
+        }
         if (typeCode === 'BL' || typeCode === 'BOATLANDING') {
             await generateBLReport();
             return;
@@ -907,6 +1023,8 @@ export function useWorkspaceReports(
         rcondSketchPreviewOpen, setRcondSketchPreviewOpen,
         blPreviewOpen, setBlPreviewOpen,
         rgPreviewOpen, setRgPreviewOpen,
+        sgPreviewOpen, setSgPreviewOpen,
+        cuPreviewOpen, setCuPreviewOpen,
         seabedPreviewOpen, setSeabedPreviewOpen,
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
@@ -923,6 +1041,10 @@ export function useWorkspaceReports(
         generateUTWTReportBlob,
         generateRGReport,
         generateRGReportBlob,
+        generateSGReport,
+        generateSGReportBlob,
+        generateCUReport,
+        generateCUReportBlob,
         generateBLReport,
         generateBLReportBlob,
         generateRSCORReport,

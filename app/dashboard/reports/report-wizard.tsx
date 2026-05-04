@@ -125,6 +125,8 @@ const REPORT_TEMPLATES = {
         { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", icon: FileBarChart, description: "Detailed ROV Conductor inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", icon: FileBarChart, description: "Portrait Boatlanding Survey report — grouped by Boatlanding (BL) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rg-report", name: "ROV Riser Guard Survey Report", icon: FileBarChart, description: "Portrait Riser Guard Survey report — grouped by Riser Guard (RG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-sg-report", name: "ROV Caisson Guard Survey Report", icon: FileBarChart, description: "Portrait Caisson Guard Survey report — grouped by Caisson Guard (SG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-cu-report", name: "ROV Conductor Guard Survey Report", icon: FileBarChart, description: "Portrait Conductor Guard Survey report — grouped by Conductor Guard (CU) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-photo-report", name: "ROV Photography Report", icon: Eye, description: "Portrait report displaying all photos attached to inspections in a 2x3 grid with descriptions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-photo-log-report", name: "ROV Photography Log Report", icon: Eye, description: "Portrait report displaying a tabular log of all photos attached to inspections", requires: ["jobpack", "structure", "sow_report"] },
     ],
@@ -156,6 +158,8 @@ const TOC_SECTIONS = [
       { id: "rov-rcasn-report", name: "ROV Caisson Survey Report", mode: "ROV" },
       { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", mode: "ROV" },
       { id: "rov-rg-report", name: "ROV Riser Guard Survey Report", mode: "ROV" },
+      { id: "rov-sg-report", name: "ROV Caisson Guard Survey Report", mode: "ROV" },
+      { id: "rov-cu-report", name: "ROV Conductor Guard Survey Report", mode: "ROV" },
       { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", mode: "ROV" },
       { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" }
   ]},
@@ -1267,6 +1271,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVCondSketchReport } = await import("@/utils/report-generators/rov-rcond-sketch-report");
             const { generateROVBoatlandingReport } = await import("@/utils/report-generators/rov-boatlanding-report");
             const { generateROVRiserGuardReport } = await import("@/utils/report-generators/rov-riser-guard-report");
+            const { generateROVCaissonGuardReport } = await import("@/utils/report-generators/rov-caisson-guard-report");
+            const { generateROVConductorGuardReport } = await import("@/utils/report-generators/rov-conductor-guard-report");
 
             // Fetch real company settings from API
             let companySettings: any = { company_name: "NasQuest Resources Sdn Bhd" };
@@ -2455,6 +2461,152 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("Riser Guard Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Caisson Guard Survey Report (New)
+        if (currentTemplateId === "rov-sg-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(
+                        id,
+                        q_id, 
+                        code,
+                        metadata
+                    ),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const sgRecords = (records || []).filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                return sowMatches && jobPackMatches;
+            });
+
+            if (!sgRecords || sgRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVCaissonGuardReport(
+                    sgRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, structureId: Number(selections.structureId) } as any
+                );
+            } catch (error) {
+                console.error("Caisson Guard Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Conductor Guard Survey Report (New)
+        if (currentTemplateId === "rov-cu-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(
+                        id,
+                        q_id, 
+                        code,
+                        metadata
+                    ),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const cuRecords = (records || []).filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                return sowMatches && jobPackMatches;
+            });
+
+            if (!cuRecords || cuRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVConductorGuardReport(
+                    cuRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, structureId: Number(selections.structureId) } as any
+                );
+            } catch (error) {
+                console.error("Conductor Guard Generator Error:", error);
                 throw error;
             }
         }

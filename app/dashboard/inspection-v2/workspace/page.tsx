@@ -906,6 +906,8 @@ function V10PreviewLayout() {
         rcondSketchPreviewOpen, setRcondSketchPreviewOpen,
         blPreviewOpen, setBlPreviewOpen,
         rgPreviewOpen, setRgPreviewOpen,
+        sgPreviewOpen, setSgPreviewOpen,
+        cuPreviewOpen, setCuPreviewOpen,
         seabedPreviewOpen, setSeabedPreviewOpen,
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
@@ -922,6 +924,10 @@ function V10PreviewLayout() {
         generateUTWTReportBlob,
         generateRGReport,
         generateRGReportBlob,
+        generateSGReport,
+        generateSGReportBlob,
+        generateCUReport,
+        generateCUReportBlob,
         generateBLReport,
         generateBLReportBlob,
         generateRSCORReport,
@@ -4720,6 +4726,8 @@ function V10PreviewLayout() {
                 generateRCONDSketchReport={() => setRcondSketchPreviewOpen(true)}
                 generateBLReport={() => setBlPreviewOpen(true)}
                 generateRGReport={generateRGReport}
+                generateSGReport={generateSGReport}
+                generateCUReport={generateCUReport}
                 generatePhotographyReport={() => setPhotographyPreviewOpen(true)}
                 generatePhotographyLogReport={() => setPhotographyLogPreviewOpen(true)}
                 generateFullInspectionReport={generateFullInspectionReport}
@@ -6580,6 +6588,8 @@ function V10PreviewLayout() {
                     vidState,
                     blPreviewOpen,
                     rgPreviewOpen,
+                    sgPreviewOpen,
+                    cuPreviewOpen,
                     photographyPreviewOpen,
                     photographyLogPreviewOpen,
                     seabedPreviewOpen,
@@ -6607,8 +6617,6 @@ function V10PreviewLayout() {
                     setCalibrationDialogOpen,
                     setRovCalibrationDialogOpen,
                     setCompSpecDialogOpen,
-
-
                     setPreviewOpen,
                     setMPreviewOpen,
                     setFmdPreviewOpen,
@@ -6633,6 +6641,8 @@ function V10PreviewLayout() {
                     setIsSeabedGuiOpen,
                     setBlPreviewOpen,
                     setRgPreviewOpen,
+                    setSgPreviewOpen,
+                    setCuPreviewOpen,
                     setPhotographyPreviewOpen,
                     setPhotographyLogPreviewOpen,
                     setSeabedPreviewOpen,
@@ -6661,6 +6671,8 @@ function V10PreviewLayout() {
                     generateUTWTReportBlob,
                     generateSZCIReportBlob,
                     generateRGReportBlob,
+                    generateSGReportBlob,
+                    generateCUReportBlob,
                     generateBLReportBlob,
                     generateRSCORReportBlob,
                     generateRRISIReportBlob,
