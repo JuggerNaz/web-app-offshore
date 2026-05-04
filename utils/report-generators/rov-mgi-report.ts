@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
@@ -349,13 +349,15 @@ export const generateROVMGIReport = async (
                 }
             });
 
-            const sigY = pageHeight - 32; const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
-                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 12);
-                doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 3.5, 'F');
-                doc.setTextColor(255); doc.setFontSize(6); doc.text(label, lx + 2, sigY + 2.5);
-            };
-            drawSig('PREPARED BY', margin); drawSig('REVIEWED BY', margin + sigW); drawSig('APPROVED BY', margin + (sigW * 2));
+            if (config.showSignatures !== false) {
+                const sigY = pageHeight - 32; const sigW = contentWidth / 3;
+                const drawSig = (label: string, lx: number) => {
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 12);
+                    doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 3.5, 'F');
+                    doc.setTextColor(255); doc.setFontSize(6); doc.text(label, lx + 2, sigY + 2.5);
+                };
+                drawSig('PREPARED BY', margin); drawSig('REVIEWED BY', margin + sigW); drawSig('APPROVED BY', margin + (sigW * 2));
+            }
         }
 
         if (config.returnBlob) return doc.output("blob");

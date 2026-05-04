@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
@@ -299,8 +299,12 @@ export const generateROVCasnSketchReport = async (
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.8); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
                     // Bolts/Ears
                     doc.rect(cX - cw/2 - 2, py - 1, 2, 2, 'S'); doc.rect(cX + cw/2, py - 1, 2, 2, 'S');
-                    doc.setLineWidth(0.2); doc.line(cX + cw/2 + 2, py, dX - 5, py);
-                    doc.setFontSize(6); doc.setTextColor(...colors.navy); doc.text(c.q_id || 'Clamp', dX - 3, py + 1.5, { align: 'right' });
+                    doc.setLineWidth(0.2); 
+                    const lineEnd = cX + cw/2 + 2 + 10;
+                    doc.line(cX + cw/2 + 2, py, lineEnd, py);
+                    doc.setFontSize(6); doc.setTextColor(...colors.navy); 
+                    doc.text(`${el}m`, lineEnd + 1, py + 1);
+                    doc.text(c.q_id || 'Clamp', lineEnd + 1, py + 3);
                 } else if (isGuide) {
                     const gw = rWidth + 14; const gh = 6;
                     doc.setFillColor(230, 235, 245); doc.rect(cX - gw/2, py - gh/2, gw, gh, 'F');
@@ -309,11 +313,19 @@ export const generateROVCasnSketchReport = async (
                     doc.setLineWidth(0.3);
                     doc.line(cX - gw/2, py - gh/2, cX + gw/2, py + gh/2);
                     doc.line(cX - gw/2, py + gh/2, cX + gw/2, py - gh/2);
-                    doc.setLineWidth(0.2); doc.line(cX + gw/2, py, dX - 5, py);
-                    doc.setFontSize(6); doc.setTextColor(...colors.navy); doc.text(c.q_id || 'Guide Frame', dX - 3, py + 1.5, { align: 'right' });
+                    doc.setLineWidth(0.2); 
+                    const lineEnd = cX + gw/2 + 10;
+                    doc.line(cX + gw/2, py, lineEnd, py);
+                    doc.setFontSize(6); doc.setTextColor(...colors.navy); 
+                    doc.text(`${el}m`, lineEnd + 1, py + 1);
+                    doc.text(c.q_id || 'Guide Frame', lineEnd + 1, py + 3);
                 } else {
                     doc.setFillColor(...col); doc.circle(cX, py, 1.8, 'F');
-                    doc.setDrawColor(...col); doc.setLineWidth(0.1); doc.line(cX + 2, py, dX - 5, py);
+                    doc.setDrawColor(...col); doc.setLineWidth(0.1); 
+                    const lineEnd = cX + 2 + 10;
+                    doc.line(cX + 2, py, lineEnd, py);
+                    doc.setFontSize(6); doc.setTextColor(...col);
+                    doc.text(`${el}m`, lineEnd + 1, py + 1);
                 }
             });
 
@@ -347,14 +359,16 @@ export const generateROVCasnSketchReport = async (
             });
 
             // Signatures
-            const sigY = pageHeight - 32; const sigW = contentWidth / 3;
-            const drawS = (l: string, lx: number) => {
-                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 4, 15, 'S');
-                if (!config.printFriendly) { doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 4, 4, 'F'); doc.setTextColor(255, 255, 255); }
-                else doc.setTextColor(...colors.navy);
-                doc.setFontSize(7); doc.text(l, lx + 2, sigY + 3);
-            };
-            drawS('PREPARED BY', margin); drawS('REVIEWED BY', margin + sigW); drawS('APPROVED BY', margin + (sigW * 2));
+            if (config.showSignatures !== false) {
+                const sigY = pageHeight - 32; const sigW = contentWidth / 3;
+                const drawS = (l: string, lx: number) => {
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 4, 15, 'S');
+                    if (!config.printFriendly) { doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 4, 4, 'F'); doc.setTextColor(255, 255, 255); }
+                    else doc.setTextColor(...colors.navy);
+                    doc.setFontSize(7); doc.text(l, lx + 2, sigY + 3);
+                };
+                drawS('PREPARED BY', margin); drawS('REVIEWED BY', margin + sigW); drawS('APPROVED BY', margin + (sigW * 2));
+            }
         }
 
         const totalPages = doc.getNumberOfPages();
@@ -363,7 +377,16 @@ export const generateROVCasnSketchReport = async (
             drawFooter(doc, j, totalPages);
         }
 
-        if (config.returnBlob) return doc.output("blob");
+        console.log("[ROV Caisson Sketch Report] Generation complete, returnBlob:", config?.returnBlob);
+        if (config?.returnBlob !== false) {
+            console.log("[ROV Caisson Sketch Report] Returning Blob");
+            return doc.output("blob");
+        }
+        
+        console.log("[ROV Caisson Sketch Report] Saving PDF to file");
         doc.save(`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
-    } catch (e) { console.error("ROV Caisson Sketch Report Error", e); throw e; }
+    } catch (e) { 
+        console.error("ROV Caisson Sketch Report Error", e); 
+        throw e; 
+    }
 };

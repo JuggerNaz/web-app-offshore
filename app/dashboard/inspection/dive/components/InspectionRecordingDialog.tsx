@@ -1446,25 +1446,7 @@ export default function InspectionRecordingDialog({
                                         </Select>
                                     </div>
 
-                                    <div className="space-y-2 col-span-2">
-                                        <Label className="text-red-700 dark:text-red-400">Anomaly Description</Label>
-                                        <Textarea
-                                            className="bg-white dark:bg-slate-950 border-red-200"
-                                            value={anomalyData.description}
-                                            onChange={(e) => setAnomalyData(prev => ({ ...prev, description: e.target.value }))}
-                                            placeholder="Detailed description of the anomaly..."
-                                        />
-                                    </div>
 
-                                    <div className="space-y-2 col-span-2">
-                                        <Label className="text-red-700 dark:text-red-400">Recommended Action</Label>
-                                        <Textarea
-                                            className="bg-white dark:bg-slate-950 border-red-200"
-                                            value={anomalyData.recommendation}
-                                            onChange={(e) => setAnomalyData(prev => ({ ...prev, recommendation: e.target.value }))}
-                                            placeholder="Recommended remedial action..."
-                                        />
-                                    </div>
 
 
 

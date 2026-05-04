@@ -156,7 +156,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                         <div key={i} className="flex flex-col gap-1 p-2 bg-white rounded border border-slate-100 text-[11px] shadow-sm hover:border-blue-200 transition-colors">
                                             <div className="flex items-center justify-between">
                                                 <span className="font-bold text-slate-700">{r.type}</span>
-                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${r.status === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{r.status}</span>
+                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${r.status === 'Complete' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{r.status}</span>
                                             </div>
                                             <div className="flex justify-between items-center text-[9px] font-bold text-slate-500 uppercase tracking-tight">
                                                 <span>{inspMethod === 'DIVING' ? 'Dive' : 'Dep'}: {r.diveNo || 'N/A'}</span>

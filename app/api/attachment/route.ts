@@ -70,25 +70,25 @@ export async function GET(request: NextRequest) {
         }
         // Case 3: Component (Structure Component)
         else if (attachment.source_type === "component" || attachment.source_type === "structure_component") {
-          // Fetch component
+          // Fetch component from structure_components
           const { data: component } = await supabase
-            .from("components")
-            .select("name, id, plat")
+            .from("structure_components")
+            .select("q_id, id, structure_id")
             .eq("id", attachment.source_id)
             .single();
 
           if (component) {
-            enrichment.source_name = component.name;
-            enrichment.component_name = component.name;
+            const compName = component.q_id || "Component";
+            enrichment.source_name = compName;
+            enrichment.component_name = compName;
             enrichment.component_id = component.id;
 
-            // Fetch parent platform (assuming 'plat' relates to plat_id)
-            // Note: need to check if 'plat' is the column name for platform relationship
-            if (component.plat) {
+            // Fetch parent platform using structure_id
+            if (component.structure_id) {
               const { data: platform } = await supabase
                 .from("platform")
                 .select("title, plat_id")
-                .eq("plat_id", component.plat)
+                .eq("plat_id", component.structure_id)
                 .single();
               if (platform) {
                 enrichment.structure_name = platform.title;
@@ -98,8 +98,50 @@ export async function GET(request: NextRequest) {
             }
           }
         }
-        // Case 4: Inspection (Inspection Planning)
-        else if (attachment.source_type === "inspection" || attachment.source_type === "inspection_planning") {
+        // Case 4a: Inspection Record
+        else if (attachment.source_type?.toLowerCase() === "inspection") {
+          const { data: inspRecord } = await (supabase as any)
+            .from("insp_records")
+            .select("insp_id, jobpack_id, structure_id, component_id")
+            .eq("insp_id", attachment.source_id)
+            .single();
+
+          if (inspRecord) {
+            let jpName = null;
+            let platName = null;
+            
+            if (inspRecord.jobpack_id) {
+              const { data: jp } = await supabase.from("jobpack").select("name").eq("id", inspRecord.jobpack_id).single();
+              if (jp) jpName = jp.name;
+            }
+            if (inspRecord.structure_id) {
+              const { data: plat } = await (supabase as any).from("platform").select("title").eq("plat_id", inspRecord.structure_id).single();
+              if (plat) {
+                platName = plat.title;
+                enrichment.structure_name = plat.title;
+                enrichment.structure_id = inspRecord.structure_id;
+                enrichment.structure_type = "Platform";
+              }
+            }
+            if (inspRecord.component_id) {
+              enrichment.component_id = inspRecord.component_id;
+              const { data: comp } = await supabase.from("structure_components").select("q_id").eq("id", inspRecord.component_id).single();
+              if (comp) {
+                enrichment.component_name = comp.q_id;
+              }
+            }
+            
+            let sourceStr = "Inspection";
+            if (jpName && platName) sourceStr = `${jpName} | ${platName}`;
+            else if (jpName) sourceStr = `JP: ${jpName}`;
+            else if (platName) sourceStr = `Plat: ${platName}`;
+
+            enrichment.source_name = sourceStr;
+            enrichment.inspection_id = inspRecord.insp_id;
+          }
+        }
+        // Case 4b: Inspection Planning
+        else if (attachment.source_type === "inspection_planning") {
           const { data: inspection } = await supabase
             .from("inspection_planning")
             .select("name, id, metadata")
@@ -410,5 +452,101 @@ export async function PATCH(request: NextRequest) {
   }
 
   return NextResponse.json({ success: true, data });
+}
+
+/**
+ * PUT /api/attachment
+ * Overwrite an existing attachment file
+ */
+export async function PUT(request: NextRequest) {
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
+  
+  try {
+    const formData = await request.formData();
+    const id = formData.get("id") as string;
+    const filePath = formData.get("filePath") as string;
+    const file = formData.get("file") as File;
+
+    if (!id || !filePath || !file) {
+      return NextResponse.json({ error: "Missing id, filePath, or file" }, { status: 400 });
+    }
+
+    const attachmentId = Number(id);
+
+    // Identify relative path of the existing file
+    let relativePath = filePath;
+    if (filePath.startsWith("http")) {
+      const parts = filePath.split("/");
+      const bucketIndex = parts.indexOf("attachments");
+      if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
+        relativePath = parts.slice(bucketIndex + 1).join("/");
+      }
+    }
+
+    // Instead of using upsert (which triggers UPDATE RLS on storage.objects that users might not have),
+    // we upload the edited image to a NEW path, and then update the database record.
+    
+    // 1. Attempt to delete the old file (this might fail if they don't have DELETE permissions, but that's okay, we ignore it)
+    await supabase.storage.from("attachments").remove([relativePath]);
+
+    // 2. Upload to a new path
+    const fileExt = file.name.includes('.') ? file.name.split(".").pop() : "png";
+    const newFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}_edited.${fileExt}`;
+    const newRelativePath = `uploads/${newFileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("attachments")
+      .upload(newRelativePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type,
+      });
+
+    if (uploadError) {
+      console.error("Overwrite storage upload error:", uploadError);
+      return NextResponse.json(
+        { error: `Failed to upload edited file: ${uploadError.message}` },
+        { status: 500 }
+      );
+    }
+
+    // 3. Get the new public URL
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("attachments").getPublicUrl(newRelativePath);
+
+    // 4. Update the database record with the new path and URL
+    // First, fetch existing meta to preserve other fields
+    const { data: currentAttachment } = await supabase
+      .from("attachment")
+      .select("meta")
+      .eq("id", attachmentId)
+      .single();
+
+    const updatedMeta = {
+      ...(currentAttachment?.meta as object || {}),
+      file_path: newRelativePath,
+      file_url: publicUrl,
+    };
+
+    const { error: dbError } = await supabase
+      .from("attachment")
+      .update({
+        path: publicUrl,
+        meta: updatedMeta
+      })
+      .eq("id", attachmentId);
+
+    if (dbError) {
+      console.error("Failed to update database record after upload:", dbError);
+      return handleSupabaseError(dbError, "Failed to update attachment record with new file");
+    }
+
+    return NextResponse.json({ success: true, url: publicUrl });
+  } catch (err: any) {
+    console.error("Exception in PUT /api/attachment:", err);
+    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+  }
 }
 

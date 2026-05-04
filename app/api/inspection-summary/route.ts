@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+const ATTACHMENT_GROUPS: Record<string, string[]> = {
+    "Riser":        ["RS", "RIS", "RISER"],
+    "Conductor":    ["CD", "COND", "CONDUCTOR"],
+    "Caisson":      ["CA", "CAIS", "CAISSON"],
+    "Riser Guard":  ["RG", "RGUARD", "RISER_GUARD", "RISERGUARD"],
+    "Boat Landing": ["BL", "BLTG", "BOAT_LANDING", "BOATLANDING", "BLD"],
+};
+
 export async function GET(request: NextRequest) {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
 
-        const sowId = searchParams.get("sow_id");
+        const sowIdRaw = searchParams.get("sow_id");
+        const sowId = sowIdRaw ? sowIdRaw.split('-')[0] : null;
         const structureId = searchParams.get("structure_id");
         const jobpackId = searchParams.get("jobpack_id");
         const sowReportNo = searchParams.get("sow_report_no");
@@ -15,27 +24,42 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "sow_id or structure_id required" }, { status: 400 });
         }
 
-        // ─── 1. SOW COMPLETION ─────────────────────────────────────────────────
-        // Scope: sow_id already ties to a unique jobpack + structure.
-        // Additionally filter by report_number (= sowReportNo) so progress only counts
-        // items belonging to the active report within this SOW.
-        let sowItems: any[] = [];
+        // If sowId is missing, attempt to resolve it from jobpackId + structureId
+        let resolvedSowId = sowId;
+        const jpNum = Number(jobpackId);
+        const strNum = Number(structureId);
 
-        if (sowId) {
-            let sowQuery = (supabase as any)
-                .from("u_sow_items")
-                .select("status")
-                .eq("sow_id", sowId);
-
-            // Filter by report number when provided — this scopes to the specific
-            // jobpack + structure + SOW report combination shown in the workspace
-            if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null") {
-                sowQuery = sowQuery.eq("report_number", sowReportNo);
-            }
-
-            const { data: itemsData } = await sowQuery;
-            sowItems = itemsData || [];
+        if (!resolvedSowId && !isNaN(jpNum) && !isNaN(strNum)) {
+            const { data: sowRec } = await (supabase as any)
+                .from("u_sow")
+                .select("id")
+                .eq("jobpack_id", jpNum)
+                .eq("structure_id", strNum)
+                .limit(1)
+                .maybeSingle();
+            if (sowRec) resolvedSowId = String(sowRec.id);
         }
+
+        console.log(`[Summary API] sowId=${sowId}, resolvedSowId=${resolvedSowId}, jp=${jobpackId}, str=${structureId}`);
+
+        // Fetch ALL items for this SOW to support both "All Summary" and "Report-Specific" views
+        let allSowItems: any[] = [];
+        let itemsErr = null;
+        if (resolvedSowId) {
+            const { data: itemsData, error: err } = await (supabase as any)
+                .from("u_sow_items")
+                .select("status, component_type, component_qid, report_number")
+                .eq("sow_id", Number(resolvedSowId));
+            
+            itemsErr = err;
+            if (itemsErr) {
+                console.error("[Summary API] SOW Items fetch error:", itemsErr);
+            }
+            allSowItems = itemsData || [];
+        }
+
+        // SOW Completion section should reflect the WHOLE scope defined for this platform
+        const sowItems = allSowItems;
 
         const totalSow = sowItems.length;
         const completedSow = sowItems.filter((i: any) => i.status === "completed").length;
@@ -46,6 +70,11 @@ export async function GET(request: NextRequest) {
         const completedPct = totalSow > 0 ? Math.round((completedSow / totalSow) * 100) : 0;
         const incompletePct = totalSow > 0 ? Math.round((incompleteSow / totalSow) * 100) : 0;
         const pendingPct = totalSow > 0 ? Math.round((pendingSow / totalSow) * 100) : 0;
+
+        // Also calculate overall stats for the whole SOW (regardless of report)
+        const overallTotal = allSowItems.length;
+        const overallCompleted = allSowItems.filter((i: any) => i.status === "completed").length;
+        const overallPct = overallTotal > 0 ? Math.round((overallCompleted / overallTotal) * 100) : 0;
 
         // ─── 2. INSPECTION RECORDS ─────────────────────────────────────────────
         // Scope: must match BOTH jobpack_id AND sow_report_no when both are provided
@@ -62,35 +91,47 @@ export async function GET(request: NextRequest) {
                 component_id,
                 dive_job_id,
                 rov_job_id,
-                structure_components:component_id!left(q_id, code, metadata),
+                structure_components:component_id!left(id, q_id, code, metadata),
                 inspection_type:inspection_type_id!left(id, code, name),
                 insp_anomalies(anomaly_id, status, defect_type_code, defect_category_code, priority_code, record_category)
             `);
 
-        if (structureId) recQuery = recQuery.eq("structure_id", Number(structureId));
-        // Both jobpack_id AND sow_report_no must match for accurate scoping
+        // Both jobpack_id AND structure_id are used to scope the records.
+        // We fetch ALL records for this structure + jobpack to allow for "All Summary" comparisons.
         if (jobpackId && jobpackId !== "null") recQuery = recQuery.eq("jobpack_id", Number(jobpackId));
-        if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null") {
-            recQuery = recQuery.eq("sow_report_no", sowReportNo);
-        }
+        if (structureId) recQuery = recQuery.eq("structure_id", Number(structureId));
 
-        const { data: allRecords, error: recErr } = await recQuery;
+        const { data: allRecordsData, error: recErr } = await recQuery;
         if (recErr) {
             console.error("[Summary] Records fetch error:", recErr);
             return NextResponse.json({ error: recErr.message }, { status: 500 });
         }
 
-        const records: any[] = allRecords || [];
+        const rawRecords: any[] = allRecordsData || [];
+        
+        // Determine if we should filter the overview by the current report
+        const isReportSpecific = sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "all";
+
+        // Filter records by report locally if requested
+        // Using loose matching (includes) to handle variations like "2026-01" vs "2026-01 MAJOR"
+        const records = isReportSpecific
+            ? rawRecords.filter((r: any) => {
+                const recRep = String(r.sow_report_no || "").toLowerCase();
+                const filterRep = String(sowReportNo).toLowerCase();
+                return recRep === filterRep || recRep.includes(filterRep) || filterRep.includes(recRep);
+              })
+            : rawRecords;
 
         // ─── 3. INSPECTIONS BY MODE ────────────────────────────────────────────
-        const rovRecords = records.filter((r: any) => !!r.rov_job_id);
-        const diveRecords = records.filter((r: any) => !!r.dive_job_id && !r.rov_job_id);
+        // Analysis sections use rawRecords to show the full history of the structure
+        const rovRecords = rawRecords.filter((r: any) => !!r.rov_job_id);
+        const diveRecords = rawRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id);
         const hasBothModes = rovRecords.length > 0 && diveRecords.length > 0;
 
         // ─── 4. FMD ANALYSIS ──────────────────────────────────────────────────
         // Field: inspection_data.member_status
         // Values (from inspection-types.json): "Flooded" | "Dry" | "Grouted" | "Inconclusive"
-        const fmdRecords = records.filter((r: any) => {
+        const fmdRecords = rawRecords.filter((r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === "RFMD" || code === "FMD";
         });
@@ -130,7 +171,7 @@ export async function GET(request: NextRequest) {
         // ─── 5. ANODE (GVI / RGVI) ANALYSIS ───────────────────────────────────
         // GVI type: field = anode_depletion_percent (number 0-100)
         // RGVI type: field = anode_depletion (combo from ADA lib - string like "0-25%", "25-50%", etc.)
-        const anodeGviRecords = records.filter((r: any) => {
+        const anodeGviRecords = rawRecords.filter((r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             const isGvi = code === "RGVI" || code === "GVI";
             const compType = (
@@ -208,7 +249,7 @@ export async function GET(request: NextRequest) {
         );
 
         // ─── 6. SELECTED ANODE INSPECTION (SANI/RSANI) ────────────────────────
-        const saniRecords = records.filter((r: any) => {
+        const saniRecords = rawRecords.filter((r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === "SANI" || code === "RSANI";
         });
@@ -236,7 +277,7 @@ export async function GET(request: NextRequest) {
             }
         };
 
-        records.forEach((r: any) => {
+        rawRecords.forEach((r: any) => {
             const d = r.inspection_data || {};
             const isRov  = !!r.rov_job_id;
             const isDive = !!r.dive_job_id && !r.rov_job_id;
@@ -272,13 +313,13 @@ export async function GET(request: NextRequest) {
         // ─── 8. ANOMALIES ─────────────────────────────────────────────────────
         // Anomaly = has_anomaly=true AND _meta_status != "Finding"
         // Finding = has_anomaly=true AND _meta_status == "Finding"
-        const anomalyRecords = records.filter((r: any) => {
+        const anomalyRecords = rawRecords.filter((r: any) => {
             if (!r.has_anomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus !== "finding";
         });
 
-        const findingRecords = records.filter((r: any) => {
+        const findingRecords = rawRecords.filter((r: any) => {
             if (!r.has_anomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus === "finding";
@@ -354,47 +395,78 @@ export async function GET(request: NextRequest) {
         });
 
         // ─── 9. ATTACHMENT GROUPS ─────────────────────────────────────────────
-        // Count unique components (by component_id) per attachment group.
-        // A component inspected with 4 different inspection types still counts as 1.
-        const ATTACHMENT_GROUPS: Record<string, string[]> = {
-            "Riser":        ["RS", "RIS", "RISER"],
-            "Conductor":    ["CD", "COND", "CONDUCTOR"],
-            "Caisson":      ["CA", "CAIS", "CAISSON"],
-            "Riser Guard":  ["RG", "RGUARD", "RISER_GUARD", "RISERGUARD"],
-            "Boat Landing": ["BL", "BLTG", "BOAT_LANDING", "BOATLANDING", "BLD"],
+        // Count DISTINCT components per attachment group.
+        // Total (Scope) = Unique component_ids in u_sow_items for that category
+        // Inspected (Actual) = Unique component_ids in insp_records for that category
+        
+        const sowCompIds: Record<string, Set<number>> = {
+            "Riser": new Set(), "Conductor": new Set(), "Caisson": new Set(),
+            "Riser Guard": new Set(), "Boat Landing": new Set(),
         };
-
-        const attachmentGroupCounts: Record<string, number> = {
-            "Riser": 0, "Conductor": 0, "Caisson": 0, "Riser Guard": 0, "Boat Landing": 0,
-        };
-
-        // Track seen component_ids per group to avoid double-counting
-        const seenComponentIds: Record<string, Set<number>> = {
+        const recordCompIds: Record<string, Set<number>> = {
             "Riser": new Set(), "Conductor": new Set(), "Caisson": new Set(),
             "Riser Guard": new Set(), "Boat Landing": new Set(),
         };
 
-        records.forEach((r: any) => {
-            const componentId = r.component_id;
-            if (!componentId) return; // skip records without a component
+        // Scope (Total) is based on ALL items in the SOW (the whole platform's scope)
+        allSowItems.forEach((item: any) => {
+            const comp = item.structure_components;
+            const componentId = item.component_id || comp?.id;
+            if (!componentId) return;
 
+            // Use component_type from SOW item first, then fallback to component code or QID prefix
+            const qid = (item.component_qid || comp?.q_id || "").toUpperCase();
             const code = (
-                r.component_type ||
-                r.structure_components?.code ||
+                item.component_type || 
+                comp?.code || 
+                qid.split("-")[0] ||
                 ""
             ).toUpperCase();
 
             for (const [group, aliases] of Object.entries(ATTACHMENT_GROUPS)) {
-                if (aliases.some(a => code.startsWith(a) || code === a)) {
-                    // Only count this component once per group
-                    if (!seenComponentIds[group].has(componentId)) {
-                        seenComponentIds[group].add(componentId);
-                        attachmentGroupCounts[group]++;
-                    }
+                // Flexible match: starts with alias OR qid contains group name
+                if (
+                    aliases.some(a => code.startsWith(a) || qid.startsWith(a)) ||
+                    qid.includes(group.toUpperCase().replace(" ", ""))
+                ) {
+                    sowCompIds[group].add(componentId);
                     break;
                 }
             }
         });
+
+        // Actual (Inspected) is based on ALL records for this structure/jobpack
+        rawRecords.forEach((r: any) => {
+            const componentId = r.component_id;
+            if (!componentId) return;
+
+            const qid = (r.structure_components?.q_id || "").toUpperCase();
+            const code = (
+                r.component_type ||
+                r.structure_components?.code ||
+                qid.split("-")[0] ||
+                ""
+            ).toUpperCase();
+
+            for (const [group, aliases] of Object.entries(ATTACHMENT_GROUPS)) {
+                if (
+                    aliases.some(a => code.startsWith(a) || qid.startsWith(a)) ||
+                    qid.includes(group.toUpperCase().replace(" ", ""))
+                ) {
+                    recordCompIds[group].add(componentId);
+                    break;
+                }
+            }
+        });
+
+        // Combine into a structured breakdown
+        const attachmentGroupBreakdown = Object.keys(ATTACHMENT_GROUPS).reduce((acc, group) => {
+            acc[group] = {
+                count: recordCompIds[group].size,
+                total: sowCompIds[group].size
+            };
+            return acc;
+        }, {} as Record<string, { count: number; total: number }>);
 
         // ─── 10. OVERALL INSPECTION STATS ─────────────────────────────────────
         const totalRecords = records.length;
@@ -451,7 +523,19 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
             data: {
                 sow: { total: totalSow, completed: completedSow, incomplete: incompleteSow, pending: pendingSow, completionPct, completedPct, incompletePct, pendingPct },
-                records: { total: totalRecords, completed: completedRecords, incomplete: incompleteRecords, anomaly: anomalyValidTotal, finding: findingValidTotal, rovCount: rovRecords.length, diveCount: diveRecords.length, hasBothModes, uniqueRovJobs, uniqueDiveJobs, inspTypeBreakdown },
+                records: { 
+                    total: rawRecords.length, 
+                    completed: rawRecords.filter(r => r.status === 'COMPLETED').length, 
+                    incomplete: rawRecords.filter(r => r.status === 'INCOMPLETE').length, 
+                    anomaly: anomalyValidTotal, 
+                    finding: findingValidTotal, 
+                    rovCount: rovRecords.length, 
+                    diveCount: diveRecords.length, 
+                    hasBothModes, 
+                    uniqueRovJobs, 
+                    uniqueDiveJobs, 
+                    inspTypeBreakdown 
+                },
                 fmd: {
                     total: fmdTotal,
                     rov: fmdRov,
@@ -495,7 +579,7 @@ export async function GET(request: NextRequest) {
                     open: findingValidTotal - findingRectifiedCount,
                     byPriority: findingByPriority,
                 },
-                attachmentGroups: attachmentGroupCounts,
+                attachmentGroups: attachmentGroupBreakdown,
             },
         });
     } catch (error: any) {

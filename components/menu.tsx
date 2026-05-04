@@ -17,6 +17,8 @@ import {
   LayoutDashboard,
   ClipboardCheck,
   Crown,
+  AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -190,6 +192,27 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             label="Attachments"
             icon={<FileText className="h-[18px] w-[18px]" />}
             text="Attachments"
+          />
+          <MenuLink
+            href="/dashboard/utilities/anomalies-findings"
+            isCollapsed={isCollapsed}
+            label="Anomalies & Findings"
+            icon={<AlertTriangle className="h-[18px] w-[18px]" />}
+            text="Anomalies & Findings"
+          />
+          <MenuLink
+            href="/dashboard/utilities/smart-query"
+            isCollapsed={isCollapsed}
+            label="Smart Query"
+            icon={<Sparkles className="h-[18px] w-[18px]" />}
+            text="Smart Query"
+          />
+          <MenuLink
+            href="/dashboard/utilities/qa-qc"
+            isCollapsed={isCollapsed}
+            label="QA-QC"
+            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+            text="QA-QC"
           />
         </div>
 

@@ -54,6 +54,10 @@ export function SeabedSurveyGuiInline({
     const [currentPage, setCurrentPage] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [typeFilter, setTypeFilter] = useState<string>('All');
+    const [availableComparisons, setAvailableComparisons] = useState<any[]>([]);
+    const [selectedComparison, setSelectedComparison] = useState<string>('none');
+    const [comparisonDebris, setComparisonDebris] = useState<any[]>([]);
 
     const generateQid = (geometry: any) => {
         if (!geometry || !geometry.startLeg || !geometry.endLeg) return '';
@@ -64,8 +68,71 @@ export function SeabedSurveyGuiInline({
         if (open && structureId) {
             fetchStructureContext();
             fetchExistingDebris();
+            fetchAvailableComparisons();
         }
     }, [open, structureId, rovJob]);
+
+    const fetchAvailableComparisons = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('insp_records')
+                .select('jobpack_id, sow_report_no, jobpack:jobpack_id(name)')
+                .eq('structure_id', Number(structureId))
+                .eq('inspection_type_code', 'RSEAB');
+            
+            if (error) throw error;
+            if (data) {
+                const unique = data.reduce((acc: any[], curr: any) => {
+                    // Exclude current dataset
+                    if (curr.jobpack_id === Number(jobpackId) && curr.sow_report_no === sowReportNo) return acc;
+                    
+                    const key = `${curr.jobpack_id}|${curr.sow_report_no}`;
+                    if (!acc.find(a => a.key === key)) {
+                        acc.push({
+                            key,
+                            jobpackId: curr.jobpack_id,
+                            sowReportNo: curr.sow_report_no,
+                            name: `${curr.jobpack?.name || 'JP' + curr.jobpack_id} - ${curr.sow_report_no}`
+                        });
+                    }
+                    return acc;
+                }, []);
+                setAvailableComparisons(unique);
+            }
+        } catch (e) { console.error("Error fetching comparisons:", e); }
+    };
+
+    const fetchComparisonDebris = async (key: string) => {
+        if (key === 'none') {
+            setComparisonDebris([]);
+            return;
+        }
+        const [jpId, sowNo] = key.split('|');
+        try {
+            const { data, error } = await supabase.from('insp_records')
+                .select(`insp_id, inspection_data, description`)
+                .eq('structure_id', Number(structureId))
+                .eq('jobpack_id', Number(jpId))
+                .eq('sow_report_no', sowNo)
+                .eq('inspection_type_code', 'RSEAB');
+
+            if (error) throw error;
+            if (data) {
+                const mapped = data.map((r: any, index: number) => {
+                    const idraw = r.inspection_data || {};
+                    const cat = idraw.category || (r.description?.includes('Gas Seepage') ? 'Gas Seepage' : r.description?.includes('Crater') ? 'Crater' : 'Debris');
+                    return {
+                        id: `ref-${r.insp_id}`,
+                        x: parseFloat(idraw.x),
+                        y: parseFloat(idraw.y),
+                        label: (index + 1).toString(),
+                        type: cat
+                    };
+                }).filter(r => !isNaN(r.x) && !isNaN(r.y));
+                setComparisonDebris(mapped);
+            }
+        } catch (e) { console.error("Error fetching comparison debris:", e); }
+    };
 
     const fetchStructureContext = async () => {
         const { data } = await supabase.from('structures').select('name').eq('id', structureId).single();
@@ -633,7 +700,9 @@ export function SeabedSurveyGuiInline({
 
     const minDistance = currentPage * 21;
     const maxDistance = (currentPage + 1) * 21;
-    const itemsForCurrentPage = existingDebris.filter(d => d.distance > minDistance && d.distance <= maxDistance);
+    const itemsForCurrentPage = existingDebris
+        .filter(d => d.distance > minDistance && d.distance <= maxDistance)
+        .filter(d => typeFilter === 'All' || d.type === typeFilter);
     const activeItem = existingDebris.find(d => d.id === activeId);
 
     if (!open) return null;
@@ -643,6 +712,35 @@ export function SeabedSurveyGuiInline({
             <div className="px-6 py-4 border-b bg-white dark:bg-slate-950 flex items-center justify-between">
                 <h2 className="text-xl font-bold">Seabed Survey Multi-Drop GUI</h2>
                 <div className="flex items-center gap-4">
+                    {/* Comparison Selector */}
+                    <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-md shadow-sm">
+                        <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                            Compare:
+                        </span>
+                        {availableComparisons.length > 0 ? (
+                            <Select 
+                                value={selectedComparison} 
+                                onValueChange={(v) => {
+                                    setSelectedComparison(v);
+                                    fetchComparisonDebris(v);
+                                }}
+                            >
+                                <SelectTrigger className="h-7 w-56 text-[10px] bg-white border-amber-200 focus:ring-amber-500">
+                                    <SelectValue placeholder="Select Previous Survey" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">No Comparison</SelectItem>
+                                    {availableComparisons.map(c => (
+                                        <SelectItem key={c.key} value={c.key}>{c.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            <span className="text-[10px] font-bold text-amber-600/60 italic px-2">No historical survey data found</span>
+                        )}
+                    </div>
+
                     <div className="flex items-center rounded-md border border-slate-200 bg-slate-50 text-sm">
                         <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}>Prev Range</Button>
                         <div className="px-3 font-bold text-slate-600 border-x border-slate-200">
@@ -657,8 +755,31 @@ export function SeabedSurveyGuiInline({
                 {/* Items List Sidebar (Left) */}
                 <div className="w-72 bg-slate-50 border-r border-slate-200 flex flex-col z-10 shadow-[2px_0_10px_rgba(0,0,0,0.05)]">
                     <div className="px-4 py-3 border-b border-slate-200 bg-white font-bold text-sm text-slate-800 flex justify-between items-center">
-                        <span>Items Registered</span>
-                        <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full text-xs">{itemsForCurrentPage.length}</span>
+                        <span className="flex items-center gap-2">
+                            Items Registered
+                            <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-black">{itemsForCurrentPage.length}</span>
+                        </span>
+                    </div>
+                    {/* Filter Options */}
+                    <div className="px-2 py-2 border-b border-slate-200 bg-slate-50/80 flex flex-col gap-1.5">
+                        <div className="px-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Filter by Type:</div>
+                        <div className="flex gap-1 overflow-x-auto no-scrollbar scrollbar-hide pb-0.5">
+                            {['All', 'Debris', 'Gas Seepage', 'Crater'].map(t => (
+                                <Button 
+                                    key={t}
+                                    variant={typeFilter === t ? 'default' : 'ghost'}
+                                    size="sm"
+                                    className={`h-7 px-2.5 text-[10px] uppercase font-black tracking-wider transition-all ${
+                                        typeFilter === t 
+                                            ? 'bg-blue-600 text-white shadow-md' 
+                                            : 'text-slate-500 hover:bg-slate-200'
+                                    }`}
+                                    onClick={() => setTypeFilter(t)}
+                                >
+                                    {t === 'Gas Seepage' ? 'Seepage' : t}
+                                </Button>
+                            ))}
+                        </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
                         {itemsForCurrentPage.length === 0 ? (
@@ -720,6 +841,7 @@ export function SeabedSurveyGuiInline({
                                 onSelectDebris={(id) => { setActiveId(id); setIsAdding(false); }}
                                 activeDebrisId={activeId}
                                 readOnly={false}
+                                referenceItems={comparisonDebris.filter(d => typeFilter === 'All' || d.type === typeFilter)}
                             />
                             {!isAdding && !activeId && (
                                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-lg shadow-sm font-bold text-slate-700 text-sm border-l-4 border-blue-500">

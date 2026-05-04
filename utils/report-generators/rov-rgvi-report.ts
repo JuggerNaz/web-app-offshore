@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
@@ -292,32 +292,33 @@ export const generateROVRGVIReport = async (
             },
         });
 
-        // ── Signature block ─────────────────────────────────────────────────────
-        const finalY = (doc as any).lastAutoTable?.finalY ?? (pageHeight - 50);
-        const sigY   = Math.min(finalY + 8, pageHeight - 38);
-        const sigW   = contentWidth / 3;
+        if (config.showSignatures !== false) {
+            const finalY = (doc as any).lastAutoTable?.finalY ?? (pageHeight - 50);
+            const sigY   = Math.min(finalY + 8, pageHeight - 38);
+            const sigW   = contentWidth / 3;
 
-        const drawSig = (label: string, lx: number) => {
-            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
-            doc.rect(lx, sigY, sigW - 4, 18);
-            if (!isPF) {
-                doc.setFillColor(...colors.navy);
-                doc.rect(lx, sigY, sigW - 4, 4.5, "F");
-                doc.setTextColor(255);
-            } else {
-                doc.setTextColor(...colors.navy);
-            }
-            doc.setFontSize(7); doc.setFont("helvetica", "bold");
-            doc.text(label, lx + 2, sigY + 3.5);
-            doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
-            doc.text("Name:", lx + 2, sigY + 10);
-            doc.text("Date:", lx + 2, sigY + 13.5);
-            doc.text("Signature:", lx + 2, sigY + 17);
-        };
+            const drawSig = (label: string, lx: number) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                doc.rect(lx, sigY, sigW - 4, 18);
+                if (!isPF) {
+                    doc.setFillColor(...colors.navy);
+                    doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                    doc.setTextColor(255);
+                } else {
+                    doc.setTextColor(...colors.navy);
+                }
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.5);
+                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.text("Name:", lx + 2, sigY + 10);
+                doc.text("Date:", lx + 2, sigY + 13.5);
+                doc.text("Signature:", lx + 2, sigY + 17);
+            };
 
-        drawSig("PREPARED BY",  margin);
-        drawSig("REVIEWED BY",  margin + sigW);
-        drawSig("APPROVED BY",  margin + sigW * 2);
+            drawSig("PREPARED BY",  margin);
+            drawSig("REVIEWED BY",  margin + sigW);
+            drawSig("APPROVED BY",  margin + sigW * 2);
+        }
 
         if (config.returnBlob) return doc.output("blob");
         doc.save(`ROV_GVI_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
