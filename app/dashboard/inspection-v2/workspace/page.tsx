@@ -937,7 +937,48 @@ function V10PreviewLayout() {
      * Derived from aggregated insp_records for a specific COMPONENT + TASK
      */
     const syncSowStatus = useCallback(async (compId: number, taskInput: string, currentElevation?: number, currentStatus?: string) => {
-        if (!sowId) return;
+        let activeSowId = sowId ? Number(sowId) : null;
+        let activeReportNo = headerData.sowReportNo;
+
+        // 0. Resolve or Create u_sow parent if missing
+        if (!activeSowId && jobPackId && structureId) {
+            console.log("[SOW Sync] Resolving missing sowId...");
+            const { data: existingSow } = await supabase.from('u_sow')
+                .select('id, report_number')
+                .eq('jobpack_id', Number(jobPackId))
+                .eq('structure_id', Number(structureId))
+                .limit(1)
+                .maybeSingle();
+
+            if (existingSow) {
+                activeSowId = existingSow.id;
+                if (!activeReportNo || activeReportNo === 'N/A') activeReportNo = existingSow.report_number;
+            } else {
+                const userRes = await supabase.auth.getUser();
+                const userId = userRes.data.user?.id || 'system';
+                const { data: newSow } = await supabase.from('u_sow').insert({
+                    jobpack_id: Number(jobPackId),
+                    structure_id: Number(structureId),
+                    structure_type: headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM',
+                    structure_title: headerData.platformName,
+                    report_number: activeReportNo && activeReportNo !== 'N/A' ? activeReportNo : `SOW-${new Date().getFullYear()}`,
+                    total_items: 0, completed_items: 0, incomplete_items: 0, pending_items: 0,
+                    status: 'pending', created_by: userId
+                }).select('id').single();
+
+                if (newSow) {
+                    activeSowId = newSow.id;
+                    if (!activeReportNo || activeReportNo === 'N/A') activeReportNo = `SOW-${new Date().getFullYear()}`;
+                    
+                    // Update URL params so subsequent operations recognize the SOW
+                    const newParams = new URLSearchParams(window.location.search);
+                    newParams.set('sow', String(newSow.id));
+                    window.history.replaceState(null, '', `${window.location.pathname}?${newParams.toString()}`);
+                }
+            }
+        }
+
+        if (!activeSowId) return;
 
         // 1. Resolve the canonical task info FIRST
         const it = allInspectionTypes.find(t => 
@@ -952,12 +993,13 @@ function V10PreviewLayout() {
 
         const taskCode = it.code; // Canonical code
 
-        // 2. Get the SOW item for this component + canonical task
+        // 2. Get the SOW item for this component + canonical task + report scope
         const { data: existing, error: fetchSowErr } = await supabase.from('u_sow_items')
             .select('*')
-            .eq('sow_id', Number(sowId))
+            .eq('sow_id', activeSowId)
             .eq('component_id', compId)
             .eq('inspection_code', taskCode)
+            .eq('report_number', activeReportNo)
             .maybeSingle();
 
         if (fetchSowErr) {
@@ -991,8 +1033,7 @@ function V10PreviewLayout() {
 
                 updatedFields.elevation_data = updatedElevationData;
                 
-                // Recalculate overall status: If any is 'pending', overall is 'incomplete'? 
-                // Or if all are 'completed', overall is 'completed'.
+                // Recalculate overall status
                 const allDone = updatedElevationData.every((e: any) => e.status === 'completed');
                 const anyIncomplete = updatedElevationData.some((e: any) => e.status === 'incomplete');
                 
@@ -1001,8 +1042,6 @@ function V10PreviewLayout() {
                 } else if (anyIncomplete) {
                     updatedFields.status = 'incomplete';
                 } else {
-                    // If some are done but not all, it's still 'incomplete' or 'pending'?
-                    // Usually "In Progress" isn't a status here, so we keep 'incomplete' as "partially done"
                     updatedFields.status = 'incomplete';
                 }
             } else {
@@ -1020,7 +1059,7 @@ function V10PreviewLayout() {
             
             if (updateErr) console.error("[SOW Sync] Update error:", updateErr);
         } else {
-            // 4. Auto-add to SOW if we have records but no SOW entry (Standard fallback)
+            // 4. Auto-add to SOW if missing (Standard fallback)
             let newStatus: 'pending' | 'completed' | 'incomplete' = 'completed';
             if (currentStatus?.toUpperCase() === 'INCOMPLETE') {
                 newStatus = 'incomplete';
@@ -1030,7 +1069,7 @@ function V10PreviewLayout() {
             console.log(`[Status Sync] -> AUTO-ADDING to SOW: ${compObj?.name || compId} with task ${taskCode}`);
             
             const { error: insertError } = await supabase.from('u_sow_items').insert({
-                sow_id: Number(sowId),
+                sow_id: activeSowId,
                 component_id: compId,
                 component_qid: compObj?.name || compObj?.q_id || `COMP-${compId}`,
                 component_type: compObj?.raw?.type || null,
@@ -1038,7 +1077,7 @@ function V10PreviewLayout() {
                 inspection_code: taskCode,
                 inspection_name: it.name,
                 status: newStatus,
-                report_number: headerData.sowReportNo,
+                report_number: activeReportNo && activeReportNo !== 'N/A' ? activeReportNo : headerData.sowReportNo,
                 elevation_required: false,
                 created_by: userName,
                 updated_by: userName
