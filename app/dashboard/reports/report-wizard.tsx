@@ -108,6 +108,7 @@ const REPORT_TEMPLATES = {
         { id: "seabed-survey-debris", name: "Seabed Survey For Debris", icon: FileCheck, description: "Filtered Seabed GUI maps with debris items marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", icon: FileCheck, description: "Filtered Seabed GUI maps with gas seepages marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "seabed-survey-crater", name: "Seabed Survey For Crater", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-seabed-report", name: "ROV Seabed Survey Report", icon: FileCheck, description: "Unfiltered Seabed GUI maps showing all debris, craters and gas seepages", requires: ["jobpack", "structure", "sow_report"] },
         { id: "mgi-report", name: "ROV MGI Survey Report", icon: FileBarChart, description: "Vertical profile of marine growth thickness vs allowable thresholds", requires: ["jobpack", "structure", "sow_report"] },
         { id: "fmd-report", name: "ROV FMD Survey Report", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
         { id: "szci-report", name: "ROV Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
@@ -183,7 +184,8 @@ const TOC_SECTIONS = [
   { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
       { id: "seabed-survey-debris", name: "Seabed Survey For Debris", mode: "General" },
       { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", mode: "General" },
-      { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" }
+      { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" },
+      { id: "rov-seabed-report", name: "ROV Seabed Survey Report", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [] },
   { id: 13, name: "Additional Wall Thickness Inspection", templates: [
@@ -1444,12 +1446,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // Seabed Survey Reports
-        if (currentTemplateId === "seabed-survey-debris" || currentTemplateId === "seabed-survey-gas" || currentTemplateId === "seabed-survey-crater") {
+        if (currentTemplateId === "rov-seabed-report" || currentTemplateId === "seabed-survey-debris" || currentTemplateId === "seabed-survey-gas" || currentTemplateId === "seabed-survey-crater") {
             const jobPack = await fetchJobPackData();
             const structure = await fetchStructureData();
             if (!jobPack || !structure) return null;
             
             const filterMap: Record<string, string> = {
+                "rov-seabed-report": "",
                 "seabed-survey-debris": "Debris",
                 "seabed-survey-gas": "Gas Seepage",
                 "seabed-survey-crater": "Crater"

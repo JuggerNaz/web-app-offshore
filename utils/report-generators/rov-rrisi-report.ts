@@ -281,11 +281,20 @@ export const generateROVRRISIReport = async (
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.8); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
                     doc.rect(cX - cw/2 - fw, py - 1, fw, 2, 'S'); doc.rect(cX + cw/2, py - 1, fw, 2, 'S');
                     doc.setFillColor(...colors.navy); doc.circle(cX - cw/2 - fw/2, py, 0.5, 'F'); doc.circle(cX + cw/2 + fw/2, py, 0.5, 'F');
-                    doc.setLineWidth(0.3); doc.line(cX + cw/2 + fw, py, dX - 5, py);
-                    doc.setFontSize(6); doc.setTextColor(...colors.navy); doc.text(c.q_id || 'Clamp', dX - 3, py + 1.5, { align: 'right' });
+                    doc.setLineWidth(0.3); 
+                    const lineStart = cX + cw/2 + fw;
+                    const lineEnd = lineStart + 10;
+                    doc.line(lineStart, py, lineEnd, py);
+                    doc.setFontSize(6); doc.setTextColor(...colors.navy); 
+                    doc.text(`${el}m`, lineEnd + 1, py + 1);
+                    doc.text(c.q_id || 'Clamp', lineEnd + 1, py + 3);
                 } else {
                     doc.setFillColor(...col); doc.circle(cX, py, 1.8, 'F');
-                    doc.setDrawColor(...col); doc.setLineWidth(0.1); doc.line(cX + 2, py, dX - 5, py);
+                    doc.setDrawColor(...col); doc.setLineWidth(0.1); 
+                    const lineEnd = cX + 2 + 10;
+                    doc.line(cX + 2, py, lineEnd, py);
+                    doc.setFontSize(6); doc.setTextColor(...col);
+                    doc.text(`${el}m`, lineEnd + 1, py + 1);
                 }
             });
 

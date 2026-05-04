@@ -123,7 +123,8 @@ export const generateSeabedSurveyReport = async (
 
         d.setFont("helvetica", "bold");
         d.setFontSize(13);
-        d.text(`SEABED SURVEY - ${itemTypeFilter.toUpperCase()} REPORT`, pageWidth / 2, sy + 20, { align: "center" });
+        const titleType = itemTypeFilter ? itemTypeFilter.toUpperCase() : "GENERAL";
+        d.text(`SEABED SURVEY - ${titleType} REPORT`, pageWidth / 2, sy + 20, { align: "center" });
 
         d.setTextColor(0, 0, 0);
     };
@@ -173,9 +174,11 @@ export const generateSeabedSurveyReport = async (
         drawHeader(doc);
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
-        doc.text(`No ${itemTypeFilter} records found for this seabed survey.`, pageWidth / 2, 80, { align: "center" });
+        const emptyMsg = itemTypeFilter ? `${itemTypeFilter} records` : "records";
+        doc.text(`No ${emptyMsg} found for this seabed survey.`, pageWidth / 2, 80, { align: "center" });
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`${config.reportNoPrefix}_Seabed_${itemTypeFilter.replace(/\s+/g,'_')}.pdf`);
+        const fileSuffix = itemTypeFilter ? itemTypeFilter.replace(/\s+/g,'_') : "General";
+        doc.save(`${config.reportNoPrefix}_Seabed_${fileSuffix}.pdf`);
         return;
     }
 
@@ -403,5 +406,6 @@ export const generateSeabedSurveyReport = async (
     }
 
     if (config.returnBlob) return doc.output("blob");
-    doc.save(`${config.reportNoPrefix}_Seabed_${itemTypeFilter.replace(/\s+/g,'_')}.pdf`);
+    const fileSuffix = itemTypeFilter ? itemTypeFilter.replace(/\s+/g,'_') : "General";
+    doc.save(`${config.reportNoPrefix}_Seabed_${fileSuffix}.pdf`);
 };
