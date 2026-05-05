@@ -122,7 +122,7 @@ export default function ROVJobSetupDialog({
                 if (structureId) query = query.eq("structure_id", parseInt(structureId));
                 if (sowId) query = query.eq("sow_report_no", sowId);
 
-                const { data, error } = await query.single();
+                const { data, error } = await query.maybeSingle();
 
                 if (!error && data && data.deployment_no) {
                     const nextNo = generateNextDeploymentNumber(data.deployment_no);
@@ -348,6 +348,10 @@ export default function ROVJobSetupDialog({
                 throw new Error("Unable to get current user. Please log in again.");
             }
 
+            // Convert IDs to numbers safely
+            const jid = jobpackId ? parseInt(jobpackId) : null;
+            const sid = structureId ? parseInt(structureId) : null;
+
             let query;
             const payload = {
                 deployment_no: formData.deployment_no,
@@ -372,8 +376,8 @@ export default function ROVJobSetupDialog({
                     .from("insp_rov_jobs")
                     .insert({
                         ...payload,
-                        structure_id: structureId ? parseInt(structureId) : null,
-                        jobpack_id: jobpackId ? parseInt(jobpackId) : null,
+                        structure_id: isNaN(sid as any) ? null : sid,
+                        jobpack_id: isNaN(jid as any) ? null : jid,
                         sow_report_no: sowId,
                         status: "IN_PROGRESS",
                         cr_user: user.id,
@@ -388,14 +392,17 @@ export default function ROVJobSetupDialog({
 
             const { data, error } = await query;
 
-            if (error) throw error;
+            if (error) {
+                console.error("Supabase error saving ROV job:", error);
+                throw error;
+            }
 
             toast.success(existingJob ? "ROV deployment updated successfully!" : "ROV deployment created successfully!");
             onJobCreated(data);
             onOpenChange(false);
         } catch (error: any) {
-            console.error("Error saving ROV job:", error);
-            const errorMessage = error.message || "Failed to save ROV deployment";
+            console.error("Error saving ROV job details:", error);
+            const errorMessage = error.message || (typeof error === 'string' ? error : "Failed to save ROV deployment");
             const errorDetails = error.details || "";
             const errorHint = error.hint || "";
             toast.error(`${errorMessage}${errorDetails ? ` - ${errorDetails}` : ""}${errorHint ? ` (${errorHint})` : ""}`);

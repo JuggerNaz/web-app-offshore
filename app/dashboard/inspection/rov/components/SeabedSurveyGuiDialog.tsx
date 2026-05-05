@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
+import { Badge } from "@/components/ui/badge";
 
 interface SeabedSurveyGuiDialogProps {
     open: boolean;
@@ -51,6 +52,7 @@ export function SeabedSurveyGuiInline({
         distanceUnit: 'm'
     });
     const [editFormData, setEditFormData] = useState<any>(null);
+    const [selectedReference, setSelectedReference] = useState<any>(null);
     const [currentPage, setCurrentPage] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -126,7 +128,16 @@ export function SeabedSurveyGuiInline({
                         x: parseFloat(idraw.x),
                         y: parseFloat(idraw.y),
                         label: (index + 1).toString(),
-                        type: cat
+                        type: cat,
+                        isMetallic: idraw.material === 'Metallic' || idraw.debris_material === 'Metallic',
+                        description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || '',
+                        material: idraw.material || idraw.debris_material || 'Unknown',
+                        size: idraw.size_dimensions || idraw.dimension_1 || 'N/A',
+                        intensity: idraw.seepage_intensity || 'Moderate',
+                        craterDiameter: idraw.crater_diameter || '',
+                        craterDepth: idraw.crater_depth || '',
+                        face: idraw.face || '',
+                        distance: idraw.distance_from_leg || idraw.distance || 0,
                     };
                 }).filter(r => !isNaN(r.x) && !isNaN(r.y));
                 setComparisonDebris(mapped);
@@ -143,13 +154,22 @@ export function SeabedSurveyGuiInline({
         if (!rovJob) return;
         try {
             setIsSyncing(true);
-            const { data, error } = await supabase.from('insp_records')
+            let query = supabase.from('insp_records')
             .select(`
                 insp_id, inspection_data, description, status, tape_count_no, tape_id, cr_user, structure_components:component_id ( q_id )
             `)
             .eq('structure_id', Number(structureId))
-            .eq('inspection_type_code', 'RSEAB')
-            .order('insp_id', { ascending: true });
+            .eq('inspection_type_code', 'RSEAB');
+
+            if (jobpackId) query = query.eq('jobpack_id', Number(jobpackId));
+            
+            // Apply SOW Report filtering
+            const effectiveSowReport = sowReportNo || rovJob?.raw?.sow_report_no || rovJob?.sow_report_no;
+            if (effectiveSowReport) {
+                query = query.eq('sow_report_no', effectiveSowReport);
+            }
+
+            const { data, error } = await query.order('insp_id', { ascending: true });
 
         if (error || !data) {
             setExistingDebris([]);
@@ -192,25 +212,38 @@ export function SeabedSurveyGuiInline({
 
     useEffect(() => {
         if (activeId) {
-            const item = existingDebris.find(d => d.id === activeId);
-            if (item) {
+            // 1. Check live debris
+            const liveItem = existingDebris.find(d => d.id === activeId);
+            if (liveItem) {
+                setSelectedReference(null);
                 setEditFormData({
-                    category: item.type,
-                    description: item.description,
-                    material: item.material,
-                    size: item.size,
-                    intensity: item.intensity,
-                    craterDiameter: item.craterDiameter,
-                    craterDiameterUnit: item.craterDiameterUnit,
-                    craterDepth: item.craterDepth,
-                    craterDepthUnit: item.craterDepthUnit,
-                    distanceUnit: item.distanceUnit,
-                    distance: item.distance,
-                    face: item.face
+                    category: liveItem.type,
+                    description: liveItem.description,
+                    material: liveItem.material,
+                    size: liveItem.size,
+                    intensity: liveItem.intensity,
+                    craterDiameter: liveItem.craterDiameter,
+                    craterDiameterUnit: liveItem.craterDiameterUnit,
+                    craterDepth: liveItem.craterDepth,
+                    craterDepthUnit: liveItem.craterDepthUnit,
+                    distanceUnit: liveItem.distanceUnit,
+                    distance: liveItem.distance,
+                    face: liveItem.face
                 });
+                return;
             }
+
+            // 2. Check reference (historical) debris
+            const refItem = comparisonDebris.find(d => d.id === activeId);
+            if (refItem) {
+                setSelectedReference(refItem);
+                setEditFormData(null);
+            }
+        } else {
+            setSelectedReference(null);
+            setEditFormData(null);
         }
-    }, [activeId, existingDebris]);
+    }, [activeId, existingDebris, comparisonDebris]);
 
     const handleAddClick = (x: number, y: number, geometry: any) => {
         if (!isStreamRecording || isStreamPaused) {
@@ -1002,35 +1035,99 @@ export function SeabedSurveyGuiInline({
                     )}
 
                     {/* Selected Item View */}
-                    {activeId && activeItem && !isAdding && (
+                    {activeId && !isAdding && (
                         <div className="w-80 bg-white border-l p-6 space-y-6 overflow-y-auto animate-in slide-in-from-right">
-                             <div>
-                                <h3 className="font-black text-slate-800 uppercase tracking-wider mb-1">Marker #{activeItem.label}</h3>
-                                <p className="text-xs text-slate-500 font-medium">Original QID: {activeItem.qid}</p>
-                            </div>
+                             {selectedReference ? (
+                                 // --- HISTORICAL VIEW ---
+                                 <div className="space-y-6">
+                                     <div className="flex items-center justify-between">
+                                         <div>
+                                             <div className="flex items-center gap-2 mb-1">
+                                                 <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">HISTORICAL</Badge>
+                                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ref#{selectedReference.label}</span>
+                                             </div>
+                                             <h3 className="font-black text-slate-800 uppercase tracking-wider">{selectedReference.type}</h3>
+                                         </div>
+                                     </div>
 
-                            <div className="space-y-4 pt-4 border-t">
-                                <div className="bg-slate-50 py-2 px-3 rounded text-sm text-slate-600 font-bold border border-slate-100 flex flex-col gap-1">
-                                    <div className="flex justify-between items-center text-xs opacity-70">
-                                        <span>Face: {activeItem.face}</span>
-                                        <div className="flex items-center gap-1">
-                                            <span>Dist: {activeItem.distance}</span>
-                                            <select 
-                                                className="bg-transparent text-[10px] font-bold text-slate-500 focus:outline-none cursor-pointer"
-                                                value={editFormData?.distanceUnit || 'm'}
-                                                onChange={e => setEditFormData((p: any) => ({...p, distanceUnit: e.target.value}))}
-                                            >
-                                                <option value="m">m</option>
-                                                <option value="mm">mm</option>
-                                            </select>
+                                     <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-100 space-y-4">
+                                         <div className="space-y-1">
+                                             <Label className="text-[10px] font-black text-amber-600/60 uppercase tracking-widest">Historical Description</Label>
+                                             <p className="text-sm font-bold text-slate-700 leading-relaxed">
+                                                 {selectedReference.description || "No description provided in previous survey."}
+                                             </p>
+                                         </div>
+
+                                         <div className="grid grid-cols-2 gap-4 pt-2">
+                                             <div className="space-y-1">
+                                                 <Label className="text-[10px] font-bold text-slate-400 uppercase">Material</Label>
+                                                 <p className="text-xs font-bold text-slate-600">{selectedReference.material || 'N/A'}</p>
+                                             </div>
+                                             <div className="space-y-1">
+                                                 <Label className="text-[10px] font-bold text-slate-400 uppercase">Dimensions</Label>
+                                                 <p className="text-xs font-bold text-slate-600">{selectedReference.size || 'N/A'}</p>
+                                             </div>
+                                         </div>
+                                     </div>
+
+                                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-3">
+                                         <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                             <span>Spatial Context</span>
+                                             <span className="text-slate-300">Historical Sync</span>
+                                         </div>
+                                         <div className="grid grid-cols-2 gap-2">
+                                             <div className="bg-white p-2 rounded border border-slate-200 flex flex-col gap-0.5">
+                                                 <span className="text-[9px] text-slate-400 uppercase font-black">X-Coord</span>
+                                                 <span className="text-xs font-mono font-bold text-slate-600">{selectedReference.x}</span>
+                                             </div>
+                                             <div className="bg-white p-2 rounded border border-slate-200 flex flex-col gap-0.5">
+                                                 <span className="text-[9px] text-slate-400 uppercase font-black">Y-Coord</span>
+                                                 <span className="text-xs font-mono font-bold text-slate-600">{selectedReference.y}</span>
+                                             </div>
+                                         </div>
+                                     </div>
+
+                                     <div className="pt-4 border-t border-slate-100">
+                                        <p className="text-[10px] text-slate-400 italic leading-normal mb-4">
+                                            This is a read-only record from a previous survey. To update this item, you must drop a new flag in the current live grid.
+                                        </p>
+                                        <Button className="w-full" variant="ghost" onClick={() => setActiveId(null)}>
+                                            Deselect
+                                        </Button>
+                                     </div>
+                                </div>
+                             ) : activeItem ? (
+                                // --- LIVE EDIT VIEW ---
+                                <>
+                                     <div>
+                                        <h3 className="font-black text-slate-800 uppercase tracking-wider mb-1">Marker #{activeItem.label}</h3>
+                                        <p className="text-xs text-slate-500 font-medium">Original QID: {activeItem.qid}</p>
+                                    </div>
+        
+                                    <div className="space-y-4 pt-4 border-t">
+                                        <div className="bg-slate-50 py-2 px-3 rounded text-sm text-slate-600 font-bold border border-slate-100 flex flex-col gap-1">
+                                            <div className="flex justify-between items-center text-xs opacity-70">
+                                                <span>Face: {activeItem.face}</span>
+                                                <div className="flex items-center gap-1">
+                                                    <span>Dist: {activeItem.distance}</span>
+                                                    <select 
+                                                        className="bg-transparent text-[10px] font-bold text-slate-500 focus:outline-none cursor-pointer"
+                                                        value={editFormData?.distanceUnit || 'm'}
+                                                        onChange={e => setEditFormData((p: any) => ({...p, distanceUnit: e.target.value}))}
+                                                    >
+                                                        <option value="m">m</option>
+                                                        <option value="mm">mm</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs border-t border-slate-200/50 pt-1 mt-1">
+                                                <span>X: {activeItem.x}</span>
+                                                <span>Y: {activeItem.y}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="flex justify-between items-center text-xs border-t border-slate-200/50 pt-1 mt-1">
-                                        <span>X: {activeItem.x}</span>
-                                        <span>Y: {activeItem.y}</span>
-                                    </div>
-                                </div>
-                            </div>
+                                </>
+                             ) : null}
 
                              {editFormData && (
                                 <div className="space-y-4 pt-4 border-t border-slate-100">

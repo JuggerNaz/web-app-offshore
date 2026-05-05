@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
+import { cn } from "@/lib/utils";
 
 interface Point {
     x: number;
@@ -423,32 +424,66 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                     )}
 
                     {/* Reference / Comparison Markers (Ghost) */}
-                    <g className="pointer-events-none">
-                        {referenceItems.map((item) => (
-                            <g key={`ref-${item.id}`} transform={`translate(${toScreen(item.x) - CENTER}, ${toScreen(item.y) - CENTER})`}>
-                                <circle
-                                    cx={CENTER}
-                                    cy={CENTER}
-                                    r="10"
-                                    className="fill-none stroke-slate-400 dark:stroke-slate-500 stroke-[1px] opacity-40"
-                                    strokeDasharray="2 2"
-                                />
-                                <circle
-                                    cx={CENTER}
-                                    cy={CENTER}
-                                    r="1.5"
-                                    className="fill-slate-400 dark:fill-slate-500 opacity-50"
-                                />
-                                <text
-                                    x={CENTER}
-                                    y={CENTER + 15}
-                                    textAnchor="middle"
-                                    className="fill-slate-400 dark:fill-slate-500 text-[8px] font-black opacity-60 uppercase"
+                    <g>
+                        {referenceItems.map((item) => {
+                            const colorClass = item.type === 'Gas Seepage' 
+                                ? 'stroke-green-500' 
+                                : item.type === 'Crater' 
+                                    ? 'stroke-purple-500' 
+                                    : item.isMetallic 
+                                        ? 'stroke-blue-500' 
+                                        : 'stroke-orange-500';
+
+                            return (
+                                <g 
+                                    key={`ref-${item.id}`} 
+                                    transform={`translate(${toScreen(item.x) - CENTER}, ${toScreen(item.y) - CENTER})`}
+                                    className="cursor-pointer group"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onSelectDebris?.(item.id);
+                                    }}
                                 >
-                                    REF#{item.label}
-                                </text>
-                            </g>
-                        ))}
+                                    {/* Halo for visibility */}
+                                    <circle
+                                        cx={CENTER}
+                                        cy={CENTER}
+                                        r="12"
+                                        className={cn(
+                                            "fill-white/40 dark:fill-slate-800/40 transition-all",
+                                            activeDebrisId === item.id ? "fill-cyan-400/20 r-15" : "group-hover:fill-white/60"
+                                        )}
+                                    />
+                                    <circle
+                                        cx={CENTER}
+                                        cy={CENTER}
+                                        r="10"
+                                        className={cn(
+                                            `fill-none ${colorClass} stroke-[2px] transition-all`,
+                                            activeDebrisId === item.id ? "opacity-100 stroke-[3px]" : "opacity-60"
+                                        )}
+                                        strokeDasharray="3 2"
+                                    />
+                                    <circle
+                                        cx={CENTER}
+                                        cy={CENTER}
+                                        r="2"
+                                        className={`fill-current ${colorClass} opacity-80`}
+                                    />
+                                    <text
+                                        x={CENTER}
+                                        y={CENTER + 20}
+                                        textAnchor="middle"
+                                        className={cn(
+                                            `fill-current ${colorClass} text-[9px] font-black uppercase tracking-tighter transition-all`,
+                                            activeDebrisId === item.id ? "opacity-100 scale-110" : "opacity-80"
+                                        )}
+                                    >
+                                        REF#{item.label}
+                                    </text>
+                                </g>
+                            );
+                        })}
                     </g>
 
                     {/* Debris Markers */}

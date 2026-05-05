@@ -1888,6 +1888,12 @@
                             "required": false
                         },
                         {
+                            "name": "movement_detected",
+                            "label": "Movement Detected",
+                            "type": "boolean",
+                            "required": false
+                        },
+                        {
                             "$ref": "component_condition"
                         },
                         {
