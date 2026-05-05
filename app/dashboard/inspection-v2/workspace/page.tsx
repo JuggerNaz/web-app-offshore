@@ -5833,7 +5833,21 @@ function V10PreviewLayout() {
                                                                     return (
                                                                         <td key={col.id} className="px-3 py-3 align-top text-slate-700">
                                                                             {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
-                                                                                <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{r.insp_anomalies[0].anomaly_ref_no}</span>
+                                                                                <div className="flex flex-col gap-1">
+                                                                                    <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">{r.insp_anomalies[0].anomaly_ref_no}</span>
+                                                                                    {r.insp_anomalies[0].priority_code && (
+                                                                                        <span className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded shadow-sm w-fit uppercase tracking-wider ${
+                                                                                            r.insp_anomalies[0].priority_code.includes('1') ? 'bg-red-600' :
+                                                                                            r.insp_anomalies[0].priority_code.includes('2') ? 'bg-orange-500' :
+                                                                                            r.insp_anomalies[0].priority_code.includes('3') ? 'bg-yellow-500 text-black' :
+                                                                                            r.insp_anomalies[0].priority_code.includes('4') ? 'bg-blue-500' :
+                                                                                            r.insp_anomalies[0].priority_code.includes('5') ? 'bg-slate-500' :
+                                                                                            'bg-slate-900'
+                                                                                        }`}>
+                                                                                            {r.insp_anomalies[0].priority_code}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
                                                                             ) : <span className="text-slate-300">-</span>}
                                                                         </td>
                                                                     );
@@ -6441,7 +6455,21 @@ function V10PreviewLayout() {
                                                             return (
                                                                 <td key={col.id} className="px-3 py-3 align-top text-slate-700">
                                                                     {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
-                                                                        <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{r.insp_anomalies[0].anomaly_ref_no}</span>
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">{r.insp_anomalies[0].anomaly_ref_no}</span>
+                                                                            {r.insp_anomalies[0].priority_code && (
+                                                                                <span className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded shadow-sm w-fit uppercase tracking-wider ${
+                                                                                    r.insp_anomalies[0].priority_code.includes('1') ? 'bg-red-600' :
+                                                                                    r.insp_anomalies[0].priority_code.includes('2') ? 'bg-orange-500' :
+                                                                                    r.insp_anomalies[0].priority_code.includes('3') ? 'bg-yellow-500 text-black' :
+                                                                                    r.insp_anomalies[0].priority_code.includes('4') ? 'bg-blue-500' :
+                                                                                    r.insp_anomalies[0].priority_code.includes('5') ? 'bg-slate-500' :
+                                                                                    'bg-slate-900'
+                                                                                }`}>
+                                                                                    {r.insp_anomalies[0].priority_code}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     ) : <span className="text-slate-300">-</span>}
                                                                 </td>
                                                             );

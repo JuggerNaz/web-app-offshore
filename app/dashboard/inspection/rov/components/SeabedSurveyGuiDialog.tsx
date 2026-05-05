@@ -1277,14 +1277,16 @@ export function SeabedSurveyGuiInline({
                             )}
 
                             <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
-                                <Button 
-                                    className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50" 
-                                    variant="outline" 
-                                    onClick={handleDeleteDebris} 
-                                    disabled={isSaving}
-                                >
-                                    {isSaving ? "Deleting..." : "Delete This Record"}
-                                </Button>
+                                {!selectedReference && (
+                                    <Button 
+                                        className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50" 
+                                        variant="outline" 
+                                        onClick={handleDeleteDebris} 
+                                        disabled={isSaving}
+                                    >
+                                        {isSaving ? "Deleting..." : "Delete This Record"}
+                                    </Button>
+                                )}
                                 <Button className="w-full" variant="ghost" onClick={() => setActiveId(null)}>
                                     Deselect
                                 </Button>
