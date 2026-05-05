@@ -9,7 +9,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Link2 } from "lucide-react";
+import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Link2, Paperclip } from "lucide-react";
 import { DeleteConfirmDialog } from "../dialogs/delete-confirm-dialog";
 import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
@@ -33,6 +33,7 @@ type Component = {
   created_by: string | null;
   modified_by: string | null;
   is_deleted?: boolean | null;
+  has_attachment?: boolean;
 };
 
 type ComponentType = {
@@ -364,10 +365,9 @@ export default function ComponentContent() {
                   <TableTh className="w-[200px]" onClick={() => handleSort('id_no')} sortDirection={sortConfig?.key === 'id_no' ? sortConfig.direction : null}>{pageType === "pipeline" ? "ID No" : "System ID No"}</TableTh>
                   <TableTh className="w-[140px]" onClick={() => handleSort('q_id')} sortDirection={sortConfig?.key === 'q_id' ? sortConfig.direction : null}>Q ID</TableTh>
                   <TableTh className="w-[100px]" onClick={() => handleSort('code')} sortDirection={sortConfig?.key === 'code' ? sortConfig.direction : null}>Type</TableTh>
-                  <TableTh className="w-[180px]" onClick={() => handleSort('kp_node')} sortDirection={sortConfig?.key === 'kp_node' ? sortConfig.direction : null}>{pageType === "pipeline" ? "KP" : "Node Path (S/E)"}</TableTh>
-                  <TableTh className="w-[160px]" onClick={() => handleSort('depth_leg')} sortDirection={sortConfig?.key === 'depth_leg' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Depth" : "Platform Leg (S/E)"}</TableTh>
-                  <TableTh className="w-[160px]" onClick={() => handleSort('easting_elv')} sortDirection={sortConfig?.key === 'easting_elv' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Easting Northing" : "Elevation (1/2)"}</TableTh>
-                  <TableTh className="w-[120px]" onClick={() => handleSort('created_at')} sortDirection={sortConfig?.key === 'created_at' ? sortConfig.direction : null}>Timestamp</TableTh>
+                  <TableTh className="w-[180px]" onClick={() => handleSort('kp_node')} sortDirection={sortConfig?.key === 'kp_node' ? sortConfig.direction : null}>{pageType === "pipeline" ? "KP" : "start node / end node"}</TableTh>
+                  <TableTh className="w-[160px]" onClick={() => handleSort('depth_leg')} sortDirection={sortConfig?.key === 'depth_leg' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Depth" : "start leg / end leg"}</TableTh>
+                  <TableTh className="w-[160px]" onClick={() => handleSort('easting_elv')} sortDirection={sortConfig?.key === 'easting_elv' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Easting Northing" : "elevation (s/e)"}</TableTh>
                   <TableTh className="w-[80px] text-center">Actions</TableTh>
                 </tr>
               </thead>
@@ -400,9 +400,15 @@ export default function ComponentContent() {
                     >
                       <td className="px-4 py-4 align-middle">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:text-blue-500 transition-colors">
-                            <Hash className="h-4 w-4" />
-                          </div>
+                          {comp.has_attachment ? (
+                            <div className="h-8 w-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-500 transition-colors" title="Has Attachments">
+                              <Paperclip className="h-4 w-4" />
+                            </div>
+                          ) : (
+                            <div className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:text-blue-500 transition-colors">
+                              <Hash className="h-4 w-4" />
+                            </div>
+                          )}
                           <span className="font-mono text-[11px] font-bold text-slate-500 leading-tight">{comp.id_no}</span>
                         </div>
                       </td>
@@ -457,14 +463,14 @@ export default function ComponentContent() {
                       <td className="px-4 py-4 align-middle text-slate-500 font-medium">
                         <div className="flex items-center gap-3">
                           <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold">{pageType === "pipeline" ? "Easting" : "Base"}</span>
+                            {pageType === "pipeline" && <span className="text-[10px] text-slate-400 uppercase font-bold">Easting</span>}
                             <span className="text-slate-900 dark:text-white font-black">
                               {pageType === "pipeline" ? (comp.metadata?.easting || "0") : (comp.metadata?.elv_1 || "0")}
                             </span>
                           </div>
                           <div className="h-6 w-px bg-slate-100 dark:bg-slate-800" />
                           <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold">{pageType === "pipeline" ? "Northing" : "Top"}</span>
+                            {pageType === "pipeline" && <span className="text-[10px] text-slate-400 uppercase font-bold">Northing</span>}
                             <span className="text-slate-900 dark:text-white font-black">
                               {pageType === "pipeline" ? (comp.metadata?.northing || "0") : (comp.metadata?.elv_2 || "0")}
                             </span>

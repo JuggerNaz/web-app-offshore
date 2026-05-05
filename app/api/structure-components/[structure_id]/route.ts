@@ -53,6 +53,54 @@ export const GET = withAuth(
       return apiSuccess([]);
     }
 
+    // --- Attachment Enrichment ---
+    const componentIds = data.map((c: any) => c.id);
+    
+    // Fetch direct component attachments
+    const { data: directAtts } = await supabase
+      .from("attachment")
+      .select("source_id")
+      .in("source_id", componentIds)
+      .in("source_type", ["component", "COMPONENT", "structure_component"]);
+
+    // Fetch inspection records to find inspection attachments
+    const { data: inspRecords } = await supabase
+      .from("insp_records")
+      .select("insp_id, component_id")
+      .in("component_id", componentIds);
+
+    let inspAtts: any[] = [];
+    if (inspRecords && inspRecords.length > 0) {
+      const inspIds = inspRecords.map((r: any) => r.insp_id);
+      const { data: iAtts } = await supabase
+        .from("attachment")
+        .select("source_id")
+        .in("source_id", inspIds)
+        .in("source_type", ["inspection", "INSPECTION"]);
+      inspAtts = iAtts || [];
+    }
+
+    const compsWithAtts = new Set();
+    
+    if (directAtts) {
+      directAtts.forEach((att: any) => compsWithAtts.add(att.source_id));
+    }
+
+    if (inspRecords && inspAtts) {
+      const inspAttsSet = new Set(inspAtts.map((a: any) => a.source_id));
+      inspRecords.forEach((r: any) => {
+        if (inspAttsSet.has(r.insp_id)) {
+          compsWithAtts.add(r.component_id);
+        }
+      });
+    }
+
+    // Apply has_attachment flag
+    data.forEach((item: any) => {
+      item.has_attachment = compsWithAtts.has(item.id);
+    });
+    // -----------------------------
+
     // Enrich created_by / modified_by with user names via get_user_info RPC (same pattern as comments API)
     try {
       const userIds = Array.from(
