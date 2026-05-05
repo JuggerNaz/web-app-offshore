@@ -1,5 +1,5 @@
 
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 import { createClient } from "@/utils/supabase/client";
@@ -270,10 +270,14 @@ export const generateMultiInspectionReport = async (
             } // End of Attachments
         } // End of For Loop
 
+        if (config?.returnBlob) {
+            return doc.output("blob");
+        }
+
         doc.save(`${config?.reportNoPrefix || 'Inspection'}_Combined_Report.pdf`);
 
     } catch (e) {
         console.error("Multi Report Generation Error", e);
-        alert("Failed to generate combined report");
+        throw e;
     }
 };

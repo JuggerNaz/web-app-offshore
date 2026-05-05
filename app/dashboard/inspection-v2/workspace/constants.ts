@@ -121,10 +121,10 @@ export const COMPONENTS_NON_SOW = [
 
 export const HISTORICAL_DATA = [
     { year: 2024, type: "GVINS", status: "Anomaly", finding: "Minor marine growth", inspector: "Alex" },
-    { year: 2022, type: "CVINS", status: "Pass", finding: "Clear", inspector: "Jitesh" },
+    { year: 2022, type: "CVINS", status: "Complete", finding: "Clear", inspector: "Jitesh" },
 ];
 
 export const CURRENT_RECORDS = [
-    { id: 1, time: "10:57", type: "GVINS", comp: "LEG B2", status: "Pass", timer: "00:15:10", hasPhoto: true },
+    { id: 1, time: "10:57", type: "GVINS", comp: "LEG B2", status: "Complete", timer: "00:15:10", hasPhoto: true },
     { id: 2, time: "11:20", type: "HSTAT", comp: "LEG B2", status: "Anomaly", timer: "00:30:45", hasPhoto: false },
 ];

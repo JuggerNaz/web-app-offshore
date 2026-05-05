@@ -1,8 +1,7 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
-import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
     company_name?: string;
@@ -36,6 +35,7 @@ export const generateROVCasnReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | void> => {
+    console.log("[ROV Caisson Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
@@ -43,7 +43,6 @@ export const generateROVCasnReport = async (
         const margin = 12;
         const contentWidth = pageWidth - margin * 2;
 
-        const supabase = createClient();
 
         const colors = {
             navy:      [31,  55,  93]  as [number, number, number],
@@ -387,7 +386,14 @@ export const generateROVCasnReport = async (
             });
         });
 
-        if (config.returnBlob) return doc.output("blob");
+        // --- 8. Output ---
+        console.log("[ROV Caisson Report] Generation complete, returnBlob:", config?.returnBlob);
+        if (config?.returnBlob !== false) {
+            console.log("[ROV Caisson Report] Returning Blob");
+            return doc.output("blob");
+        }
+        
+        console.log("[ROV Caisson Report] Saving PDF to file");
         doc.save(`ROV_Caisson_Survey_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[ROV Caisson Report] Error:", err);

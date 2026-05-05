@@ -1,5 +1,5 @@
 
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 import { createClient } from "@/utils/supabase/client";
@@ -300,10 +300,11 @@ export const generateInspectionReport = async (
             }
         }
 
+        if (config?.returnBlob) return doc.output("blob");
         doc.save(`${isAnomaly ? 'Anomaly' : 'Inspection'}_Report_${inspectionId}.pdf`);
 
     } catch (e) {
         console.error("Report Generation Error", e);
-        alert("Failed to generate report");
+        throw e;
     }
 };

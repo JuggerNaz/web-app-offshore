@@ -39,6 +39,7 @@ interface SeabedDebrisPlotProps {
         distance?: number;
     };
     distanceOffset?: number;
+    referenceItems?: DebrisItem[];
 }
 
 const VIEW_SIZE = 600;
@@ -58,6 +59,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
     activeDebrisId = null,
     manualEntry,
     distanceOffset = 0,
+    referenceItems = [],
 }) => {
     const isDraggingRef = React.useRef(false);
 
@@ -419,6 +421,35 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                             pointerEvents="none"
                         />
                     )}
+
+                    {/* Reference / Comparison Markers (Ghost) */}
+                    <g className="pointer-events-none">
+                        {referenceItems.map((item) => (
+                            <g key={`ref-${item.id}`} transform={`translate(${toScreen(item.x) - CENTER}, ${toScreen(item.y) - CENTER})`}>
+                                <circle
+                                    cx={CENTER}
+                                    cy={CENTER}
+                                    r="10"
+                                    className="fill-none stroke-slate-400 dark:stroke-slate-500 stroke-[1px] opacity-40"
+                                    strokeDasharray="2 2"
+                                />
+                                <circle
+                                    cx={CENTER}
+                                    cy={CENTER}
+                                    r="1.5"
+                                    className="fill-slate-400 dark:fill-slate-500 opacity-50"
+                                />
+                                <text
+                                    x={CENTER}
+                                    y={CENTER + 15}
+                                    textAnchor="middle"
+                                    className="fill-slate-400 dark:fill-slate-500 text-[8px] font-black opacity-60 uppercase"
+                                >
+                                    REF#{item.label}
+                                </text>
+                            </g>
+                        ))}
+                    </g>
 
                     {/* Debris Markers */}
                     {debrisItems.map((item) => (

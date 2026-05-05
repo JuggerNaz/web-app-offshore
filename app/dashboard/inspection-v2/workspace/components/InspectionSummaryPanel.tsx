@@ -25,8 +25,16 @@ import {
     Wrench,
     FileSearch,
     Ship,
+    LayoutGrid,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { createClient } from "@/utils/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -92,7 +100,7 @@ interface SummaryData {
         open: number;
         byPriority: Record<string, number>;
     };
-    attachmentGroups: Record<string, number>;
+    attachmentGroups: Record<string, { count: number; total: number }>;
 }
 
 interface InspectionSummaryPanelProps {
@@ -248,6 +256,8 @@ function InspTypeCard({
     const accent = TYPE_ACCENT_PALETTE[colorIndex % TYPE_ACCENT_PALETTE.length];
     const hasAlert = anomaly > 0 || finding > 0;
 
+    const modeStr = [rov > 0 && "ROV", dive > 0 && "Diving"].filter(Boolean).join(" & ");
+
     return (
         <div
             className="rounded-lg border px-3 py-2.5 flex items-center gap-2.5 transition-all hover:scale-[1.005]"
@@ -257,46 +267,10 @@ function InspTypeCard({
                 boxShadow: hasAlert ? "0 0 0 1px rgba(239,68,68,0.12)" : undefined,
             }}
         >
-            {/* Code badge */}
-            <span
-                className="text-[11px] font-black px-2 py-0.5 rounded font-mono flex-shrink-0 tracking-wider"
-                style={{ background: accent.codeBg, color: accent.text }}
-            >
-                {code}
+            {/* Name with Mode in Brackets */}
+            <span className="text-[13px] font-semibold text-slate-200 flex-1 truncate">
+                {name} <span className="text-slate-400 font-medium ml-1">({modeStr})</span>
             </span>
-
-            {/* Name */}
-            <span className="text-[13px] font-semibold text-slate-200 flex-1 truncate">{name}</span>
-
-            {/* ROV pill — only when rov > 0 */}
-            {rov > 0 && (
-                <span
-                    className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded flex-shrink-0"
-                    style={{
-                        background: "rgba(59,130,246,0.22)",
-                        color: "#93c5fd",
-                        border: "1px solid rgba(59,130,246,0.35)"
-                    }}
-                >
-                    <span className="font-mono">ROV</span>
-                    <span>{rov}</span>
-                </span>
-            )}
-
-            {/* DIVE pill — only when dive > 0 */}
-            {dive > 0 && (
-                <span
-                    className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded flex-shrink-0"
-                    style={{
-                        background: "rgba(6,182,212,0.18)",
-                        color: "#67e8f9",
-                        border: "1px solid rgba(6,182,212,0.35)"
-                    }}
-                >
-                    <span className="font-mono">DIVE</span>
-                    <span>{dive}</span>
-                </span>
-            )}
 
             {/* Anomaly badge — only when > 0 */}
             {anomaly > 0 && (
@@ -334,7 +308,7 @@ function InspTypeCard({
 
             {/* Total count */}
             <span
-                className="text-lg font-black flex-shrink-0 min-w-[20px] text-right"
+                className="text-lg font-black flex-shrink-0 min-w-[20px] text-right ml-2"
                 style={{ color: accent.text }}
             >
                 {count}
@@ -357,7 +331,9 @@ export function InspectionSummaryPanel({
     const [loading, setLoading] = useState(false);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [activeSection, setActiveSection] = useState("all");
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const supabase = createClient();
 
     const fetchSummary = useCallback(async () => {
@@ -387,6 +363,7 @@ export function InspectionSummaryPanel({
     useEffect(() => {
         if (!open) return;
         fetchSummary();
+        setActiveSection("all");
         intervalRef.current = setInterval(fetchSummary, 30000); // refresh every 30s
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
@@ -421,6 +398,30 @@ export function InspectionSummaryPanel({
     const anomalies = data?.anomalies;
     const findings = data?.findings;
     const attachmentGroups = data?.attachmentGroups;
+
+    const navSections = [
+        { id: "all", label: "All Summary" },
+        { id: "sow", label: "Scope of Work", show: !!sow },
+        { id: "overview", label: "Inspection Overview", show: !!records },
+        { id: "fmd", label: "FMD Details", show: !!(fmd && fmd.total > 0) },
+        { id: "anode", label: "Anode Inspection", show: !!(anodeGvi && anodeGvi.total > 0) },
+        { id: "cp", label: "CP Readings", show: !!(cp && (cp.primaryCount > 0 || cp.additionalCount > 0)) },
+        { id: "anomalies", label: "Anomaly Breakdown", show: !!(anomalies && anomalies.total > 0) },
+        { id: "findings", label: "Findings Breakdown", show: !!(findings && findings.total > 0) },
+        { id: "attachments", label: "Attachment Groups", show: !!attachmentGroups },
+    ].filter(s => s.show !== false);
+
+    const scrollToSection = (id: string) => {
+        setActiveSection(id);
+        if (id === "all") {
+            scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+            return;
+        }
+        const el = document.getElementById(`summary-sec-${id}`);
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    };
 
     const sowSegments = sow
         ? [
@@ -483,17 +484,36 @@ export function InspectionSummaryPanel({
                 </div>
 
                 {/* ── Live Indicator ── */}
-                <div className="px-6 py-1.5 bg-slate-900/70 border-b border-slate-800/50 flex items-center gap-2 shrink-0">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[9px] font-black uppercase tracking-[0.15em] text-emerald-500">Live Dashboard</span>
-                    <span className="text-[9px] text-slate-600 mx-1">·</span>
-                    <span className="text-[9px] text-slate-500">Auto-refreshes every 30s · Realtime sync active</span>
+                <div className="px-6 py-1.5 bg-slate-900/70 border-b border-slate-800/50 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-[9px] font-black uppercase tracking-[0.15em] text-emerald-500">Live Dashboard</span>
+                        <span className="text-[9px] text-slate-600 mx-1">·</span>
+                        <span className="text-[9px] text-slate-500 hidden sm:inline">Auto-refreshes 30s</span>
+                    </div>
                     {loading && (
-                        <>
-                            <span className="text-[9px] text-slate-600 mx-1">·</span>
-                            <span className="text-[9px] text-blue-400 font-bold animate-pulse">Refreshing...</span>
-                        </>
+                        <span className="text-[9px] text-blue-400 font-bold animate-pulse">Refreshing...</span>
                     )}
+                </div>
+
+                {/* ── Navigation List Box ── */}
+                <div className="px-6 py-3 bg-slate-900/40 border-b border-slate-800/50 flex items-center justify-between shrink-0 backdrop-blur-md">
+                    <div className="flex items-center gap-2">
+                        <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Go to Section</span>
+                    </div>
+                    <Select value={activeSection} onValueChange={scrollToSection}>
+                        <SelectTrigger className="w-[180px] h-8 bg-slate-800/50 border-slate-700/50 text-[11px] font-bold text-slate-200 rounded-lg focus:ring-0 focus:ring-offset-0">
+                            <SelectValue placeholder="Select Section" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-700 text-slate-200">
+                            {navSections.map(s => (
+                                <SelectItem key={s.id} value={s.id} className="text-[11px] font-bold focus:bg-blue-600/20 focus:text-blue-400">
+                                    {s.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
 
                 {/* ── Error ── */}
@@ -505,10 +525,13 @@ export function InspectionSummaryPanel({
                 )}
 
                 {/* ── Scrollable Content ── */}
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-7 custom-scrollbar">
+                <div 
+                    ref={scrollContainerRef}
+                    className="flex-1 overflow-y-auto px-6 py-5 space-y-7 custom-scrollbar"
+                >
 
                     {/* ═══ SECTION 1: SOW COMPLETION ═══════════════════════════════════════ */}
-                    <section>
+                    <section id="summary-sec-sow">
                         <SectionHeader icon={Target} title="Scope of Work Completion" color="blue" />
 
                         {/* Big completion ring + stats */}
@@ -576,10 +599,10 @@ export function InspectionSummaryPanel({
                     </section>
 
                     {/* ═══ SECTION 2: INSPECTION OVERVIEW ════════════════════════════════ */}
-                    <section>
+                    <section id="summary-sec-overview">
                         <SectionHeader icon={Activity} title="Inspection Overview" color="cyan" count={records?.total} />
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                            <StatCard icon={CheckCircle2} label="Pass Records" value={records?.completed ?? 0} color="green" />
+                            <StatCard icon={CheckCircle2} label="Complete Records" value={records?.completed ?? 0} color="green" />
                             <StatCard icon={Clock} label="Incomplete" value={records?.incomplete ?? 0} color="amber" />
                             <StatCard icon={AlertTriangle} label="Anomalies" value={records?.anomaly ?? 0} color="red" pulse={!!(records?.anomaly && records.anomaly > 0)} />
                             <StatCard icon={Info} label="Findings" value={records?.finding ?? 0} color="violet" />
@@ -631,7 +654,7 @@ export function InspectionSummaryPanel({
                                 </div>
                                 <div className="p-3 grid grid-cols-1 gap-2">
                                     {Object.entries(records.inspTypeBreakdown)
-                                        .sort((a, b) => b[1].count - a[1].count)
+                                        .sort((a, b) => a[1].name.localeCompare(b[1].name))
                                         .map(([code, info], idx) => (
                                             <InspTypeCard
                                                 key={code}
@@ -652,7 +675,7 @@ export function InspectionSummaryPanel({
 
                     {/* ═══ SECTION 3: FMD ═════════════════════════════════════════════════ */}
                     {fmd && fmd.total > 0 && (
-                        <section>
+                        <section id="summary-sec-fmd">
                             <SectionHeader icon={Eye} title="Flooded Member Detection (FMD)" color="teal" count={fmd.total} />
                             <div className="bg-slate-800/30 border border-teal-500/20 rounded-2xl p-4 space-y-4">
                                 {hasBoth ? (
@@ -715,7 +738,7 @@ export function InspectionSummaryPanel({
 
                     {/* ═══ SECTION 4: ANODE GVI ═══════════════════════════════════════════*/}
                     {anodeGvi && anodeGvi.total > 0 && (
-                        <section>
+                        <section id="summary-sec-anode">
                             <SectionHeader icon={Zap} title="Anode Inspection (GVI)" color="amber" count={anodeGvi.total} />
                             <div className="bg-slate-800/30 border border-amber-500/20 rounded-2xl p-4 space-y-4">
                                 {/* ROV / Dive / Total counts */}
@@ -848,7 +871,7 @@ export function InspectionSummaryPanel({
 
                     {/* ═══ SECTION 6: CP READINGS ═════════════════════════════════════════ */}
                     {cp && (cp.primaryCount > 0 || cp.additionalCount > 0) && (
-                        <section>
+                        <section id="summary-sec-cp">
                             <SectionHeader icon={Gauge} title="Cathodic Protection (CP)" color="cyan" count={cp.totalCount} />
                             <div className="bg-slate-800/30 border border-cyan-500/20 rounded-2xl p-4 space-y-4">
 
@@ -927,7 +950,7 @@ export function InspectionSummaryPanel({
 
                     {/* ═══ SECTION 7: ANOMALIES ═══════════════════════════════════════════ */}
                     {anomalies && anomalies.total > 0 && (
-                        <section>
+                        <section id="summary-sec-anomalies">
                             <SectionHeader icon={AlertTriangle} title="Anomaly Count" color="red" count={anomalies.total} />
                             <div className="bg-slate-800/30 border border-red-500/20 rounded-2xl p-4 space-y-4">
                                 <div className="grid grid-cols-3 gap-3">
@@ -995,7 +1018,7 @@ export function InspectionSummaryPanel({
 
                     {/* ═══ SECTION 8: FINDINGS ════════════════════════════════════════════ */}
                     {findings && findings.total > 0 && (
-                        <section>
+                        <section id="summary-sec-findings">
                             <SectionHeader icon={FileSearch} title="Findings Count" color="violet" count={findings.total} />
                             <div className="bg-slate-800/30 border border-violet-500/20 rounded-2xl p-4 space-y-4">
                                 <div className="grid grid-cols-3 gap-3">
@@ -1045,7 +1068,7 @@ export function InspectionSummaryPanel({
 
                     {/* ═══ SECTION 9: ATTACHMENT GROUPS ══════════════════════════════════ */}
                     {attachmentGroups && (
-                        <section>
+                        <section id="summary-sec-attachments">
                             <SectionHeader icon={Anchor} title="Attachment Group Inspections" color="blue" />
                             <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl overflow-hidden">
                                 {[
@@ -1055,7 +1078,9 @@ export function InspectionSummaryPanel({
                                     { key: "Riser Guard", icon: Shield, color: "green" },
                                     { key: "Boat Landing", icon: Ship, color: "amber" },
                                 ].map(({ key, icon: Icon, color }, idx) => {
-                                    const count = attachmentGroups[key] ?? 0;
+                                    const groupData = attachmentGroups[key];
+                                    const count = groupData?.count ?? 0;
+                                    const total = groupData?.total ?? 0;
                                     return (
                                         <div
                                             key={key}
@@ -1068,8 +1093,12 @@ export function InspectionSummaryPanel({
                                                 <div className="text-xs font-bold text-slate-300">{key} Inspection</div>
                                                 <div className="text-[9px] text-slate-500">Attachment group</div>
                                             </div>
-                                            <div className={`text-xl font-black ${count > 0 ? `text-${color}-400` : "text-slate-600"}`}>
-                                                {count}
+                                            <div className="text-right flex flex-col items-end">
+                                                <div className={`text-lg font-black ${count > 0 ? `text-${color}-400` : "text-slate-600"}`}>
+                                                    {count}
+                                                    <span className="text-[10px] text-slate-500 font-bold ml-1">/ {total}</span>
+                                                </div>
+                                                <div className="text-[8px] font-bold text-slate-600 uppercase tracking-tighter mt-0.5">Inspected of SOW</div>
                                             </div>
                                             <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                                         </div>

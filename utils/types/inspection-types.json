@@ -1368,7 +1368,7 @@
                     "name": "anode_type",
                     "label": "Anode Type",
                     "type": "combo",
-                    "lib_code": "ANODE_TYP",
+                    "lib_code": "ANOD_TYP",
                     "required": false
                 },
                 {
@@ -1643,13 +1643,8 @@
                         {
                             "name": "anode_type",
                             "label": "Anode Type",
-                            "type": "select",
-                            "options": [
-                                "Zn - Zinc",
-                                "Al - Aluminum",
-                                "Mg - Magnesium",
-                                "Other"
-                            ]
+                            "type": "combo",
+                            "lib_code": "ANOD_TYP"
                         },
                         {
                             "name": "anode_depletion",
@@ -1769,13 +1764,8 @@
                 {
                     "name": "anode_type",
                     "label": "Anode Type",
-                    "type": "select",
-                    "options": [
-                        "Zn - Zinc",
-                        "Al - Aluminum",
-                        "Mg - Magnesium",
-                        "Other"
-                    ]
+                    "type": "combo",
+                    "lib_code": "ANOD_TYP"
                 },
                 {
                     "name": "anode_depletion",
@@ -1880,6 +1870,22 @@
                         },
                         {
                             "$ref": "marine_growth"
+                        },
+                        {
+                            "name": "missing_bolts_nuts",
+                            "label": "Missing Bolts / Nuts",
+                            "type": "number",
+                            "unitCategory": "QUANTITY",
+                            "required": false
+                        },
+                        {
+                            "name": "max_gap",
+                            "label": "Max Gap",
+                            "type": "number",
+                            "unitCategory": "LENGTH",
+                            "defaultMetric": "mm",
+                            "defaultImperial": "in",
+                            "required": false
                         },
                         {
                             "$ref": "component_condition"

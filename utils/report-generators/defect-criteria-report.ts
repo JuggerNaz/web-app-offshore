@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 
 // Helper to load image for PDF (reused from pdf-generator.ts logic)

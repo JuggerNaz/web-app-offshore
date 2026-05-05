@@ -1,22 +1,21 @@
-const { Client } = require('pg');
+const { createClient } = require('@supabase/supabase-js');
 
-const client = new Client({
-    connectionString: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
-});
+const supabaseUrl = 'https://zpsmxtdqlpbdwfzctqzd.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpwc214dGRxbHBiZHdmemN0cXpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjY4NDIzODIsImV4cCI6MjA0MjQxODM4Mn0.t3uO7vnabDlwaz5iM6i8A-ya9cc6X20ZTn0bcR3zzs4';
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function dump() {
     try {
-        await client.connect();
-        const res = await client.query(`
-            SELECT code, name, default_properties 
-            FROM inspection_type
-            ORDER BY code
-        `);
-        console.log(JSON.stringify(res.rows, null, 2));
+        const { data, error } = await supabase
+            .from('inspection_type')
+            .select('code, name, metadata')
+            .order('code');
+            
+        if (error) throw error;
+        console.log(JSON.stringify(data, null, 2));
     } catch (err) {
         console.error(err);
-    } finally {
-        await client.end();
     }
 }
 
