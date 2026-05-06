@@ -134,15 +134,15 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
 
                 <div className="hidden md:flex items-center text-xs ml-3 space-x-3">
                     <div className="flex items-center gap-1.5">
-                        <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Jobpack:</span>
+                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Jobpack:</span>
                         <span className="font-mono font-bold text-slate-200">{headerData.jobpackName}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Structure Title:</span>
+                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Structure Title:</span>
                         <span className="font-mono font-bold text-slate-200">{headerData.platformName}</span>
                     </div>
                     <div className="flex items-center gap-1.5 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700">
-                        <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">SOW Report:</span>
+                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">SOW Report:</span>
                         <span className="font-mono font-black text-cyan-400">{headerData.sowReportNo}</span>
                         {headerData.jobType && (
                             <>
@@ -154,7 +154,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         )}
                     </div>
                     <div className="flex items-center gap-1.5 ml-2 border-l border-slate-700 pl-3">
-                        <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Vessel:</span>
+                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Vessel:</span>
                         <span className="font-mono font-bold text-blue-300">{headerData.vessel || "N/A"}</span>
                     </div>
                 </div>
@@ -193,7 +193,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
 
                             return (
                                 <>
-                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-50 mb-1">Inspection Reports</div>
+                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-300 tracking-widest border-b border-slate-50 dark:border-slate-800 mb-1">Inspection Reports</div>
                                     <ScrollArea className="max-h-48">
                                         {filteredReports.map(t => (
                                             <DropdownMenuItem key={t.id} onClick={() => generateInspectionReportByType(t.id)} className="text-xs py-2 cursor-pointer flex items-center justify-between">

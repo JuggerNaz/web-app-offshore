@@ -132,13 +132,13 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         <div className="p-2.5 bg-white space-y-2 rounded-b-md">
           <div className="flex justify-between text-xs px-1">
             <div>
-              <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-0.5">
+              <span className="text-[9px] text-slate-800 dark:text-slate-200 font-bold block uppercase tracking-wider mb-0.5">
                 Active Selection
               </span>
               <span className="font-bold text-slate-800 text-xs">{activeDep?.jobNo || "None"}</span>
             </div>
             <div className="text-right">
-              <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-0.5">
+              <span className="text-[9px] text-slate-800 dark:text-slate-200 font-bold block uppercase tracking-wider mb-0.5">
                 Time In Water
               </span>
               <span className="font-mono font-bold text-blue-600 text-xs">{timeInWater}</span>
@@ -146,7 +146,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
           </div>
 
           <div className="bg-slate-50 border border-slate-100/60 rounded px-2 py-1.5 text-center relative">
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+            <span className="text-[9px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest block mb-0.5">
               Current Movement
             </span>
             <span className="font-black text-slate-900 text-[14px] leading-tight flex items-center justify-center">

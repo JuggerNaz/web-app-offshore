@@ -160,10 +160,10 @@ function StatCard({
         <div className={`rounded-xl border p-4 flex flex-col gap-2 ${colors[color]} transition-all hover:scale-[1.02]`}>
             <div className="flex items-center gap-2">
                 <Icon className={`w-4 h-4 ${iconColors[color]} ${pulse ? "animate-pulse" : ""}`} />
-                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{label}</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">{label}</span>
             </div>
             <div className="text-3xl font-black text-white leading-none">{value}</div>
-            {sub && <div className="text-[10px] font-medium text-slate-500 leading-tight">{sub}</div>}
+            {sub && <div className="text-[10px] font-medium text-slate-400 leading-tight">{sub}</div>}
         </div>
     );
 }
@@ -172,7 +172,7 @@ function SectionHeader({ icon: Icon, title, count, color = "slate" }: { icon: Re
     return (
         <div className="flex items-center gap-2 mb-3">
             <Icon className={`w-4 h-4 text-${color}-400`} />
-            <h3 className="text-[11px] font-black uppercase tracking-[0.15em] text-slate-300">{title}</h3>
+            <h3 className="text-[11px] font-black uppercase tracking-[0.15em] text-slate-200">{title}</h3>
             {count !== undefined && (
                 <Badge className="bg-slate-700/80 text-slate-300 border-none text-[9px] h-4 px-1.5 font-black ml-auto">
                     {count}
@@ -222,7 +222,7 @@ function MultiSegmentBar({ segments }: { segments: { label: string; value: numbe
                 {segments.map((s, i) => (
                     <div key={i} className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: s.color }} />
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{s.label}</span>
+                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">{s.label}</span>
                         <span className="text-[9px] font-black text-white">{s.value}</span>
                     </div>
                 ))}
@@ -269,7 +269,7 @@ function InspTypeCard({
         >
             {/* Name with Mode in Brackets */}
             <span className="text-[13px] font-semibold text-slate-200 flex-1 truncate">
-                {name} <span className="text-slate-400 font-medium ml-1">({modeStr})</span>
+                {name} <span className="text-slate-300 font-medium ml-1">({modeStr})</span>
             </span>
 
             {/* Anomaly badge — only when > 0 */}
@@ -453,7 +453,7 @@ export function InspectionSummaryPanel({
                             </div>
                             <div>
                                 <h2 className="text-sm font-black uppercase tracking-[0.15em] text-white">Inspection Summary</h2>
-                                <div className="text-[10px] font-bold text-slate-400 tracking-wider">
+                                <div className="text-[10px] font-bold text-slate-300 tracking-wider">
                                     {headerData.platformName} · {headerData.sowReportNo}
                                 </div>
                             </div>
@@ -488,8 +488,8 @@ export function InspectionSummaryPanel({
                     <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         <span className="text-[9px] font-black uppercase tracking-[0.15em] text-emerald-500">Live Dashboard</span>
-                        <span className="text-[9px] text-slate-600 mx-1">·</span>
-                        <span className="text-[9px] text-slate-500 hidden sm:inline">Auto-refreshes 30s</span>
+                        <span className="text-[9px] text-slate-500 mx-1">·</span>
+                        <span className="text-[9px] text-slate-400 hidden sm:inline">Auto-refreshes 30s</span>
                     </div>
                     {loading && (
                         <span className="text-[9px] text-blue-400 font-bold animate-pulse">Refreshing...</span>
@@ -499,8 +499,8 @@ export function InspectionSummaryPanel({
                 {/* ── Navigation List Box ── */}
                 <div className="px-6 py-3 bg-slate-900/40 border-b border-slate-800/50 flex items-center justify-between shrink-0 backdrop-blur-md">
                     <div className="flex items-center gap-2">
-                        <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Go to Section</span>
+                        <LayoutGrid className="w-3.5 h-3.5 text-slate-300" />
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-300">Go to Section</span>
                     </div>
                     <Select value={activeSection} onValueChange={scrollToSection}>
                         <SelectTrigger className="w-[180px] h-8 bg-slate-800/50 border-slate-700/50 text-[11px] font-bold text-slate-200 rounded-lg focus:ring-0 focus:ring-offset-0">
@@ -570,7 +570,7 @@ export function InspectionSummaryPanel({
                             {/* Multi-segment bar */}
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
-                                    <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Overall Progress</span>
+                                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Overall Progress</span>
                                     <span className="text-[9px] font-black text-white">{sow?.total ?? 0} Total Items</span>
                                 </div>
                                 <MultiSegmentBar segments={sowSegments} />
@@ -581,7 +581,7 @@ export function InspectionSummaryPanel({
                                 <div className="bg-slate-900/60 rounded-xl p-3 flex items-center gap-3">
                                     <CheckCircle2 className="w-5 h-5 text-blue-400 flex-shrink-0" />
                                     <div>
-                                        <div className="text-[10px] text-slate-500 font-bold">Complete + Incomplete</div>
+                                        <div className="text-[10px] text-slate-400 font-bold">Complete + Incomplete</div>
                                         <div className="text-lg font-black text-white">{sow?.completionPct ?? 0}%</div>
                                         <div className="text-[9px] text-slate-600">vs Pending SOW Items</div>
                                     </div>
@@ -589,8 +589,8 @@ export function InspectionSummaryPanel({
                                 <div className="bg-slate-900/60 rounded-xl p-3 flex items-center gap-3">
                                     <Clock className="w-5 h-5 text-slate-400 flex-shrink-0" />
                                     <div>
-                                        <div className="text-[10px] text-slate-500 font-bold">Pending (Not Started)</div>
-                                        <div className="text-lg font-black text-slate-300">{sow?.pendingPct ?? 0}%</div>
+                                        <div className="text-[10px] text-slate-400 font-bold">Pending (Not Started)</div>
+                                        <div className="text-lg font-black text-slate-200">{sow?.pendingPct ?? 0}%</div>
                                         <div className="text-[9px] text-slate-600">{sow?.pending ?? 0} items remaining</div>
                                     </div>
                                 </div>
@@ -639,8 +639,8 @@ export function InspectionSummaryPanel({
                         {records && Object.keys(records.inspTypeBreakdown).length > 0 && (
                             <div className="mt-3 bg-slate-800/20 border border-slate-700/30 rounded-xl overflow-hidden">
                                 <div className="px-4 py-2.5 bg-slate-800/40 border-b border-slate-700/30 flex items-center gap-2">
-                                    <Layers className="w-3.5 h-3.5 text-slate-400" />
-                                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">By Inspection Type</span>
+                                    <Layers className="w-3.5 h-3.5 text-slate-300" />
+                                    <span className="text-[9px] font-black uppercase text-slate-300 tracking-wider">By Inspection Type</span>
                                     <div className="ml-auto flex items-center gap-2">
                                         <span className="inline-flex items-center gap-1 text-[8px] font-black px-1.5 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>
                                             <svg viewBox="0 0 12 12" className="w-2 h-2" fill="currentColor"><path d="M6 1L11 10H1L6 1z" /></svg>
@@ -702,7 +702,7 @@ export function InspectionSummaryPanel({
 
                                 {/* Condition Breakdown — members_status field values */}
                                 <div className="border-t border-slate-700/40 pt-3">
-                                    <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider mb-2">Member Status Breakdown</div>
+                                    <div className="text-[9px] font-black uppercase text-slate-400 tracking-wider mb-2">Member Status Breakdown</div>
                                     <div className="grid grid-cols-2 gap-2">
                                         {([
                                             { key: "dry",          label: "Dry",            color: "emerald" },
@@ -767,7 +767,7 @@ export function InspectionSummaryPanel({
                                 {/* Depletion % Breakdown */}
                                 {anodeGvi.depletionBuckets && Object.keys(anodeGvi.depletionBuckets).length > 0 && (
                                     <div className="border-t border-slate-700/40 pt-3">
-                                        <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider mb-2">Depletion % Breakdown</div>
+                                        <div className="text-[9px] font-black uppercase text-slate-400 tracking-wider mb-2">Depletion % Breakdown</div>
                                         <div className="space-y-1.5">
                                             {([
                                                 { key: "0–25%",   color: "#10b981" },

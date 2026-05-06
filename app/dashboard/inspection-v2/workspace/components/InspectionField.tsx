@@ -206,7 +206,7 @@ const InspectionField = ({
                                 <div className="space-y-1">
                                     {ANODE_DEPLETION_GROUPS.map((group) => (
                                         <div key={group.type}>
-                                            <div className="px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 rounded sticky top-0 z-10 border-b border-slate-100">
+                                            <div className="px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-900 rounded sticky top-0 z-10 border-b border-slate-100 dark:border-slate-800">
                                                 {group.type}
                                             </div>
                                             <div className="space-y-0.5 mt-0.5">
@@ -345,7 +345,7 @@ const InspectionField = ({
 
                                 return (
                                     <div key={sf.name} className="space-y-1">
-                                        <label className="text-[10px] uppercase text-slate-400 font-black tracking-wider">{sf.label}</label>
+                                        <label className="text-[10px] uppercase text-slate-800 dark:text-slate-200 font-black tracking-wider">{sf.label}</label>
                                         <div className="flex items-center gap-1">
                                             <Input
                                                 type={sf.type === 'number' ? 'number' : 'text'}
