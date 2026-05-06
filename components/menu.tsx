@@ -19,6 +19,7 @@ import {
   Crown,
   AlertTriangle,
   Sparkles,
+  Paperclip,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -190,7 +191,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             href="/dashboard/utilities/attachments"
             isCollapsed={isCollapsed}
             label="Attachments"
-            icon={<FileText className="h-[18px] w-[18px]" />}
+            icon={<Paperclip className="h-[18px] w-[18px]" />}
             text="Attachments"
           />
           <MenuLink
