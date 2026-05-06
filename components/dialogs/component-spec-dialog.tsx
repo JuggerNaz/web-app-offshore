@@ -99,7 +99,8 @@ export function ComponentSpecDialog({
   createdFrom,
 }: ComponentSpecDialogProps) {
   const isCreateMode = mode === "create";
-  const isEditMode = false; // edit handled by separate dialog
+  const [isEditing, setIsEditing] = useState(false);
+  const isEditMode = isEditing;
   const [structureId] = useAtom(urlId);
   const [pageType] = useAtom(urlType);
   const [isSaving, setIsSaving] = useState(false);
@@ -1070,6 +1071,18 @@ export function ComponentSpecDialog({
   const handleSave = async () => {
     if (!isCreateMode) return;
 
+    // Duplicate QID check
+    if (allComponents?.data) {
+      const isDuplicate = allComponents.data.some(
+        (c: any) =>
+          c.q_id?.trim().toUpperCase() === formData.q_id?.trim().toUpperCase() && !c.is_deleted
+      );
+      if (isDuplicate) {
+        toast(`A component with QID "${formData.q_id}" already exists in this structure.`);
+        return;
+      }
+    }
+
     const id_no = buildIdNo(
       formData.code || defaultCode || "",
       formData.s_node,
@@ -1184,9 +1197,93 @@ export function ComponentSpecDialog({
 
         additionalInfo: cleanTemplate,
       });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!component?.id) return;
+
+    // Duplicate QID check if QID changed
+    if (
+      allComponents?.data &&
+      formData.q_id?.trim().toUpperCase() !== component.q_id?.trim().toUpperCase()
+    ) {
+      const isDuplicate = allComponents.data.some(
+        (c: any) =>
+          c.q_id?.trim().toUpperCase() === formData.q_id?.trim().toUpperCase() &&
+          c.id !== component.id &&
+          !c.is_deleted
+      );
+      if (isDuplicate) {
+        toast(`A component with QID "${formData.q_id}" already exists in this structure.`);
+        return;
+      }
+    }
+
+    setIsSaving(true);
+    try {
+      const id_no = buildIdNo(
+        formData.code || component.code || "",
+        formData.s_node,
+        formData.f_node,
+        formData.dist,
+        formData.clk_pos
+      );
+
+      const metadata = {
+        ...component.metadata,
+        description: formData.description,
+        s_node: formData.s_node,
+        f_node: formData.f_node,
+        s_leg: formData.s_leg,
+        f_leg: formData.f_leg,
+        dist: formData.dist,
+        dist_unit: formData.dist_unit,
+        elv_1: formData.elv_1,
+        elv_1_unit: formData.elv_1_unit,
+        elv_2: formData.elv_2,
+        elv_2_unit: formData.elv_2_unit,
+        clk_pos: formData.clk_pos,
+        lvl: formData.lvl,
+        face: formData.face,
+        top_und: formData.top_und,
+        comp_group: formData.comp_group,
+        associated_comp_id: formData.associated_comp_id,
+        kp: formData.kp,
+        kp_unit: formData.kp_unit,
+        easting: formData.easting,
+        easting_unit: formData.easting_unit,
+        northing: formData.northing,
+        northing_unit: formData.northing_unit,
+        depth: formData.depth,
+        depth_unit: formData.depth_unit,
+        additionalInfo: formData.additionalInfo,
+      };
+
+      const payload = {
+        id_no,
+        q_id: formData.q_id,
+        metadata: metadata,
+      };
+
+      await fetcher(`/api/structure-components/item/${component.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+
+      if (listKey) {
+        mutate(listKey);
+      } else {
+        mutate(`/api/structure-components/${structureId}`);
+      }
+
+      toast("Component updated successfully");
+      setIsEditing(false);
     } catch (error) {
-      console.error("Error creating component:", error);
-      toast("Failed to create component");
+      console.error("Error updating component:", error);
+      toast("Failed to update component");
     } finally {
       setIsSaving(false);
     }
@@ -1231,7 +1328,7 @@ export function ComponentSpecDialog({
               <DialogTitle className="text-2xl font-black uppercase tracking-tight">
                 {isCreateMode
                   ? "Create New Component"
-                  : isEditMode
+                  : isEditing
                     ? "Edit Component"
                     : "Component Specifications"}
               </DialogTitle>
@@ -1264,6 +1361,41 @@ export function ComponentSpecDialog({
                 )}
               </DialogDescription>
             </div>
+          </div>
+          <div className="absolute top-8 right-8 flex gap-2">
+            {!isCreateMode && (
+              <Button
+                variant={isEditing ? "destructive" : "outline"}
+                size="sm"
+                className="rounded-xl font-bold uppercase text-[10px] tracking-widest gap-2"
+                onClick={() => setIsEditing(!isEditing)}
+              >
+                {isEditing ? (
+                  <>
+                    <X className="h-3 w-3" /> Cancel
+                  </>
+                ) : (
+                  <>
+                    <Settings2 className="h-3 w-3" /> Edit Data
+                  </>
+                )}
+              </Button>
+            )}
+            {isEditing && (
+              <Button
+                size="sm"
+                className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase text-[10px] tracking-widest gap-2 shadow-lg shadow-blue-500/20"
+                onClick={handleUpdate}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <Plus className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}
+                Save Changes
+              </Button>
+            )}
           </div>
         </DialogHeader>
 

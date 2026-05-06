@@ -164,6 +164,7 @@ import { getReportHeaderData } from "@/utils/company-settings";
 
 import { useWorkspaceReports } from "./hooks/useWorkspaceReports";
 import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
+import { WorkspaceResources } from "./components/WorkspaceResources";
 
 export default function WorkspaceV2Page() {
     return (
@@ -5921,248 +5922,30 @@ function V10PreviewLayout() {
 
                 </div>
 
-                <div className="w-[360px] flex flex-col gap-3 shrink-0 overflow-hidden">
-
-                    {/* 3. Component Target Selection */}
-                    <Card className="flex flex-col h-[400px] border-slate-200 shadow-sm rounded-md shrink-0 bg-white overflow-hidden">
-                        <div className="bg-slate-800 text-white flex items-center justify-between pl-1 pr-3 shrink-0">
-                            <div className="flex">
-                                <button onClick={() => setCompView("LIST")} className={`px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${compView === 'LIST' ? 'bg-blue-600 text-white border-b border-blue-600' : 'text-slate-400 hover:text-white border-b border-transparent'}`}>COMPONENT LIST</button>
-                                <button onClick={() => setCompView("MODEL_3D")} className={`px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${compView === 'MODEL_3D' ? 'bg-blue-600 text-white border-b border-blue-600' : 'text-slate-400 hover:text-white border-b border-transparent'}`}><Box className="w-3.5 h-3.5 mb-0.5" /> 3D</button>
-                            </div>
-                            {compView === "LIST" && <Search className="w-3.5 h-3.5 text-slate-400" />}
-                        </div>
-
-                        {compView === "LIST" && (
-                            <div className="flex flex-col flex-1 overflow-hidden min-h-0">
-                                <div className="p-2 border-b border-slate-100 shrink-0">
-                                    <Input placeholder="Search component..." className="h-8 text-xs bg-slate-50" value={compSearchTerm} onChange={(e: any) => setCompSearchTerm(e.target.value)} />
-                                </div>
-                                <ScrollArea className="flex-1 p-2">
-                                    <div className="space-y-4">
-                                        <div>
-                                            <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
-                                            <div className="space-y-1">
-                                                {componentsSow.filter((c: any) => {
-                                                    let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
-                                                    const hasValidTask = tasksToFilter.some((tCode: string) => {
-                                                        const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
-                                                        if (!it) return true;
-                                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                                                        if (inspMethod === "DIVING" && isDiving) return true;
-                                                        if (inspMethod === "ROV" && isRov) return true;
-                                                        return false;
-                                                    });
-                                                    if (!hasValidTask) return false;
-
-                                                    const term = compSearchTerm.toLowerCase().trim();
-                                                    if (!term) return true;
-                                                    const qid = (c.name || '').toLowerCase();
-                                                    const code = (c.raw?.code || '').toLowerCase();
-                                                    const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
-                                                    const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
-                                                    return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term);
-                                                }).map((c: any) => {
-                                                    const isSelected = selectedComp?.id === c.id;
-                                                    return (
-                                                        <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
-                                                            <div className="flex justify-between font-bold">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span>{c.name}</span>
-                                                                    <div
-                                                                        onClick={(e) => { e.stopPropagation(); setSelectedComp(c); setCompSpecDialogOpen(true); }}
-                                                                        className={`p-1 rounded hover:bg-black/10 transition-colors ${isSelected ? 'text-blue-100' : 'text-slate-300 hover:text-blue-500'}`}
-                                                                        title="View Component Specs"
-                                                                    >
-                                                                        <Info className="w-3.5 h-3.5" />
-                                                                    </div>
-                                                                </div>
-                                                                <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
-                                                            </div>
-                                                            {(c.startNode !== '-' || c.endNode !== '-') && (
-                                                                <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} â†’ {c.endNode}</div>
-                                                            )}
-                                                            <div className="flex flex-wrap gap-1 mt-1.5">
-                                                                {c.taskStatuses?.length > 0 ? c.taskStatuses.filter((ts: any) => {
-                                                                    const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
-                                                                    if (!it) return true;
-                                                                    const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                                                                    const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                                                                    if (inspMethod === "DIVING" && !isDiving) return false;
-                                                                    if (inspMethod === "ROV" && !isRov) return false;
-                                                                    return true;
-                                                                }).map((ts: any, idx: number) => {
-                                                                    const s = ts.status || 'pending';
-                                                                    const hasAnom = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === ts.code || r.inspection_type_code === ts.code) && r.component_id === c.id);
-                                                                    return (
-                                                                        <span key={idx} className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isSelected ? (
-                                                                            hasAnom ? 'bg-red-400/30 text-red-100' :
-                                                                                s === 'completed' ? 'bg-green-400/30 text-green-100' :
-                                                                                    s === 'incomplete' ? 'bg-amber-400/30 text-amber-100' :
-                                                                                        'bg-white/20 text-blue-100'
-                                                                        ) : (
-                                                                            hasAnom ? 'bg-red-50 text-red-700 border border-red-200' :
-                                                                                s === 'completed' ? 'bg-green-50 text-green-700 border border-green-200' :
-                                                                                    s === 'incomplete' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                                                                        'bg-slate-50 text-slate-500 border border-slate-200'
-                                                                        )
-                                                                            }`}>
-                                                                            <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500' :
-                                                                                s === 'completed' ? 'bg-green-500' :
-                                                                                    s === 'incomplete' ? 'bg-amber-500' :
-                                                                                        'bg-slate-400'
-                                                                                }`} />
-                                                                            {ts.code}
-                                                                        </span>
-                                                                    );
-                                                                }) : (
-                                                                    <span className={`text-[10px] font-mono ${isSelected ? 'opacity-85' : 'opacity-85'}`}>Tasks: {c.tasks?.filter((t: string) => {
-                                                                        const it = (allInspectionTypes || []).find((type: any) => type.code === t || type.name === t);
-                                                                        if (!it) return true;
-                                                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                                                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                                                                        if (inspMethod === "DIVING" && !isDiving) return false;
-                                                                        if (inspMethod === "ROV" && !isRov) return false;
-                                                                        return true;
-                                                                    }).join(', ')}</span>
-                                                                )}
-                                                            </div>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className="text-[9px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200">Non-SOW</div>
-                                            <div className="space-y-1">
-                                                {componentsNonSow.filter((c: any) => {
-                                                    const term = compSearchTerm.toLowerCase().trim();
-                                                    if (!term) return true;
-                                                    const qid = (c.name || '').toLowerCase();
-                                                    const code = (c.raw?.code || '').toLowerCase();
-                                                    const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
-                                                    const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
-                                                    return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term);
-                                                }).map((c: any) => (
-                                                    <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
-                                                        <div className="flex justify-between font-bold">
-                                                            <div className="flex items-center gap-2">
-                                                                <span>{c.name}</span>
-                                                                <div
-                                                                    onClick={(e) => { e.stopPropagation(); setSelectedComp(c); setCompSpecDialogOpen(true); }}
-                                                                    className={`p-1 rounded hover:bg-black/10 transition-colors ${selectedComp?.id === c.id ? 'text-slate-300' : 'text-slate-300 hover:text-blue-500'}`}
-                                                                    title="View Component Specs"
-                                                                >
-                                                                    <Info className="w-3.5 h-3.5" />
-                                                                </div>
-                                                            </div>
-                                                            <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
-                                                        </div>
-                                                        {(c.startNode !== '-' || c.endNode !== '-') && (
-                                                            <div className={`text-[9px] font-mono mt-0.5 ${selectedComp?.id === c.id ? 'text-slate-300' : 'text-slate-400'}`}>{c.startNode} â†’ {c.endNode}</div>
-                                                        )}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </ScrollArea>
-                            </div>
-                        )}
-
-                        {compView === "MODEL_3D" && (
-                            <div className="flex-1 bg-slate-900 flex flex-col items-center justify-center p-4 text-center border-dashed border-2 border-slate-800 m-2 rounded-lg relative overflow-hidden">
-                                <Layers className="w-12 h-12 mb-3 text-slate-700/50" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">3D Viewer</span>
-                            </div>
-                        )}
-                    </Card>
-
-                    {/* 4. Historical Records Overview */}
-                    <Card className="flex flex-col flex-1 border-slate-200 shadow-sm rounded-md bg-white overflow-hidden min-h-0">
-                        <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 flex justify-between items-center shrink-0">
-                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">HISTORY DATA</span>
-                            <History className="w-3 h-3 text-slate-400" />
-                        </div>
-                        <ScrollArea className="flex-1 p-3">
-                            {historyLoading ? (
-                                <div className="flex flex-col items-center justify-center p-12 gap-3 animate-in fade-in duration-500">
-                                    <div className="relative">
-                                        <div className="absolute inset-0 blur-md bg-blue-400/20 rounded-full animate-pulse" />
-                                        <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
-                                    </div>
-                                    <div className="flex flex-col items-center gap-1">
-                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Retrieving History</span>
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Looking up past inspection data...</span>
-                                    </div>
-                                </div>
-                            ) : !selectedComp ? (
-                                <div className="text-center text-slate-400 text-xs py-10">Select component to view history</div>
-                            ) : (
-                                <div className="space-y-4">
-                                    {/* Current Workpack Section */}
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <div className="h-px flex-1 bg-slate-100"></div>
-                                            <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded border border-blue-100">Current Workpack</span>
-                                            <div className="h-px flex-1 bg-slate-100"></div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {currentCompRecords.length === 0 ? (
-                                                <div className="text-[10px] text-slate-400 p-3 text-center bg-slate-50/50 rounded border border-dashed border-slate-200 italic font-medium">No records in current scope</div>
-                                            ) : currentCompRecords.map((r, i) => (
-                                                <div key={r.id} className="flex flex-col gap-1 p-2 bg-white rounded border border-slate-100 text-[11px] shadow-sm hover:border-blue-200 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="font-bold text-slate-700">{r.type}</span>
-                                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${r.status === 'Complete' ? 'bg-green-100 text-green-700' : (r.status === 'Incomplete' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}`}>{r.status}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-[9px] font-bold text-slate-500 uppercase tracking-tight">
-                                                        <span>{inspMethod === 'DIVING' ? 'Dive' : 'Dep'}: {r.diveNo || 'N/A'}</span>
-                                                        <span>Tape: {r.tapeNo}</span>
-                                                    </div>
-                                                    <div className="flex justify-between text-[9px] text-slate-400 font-medium">
-                                                        <span>{r.date} {r.time?.slice(0, 5)}</span>
-                                                        <span className="italic truncate max-w-[120px]">"{r.finding}"</span>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Historical Data Section */}
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <div className="h-px flex-1 bg-slate-100"></div>
-                                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Historical Data</span>
-                                            <div className="h-px flex-1 bg-slate-100"></div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {historicalRecords.length === 0 ? (
-                                                <div className="text-[10px] text-slate-400 p-3 text-center bg-slate-50/50 rounded border border-dashed border-slate-200 italic font-medium">No historical records found</div>
-                                            ) : historicalRecords.map((r, i) => (
-                                                <div key={i} className="flex flex-col gap-1 p-2 bg-slate-50/50 rounded border border-slate-100 text-[11px] opacity-80 hover:opacity-100 transition-opacity">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="font-bold text-slate-600">{r.type} ({r.year})</span>
-                                                        <span className={`px-1 py-0.5 rounded text-[7.5px] font-black uppercase ${r.status === 'Complete' ? 'bg-slate-200 text-slate-600' : 'bg-red-50 text-red-600'}`}>{r.status}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-[8px] font-bold text-slate-400 uppercase">
-                                                        <span>{inspMethod === 'DIVING' ? 'Dive' : 'Dep'}: {r.diveNo || 'N/A'}</span>
-                                                        <span>Tape: {r.tapeNo}</span>
-                                                    </div>
-                                                    <div className="text-[8px] text-slate-400 mt-0.5 italic">
-                                                        "{r.finding}"
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </ScrollArea>
-                    </Card>
-
-                </div>
+                <WorkspaceResources 
+                    compView={compView}
+                    setCompView={setCompView}
+                    compSearchTerm={compSearchTerm}
+                    setCompSearchTerm={setCompSearchTerm}
+                    componentsSow={componentsSow}
+                    componentsNonSow={componentsNonSow}
+                    selectedComp={selectedComp}
+                    handleComponentSelection={handleComponentSelection}
+                    setCompSpecDialogOpen={setCompSpecDialogOpen}
+                    currentRecords={currentRecords}
+                    currentCompRecords={currentCompRecords}
+                    historicalRecords={historicalRecords}
+                    historyLoading={historyLoading}
+                    inspMethod={inspMethod}
+                    supabase={supabase}
+                    structureId={structureId || 0}
+                    onRefreshComponents={() => {
+                        queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+                    }}
+                    allInspectionTypes={allInspectionTypes}
+                    structureType={headerData.structureType === 'pipeline' ? 'pipeline' : 'platform'}
+                    unitSystem={unitSystem}
+                />
 
             </div>
 

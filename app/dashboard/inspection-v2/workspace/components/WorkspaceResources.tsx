@@ -6,11 +6,15 @@ import {
     Box, 
     Layers, 
     History, 
-    Info 
+    Info,
+    PlusCircle,
+    Loader2
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { RegisterComponentDialog } from "./RegisterComponentDialog";
 
 interface WorkspaceResourcesProps {
     compView: "LIST" | "MODEL_3D";
@@ -25,7 +29,14 @@ interface WorkspaceResourcesProps {
     currentRecords: any[];
     currentCompRecords: any[];
     historicalRecords: any[];
+    historyLoading: boolean;
     inspMethod: "DIVING" | "ROV";
+    supabase: any;
+    structureId: string | number;
+    onRefreshComponents: () => void;
+    allInspectionTypes: any[];
+    structureType: "platform" | "pipeline";
+    unitSystem: "METRIC" | "IMPERIAL";
 }
 
 export function WorkspaceResources(props: WorkspaceResourcesProps) {
@@ -34,8 +45,12 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
         componentsSow, componentsNonSow, selectedComp,
         handleComponentSelection, setCompSpecDialogOpen,
         currentRecords, currentCompRecords, historicalRecords,
-        inspMethod
+        historyLoading,
+        inspMethod, supabase, structureId, onRefreshComponents,
+        allInspectionTypes, structureType, unitSystem
     } = props;
+
+    const [isRegisterOpen, setIsRegisterOpen] = React.useState(false);
 
     return (
         <div className="w-[360px] flex flex-col gap-3 shrink-0 overflow-hidden">
@@ -60,26 +75,59 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
 
                 {compView === "LIST" && (
                     <div className="flex flex-col flex-1 overflow-hidden min-h-0">
-                        <div className="p-2 border-b border-slate-100 shrink-0">
+                        <div className="p-2 border-b border-slate-100 shrink-0 flex gap-2">
                             <Input 
                                 placeholder="Search component..." 
-                                className="h-8 text-xs bg-slate-50" 
+                                className="h-8 text-xs bg-slate-50 flex-1" 
                                 value={compSearchTerm} 
                                 onChange={(e: any) => setCompSearchTerm(e.target.value)} 
                             />
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-8 px-2 border-dashed border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 gap-1.5"
+                                onClick={() => setIsRegisterOpen(true)}
+                                title="Register New Component"
+                            >
+                                <PlusCircle className="w-3.5 h-3.5" />
+                                <span className="text-[10px] font-black uppercase">Reg</span>
+                            </Button>
                         </div>
                         <ScrollArea className="flex-1 p-2">
                             <div className="space-y-4">
                                 <div>
                                     <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
                                     <div className="space-y-1">
-                                        {componentsSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => {
+                                        {componentsSow.filter((c: any) => {
+                                            let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
+                                            const hasValidTask = tasksToFilter.some((tCode: string) => {
+                                                const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                                                if (!it) return true;
+                                                const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                if (inspMethod === "DIVING" && isDiving) return true;
+                                                if (inspMethod === "ROV" && isRov) return true;
+                                                return false;
+                                            });
+                                            if (!hasValidTask) return false;
+
+                                            const term = compSearchTerm.toLowerCase().trim();
+                                            if (!term) return true;
+                                            
+                                            const qid = (c.name || '').toLowerCase();
+                                            const code = (c.raw?.code || '').toLowerCase();
+                                            const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
+                                            const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
+                                            const nodeStr = `${c.startNode || ''} ${c.endNode || ''}`.toLowerCase();
+                                            
+                                            return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term) || nodeStr.includes(term);
+                                        }).map((c: any) => {
                                             const isSelected = selectedComp?.id === c.id;
                                             return (
                                                 <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                     <div className="flex justify-between font-bold">
                                                         <div className="flex items-center gap-2">
-                                                            <span>{c.name}</span>
+                                                            <span className="truncate max-w-[140px]">{c.name}</span>
                                                             <div
                                                                 onClick={(e) => { e.stopPropagation(); handleComponentSelection(c); setCompSpecDialogOpen(true); }}
                                                                 className={`p-1 rounded hover:bg-black/10 transition-colors ${isSelected ? 'text-blue-100' : 'text-slate-300 hover:text-blue-500'}`}
@@ -90,10 +138,21 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                         </div>
                                                         <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
                                                     </div>
+                                                    {(c.startNode !== '-' || c.endNode !== '-') && (
+                                                        <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
+                                                    )}
                                                     <div className="flex flex-wrap gap-1 mt-1.5">
-                                                        {c.taskStatuses?.map((ts: any, idx: number) => {
+                                                        {c.taskStatuses?.filter((ts: any) => {
+                                                            const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
+                                                            if (!it) return true;
+                                                            const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                            const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                            if (inspMethod === "DIVING" && !isDiving) return false;
+                                                            if (inspMethod === "ROV" && !isRov) return false;
+                                                            return true;
+                                                        }).map((ts: any, idx: number) => {
                                                             const s = ts.status || 'pending';
-                                                            const hasAnom = currentRecords.some((r: any) => r.has_anomaly && r.inspection_type_code === ts.code && r.component_id === c.id);
+                                                            const hasAnom = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === ts.code || r.inspection_type_code === ts.code) && r.component_id === c.id);
                                                             return (
                                                                 <span key={idx} className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-white/20 text-blue-100' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
                                                                     <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500' : s === 'completed' ? 'bg-green-500' : 'bg-slate-400'}`} />
@@ -110,7 +169,13 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                 <div>
                                     <div className="text-[9px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200">Non-SOW</div>
                                     <div className="space-y-1">
-                                        {componentsNonSow.filter((c: any) => JSON.stringify(c).toLowerCase().includes(compSearchTerm.toLowerCase())).map((c: any) => (
+                                        {componentsNonSow.filter((c: any) => {
+                                            const term = compSearchTerm.toLowerCase().trim();
+                                            if (!term) return true;
+                                            const qid = (c.name || '').toLowerCase();
+                                            const code = (c.raw?.code || '').toLowerCase();
+                                            return qid.includes(term) || code.includes(term);
+                                        }).map((c: any) => (
                                             <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                 <div className="flex justify-between font-bold">
                                                     <span>{c.name}</span>
@@ -139,7 +204,18 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                     <History className="w-3 h-3 text-slate-400" />
                 </div>
                 <ScrollArea className="flex-1 p-3">
-                    {!selectedComp ? (
+                    {historyLoading ? (
+                        <div className="flex flex-col items-center justify-center p-12 gap-3 animate-in fade-in duration-500">
+                            <div className="relative">
+                                <div className="absolute inset-0 blur-md bg-blue-400/20 rounded-full animate-pulse" />
+                                <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
+                            </div>
+                            <div className="flex flex-col items-center gap-1">
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Retrieving History</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Looking up past inspection data...</span>
+                            </div>
+                        </div>
+                    ) : !selectedComp ? (
                         <div className="text-center text-slate-400 text-xs py-10">Select component to view history</div>
                     ) : (
                         <div className="space-y-4">
@@ -189,6 +265,20 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                     )}
                 </ScrollArea>
             </Card>
+
+            <RegisterComponentDialog 
+                open={isRegisterOpen}
+                onOpenChange={setIsRegisterOpen}
+                supabase={supabase}
+                structureId={structureId}
+                onSuccess={(newComp) => {
+                    onRefreshComponents();
+                    handleComponentSelection(newComp);
+                }}
+                structureType={structureType}
+                unitSystem={unitSystem}
+            />
         </div>
     );
 }
+

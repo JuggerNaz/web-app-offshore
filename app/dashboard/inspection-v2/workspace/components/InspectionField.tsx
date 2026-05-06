@@ -147,7 +147,7 @@ const InspectionField = ({
                         <div className="relative">
                             <Input
                                 placeholder={`Select or enter ${p.label || p.name}`}
-                                className={`h-9 text-sm bg-white pr-16 ${type === 'secondary' ? 'border-amber-200' : 'border-slate-200'}`}
+                                className={`h-8 text-sm bg-white pr-16 ${type === 'secondary' ? 'border-amber-200' : 'border-slate-200'}`}
                                 value={currentValue}
                                 onChange={(e) => handler(p.name || p.label, e.target.value)}
                                 onBlur={(e) => {
@@ -269,7 +269,7 @@ const InspectionField = ({
                         setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
                     }
                 }}
-                className={`flex h-9 w-full rounded-md border ${borderClass} bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                className={`flex h-8 w-full rounded-md border ${borderClass} bg-white px-2.5 text-xs font-semibold ${ringClass}`}
             >
                 <option value="">Select {p.label}</option>
                 {(p.options || []).map((opt: string) => (
@@ -282,7 +282,7 @@ const InspectionField = ({
     if (p.type === 'boolean') {
         const isChecked = currentValue === true || currentValue === "true" || currentValue === "Yes";
         return (
-            <div className="flex items-center gap-2 h-9 px-1">
+            <div className="flex items-center gap-2 h-8 px-1">
                 <Checkbox 
                     id={`${p.name || p.label}-${type}`}
                     checked={isChecked}
@@ -367,10 +367,10 @@ const InspectionField = ({
                                                         setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: newRows }));
                                                     }
                                                 }}
-                                                className="h-9 text-sm font-medium border-slate-200 focus-visible:ring-slate-400 flex-1"
+                                                className="h-8 text-sm font-medium border-slate-200 focus-visible:ring-slate-400 flex-1"
                                             />
                                             {sfCategoryUnits && (
-                                                <div className="relative flex items-center h-9 px-2 border border-slate-200 rounded-md bg-slate-50 min-w-[60px] hover:border-slate-300 transition-colors">
+                                                <div className="relative flex items-center h-8 px-2 border border-slate-200 rounded-md bg-slate-50 min-w-[60px] hover:border-slate-300 transition-colors">
                                                     <select
                                                         className="w-full bg-transparent border-none text-[10px] font-bold text-slate-500 focus:ring-0 cursor-pointer appearance-none pr-4"
                                                         value={sfCurrentUnit}
@@ -482,7 +482,7 @@ const InspectionField = ({
 
                 placeholder={isTimeField ? "HH:MM:SS" : `Enter ${p.label || p.name}`}
                 maxLength={isTimeField ? 8 : undefined}
-                className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass} flex-1`}
+                className={`h-8 text-xs font-semibold bg-white ${borderClass} ${ringClass} flex-1`}
             />
             {categoryUnits && (
                 <select

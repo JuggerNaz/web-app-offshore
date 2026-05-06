@@ -402,7 +402,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 <div className="space-y-3">
                     <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><MapPinIcon className="w-3 h-3" /> Verification Depth / Elevation</label>
+                            <label className="text-[10px] font-black text-slate-800 uppercase flex items-center gap-1"><MapPinIcon className="w-3 h-3 text-slate-400" /> Verification Depth / Elevation</label>
                             <div className="flex items-center gap-1">
                                 <Input 
                                     type="text"
@@ -428,7 +428,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         </div>
                         {(selectedComp.startElev !== '-' || selectedComp.endElev !== '-') && (
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">Elevation Range</label>
+                                <label className="text-[10px] font-black text-slate-800 uppercase flex items-center gap-1">Elevation Range</label>
                                 <div className="h-10 px-3 flex items-center text-sm font-bold bg-slate-50 border border-slate-200 rounded-md text-slate-600">
                                     {selectedComp.startElev} → {selectedComp.endElev} {dynamicProps?.verification_depth_unit || 'm'}
                                 </div>
@@ -443,13 +443,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
                             transition={{ duration: 0.3 }}
-                            className="p-3 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-2"
+                            className="p-2 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-2"
                         >
                             <div className="border-b border-slate-200 pb-2 space-y-3">
                                 <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest">Inspection Specification</div>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="space-y-1">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Insp. Date</span>
+                                        <span className="text-[9px] font-black text-slate-800 uppercase">Insp. Date</span>
                                         {renderInspectionField({ 
                                             name: 'inspection_date', 
                                             label: 'Date', 
@@ -457,7 +457,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         }, 'primary')}
                                     </div>
                                     <div className="space-y-1">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Insp. Time</span>
+                                        <span className="text-[9px] font-black text-slate-800 uppercase">Insp. Time</span>
                                         {renderInspectionField({ 
                                             name: 'inspection_time', 
                                             label: 'Time', 
@@ -465,7 +465,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         }, 'primary')}
                                     </div>
                                     <div className="space-y-1">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Counter Override</span>
+                                        <span className="text-[9px] font-black text-slate-800 uppercase">Counter Override</span>
                                         {renderInspectionField({ 
                                             name: 'tape_count_no', 
                                             label: `Live: ${formatTime(vidTimer)}`, 
@@ -540,7 +540,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <motion.div
                                                 initial={{ opacity: 0, y: 5 }}
                                                 animate={{ opacity: 1, y: 0 }}
-                                                className="col-span-2 border-2 border-teal-200 bg-gradient-to-br from-teal-50/60 to-white rounded-xl p-3 space-y-2 shadow-sm"
+                                                className="col-span-2 border-2 border-teal-200 bg-gradient-to-br from-teal-50/60 to-white rounded-xl p-2 space-y-2 shadow-sm"
                                             >
                                                 {/* Group Header */}
                                                 <div className="flex items-center justify-between border-b border-teal-200 pb-1.5">
@@ -550,7 +550,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                          </div>
                                                          <div className="flex flex-col">
                                                             <span className="text-[11px] font-black text-teal-800 dark:text-teal-400 uppercase tracking-widest leading-none">MGI Thickness</span>
-                                                            <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase mt-0.5">
+                                                            <span className="text-[8px] font-black text-slate-800 dark:text-slate-200 uppercase mt-0.5">
                                                                 Ref: {(() => {
                                                                     const wDepth = Math.abs(headerData.waterDepth || 0);
                                                                     if (wDepth > 0) return `${wDepth}m`;
@@ -625,7 +625,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <motion.div
                                                 initial={{ opacity: 0, y: 5 }}
                                                 animate={{ opacity: 1, y: 0 }}
-                                                className="col-span-2 border-2 border-blue-200 bg-gradient-to-br from-blue-50/60 to-white rounded-xl p-3 space-y-3 shadow-sm mb-2"
+                                                className="col-span-2 border-2 border-blue-200 bg-gradient-to-br from-blue-50/60 to-white rounded-xl p-2 space-y-2 shadow-sm mb-2"
                                             >
                                                 <div className="flex items-center gap-2 border-b border-blue-200 pb-1.5">
                                                      <div className="w-6 h-6 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -698,7 +698,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                         <div className="grid grid-cols-3 gap-x-4 gap-y-2">
                                                             {restFields.map((p: any) => (
                                                                 <div key={p.name} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-3' : 'space-y-1'}>
-                                                                    <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase truncate block">
+                                                                    <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase truncate block">
                                                                         {p.label || p.name}
                                                                     </label>
                                                                     {renderInspectionField(p, 'primary')}
@@ -712,7 +712,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                         <div className="grid grid-cols-3 gap-3">
                                                             {boolFields.map((p: any) => (
                                                                 <div key={p.name} className="space-y-1.5">
-                                                                    <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase mb-1.5 block">
+                                                                    <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase mb-1 block">
                                                                         {p.label || p.name}
                                                                     </label>
                                                                     {renderInspectionField(p, 'primary')}
@@ -769,14 +769,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             return (
                                                 <div className="space-y-4">
                                                     {mpiSetupFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
                                                                 MPI Equipment & Setup
                                                             </label>
-                                                            <div className="grid grid-cols-3 gap-3">
+                                                            <div className="grid grid-cols-3 gap-2">
                                                                 {mpiSetupFields.map((p: any, idx: number) => (
                                                                     <div key={p.name || `setup-${idx}`} className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -787,14 +787,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {thicknessFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
                                                                 Thickness Readings (Brace & Chord)
                                                             </label>
-                                                            <div className="grid grid-cols-4 gap-3">
+                                                            <div className="grid grid-cols-4 gap-2">
                                                                 {thicknessFields.map((p: any, idx: number) => (
-                                                                    <div key={p.name || `thick-${idx}`} className={p.name === 'nominal_thickness' ? 'col-span-4 mb-2 border-b border-slate-100 dark:border-slate-800 pb-2' : 'space-y-1'}>
-                                                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                    <div key={p.name || `thick-${idx}`} className={p.name === 'nominal_thickness' ? 'col-span-4 mb-1.5 border-b border-slate-100 dark:border-slate-800 pb-1.5' : 'space-y-1'}>
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -805,14 +805,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {cpFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
                                                                 CP Readings
                                                             </label>
-                                                            <div className="grid grid-cols-4 gap-3">
+                                                            <div className="grid grid-cols-4 gap-2">
                                                                 {cpFields.map((p: any, idx: number) => (
                                                                     <div key={p.name || `cp-${idx}`} className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -823,14 +823,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {locationFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
                                                                 Toe & Weld Descriptions
                                                             </label>
-                                                            <div className="grid grid-cols-4 gap-3">
+                                                            <div className="grid grid-cols-4 gap-2">
                                                                 {locationFields.map((p: any, idx: number) => (
                                                                     <div key={p.name || `loc-${idx}`} className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -877,12 +877,12 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             );
 
                                             return (
-                                                <div className="space-y-4">
+                                                <div className="space-y-3">
                                                     {restFields.length > 0 && (
-                                                        <div className="grid grid-cols-3 gap-x-4 gap-y-2">
+                                                        <div className="grid grid-cols-3 gap-x-3 gap-y-2">
                                                             {restFields.map((p: any) => (
                                                                 <div key={p.name} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-3' : 'space-y-1'}>
-                                                                    <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase truncate block">
+                                                                    <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase truncate block">
                                                                         {p.label || p.name}
                                                                     </label>
                                                                     {renderInspectionField(p, 'primary')}
@@ -892,14 +892,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {cpFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
                                                                 CP Readings
                                                             </label>
-                                                            <div className="grid grid-cols-3 gap-3">
+                                                            <div className="grid grid-cols-3 gap-2">
                                                                 {cpFields.map((p: any) => (
                                                                     <div key={p.name} className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -910,14 +910,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {pittingFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
                                                                 Pitting
                                                             </label>
-                                                            <div className="grid grid-cols-3 gap-3">
+                                                            <div className="grid grid-cols-3 gap-2">
                                                                 {pittingFields.map((p: any) => (
                                                                     <div key={p.name} className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -928,14 +928,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {circFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-2">
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
                                                                 Circumference
                                                             </label>
-                                                            <div className="grid grid-cols-3 gap-3">
+                                                            <div className="grid grid-cols-3 gap-2">
                                                                 {circFields.map((p: any) => (
                                                                     <div key={p.name} className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -961,7 +961,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                             transition={{ delay: idx * 0.05 }}
                                                         >
                                                             <div className="space-y-1">
-                                                                <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase truncate block">
+                                                                <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase truncate block">
                                                                     {p.label || p.name}
                                                                     {p.isLegacy && <span className="ml-1 text-amber-500 dark:text-amber-400 lowercase">(L)</span>}
                                                                 </label>
