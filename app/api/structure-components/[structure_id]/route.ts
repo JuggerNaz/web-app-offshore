@@ -19,6 +19,8 @@ export const GET = withAuth(
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
     const archived = searchParams.get("archived");
+    const showAll = searchParams.get("show_all") === "true";
+    const viewFilter = searchParams.get("view_filter") || "default"; // default, show_all, findings, anomaly
 
     const structureIdNumber = Number(structure_id);
 
@@ -29,14 +31,15 @@ export const GET = withAuth(
       .eq("structure_id", structureIdNumber)
       .order("q_id");
 
-    // Filter by archived / active
+    // Filter by archived / active / all
     if (archived === "true") {
       query = query.eq("is_deleted", true);
+    } else if (viewFilter === "show_all" || showAll) {
+      // Don't filter is_deleted
+    } else {
+      // Default: show only active components
+      query = query.eq("is_deleted", false);
     }
-    // else {
-    //   // If not explicitly asking for archived, we now return EVERYTHING (Active + Deleted)
-    //   // This allows the UI to show deleted items in a different color as requested.
-    // }
 
     // Apply code filter if provided and not "ALL COMPONENTS"
     if (code && code !== "ALL COMPONENTS") {
@@ -63,10 +66,19 @@ export const GET = withAuth(
       .in("source_id", componentIds)
       .in("source_type", ["component", "COMPONENT", "structure_component"]);
 
-    // Fetch inspection records to find inspection attachments
+    // Fetch inspection records with jobpack — inspection type name resolved client-side from JSON
     const { data: inspRecords } = await supabase
       .from("insp_records")
-      .select("insp_id, component_id")
+      .select(`
+        insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description,
+        jobpack:jobpack_id(name)
+      `)
+      .in("component_id", componentIds);
+
+    // Fetch anomalies directly linked to the components via the view
+    const { data: componentAnomalies } = await supabase
+      .from("v_anomaly_details")
+      .select("anomaly_id, component_id, priority, status, defect_type, category, description, display_ref_no, jobpack_name")
       .in("component_id", componentIds);
 
     let inspAtts: any[] = [];
@@ -95,17 +107,36 @@ export const GET = withAuth(
       });
     }
 
-    // Apply has_attachment flag
+    // Apply has_attachment flag and enrich with inspections/anomalies
     data.forEach((item: any) => {
       item.has_attachment = compsWithAtts.has(item.id);
+
+      if (inspRecords) {
+        item.inspections = inspRecords.filter((r: any) => r.component_id === item.id);
+      } else {
+        item.inspections = [];
+      }
+      if (componentAnomalies) {
+        item.anomalies = componentAnomalies.filter((a: any) => a.component_id === item.id);
+      } else {
+        item.anomalies = [];
+      }
     });
+
+    // Apply view_filter for findings/anomaly
+    let finalData = data;
+    if (viewFilter === "findings") {
+      finalData = data.filter((item: any) => item.inspections && item.inspections.length > 0);
+    } else if (viewFilter === "anomaly") {
+      finalData = data.filter((item: any) => item.anomalies && item.anomalies.length > 0);
+    }
     // -----------------------------
 
     // Enrich created_by / modified_by with user names via get_user_info RPC (same pattern as comments API)
     try {
       const userIds = Array.from(
         new Set(
-          data
+          finalData
             .flatMap((item: any) => [item.created_by, item.modified_by])
             .filter(Boolean)
         )
@@ -126,7 +157,7 @@ export const GET = withAuth(
             userMap.set(user.id, userName);
           });
 
-          const enrichedData = data.map((item: any) => ({
+          const enrichedData = finalData.map((item: any) => ({
             ...item,
             created_by_name: item.created_by
               ? userMap.get(item.created_by) || item.created_by
@@ -144,7 +175,7 @@ export const GET = withAuth(
       // Fallback to returning raw data below
     }
 
-    return apiSuccess(data);
+    return apiSuccess(finalData);
   }
 );
 

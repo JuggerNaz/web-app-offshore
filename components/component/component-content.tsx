@@ -3,17 +3,21 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Link2, Paperclip } from "lucide-react";
+import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Link2, Paperclip, AlertCircle, ChevronsLeft, ChevronLeft, ChevronsRight } from "lucide-react";
 import { DeleteConfirmDialog } from "../dialogs/delete-confirm-dialog";
 import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { ComponentEditDialog, EditableComponent } from "@/components/dialogs/component-edit-dialog";
+import { InspectionSummaryModal } from "@/components/dialogs/inspection-summary-modal";
+import { AnomalySummaryModal } from "@/components/dialogs/anomaly-summary-modal";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import useSWR, { mutate } from "swr";
@@ -34,6 +38,8 @@ type Component = {
   modified_by: string | null;
   is_deleted?: boolean | null;
   has_attachment?: boolean;
+  inspections?: any[];
+  anomalies?: any[];
 };
 
 type ComponentType = {
@@ -54,7 +60,10 @@ export default function ComponentContent() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [isListOpen, setIsListOpen] = useState(true);
   const [viewArchived, setViewArchived] = useState(false);
+  const [viewFilter, setViewFilter] = useState("default"); // default, show_all, findings, anomaly
   const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<'view' | 'create'>('view');
   const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
@@ -64,6 +73,30 @@ export default function ComponentContent() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [isLoadingTypes, setIsLoadingTypes] = useState(true);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  // Modal states for Inspections and Anomalies
+  const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
+  const [selectedInspections, setSelectedInspections] = useState<any[]>([]);
+  
+  const [anomalyModalOpen, setAnomalyModalOpen] = useState(false);
+  const [selectedAnomalies, setSelectedAnomalies] = useState<any[]>([]);
+
+  const getHighestPriorityAnomalyColor = (anomalies: any[]) => {
+    if (!anomalies || anomalies.length === 0) return null;
+    const hasP1 = anomalies.some(a => ["1", "P1", "HIGH", "CRITICAL"].includes((a.priority_code || a.priority || "").toUpperCase()));
+    if (hasP1) return "text-red-500 bg-red-500/10 hover:bg-red-500/20";
+    
+    const hasP2 = anomalies.some(a => ["2", "P2", "MEDIUM", "PRIORITY 2"].includes((a.priority_code || a.priority || "").toUpperCase()));
+    if (hasP2) return "text-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20";
+    
+    const hasP3 = anomalies.some(a => ["3", "P3", "LOW", "PRIORITY 3"].includes((a.priority_code || a.priority || "").toUpperCase()));
+    if (hasP3) return "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20";
+
+    const hasObs = anomalies.some(a => ["OBS", "OBSERVATION", "O"].includes((a.priority_code || a.priority || "").toUpperCase()));
+    if (hasObs) return "text-orange-500 bg-orange-500/10 hover:bg-orange-500/20";
+
+    return "text-slate-500 bg-slate-500/10 hover:bg-slate-500/20";
+  };
 
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -102,6 +135,7 @@ export default function ComponentContent() {
       const params = new URLSearchParams();
       if (selectedCode) params.set("code", selectedCode);
       if (viewArchived) params.set("archived", "true");
+      if (viewFilter !== "default") params.set("view_filter", viewFilter);
       const query = params.toString();
       return `/api/structure-components/${structureId}${query ? `?${query}` : ""}`;
     })()
@@ -185,6 +219,16 @@ export default function ComponentContent() {
     return 0;
   });
 
+  const totalPages = Math.ceil(sortedComponents.length / pageSize);
+  const paginatedComponents = sortedComponents.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, viewFilter, selectedCode, pageSize]);
+
   const getComponentName = (code: string | null) => {
     if (!code) return null;
     const type = componentTypes.find((t) => t.code === code);
@@ -225,6 +269,7 @@ export default function ComponentContent() {
       });
 
       if (apiUrl) mutate(apiUrl);
+      setCurrentPage(1);
       toast.success("Component duplicated successfully");
     } catch (error) {
       console.error("Duplicate failed", error);
@@ -258,8 +303,10 @@ export default function ComponentContent() {
 
   const handleTypeClick = (typeName: string | null, typeCode: string | null) => {
     setViewArchived(false);
+    setViewFilter("default");
     setSelectedType(typeName || "ALL COMPONENTS");
     setSelectedCode(typeCode);
+    setCurrentPage(1);
   };
 
   return (
@@ -341,17 +388,42 @@ export default function ComponentContent() {
                 className="h-11 pl-10 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
               />
             </div>
-            <Button
-              onClick={handleAddNewComponent}
-              className="h-11 px-6 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold shadow-lg hover:opacity-90 transition-all gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Add Component</span>
-            </Button>
+            <div className="flex items-center gap-4 px-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap">Filter</Label>
+                <Select value={viewFilter} onValueChange={(val) => {
+                  setViewFilter(val);
+                  if (val !== "default" && val !== "show_all") {
+                    setViewArchived(false);
+                  }
+                  if (val === "show_all") {
+                    setViewArchived(false);
+                  }
+                }}>
+                  <SelectTrigger className="h-11 w-[160px] rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 font-bold text-xs">
+                    <SelectValue placeholder="Filter" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border-slate-800 bg-slate-950">
+                    <SelectItem value="default" className="text-xs font-bold py-2.5">Default</SelectItem>
+                    <SelectItem value="show_all" className="text-xs font-bold py-2.5">Show All</SelectItem>
+                    <SelectItem value="findings" className="text-xs font-bold py-2.5">Findings</SelectItem>
+                    <SelectItem value="anomaly" className="text-xs font-bold py-2.5">Anomaly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                onClick={handleAddNewComponent}
+                className="h-11 px-6 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold shadow-lg hover:opacity-90 transition-all gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Add Component</span>
+              </Button>
+            </div>
           </div>
           <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 rounded-full">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-              Listing {sortedComponents.length} Data Points
+              {sortedComponents.length} Records
             </span>
           </div>
         </div>
@@ -376,7 +448,7 @@ export default function ComponentContent() {
                   <tr className="animate-pulse">
                     <td colSpan={7} className="p-20 text-center text-slate-400 font-bold uppercase tracking-widest">Initialising Database...</td>
                   </tr>
-                ) : sortedComponents.length === 0 ? (
+                ) : paginatedComponents.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-20 text-center">
                       <div className="flex flex-col items-center gap-2">
@@ -387,7 +459,7 @@ export default function ComponentContent() {
                     </td>
                   </tr>
                 ) : (
-                  sortedComponents.map((comp: Component) => (
+                  paginatedComponents.map((comp: Component) => (
                     <tr
                       key={comp.id}
                       className={cn(
@@ -410,6 +482,46 @@ export default function ComponentContent() {
                             </div>
                           )}
                           <span className="font-mono text-[11px] font-bold text-slate-500 leading-tight">{comp.id_no}</span>
+                          
+                          {/* Inspection & Anomaly Icons */}
+                          <div className="flex gap-1 ml-1" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => {
+                                if (comp.inspections && comp.inspections.length > 0) {
+                                  setSelectedInspections(comp.inspections || []);
+                                  setInspectionModalOpen(true);
+                                }
+                              }}
+                              disabled={!comp.inspections || comp.inspections.length === 0}
+                              className={cn(
+                                "h-7 w-7 rounded-md flex items-center justify-center transition-colors",
+                                comp.inspections && comp.inspections.length > 0
+                                  ? "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 cursor-pointer"
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                              )}
+                              title={comp.inspections && comp.inspections.length > 0 ? "View Inspection Data" : "No Inspection Data"}
+                            >
+                              <Activity className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (comp.anomalies && comp.anomalies.length > 0) {
+                                  setSelectedAnomalies(comp.anomalies || []);
+                                  setAnomalyModalOpen(true);
+                                }
+                              }}
+                              disabled={!comp.anomalies || comp.anomalies.length === 0}
+                              className={cn(
+                                "h-7 w-7 rounded-md flex items-center justify-center transition-colors",
+                                comp.anomalies && comp.anomalies.length > 0
+                                  ? cn(getHighestPriorityAnomalyColor(comp.anomalies), "cursor-pointer")
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                              )}
+                              title={comp.anomalies && comp.anomalies.length > 0 ? "View Anomalies" : "No Anomalies"}
+                            >
+                              <AlertCircle className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-4 align-middle">
@@ -550,6 +662,68 @@ export default function ComponentContent() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Footer - Matches reference image style */}
+          <div className="px-8 py-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col sm:flex-row items-center justify-between gap-6">
+            {/* Left: Showing info */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Showing <span className="text-blue-500">{paginatedComponents.length}</span> of <span className="text-white">{sortedComponents.length}</span> Records
+              </span>
+            </div>
+
+            {/* Middle: Rows per page */}
+            <div className="flex items-center gap-4">
+              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Rows per page</Label>
+              <Select value={pageSize.toString()} onValueChange={(val) => {
+                setPageSize(Number(val));
+                setCurrentPage(1);
+              }}>
+                <SelectTrigger className="h-10 w-20 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-black text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-slate-800 bg-slate-950">
+                  {[10, 20, 50, 100].map(size => (
+                    <SelectItem key={size} value={size.toString()} className="text-xs font-black py-2">
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Right: Page Navigation */}
+            <div className="flex items-center gap-6">
+              <div className="bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                  Page <span className="text-white">{currentPage}</span> / <span className="text-slate-400">{totalPages || 1}</span>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <PaginationButton 
+                  onClick={() => setCurrentPage(1)} 
+                  disabled={currentPage === 1}
+                  icon={<ChevronsLeft className="h-4 w-4" />}
+                />
+                <PaginationButton 
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} 
+                  disabled={currentPage === 1}
+                  icon={<ChevronLeft className="h-4 w-4" />}
+                />
+                <PaginationButton 
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} 
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  icon={<ChevronRight className="h-4 w-4" />}
+                />
+                <PaginationButton 
+                  onClick={() => setCurrentPage(totalPages)} 
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  icon={<ChevronsRight className="h-4 w-4" />}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -582,7 +756,36 @@ export default function ComponentContent() {
         title="Delete Component"
         description="Are you sure you want to permanently delete this record? This action cannot be undone and will remove the component from the system."
       />
+      
+      <InspectionSummaryModal
+        open={inspectionModalOpen}
+        onOpenChange={setInspectionModalOpen}
+        inspections={selectedInspections}
+      />
+      
+      <AnomalySummaryModal
+        open={anomalyModalOpen}
+        onOpenChange={setAnomalyModalOpen}
+        anomalies={selectedAnomalies}
+      />
     </div>
+  );
+}
+
+function PaginationButton({ onClick, disabled, icon }: { onClick: () => void; disabled: boolean; icon: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "h-10 w-10 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 transition-all",
+        disabled 
+          ? "opacity-30 cursor-not-allowed bg-transparent" 
+          : "bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-blue-500/50 text-slate-600 dark:text-slate-400 hover:text-blue-500 shadow-sm"
+      )}
+    >
+      {icon}
+    </button>
   );
 }
 

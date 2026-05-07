@@ -98,6 +98,7 @@ export default function Spec1Pipeline({ data }: Props) {
     end_y: "m",
     plength: "km",
     line_diam: "mm",
+    wall_thk: "mm",
 
     conc_ctg_per: "%",
     desg_press: "bar",
@@ -120,6 +121,7 @@ export default function Spec1Pipeline({ data }: Props) {
         end_y: getDefaultUnit("LENGTH", isImperial, "end_y") || "m",
         plength: getDefaultUnit("DISTANCE", isImperial, "plength") || "km",
         line_diam: getDefaultUnit("LENGTH", isImperial, "line_diam") || "mm",
+        wall_thk: getDefaultUnit("LENGTH", isImperial, "wall_thk") || "mm",
 
         conc_ctg_per: getDefaultUnit("PERCENT", isImperial) || "%",
         desg_press: getDefaultUnit("PRESSURE", isImperial) || "bar",
@@ -211,6 +213,9 @@ export default function Spec1Pipeline({ data }: Props) {
       range: `${previousKP} - ${currentKP}`,
       cons_span: comp.metadata.additionalInfo?.cons_span || "N/A",
       oper_span: comp.metadata.additionalInfo?.oper_span || "N/A",
+      wall_thk: comp.metadata.additionalInfo?.wall_thk || "N/A",
+      pipe_mat: comp.metadata.additionalInfo?.pipe_mat || "N/A",
+      corr_ctg: comp.metadata.additionalInfo?.corr_ctg || "N/A",
       kp_unit: comp.metadata.kp_unit || "km",
       id: comp.id
     });
@@ -407,12 +412,15 @@ export default function Spec1Pipeline({ data }: Props) {
                           <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">KP Range <span className="lowercase">({spanRows[0]?.kp_unit || units.st_fp})</span></TableHead>
                           <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Construction Span <span className="lowercase">({units.span_cons})</span></TableHead>
                           <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Operational Span <span className="lowercase">({units.span_oper})</span></TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Wall Thickness <span className="lowercase">({units.wall_thk})</span></TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Pipeline Material</TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Corrosion Coating</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {spanRows.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={3} className="text-center py-8 text-slate-500 text-xs font-medium italic border-0">
+                            <TableCell colSpan={6} className="text-center py-8 text-slate-500 text-xs font-medium italic border-0">
                               No PP components found. Add Pipeline (PP) components to automatically calculate span ranges.
                             </TableCell>
                           </TableRow>
@@ -430,6 +438,9 @@ export default function Spec1Pipeline({ data }: Props) {
                                   {row.oper_span}
                                 </span>
                               </TableCell>
+                              <TableCell className="text-center text-xs text-slate-600 dark:text-slate-400 font-medium">{row.wall_thk}</TableCell>
+                              <TableCell className="text-center text-xs text-slate-600 dark:text-slate-400 font-medium">{row.pipe_mat}</TableCell>
+                              <TableCell className="text-center text-xs text-slate-600 dark:text-slate-400 font-medium">{row.corr_ctg}</TableCell>
                             </TableRow>
                           ))
                         )}
