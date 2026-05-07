@@ -41,6 +41,7 @@ import DiveMovementLog from "@/app/dashboard/inspection/dive/components/DiveMove
 
 import ROVJobSetupDialog from "@/app/dashboard/inspection/rov/components/ROVJobSetupDialog";
 import ROVMovementLog from "@/app/dashboard/inspection/rov/components/ROVMovementLog";
+import { AttachmentEditorDialog } from "./AttachmentEditorDialog";
 
 import { getReportHeaderData } from "@/utils/company-settings";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
@@ -49,6 +50,8 @@ import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
+import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
+
 
 interface WorkspaceDialogsProps {
     supabase: any;
@@ -68,6 +71,7 @@ interface WorkspaceDialogsProps {
         isDiveSetupOpen: boolean;
         isDiveSetupForNew: boolean;
         activeDep: any;
+        editingAttachment: any;
         editingEvent: any;
         lastStartEventForEdit: any;
         isMovementLogOpen: boolean;
@@ -133,7 +137,9 @@ interface WorkspaceDialogsProps {
         rgPreviewOpen: boolean;
         sgPreviewOpen: boolean;
         cuPreviewOpen: boolean;
+        gvinsPreviewOpen: boolean;
         calibrationDialogOpen: boolean;
+
         rovCalibrationDialogOpen: boolean;
     };
 
@@ -142,6 +148,7 @@ interface WorkspaceDialogsProps {
     // Setters
     setters: {
         setIsDiveSetupOpen: (open: boolean) => void;
+        setEditingAttachment: (att: any) => void;
         setEditingEvent: (event: any) => void;
         setLastStartEventForEdit: (event: any) => void;
         setIsMovementLogOpen: (open: boolean) => void;
@@ -161,7 +168,7 @@ interface WorkspaceDialogsProps {
         setUtwtPreviewOpen: (open: boolean) => void;
         setSzciPreviewOpen: (open: boolean) => void;
         setIsGalleryOpen: (open: boolean) => void;
-        setViewingRecordAttachments: (atts: any[] | null) => void;
+        setViewingRecordAttachments: React.Dispatch<React.SetStateAction<any[] | null>>;
         setIsAttachmentManagerOpen: (open: boolean) => void;
         setShowCriteriaConfirm: (open: boolean) => void;
         setRscorPreviewOpen: (open: boolean) => void;
@@ -190,7 +197,9 @@ interface WorkspaceDialogsProps {
         setRgPreviewOpen: (open: boolean) => void;
         setSgPreviewOpen: (open: boolean) => void;
         setCuPreviewOpen: (open: boolean) => void;
+        setGvinsPreviewOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
+
         setRovCalibrationDialogOpen: (open: boolean) => void;
     };
 
@@ -232,7 +241,10 @@ interface WorkspaceDialogsProps {
         generateSeabedReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyLogReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateGVINSReport: () => void;
+        generateGVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
+
     
     refs: {
         fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -256,11 +268,11 @@ export function WorkspaceDialogs({
     handlers,
     refs
 }: WorkspaceDialogsProps) {
-    
     const {
         isDiveSetupOpen,
         isDiveSetupForNew,
         activeDep,
+        editingAttachment,
         editingEvent,
         lastStartEventForEdit,
         isMovementLogOpen,
@@ -324,11 +336,14 @@ export function WorkspaceDialogs({
         itisiPreviewOpen,
         rgPreviewOpen,
         sgPreviewOpen,
-        cuPreviewOpen
+        cuPreviewOpen,
+        gvinsPreviewOpen
     } = states;
+
 
     const {
         setIsDiveSetupOpen,
+        setEditingAttachment,
         setEditingEvent,
         setLastStartEventForEdit,
         setIsMovementLogOpen,
@@ -376,8 +391,10 @@ export function WorkspaceDialogs({
         setItisiPreviewOpen,
         setRgPreviewOpen,
         setSgPreviewOpen,
-        setCuPreviewOpen
+        setCuPreviewOpen,
+        setGvinsPreviewOpen
     } = setters;
+
 
     const {
         handleEditEventSave,
@@ -413,8 +430,11 @@ export function WorkspaceDialogs({
         generateRCONDSketchReportBlob,
         generateSeabedReportBlob,
         generatePhotographyReportBlob,
-        generatePhotographyLogReportBlob
+        generatePhotographyLogReportBlob,
+        generateGVINSReport,
+        generateGVINSReportBlob
     } = handlers;
+
 
     const { fileInputRef } = refs;
 
@@ -730,7 +750,12 @@ export function WorkspaceDialogs({
                                         <Card key={att.id} className="overflow-hidden border-slate-200 group flex flex-col bg-slate-50">
                                             <div className="aspect-video bg-slate-900 flex items-center justify-center text-white relative">
                                                 {(!att.meta?.type || att.meta.type === 'PHOTO') ? (
-                                                    <img src={publicUrl} className="w-full h-full object-contain cursor-pointer" onClick={() => window.open(publicUrl, '_blank')} title={att.name} />
+                                                    <img 
+                                                        src={publicUrl} 
+                                                        className="w-full h-full object-contain cursor-pointer" 
+                                                        onClick={() => setEditingAttachment({ ...att, publicUrl })} 
+                                                        title={att.name} 
+                                                    />
                                                 ) : (
                                                     <div className="flex flex-col items-center gap-2 opacity-60">
                                                         {att.meta.type === 'VIDEO' ? <Video className="w-10 h-10" /> : <FileText className="w-10 h-10" />}
@@ -738,7 +763,7 @@ export function WorkspaceDialogs({
                                                     </div>
                                                 )}
                                                 <div className="absolute inset-x-0 bottom-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2">
-                                                    <Button size="sm" variant="secondary" className="w-full text-[10px] h-7 font-black uppercase tracking-wider" onClick={() => window.open(publicUrl, '_blank')}>Open Fullsize</Button>
+                                                    <Button size="sm" variant="secondary" className="w-full text-[10px] h-7 font-black uppercase tracking-wider" onClick={() => setEditingAttachment({ ...att, publicUrl })}>Open Preview & Edit</Button>
                                                 </div>
                                             </div>
                                             <div className="p-3 flex-1 flex flex-col gap-1 bg-white">
@@ -790,7 +815,11 @@ export function WorkspaceDialogs({
                                             <div key={att.id} className="w-56 flex-shrink-0 bg-white border border-slate-200 rounded-xl p-2 relative group shadow-sm hover:shadow-md transition-all">
                                                 <div className="aspect-video bg-slate-100 rounded-lg overflow-hidden mb-3 border border-slate-50">
                                                     {att.previewUrl ? (
-                                                        <img src={att.previewUrl} className="w-full h-full object-cover" />
+                                                        <img 
+                                                            src={att.previewUrl} 
+                                                            className="w-full h-full object-cover cursor-pointer" 
+                                                            onClick={() => setEditingAttachment(att)}
+                                                        />
                                                     ) : (
                                                         <div className="h-full flex items-center justify-center bg-slate-50">
                                                             <FileText className="w-6 h-6 text-slate-300" />
@@ -933,6 +962,60 @@ export function WorkspaceDialogs({
                 onOpenChange={setCompSpecDialogOpen}
                 component={selectedComp?.raw}
                 mode="view"
+            />
+
+            <AttachmentEditorDialog 
+                open={!!editingAttachment}
+                onOpenChange={(open) => !open && setEditingAttachment(null)}
+                attachment={editingAttachment}
+                onSave={async (updated) => {
+                    if (updated.isEdited || updated.title !== editingAttachment.title || updated.description !== editingAttachment.description) {
+                        // 1. Handle Pending Attachments (local state)
+                        if (pendingAttachments.some(a => a.id === updated.id)) {
+                            setPendingAttachments(prev => prev.map(a => a.id === updated.id ? updated : a));
+                        } 
+                        // 2. Handle Saved Attachments (Supabase)
+                        else {
+                            try {
+                                let newPath = updated.path;
+                                if (updated.isEdited && updated.file) {
+                                    // Upload new version of the image
+                                    const fileExt = updated.name.split('.').pop();
+                                    const fileName = `${Math.random()}.${fileExt}`;
+                                    const filePath = `${jobPackId}/${fileName}`;
+                                    const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, updated.file);
+                                    if (uploadError) throw uploadError;
+                                    newPath = filePath;
+                                }
+
+                                const { error } = await supabase
+                                    .from('attachment')
+                                    .update({
+                                        name: updated.title,
+                                        path: newPath,
+                                        meta: {
+                                            ...updated.meta,
+                                            description: updated.description,
+                                            type: updated.type || 'PHOTO'
+                                        }
+                                    })
+                                    .eq('id', updated.id);
+                                
+                                if (error) throw error;
+                                toast.success("Attachment updated successfully");
+                                
+                                // Update local viewing state
+                                if (viewingRecordAttachments) {
+                                    setViewingRecordAttachments((prev: any[] | null) => prev ? prev.map(a => a.id === updated.id ? { ...a, name: updated.title, path: newPath, meta: { ...a.meta, description: updated.description } } : a) : null);
+                                }
+                            } catch (err: any) {
+                                console.error("Error updating attachment:", err);
+                                toast.error("Failed to update attachment: " + err.message);
+                            }
+                        }
+                    }
+                    setEditingAttachment(null);
+                }}
             />
 
             <Dialog open={showCriteriaConfirm} onOpenChange={setShowCriteriaConfirm}>
@@ -1754,6 +1837,15 @@ export function WorkspaceDialogs({
                 generateReport={generatePhotographyLogReportBlob} 
             />
 
+            <ReportPreviewDialog 
+                open={gvinsPreviewOpen} 
+                onOpenChange={setGvinsPreviewOpen} 
+                title="Diving General Visual Inspection Report Preview" 
+                fileName={`Diving_GVINS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateGVINSReportBlob} 
+            />
+
+
             <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>
                 <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col p-6">
                     <DialogHeader>
@@ -1815,7 +1907,82 @@ export function WorkspaceDialogs({
                 sowReportNo={headerData?.sowReportNo || null}
             />
 
+            <AttachmentEditorDialog 
+                open={!!editingAttachment}
+                onOpenChange={() => setEditingAttachment(null)}
+                attachment={editingAttachment}
+                onSave={async (updated) => {
+                    if (!updated) return;
 
+                    // Handle Pending (local) Update
+                    if (!updated.isExisting) {
+                        setPendingAttachments((prev: any[]) => {
+                            const newAtts = prev.map(a => {
+                                if (String(a.id) === String(updated.id)) {
+                                    return {
+                                        ...a,
+                                        ...updated,
+                                        isEdited: updated.isEdited || a.isEdited,
+                                        // Ensure meta description stays in sync if used by certain templates
+                                        meta: {
+                                            ...(a.meta || {}),
+                                            description: updated.description,
+                                            title: updated.title
+                                        }
+                                    };
+                                }
+                                return a;
+                            });
+                            return [...newAtts]; // Force new array reference
+                        });
+                        setEditingAttachment(null);
+                        toast.success("Attachment updated locally");
+                    } else {
+                        // Handle Existing (Supabase) Update
+                        try {
+                            // 1. If file has changed (markup applied), upload to storage
+                            let newPath = updated.path;
+                            if (updated.file && updated.file instanceof Blob) {
+                                const fileExt = updated.name.split('.').pop();
+                                const filePath = `${updated.source_id || 'edited'}/${updated.id}_${Date.now()}.${fileExt}`;
+                                
+                                const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, updated.file);
+                                if (uploadError) throw uploadError;
+                                newPath = filePath;
+                            }
+
+                            // 2. Update DB
+                            const { error } = await supabase
+                                .from('attachment')
+                                .update({
+                                    name: updated.title,
+                                    path: newPath,
+                                    meta: {
+                                        ...updated.meta,
+                                        description: updated.description,
+                                        type: updated.type || 'PHOTO'
+                                    }
+                                })
+                                .eq('id', updated.id);
+
+                            if (error) throw error;
+
+                            // 3. Update local state for viewingRecordAttachments
+                            if (viewingRecordAttachments) {
+                                setters.setViewingRecordAttachments(prev => 
+                                    prev ? prev.map(a => a.id === updated.id ? { ...a, ...updated, path: newPath } : a) : null
+                                );
+                            }
+
+                            setEditingAttachment(null);
+                            toast.success("Attachment saved to server");
+                        } catch (err: any) {
+                            console.error("Failed to save attachment:", err);
+                            toast.error("Failed to save attachment: " + err.message);
+                        }
+                    }
+                }}
+            />
         </>
 
     );

@@ -551,6 +551,7 @@ function V10PreviewLayout() {
     }>>([]);
     const [isAttachmentManagerOpen, setIsAttachmentManagerOpen] = useState(false);
     const [viewingRecordAttachments, setViewingRecordAttachments] = useState<any[] | null>(null);
+    const [editingAttachment, setEditingAttachment] = useState<any>(null);
     const [selectorShowAll, setSelectorShowAll] = useState(false);
 
     // Drawing Tools state
@@ -999,6 +1000,8 @@ function V10PreviewLayout() {
         seabedPreviewOpen, setSeabedPreviewOpen,
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
+        gvinsPreviewOpen, setGvinsPreviewOpen,
+
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
         generateAnomalyReportBlob,
@@ -1046,6 +1049,9 @@ function V10PreviewLayout() {
         generatePhotographyReportBlob,
         generatePhotographyLogReport,
         generatePhotographyLogReportBlob,
+        generateGVINSReport,
+        generateGVINSReportBlob,
+
         generateInspectionReportByType,
         generateFullInspectionReport
     } = useWorkspaceReports(
@@ -1054,6 +1060,7 @@ function V10PreviewLayout() {
         structureId,
         headerData,
         currentRecords,
+        pendingAttachments,
         allInspectionTypes
     );
 
@@ -4831,6 +4838,7 @@ function V10PreviewLayout() {
                 generateAnodeReport={() => setAnodePreviewOpen(true)}
                 generateCPReport={() => setCpPreviewOpen(true)}
                 generateRGVIReport={() => setRgviPreviewOpen(true)}
+                generateGVINSReport={() => setGvinsPreviewOpen(true)}
                 generateRCASNReport={() => setRcasnPreviewOpen(true)}
                 generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
                 generateRCONDReport={() => setRcondPreviewOpen(true)}
@@ -5651,6 +5659,7 @@ function V10PreviewLayout() {
                                         setRecordNotes={setRecordNotes}
                                         pendingAttachments={pendingAttachments}
                                         setPendingAttachments={setPendingAttachments}
+                                        setEditingAttachment={setEditingAttachment}
                                         setIsAttachmentManagerOpen={setIsAttachmentManagerOpen}
                                         recordedFiles={recordedFiles}
                                         activeDep={activeDep}
@@ -6460,6 +6469,7 @@ function V10PreviewLayout() {
                     isDiveSetupOpen,
                     isDiveSetupForNew,
                     activeDep,
+                    editingAttachment,
                     editingEvent,
                     lastStartEventForEdit,
                     isMovementLogOpen,
@@ -6476,8 +6486,6 @@ function V10PreviewLayout() {
                     calibrationDialogOpen,
                     rovCalibrationDialogOpen,
                     specDialogOpen: false,
-
-
                     compSpecDialogOpen,
                     selectedComp,
                     previewOpen,
@@ -6528,10 +6536,13 @@ function V10PreviewLayout() {
                     rcasnSketchPreviewOpen,
                     rrisiPreviewOpen,
                     jtisiPreviewOpen,
-                    itisiPreviewOpen
+                    itisiPreviewOpen,
+                    gvinsPreviewOpen
+
                 }}
                 setters={{
                     setIsDiveSetupOpen,
+                    setEditingAttachment,
                     setEditingEvent,
                     setLastStartEventForEdit,
                     setIsMovementLogOpen,
@@ -6581,8 +6592,10 @@ function V10PreviewLayout() {
                     setRcasnSketchPreviewOpen,
                     setRrisiPreviewOpen,
                     setJtisiPreviewOpen,
-                    setItisiPreviewOpen
+                    setItisiPreviewOpen,
+                    setGvinsPreviewOpen
                 }}
+
                 handlers={{
                     handleEditEventSave,
                     handleSaveTapeEdit,
@@ -6617,7 +6630,10 @@ function V10PreviewLayout() {
                     generateRCONDSketchReportBlob,
                     generateSeabedReportBlob,
                     generatePhotographyReportBlob,
-                    generatePhotographyLogReportBlob
+                    generatePhotographyLogReportBlob,
+                    generateGVINSReport,
+                    generateGVINSReportBlob
+
                 }}
                 refs={{
                     fileInputRef

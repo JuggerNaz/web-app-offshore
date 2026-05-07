@@ -1318,6 +1318,126 @@
             ]
         },
         {
+            "code": "FLOODZONE",
+            "name": "Flooded Member Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "flooded",
+                    "label": "Flooded",
+                    "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "grout",
+                    "label": "Grouted",
+                    "type": "boolean",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "PL_IC",
+            "name": "Item Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "name": "item_type",
+                    "label": "Type of Item",
+                    "type": "combo",
+                    "lib_code": "ITEM_TYPE",
+                    "required": true
+                },
+                {
+                    "name": "description",
+                    "label": "Description",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                }
+            ]
+        },
+        {
+            "code": "PHOTO",
+            "name": "Photographic Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "camera_type",
+                    "label": "Camera Type",
+                    "type": "combo",
+                    "lib_code": "",
+                    "required": true
+                },
+                {
+                    "name": "subject_of_photo",
+                    "label": "Subject of Photo",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "exposure_number",
+                    "label": "Exposure #",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "photo_no",
+                    "label": "Photo #",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "description",
+                    "label": "Description",
+                    "type": "text",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "MEASU",
+            "name": "Measurement Dimensional Survey",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "measurement",
+                    "label": "Measurements",
+                    "type": "repeater",
+                    "subFields": [
+                        {
+                            "name": "type",
+                            "label": "Type",
+                            "type": "text"
+                        },
+                        {
+                            "name": "unit",
+                            "label": "Unit",
+                            "type": "text"
+                        },
+                        {
+                            "name": "results",
+                            "label": "Result",
+                            "type": "text"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
             "code": "SZONE",
             "name": "Splash Zone Inspection",
             "methods": [

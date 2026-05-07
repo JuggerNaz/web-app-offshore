@@ -120,6 +120,7 @@ interface WorkspaceMainProps {
   setInspectionTypeSearch: (val: string) => void;
   findingType: "Complete" | "Anomaly" | "Finding" | "Incomplete";
   activeMGIProfile?: any;
+  setEditingAttachment: (att: any) => void;
 }
 
 export function WorkspaceMain(props: WorkspaceMainProps) {
@@ -188,6 +189,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
     findingType,
     supabase,
     activeMGIProfile,
+    setEditingAttachment,
   } = props;
 
   const FORM_AREA_ID = "workspace-form-area";
@@ -685,6 +687,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                 isEditing={!!editingRecordId}
                 supabase={supabase}
                 activeMGIProfile={props.activeMGIProfile}
+                setEditingAttachment={setEditingAttachment}
               />
             )}
           </div>

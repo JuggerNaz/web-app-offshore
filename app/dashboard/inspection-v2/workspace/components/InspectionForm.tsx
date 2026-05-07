@@ -60,6 +60,7 @@ interface InspectionFormProps {
     setRecordNotes: (s: string) => void;
     pendingAttachments: any[];
     setPendingAttachments: (atts: any[] | ((prev: any[]) => any[])) => void;
+    setEditingAttachment: (att: any) => void;
     setIsAttachmentManagerOpen: (b: boolean) => void;
     recordedFiles: any[];
     activeDep: any;
@@ -108,6 +109,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     setRecordNotes,
     pendingAttachments,
     setPendingAttachments,
+    setEditingAttachment,
     setIsAttachmentManagerOpen,
     recordedFiles,
     activeDep,
@@ -1440,7 +1442,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-1 bg-slate-50/50 rounded-lg border border-slate-100">
                                 {pendingAttachments.map(att => (
                                     <div key={att.id} className="relative group bg-white border border-slate-200 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 transition-all">
-                                        <div className="w-12 h-12 bg-slate-100 rounded overflow-hidden flex-shrink-0 relative">
+                                        <div 
+                                            className="w-12 h-12 bg-slate-100 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                                            onClick={() => setEditingAttachment(att)}
+                                        >
                                             {att.previewUrl ? (
                                                 <img src={att.previewUrl} className="w-full h-full object-cover" />
                                             ) : (

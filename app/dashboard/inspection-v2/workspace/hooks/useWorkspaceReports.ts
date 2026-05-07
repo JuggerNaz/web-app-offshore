@@ -24,6 +24,8 @@ import { generateROVConductorGuardReport } from "@/utils/report-generators/rov-c
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
 import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
+import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
+
 
 export function useWorkspaceReports(
     supabase: any,
@@ -31,6 +33,7 @@ export function useWorkspaceReports(
     structureId: string | null,
     headerData: any,
     currentRecords: any[],
+    pendingAttachments: any[],
     allInspectionTypes: any[]
 ) {
     const [previewOpen, setPreviewOpen] = useState(false);
@@ -56,7 +59,9 @@ export function useWorkspaceReports(
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
+    const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
+
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const generateAnomalyReportBlob = async (printFriendly?: boolean, showSignatures?: boolean) => {
@@ -710,6 +715,28 @@ export function useWorkspaceReports(
         return await generateROVRGVIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
+    const generateGVINSReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'GVINS');
+        if (records.length === 0) {
+            toast.error("No GVINS records found to generate report");
+            return;
+        }
+        setGvinsPreviewOpen(true);
+    };
+
+    const generateGVINSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'GVINS');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+        return await generateDivingGVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+    };
+
     const generateRCASNReport = async () => {
         const records = currentRecords.filter(r => {
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
@@ -840,7 +867,37 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
-        return await generateROVPhotographyReport(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+
+        // 1. Get database attachments for currently filtered records
+        const inspIds = currentRecords.map(r => r.insp_id).filter(Boolean);
+        let dbAttachments: any[] = [];
+        
+        if (inspIds.length > 0) {
+            const { data } = await supabase
+                .from('attachment')
+                .select('*')
+                .in('source_id', inspIds)
+                .eq('source_type', 'INSPECTION')
+                .is('is_deleted', false);
+            dbAttachments = data || [];
+        }
+
+        // 2. Map DB attachments to match report format
+        const photosFromDb = dbAttachments.filter(a => !a.type || a.type === 'PHOTO');
+
+        // 3. Include Pending Attachments (local state)
+        // Only include those that are marked as 'PHOTO'
+        const photosFromPending = pendingAttachments
+            .filter(a => a.type === 'PHOTO' || !a.type)
+            .map(a => ({
+                ...a,
+                path: a.path || a.previewUrl // Generator uses path, but pending might only have previewUrl/blob
+            }));
+
+        const allPhotos = [...photosFromDb, ...photosFromPending];
+
+        // Ensure we always return a Blob (even if empty) to avoid "Preview unavailable"
+        return await generateROVPhotographyReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
     const generatePhotographyLogReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
@@ -851,7 +908,22 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
-        return await generateROVPhotographyLogReport(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+
+        const inspIds = currentRecords.map(r => r.insp_id).filter(Boolean);
+        let dbAttachments: any[] = [];
+        if (inspIds.length > 0) {
+            const { data } = await supabase
+                .from('attachment')
+                .select('*')
+                .in('source_id', inspIds)
+                .eq('source_type', 'INSPECTION')
+                .is('is_deleted', false);
+            dbAttachments = data || [];
+        }
+
+        const allPhotos = [...dbAttachments, ...pendingAttachments];
+
+        return await generateROVPhotographyLogReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
     const generatePhotographyReport = async () => {
@@ -1028,6 +1100,8 @@ export function useWorkspaceReports(
         seabedPreviewOpen, setSeabedPreviewOpen,
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
+        gvinsPreviewOpen, setGvinsPreviewOpen,
+
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
         generateAnomalyReportBlob,
@@ -1075,7 +1149,10 @@ export function useWorkspaceReports(
         generatePhotographyReportBlob,
         generatePhotographyLogReport,
         generatePhotographyLogReportBlob,
+        generateGVINSReport,
+        generateGVINSReportBlob,
         generateInspectionReportByType,
+
         generateFullInspectionReport
     };
 }
