@@ -1969,15 +1969,18 @@
             ],
             "fields": [
                 {
-                    "$ref": "northing"
+                    "$ref": "northing",
+                    "group": "location"
                 },
                 {
-                    "$ref": "easting"
+                    "$ref": "easting",
+                    "group": "location"
                 },
                 {
                     "name": "category",
                     "label": "Item Category",
                     "type": "select",
+                    "group": "item_details",
                     "options": [
                         "Debris",
                         "Gas Seepage",
@@ -1990,6 +1993,7 @@
                     "name": "material",
                     "label": "Material",
                     "type": "select",
+                    "group": "item_details",
                     "options": [
                         "Metallic",
                         "Non-Metallic",
@@ -2004,6 +2008,7 @@
                     "name": "size_dimensions",
                     "label": "Size / Dimensions",
                     "type": "text",
+                    "group": "item_details",
                     "condition": {
                         "field": "category",
                         "value": "Debris"
@@ -2013,6 +2018,7 @@
                     "name": "seepage_intensity",
                     "label": "Seepage Intensity",
                     "type": "select",
+                    "group": "item_details",
                     "options": [
                         "Light",
                         "Moderate",
@@ -2027,6 +2033,7 @@
                     "name": "crater_diameter",
                     "label": "Crater Diameter",
                     "type": "number",
+                    "group": "item_details",
                     "unitCategory": "LENGTH",
                     "condition": {
                         "field": "category",
@@ -2039,6 +2046,7 @@
                     "name": "crater_depth",
                     "label": "Crater Depth",
                     "type": "number",
+                    "group": "item_details",
                     "unitCategory": "LENGTH",
                     "condition": {
                         "field": "category",
@@ -2048,9 +2056,18 @@
                     "defaultImperial": "ft"
                 },
                 {
+                    "name": "nearest_leg",
+                    "label": "Nearest Leg",
+                    "type": "select",
+                    "group": "grid_coordinates",
+                    "required": false,
+                    "optionsSource": "legs"
+                },
+                {
                     "name": "distance_from_leg",
                     "label": "Distance From Leg",
                     "type": "number",
+                    "group": "grid_coordinates",
                     "unitCategory": "LENGTH",
                     "required": false,
                     "defaultMetric": "m",
@@ -2060,12 +2077,14 @@
                     "name": "x",
                     "label": "X Coordinate (%)",
                     "type": "number",
+                    "group": "grid_coordinates",
                     "required": false
                 },
                 {
                     "name": "y",
                     "label": "Y Coordinate (%)",
                     "type": "number",
+                    "group": "grid_coordinates",
                     "required": false
                 }
             ]

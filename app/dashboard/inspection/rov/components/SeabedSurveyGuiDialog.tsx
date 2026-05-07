@@ -34,6 +34,7 @@ export function SeabedSurveyGuiInline({
     const supabase = createClient();
     const [existingDebris, setExistingDebris] = useState<any[]>([]);
     const [structureName, setStructureName] = useState<string>('');
+    const [structureDepth, setStructureDepth] = useState<any>(null);
     const [isAdding, setIsAdding] = useState(false);
     const [newPoint, setNewPoint] = useState<any>(null);
     const [hoverInfo, setHoverInfo] = useState<any>(null);
@@ -60,6 +61,8 @@ export function SeabedSurveyGuiInline({
     const [availableComparisons, setAvailableComparisons] = useState<any[]>([]);
     const [selectedComparison, setSelectedComparison] = useState<string>('none');
     const [comparisonDebris, setComparisonDebris] = useState<any[]>([]);
+    const [availableSectors, setAvailableSectors] = useState<string[]>([]);
+    const [legsMetadata, setLegsMetadata] = useState<any[]>([]);
 
     const generateQid = (geometry: any) => {
         if (!geometry || !geometry.startLeg || !geometry.endLeg) return '';
@@ -71,8 +74,34 @@ export function SeabedSurveyGuiInline({
             fetchStructureContext();
             fetchExistingDebris();
             fetchAvailableComparisons();
+            fetchAvailableSectors();
+            fetchLegsMetadata();
         }
     }, [open, structureId, rovJob]);
+
+    const fetchLegsMetadata = async () => {
+        try {
+            const { data } = await supabase.from('structure_components')
+                .select('q_id, metadata')
+                .eq('structure_id', Number(structureId))
+                .eq('code', 'LG');
+            if (data) {
+                setLegsMetadata(data);
+            }
+        } catch (e) { console.error("Error fetching legs metadata:", e); }
+    };
+
+    const fetchAvailableSectors = async () => {
+        try {
+            const { data } = await supabase.from('structure_components')
+                .select('q_id')
+                .eq('structure_id', Number(structureId))
+                .eq('code', 'SD');
+            if (data) {
+                setAvailableSectors(data.map(c => c.q_id));
+            }
+        } catch (e) { console.error("Error fetching available sectors:", e); }
+    };
 
     const fetchAvailableComparisons = async () => {
         try {
@@ -138,6 +167,8 @@ export function SeabedSurveyGuiInline({
                         craterDepth: idraw.crater_depth || '',
                         face: idraw.face || '',
                         distance: idraw.distance_from_leg || idraw.distance || 0,
+                        nearestLeg: idraw.nearest_leg || '',
+                        distToNearestLeg: idraw.dist_to_nearest_leg || 0,
                     };
                 }).filter(r => !isNaN(r.x) && !isNaN(r.y));
                 setComparisonDebris(mapped);
@@ -146,8 +177,11 @@ export function SeabedSurveyGuiInline({
     };
 
     const fetchStructureContext = async () => {
-        const { data } = await supabase.from('structures').select('name').eq('id', structureId).single();
-        if (data) setStructureName(data.name);
+        const { data } = await supabase.from('structures').select('name, water_depth').eq('id', structureId).single();
+        if (data) {
+            setStructureName(data.name);
+            setStructureDepth(data.water_depth);
+        }
     };
 
     const fetchExistingDebris = async () => {
@@ -198,7 +232,9 @@ export function SeabedSurveyGuiInline({
                 craterDiameterUnit: idraw.crater_diameter_unit || 'm',
                 craterDepth: idraw.crater_depth || '',
                 craterDepthUnit: idraw.crater_depth_unit || 'm',
-                distanceUnit: idraw.distance_from_leg_unit || 'm'
+                distanceUnit: idraw.distance_from_leg_unit || 'm',
+                nearestLeg: idraw.nearest_leg || '',
+                distToNearestLeg: idraw.dist_to_nearest_leg || 0,
             };
         }).filter(r => !isNaN(r.x) && !isNaN(r.y));
         
@@ -228,7 +264,9 @@ export function SeabedSurveyGuiInline({
                     craterDepthUnit: liveItem.craterDepthUnit,
                     distanceUnit: liveItem.distanceUnit,
                     distance: liveItem.distance,
-                    face: liveItem.face
+                    face: liveItem.face,
+                    nearestLeg: liveItem.nearestLeg,
+                    distToNearestLeg: liveItem.distToNearestLeg
                 });
                 return;
             }
@@ -286,6 +324,42 @@ export function SeabedSurveyGuiInline({
                 supabase.auth.getUser()
             ]);
 
+            const findLegMeta = (legName: string) => {
+                if (!legsMetadata || legsMetadata.length === 0) return null;
+                
+                const matches = legsMetadata.filter(c => {
+                    const m = c.metadata || {};
+                    // Rule 1: Undeleted components only (del is null or 0)
+                    const isNotDeleted = m.del === 0 || m.del === null || m.del === undefined;
+                    
+                    // Rule 2: s_leg and f_leg should match the leg name (e.g. "A1")
+                    // We also allow QID match as fallback for older data
+                    const matchesLegName = (m.f_leg === legName && m.s_leg === legName) || 
+                                         c.q_id.toUpperCase() === `LEG ${legName.toUpperCase()}` ||
+                                         c.q_id.toUpperCase() === legName.toUpperCase();
+                    
+                    // Rule 3: s_node and f_node should be different
+                    const nodesDifferent = m.f_node && m.s_node && m.f_node !== m.s_node;
+                    
+                    return isNotDeleted && matchesLegName && nodesDifferent;
+                });
+                
+                if (matches.length === 0) return null;
+                
+                // Rule 4: elv_1 and elv_2 will be from top to bottom elevation
+                // We sort to pick the one with lowest bottom elevation (elv_2)
+                const sorted = matches.sort((a, b) => {
+                    const elvA = parseFloat(a.metadata?.elv_2 || '0');
+                    const elvB = parseFloat(b.metadata?.elv_2 || '0');
+                    return elvA - elvB;
+                });
+                
+                return sorted[0].metadata;
+            };
+
+            const startLegMeta = findLegMeta(newPoint.geometry.startLeg);
+            const endLegMeta = findLegMeta(newPoint.geometry.endLeg);
+
             const authData = authRes.data;
             let inspTypeId = inspTypeRes.data?.id;
 
@@ -320,12 +394,18 @@ export function SeabedSurveyGuiInline({
                     code: 'SD',
                     comp_id: componentTs,
                     metadata: {
-                        description: `Seabed Debris ${newPoint.geometry.startLeg}-${newPoint.geometry.endLeg} ${newPoint.geometry.nearestDistance}M`,
+                        description: `Seabed Debris ${newPoint.geometry.startLeg}(Node:${startLegMeta?.f_node || startLegMeta?.start_node || 'N/A'}) to ${newPoint.geometry.endLeg}(Node:${endLegMeta?.f_node || endLegMeta?.start_node || 'N/A'}) at EL:${startLegMeta?.elv_2 || startLegMeta?.elevation_2 || structureDepth || 'N/A'}m, Range:${newPoint.geometry.nearestDistance}M`,
                         f_leg: newPoint.geometry.startLeg,
                         s_leg: newPoint.geometry.endLeg,
                         dist: newPoint.geometry.nearestDistance.toString(),
                         face: newPoint.geometry.face,
-                        lvl: 'Seabed'
+                        nearest_leg: newPoint.geometry.nearestLeg,
+                        dist_to_nearest_leg: newPoint.geometry.distToNearestLeg.toFixed(1),
+                        lvl: 'Seabed',
+                        elv_1: startLegMeta?.elv_2 || startLegMeta?.elevation_2 || startLegMeta?.lvl || startLegMeta?.elevation || structureDepth || null,
+                        elv_2: endLegMeta?.elv_2 || endLegMeta?.elevation_2 || endLegMeta?.lvl || endLegMeta?.elevation || structureDepth || null,
+                        f_node: startLegMeta?.f_node || startLegMeta?.start_node || null,
+                        s_node: endLegMeta?.f_node || endLegMeta?.start_node || null
                     }
                 }).select('id').single();
                 if (compErr) throw compErr;
@@ -335,22 +415,60 @@ export function SeabedSurveyGuiInline({
             // 2. Add to SOW if sowRecordId exists and not already mapped
             let sowItemId = null;
 
-            if (sowRecordId && componentId) {
+            if (sowRecordId && (componentId || generatedQid)) {
+                // Check by QID and Type since SOW items often don't have component_id FK
                 const { data: existingSow } = await supabase.from('u_sow_items')
-                    .select('id').eq('sow_id', sowRecordId).eq('component_id', componentId).maybeSingle();
+                    .select('id')
+                    .eq('sow_id', sowRecordId)
+                    .eq('inspection_type_id', inspTypeId)
+                    .eq('component_qid', generatedQid)
+                    .maybeSingle();
                 
                 if (existingSow) {
                     sowItemId = existingSow.id;
+                    console.log(`[SOW] Found existing item for ${generatedQid}: ${sowItemId}`);
                 } else {
                     if (inspTypeId) {
-                        const { data: newSowInfo, error: sowErr } = await supabase.from('u_sow_items').insert({
+                        const { data: it } = await supabase.from('inspection_type').select('name').eq('id', inspTypeId).single();
+                        
+                        const effectiveReportNo = sowReportNo || rovJob?.raw?.sow_report_no || "N/A";
+                        
+                        const sowPayload: any = {
                             sow_id: sowRecordId,
                             component_id: componentId,
+                            component_qid: generatedQid,
+                            component_type: 'SD',
                             inspection_type_id: inspTypeId,
-                            scope_status: 'Completed', 
-                            report_number: sowReportNo || rovJob?.raw?.sow_report_no || "Auto-RSEAB"
-                        }).select('id').single();
-                        if (!sowErr && newSowInfo) sowItemId = newSowInfo.id;
+                            inspection_code: 'RSEAB',
+                            inspection_name: it?.name || 'Seabed Survey',
+                            status: 'completed',
+                            report_number: effectiveReportNo,
+                            inspection_count: 1,
+                            last_inspection_date: new Date().toISOString(),
+                            created_by: authData?.user?.id || null,
+                            updated_by: authData?.user?.id || null
+                        };
+
+                        console.log(`[SOW] Inserting new item for ${generatedQid}:`, sowPayload);
+
+                        const { data: newSowData, error: sowErr } = await supabase.from('u_sow_items').insert(sowPayload).select('id');
+                        
+                        if (sowErr) {
+                            console.error("[SOW] Insert error:", sowErr);
+                            toast.error("SOW Task Creation Failed: " + (sowErr.message || "Unknown Error"));
+                        } else if (newSowData && newSowData[0]) {
+                            sowItemId = newSowData[0].id;
+                            console.log(`[SOW] Successfully created item: ${sowItemId}`);
+
+                            // Update u_sow counters
+                            const { data: sowMeta } = await supabase.from('u_sow').select('total_items').eq('id', sowRecordId).maybeSingle();
+                            if (sowMeta) {
+                                await supabase.from('u_sow').update({
+                                    total_items: (sowMeta.total_items || 0) + 1,
+                                    updated_at: new Date().toISOString()
+                                }).eq('id', sowRecordId);
+                            }
+                        }
                     }
                 }
             }
@@ -364,6 +482,8 @@ export function SeabedSurveyGuiInline({
                 distance_from_leg: newPoint.geometry.distance.toFixed(1),
                 distance_from_leg_unit: formData.distanceUnit,
                 face: newPoint.geometry.face,
+                nearest_leg: newPoint.geometry.nearestLeg,
+                dist_to_nearest_leg: newPoint.geometry.distToNearestLeg.toFixed(1),
                 x: newPoint.x.toFixed(2),
                 y: newPoint.y.toFixed(2),
                 category: formData.category,
@@ -377,7 +497,7 @@ export function SeabedSurveyGuiInline({
                 type: formData.category, // preserve for old code
                 debris_material: formData.material, // preserve for old code
                 dimension_1: formData.size, // preserve for old code
-                finding_type: "Anomaly",
+                finding_type: "Complete",
             };
 
             // Inject telemetry if data is connected/valid (not '--')
@@ -401,7 +521,7 @@ export function SeabedSurveyGuiInline({
                 tape_count_no: tapeCounter,
                 inspection_date: now.toISOString().split('T')[0],
                 inspection_time: now.toTimeString().split(' ')[0],
-                has_anomaly: true,
+                has_anomaly: false,
                 elevation: 0,
                 cr_user: authData?.user?.id || null
             });
@@ -412,7 +532,8 @@ export function SeabedSurveyGuiInline({
             setIsAdding(false);
             setNewPoint(null);
             if (onRefreshInspection) onRefreshInspection();
-            fetchExistingDebris(); // Refresh map
+            fetchAvailableSectors(); // Update grid colors immediately
+            fetchExistingDebris(); // Refresh markers
 
         } catch (err: any) {
             console.error(err);
@@ -459,6 +580,27 @@ export function SeabedSurveyGuiInline({
                 if (existingComp) {
                     componentId = existingComp.id;
                 } else {
+                    const fetchLegDetails = async (legName: string) => {
+                        const { data } = await supabase.from('structure_components')
+                            .select('metadata, q_id')
+                            .eq('structure_id', structureId)
+                            .eq('code', 'LG');
+                        if (!data) return null;
+                        const matches = data.filter(c => c.q_id.toUpperCase().includes(legName.toUpperCase()) || (c.metadata?.description || '').toUpperCase().includes(legName.toUpperCase()));
+                        if (matches.length === 0) return null;
+                        const sorted = matches.sort((a, b) => {
+                            const elvA = parseFloat(a.metadata?.lvl || a.metadata?.elevation || '0');
+                            const elvB = parseFloat(b.metadata?.lvl || b.metadata?.elevation || '0');
+                            return elvA - elvB;
+                        });
+                        return sorted[0].metadata;
+                    };
+
+                    const [startLegMeta, endLegMeta] = await Promise.all([
+                        fetchLegDetails(geometry.startLeg),
+                        fetchLegDetails(geometry.endLeg)
+                    ]);
+
                     const componentTs = Math.floor(Date.now() / 1000);
                     const { data: newComp } = await supabase.from('structure_components').insert({
                         structure_id: structureId,
@@ -472,7 +614,11 @@ export function SeabedSurveyGuiInline({
                             s_leg: geometry.endLeg,
                             dist: geometry.nearestDistance.toString(),
                             face: geometry.face,
-                            lvl: 'Seabed'
+                            lvl: 'Seabed',
+                            elv_1: startLegMeta?.lvl || startLegMeta?.elevation || null,
+                            elv_2: endLegMeta?.lvl || endLegMeta?.elevation || null,
+                            f_node: startLegMeta?.start_node || startLegMeta?.end_node || null,
+                            s_node: endLegMeta?.start_node || endLegMeta?.end_node || null
                         }
                     }).select('id').single();
                     if (newComp) componentId = newComp.id;
@@ -485,9 +631,11 @@ export function SeabedSurveyGuiInline({
                 ...(currentDbData?.inspection_data || {}),
                 distance_from_leg: geometry.distance.toFixed(1),
                 face: geometry.face,
+                nearest_leg: geometry.nearestLeg,
+                dist_to_nearest_leg: geometry.distToNearestLeg.toFixed(1),
                 x: x.toFixed(2),
                 y: y.toFixed(2),
-                finding_type: "Anomaly",
+                finding_type: "Complete",
             };
 
             const { data: authData } = await supabase.auth.getUser();
@@ -515,23 +663,59 @@ export function SeabedSurveyGuiInline({
             // --- SOW Status Updates ---
             if (sowRecordId && componentId && componentId !== oldComponentId) {
                 try {
+                    const effectiveReportNo = sowReportNo || rovJob?.raw?.sow_report_no || "N/A";
                     // 1. Mark NEW component as 'Completed'
                     const { data: existingNewSow } = await supabase.from('u_sow_items')
-                        .select('id').eq('sow_id', sowRecordId).eq('component_id', componentId).maybeSingle();
+                        .select('id')
+                        .eq('sow_id', sowRecordId)
+                        .eq('inspection_type_id', inspTypeId)
+                        .eq('component_qid', generatedQid)
+                        .maybeSingle();
                     
+                    let newSowItemId = existingNewSow?.id;
+
                     if (existingNewSow) {
+                        newSowItemId = existingNewSow.id;
+                        console.log(`[SOW] Found existing item for ${generatedQid}: ${newSowItemId}`);
                         await supabase.from('u_sow_items').update({ 
-                            scope_status: 'Completed',
-                            report_number: sowReportNo || rovJob?.raw?.sow_report_no || "Auto-RSEAB"
+                            status: 'completed',
+                            report_number: effectiveReportNo,
+                            updated_by: authData?.user?.email || 'Auto-GUI',
+                            updated_at: new Date().toISOString()
                         }).eq('id', existingNewSow.id);
                     } else if (inspTypeId) {
-                        await supabase.from('u_sow_items').insert({
+                        const { data: it } = await supabase.from('inspection_type').select('name').eq('id', inspTypeId).single();
+                        const sowPayload: any = {
                             sow_id: sowRecordId,
                             component_id: componentId,
+                            component_qid: generatedQid,
+                            component_type: 'SD',
                             inspection_type_id: inspTypeId,
-                            scope_status: 'Completed',
-                            report_number: sowReportNo || rovJob?.raw?.sow_report_no || "Auto-RSEAB"
-                        });
+                            inspection_code: 'RSEAB',
+                            inspection_name: it?.name || 'Seabed Survey',
+                            status: 'completed',
+                            report_number: effectiveReportNo,
+                            inspection_count: 1,
+                            last_inspection_date: new Date().toISOString(),
+                            created_by: authData?.user?.email || 'Auto-GUI',
+                            updated_by: authData?.user?.email || 'Auto-GUI'
+                        };
+                        console.log(`[SOW] Inserting moved item for ${generatedQid}:`, sowPayload);
+                        const { data: nsiData, error: nsiErr } = await supabase.from('u_sow_items').insert(sowPayload).select('id');
+                        
+                        if (nsiErr) {
+                            console.error("[SOW] Move insert error:", nsiErr);
+                        } else if (nsiData && nsiData[0]) {
+                            newSowItemId = nsiData[0].id;
+                            // Update u_sow counters
+                            const { data: sowMeta } = await supabase.from('u_sow').select('total_items').eq('id', sowRecordId).maybeSingle();
+                            if (sowMeta) {
+                                await supabase.from('u_sow').update({
+                                    total_items: (sowMeta.total_items || 0) + 1,
+                                    updated_at: new Date().toISOString()
+                                }).eq('id', sowRecordId);
+                            }
+                        }
                     }
 
                     // 2. Mark OLD component as 'Pending' if no other records exist
@@ -545,7 +729,7 @@ export function SeabedSurveyGuiInline({
                             const { data: existingOldSow } = await supabase.from('u_sow_items')
                                 .select('id').eq('sow_id', sowRecordId).eq('component_id', oldComponentId).maybeSingle();
                             if (existingOldSow) {
-                                await supabase.from('u_sow_items').update({ scope_status: 'Pending' }).eq('id', existingOldSow.id);
+                                await supabase.from('u_sow_items').update({ status: 'pending' }).eq('id', existingOldSow.id);
                             }
                         }
                     }
@@ -642,6 +826,8 @@ export function SeabedSurveyGuiInline({
                 distance_from_leg: editFormData.distance,
                 face: editFormData.face,
                 distance_from_leg_unit: editFormData.distanceUnit,
+                nearest_leg: editFormData.nearestLeg,
+                dist_to_nearest_leg: editFormData.distToNearestLeg,
                 type: editFormData.category, 
                 debris_material: editFormData.material,
                 dimension_1: editFormData.size,
@@ -666,15 +852,14 @@ export function SeabedSurveyGuiInline({
                      // 1. Mark NEW component as 'Completed'
                      const { data: existingNewSow } = await supabase.from('u_sow_items')
                         .select('id').eq('sow_id', sowRecordId).eq('component_id', componentId).maybeSingle();
-                    
                      if (existingNewSow) {
-                        await supabase.from('u_sow_items').update({ scope_status: 'Completed' }).eq('id', existingNewSow.id);
+                        await supabase.from('u_sow_items').update({ status: 'completed' }).eq('id', existingNewSow.id);
                      } else if (record?.inspection_type_id) {
                         await supabase.from('u_sow_items').insert({
                             sow_id: sowRecordId,
                             component_id: componentId,
                             inspection_type_id: record.inspection_type_id,
-                            scope_status: 'Completed',
+                            status: 'completed',
                             report_number: sowReportNo || rovJob?.raw?.sow_report_no || "Auto-RSEAB"
                         });
                      }
@@ -690,7 +875,7 @@ export function SeabedSurveyGuiInline({
                             const { data: existingOldSow } = await supabase.from('u_sow_items')
                                 .select('id').eq('sow_id', sowRecordId).eq('component_id', oldComponentId).maybeSingle();
                             if (existingOldSow) {
-                                await supabase.from('u_sow_items').update({ scope_status: 'Pending' }).eq('id', existingOldSow.id);
+                                await supabase.from('u_sow_items').update({ status: 'pending' }).eq('id', existingOldSow.id);
                             }
                         }
                      }
@@ -715,11 +900,45 @@ export function SeabedSurveyGuiInline({
 
         try {
             setIsSaving(true);
+            
+            // 1. Fetch metadata before deletion to identify SOW link
+            const { data: record } = await supabase.from('insp_records')
+                .select('component_id, inspection_type_id')
+                .eq('insp_id', activeId)
+                .single();
+
+            // 2. Perform deletion
             const { error } = await supabase.from('insp_records')
                 .delete()
                 .eq('insp_id', activeId);
 
             if (error) throw error;
+            
+            // 3. Update SOW Status if it was the last record for this component/task
+            if (sowRecordId && record?.component_id && record?.inspection_type_id) {
+                try {
+                    const { count } = await supabase.from('insp_records')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('component_id', record.component_id)
+                        .eq('inspection_type_id', record.inspection_type_id);
+                    
+                    if (!count || count === 0) {
+                        const { data: sowItem } = await supabase.from('u_sow_items')
+                            .select('id')
+                            .eq('sow_id', sowRecordId)
+                            .eq('component_id', record.component_id)
+                            .eq('inspection_type_id', record.inspection_type_id)
+                            .maybeSingle();
+                        
+                        if (sowItem) {
+                            await supabase.from('u_sow_items').update({ status: 'pending' }).eq('id', sowItem.id);
+                        }
+                    }
+                } catch (sowErr) {
+                    console.warn("SOW deletion sync failed:", sowErr);
+                }
+            }
+
             toast.success("Debris record deleted");
             if (onRefreshInspection) onRefreshInspection();
             setActiveId(null);
@@ -875,6 +1094,8 @@ export function SeabedSurveyGuiInline({
                                 activeDebrisId={activeId}
                                 readOnly={false}
                                 referenceItems={comparisonDebris.filter(d => typeFilter === 'All' || d.type === typeFilter)}
+                                registeredQids={availableSectors}
+                                legsMetadata={legsMetadata}
                             />
                             {!isAdding && !activeId && (
                                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-lg shadow-sm font-bold text-slate-700 text-sm border-l-4 border-blue-500">
@@ -911,7 +1132,11 @@ export function SeabedSurveyGuiInline({
                                 <div className="bg-blue-50 py-2 px-3 rounded text-sm text-blue-800 font-bold border border-blue-100 flex flex-col gap-1">
                                     <div className="flex justify-between items-center text-xs opacity-70">
                                         <span>Face: {newPoint.geometry.face}</span>
-                                        <span>Dist: {newPoint.geometry.distance.toFixed(1)}m</span>
+                                        <span>Dist (Face): {newPoint.geometry.distance.toFixed(1)}m</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs opacity-70 border-t border-blue-200/50 pt-1 mt-1">
+                                        <span>Nearest Leg: {newPoint.geometry.nearestLeg}</span>
+                                        <span>Dist (Leg): {newPoint.geometry.distToNearestLeg.toFixed(1)}m</span>
                                     </div>
                                     <div className="flex justify-between items-center border-t border-blue-200/50 pt-1 mt-1">
                                         <span className="text-xs uppercase tracking-widest font-black opacity-70">Target QID</span>
@@ -1109,16 +1334,12 @@ export function SeabedSurveyGuiInline({
                                             <div className="flex justify-between items-center text-xs opacity-70">
                                                 <span>Face: {activeItem.face}</span>
                                                 <div className="flex items-center gap-1">
-                                                    <span>Dist: {activeItem.distance}</span>
-                                                    <select 
-                                                        className="bg-transparent text-[10px] font-bold text-slate-500 focus:outline-none cursor-pointer"
-                                                        value={editFormData?.distanceUnit || 'm'}
-                                                        onChange={e => setEditFormData((p: any) => ({...p, distanceUnit: e.target.value}))}
-                                                    >
-                                                        <option value="m">m</option>
-                                                        <option value="mm">mm</option>
-                                                    </select>
+                                                    <span>Dist (Face): {activeItem.distance}m</span>
                                                 </div>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs opacity-70 border-t border-slate-200/50 pt-1 mt-1">
+                                                <span>Nearest Leg: {activeItem.nearestLeg}</span>
+                                                <span>Dist (Leg): {activeItem.distToNearestLeg}m</span>
                                             </div>
                                             <div className="flex justify-between items-center text-xs border-t border-slate-200/50 pt-1 mt-1">
                                                 <span>X: {activeItem.x}</span>

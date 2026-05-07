@@ -663,6 +663,68 @@ function V10PreviewLayout() {
     const [openPopovers, setOpenPopovers] = useState<Record<string, boolean>>({});
     const [libOptionsMap, setLibOptionsMap] = useState<Record<string, any[]>>({});
 
+    useEffect(() => {
+        if (allComps.length > 0) {
+            let legSource = allComps;
+            
+            // If it's a Seabed Survey, restrict to the two legs defining the area
+            if (activeSpec?.toUpperCase() === 'RSEAB' && selectedComp) {
+                const sLeg = (selectedComp.startLeg || '').trim().toUpperCase();
+                const eLeg = (selectedComp.endLeg || '').trim().toUpperCase();
+                const hasValidStart = sLeg && sLeg !== '-';
+                const hasValidEnd = eLeg && eLeg !== '-';
+
+                if (hasValidStart || hasValidEnd) {
+                    legSource = allComps.filter((c: any) => {
+                        const name = (c.name || '').trim().toUpperCase();
+                        const qid = (c.raw?.q_id || '').trim().toUpperCase();
+                        // Match if name/qid ends with the target leg (e.g. "PLAT-C/A1" matches "A1")
+                        const matchStart = hasValidStart && (name === sLeg || name.endsWith(`/${sLeg}`) || name.endsWith(` ${sLeg}`) || qid === sLeg);
+                        const matchEnd = hasValidEnd && (name === eLeg || name.endsWith(`/${eLeg}`) || name.endsWith(` ${eLeg}`) || qid === eLeg);
+                        return matchStart || matchEnd;
+                    });
+                }
+            }
+
+            const legs = (legSource.length > 0 ? legSource : allComps)
+                .filter((c: any) => {
+                    const code = (c.raw?.code || '').toUpperCase();
+                    const type = (c.raw?.type || '').toUpperCase();
+                    const qid = (c.name || '').toUpperCase();
+                    const isLeg = code.includes('LEG') || type.includes('LEG') || qid.includes('LEG') || /^[A-D][1-4]$/.test(qid) || /LEG/i.test(qid);
+                    return isLeg;
+                })
+                .map((c: any) => {
+                    const md = (typeof c.raw?.metadata === 'string' ? JSON.parse(c.raw.metadata) : c.raw?.metadata) || {};
+                    return {
+                        id: c.id,
+                        name: c.name,
+                        northing: parseFloat(c.raw?.northing || md.northing || md.Northing || 0),
+                        easting: parseFloat(c.raw?.easting || md.easting || md.Easting || 0)
+                    };
+                });
+
+            // Ensure start/end legs from the Seabed component are always in the list
+            if (activeSpec?.toUpperCase() === 'RSEAB' && selectedComp) {
+                const sName = (selectedComp.startLeg || '').trim();
+                const eName = (selectedComp.endLeg || '').trim();
+                
+                if (sName && sName !== '-' && !legs.some(l => l.name.toUpperCase() === sName.toUpperCase())) {
+                    legs.push({ id: `synthetic-start`, name: sName, northing: 0, easting: 0 });
+                }
+                if (eName && eName !== '-' && !legs.some(l => l.name.toUpperCase() === eName.toUpperCase())) {
+                    legs.push({ id: `synthetic-end`, name: eName, northing: 0, easting: 0 });
+                }
+            }
+            
+            const registeredQids = allComps
+                .filter((c: any) => (c.raw?.code === 'SD' || c.raw?.type === 'SD' || (c.name || '').startsWith('S/BED')))
+                .map((c: any) => (c.name || '').toUpperCase());
+
+            setLibOptionsMap(prev => ({ ...prev, legs, registeredQids }));
+        }
+    }, [allComps, selectedComp, activeSpec]);
+
     // Helper to handle prop changes and track user interaction
     const handleDynamicPropChange = (name: string, value: any) => {
         setDynamicProps(prev => {
@@ -684,6 +746,31 @@ function V10PreviewLayout() {
                     
                     const calc = Math.sqrt(avgCirc / 3.142) - nominalDiameter;
                     updated.effective_thickness = parseFloat(calc.toFixed(2));
+                }
+            }
+
+            if (activeSpec?.toUpperCase() === 'RSEAB' && (name === 'northing' || name === 'easting')) {
+                const n = parseFloat(name === 'northing' ? value : updated.northing) || 0;
+                const e = parseFloat(name === 'easting' ? value : updated.easting) || 0;
+                
+                if (n !== 0 && e !== 0 && libOptionsMap.legs && libOptionsMap.legs.length > 0) {
+                    let nearest: any = null;
+                    let minDistance = Infinity;
+                    
+                    for (const leg of libOptionsMap.legs) {
+                        const dx = leg.easting - e;
+                        const dy = leg.northing - n;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            nearest = leg;
+                        }
+                    }
+                    
+                    if (nearest) {
+                        updated.nearest_leg = nearest.name;
+                        updated.distance_from_leg = parseFloat(minDistance.toFixed(2));
+                    }
                 }
             }
             return updated;
@@ -1055,40 +1142,53 @@ function V10PreviewLayout() {
                 updated_by: userName
             };
 
-            // 3a. Handle Elevation-bound SOW Item
-            if (existing.elevation_required && existing.elevation_data && Array.isArray(existing.elevation_data) && currentElevation !== undefined) {
-                const elevStatus = currentStatus?.toLowerCase() || 'completed';
+            // Helper to get status from remaining records
+            const getEffectiveStatus = async (elevStart?: number, elevEnd?: number) => {
+                let query = supabase.from('insp_records')
+                    .select('status')
+                    .eq('component_id', compId)
+                    .eq('inspection_type_code', taskCode);
                 
-                const updatedElevationData = existing.elevation_data.map((elev: any) => {
+                if (elevStart !== undefined && elevEnd !== undefined) {
+                    query = query.gte('elevation', Math.min(elevStart, elevEnd))
+                                 .lte('elevation', Math.max(elevStart, elevEnd));
+                }
+                
+                const { data } = await query;
+                if (!data || data.length === 0) return 'pending';
+                const hasIncomplete = data.some(r => r.status === 'INCOMPLETE');
+                return hasIncomplete ? 'incomplete' : 'completed';
+            };
+
+            // 3a. Handle Elevation-bound SOW Item
+            if (existing.elevation_required && existing.elevation_data && Array.isArray(existing.elevation_data)) {
+                const updatedElevationData = await Promise.all(existing.elevation_data.map(async (elev: any) => {
                     const start = parseFloat(elev.start);
                     const end = parseFloat(elev.end);
-                    // Check if currentElevation falls within this range
-                    if (!isNaN(start) && !isNaN(end) && currentElevation >= Math.min(start, end) && currentElevation <= Math.max(start, end)) {
-                        return { ...elev, status: elevStatus };
+                    const isInRange = currentElevation !== undefined && 
+                                      currentElevation >= Math.min(start, end) && 
+                                      currentElevation <= Math.max(start, end);
+
+                    if (isInRange) {
+                        const status = currentStatus ? currentStatus.toLowerCase() : await getEffectiveStatus(start, end);
+                        return { ...elev, status };
                     }
                     return elev;
-                });
+                }));
 
                 updatedFields.elevation_data = updatedElevationData;
                 
                 // Recalculate overall status
                 const allDone = updatedElevationData.every((e: any) => e.status === 'completed');
                 const anyIncomplete = updatedElevationData.some((e: any) => e.status === 'incomplete');
-                
-                if (allDone) {
-                    updatedFields.status = 'completed';
-                } else if (anyIncomplete) {
-                    updatedFields.status = 'incomplete';
-                } else {
-                    updatedFields.status = 'incomplete';
-                }
+                const allPending = updatedElevationData.every((e: any) => e.status === 'pending');
+
+                if (allDone) updatedFields.status = 'completed';
+                else if (allPending) updatedFields.status = 'pending';
+                else updatedFields.status = 'incomplete';
             } else {
                 // 3b. Handle Standard SOW Item
-                let newStatus: 'pending' | 'completed' | 'incomplete' = 'completed';
-                if (currentStatus?.toUpperCase() === 'INCOMPLETE') {
-                    newStatus = 'incomplete';
-                }
-                updatedFields.status = newStatus;
+                updatedFields.status = currentStatus ? currentStatus.toLowerCase() : await getEffectiveStatus();
             }
 
             const { error: updateErr } = await supabase.from('u_sow_items')
@@ -1436,7 +1536,7 @@ function V10PreviewLayout() {
             }
 
             if (record && record.component_id && record.inspection_type_code) {
-                await syncSowStatus(record.component_id, record.inspection_type_code);
+                await syncSowStatus(record.component_id, record.inspection_type_code, record.elevation);
             }
 
             toast.success("Record deleted");
@@ -3242,8 +3342,8 @@ function V10PreviewLayout() {
                 const md = (typeof comp.metadata === 'string' ? JSON.parse(comp.metadata) : comp.metadata) || {};
                 const startNode = md.start_node || md.f_node || md.Node_1 || comp.startNode || comp.start_node || '-';
                 const endNode = md.end_node || md.s_node || md.Node_2 || comp.endNode || comp.end_node || '-';
-                const startLeg = md.s_leg || md.start_leg || md.leg_1 || md.StartLeg || md.Leg_1 || comp.startLeg || comp.start_leg || '-';
-                const endLeg = md.f_leg || md.end_leg || md.leg_2 || md.EndLeg || md.Leg_2 || comp.endLeg || comp.end_leg || '-';
+                const startLeg = md.f_leg || md.start_leg || md.s_leg || md.leg_1 || md.StartLeg || md.Leg_1 || comp.startLeg || comp.start_leg || '-';
+                const endLeg = md.s_leg || md.end_leg || md.f_leg || md.leg_2 || md.EndLeg || md.Leg_2 || comp.endLeg || comp.end_leg || '-';
                 const startElev = md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || '-';
                 const endElev = md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || '-';
                 const nominalThk = md.nominal_thickness || md.NominalThickness || md.nominal_thk || comp.nominal_thickness || '-';
@@ -4263,7 +4363,7 @@ function V10PreviewLayout() {
         if (!record.inspection_data || !record.component_id || !record.inspection_type || 
            (record.has_anomaly && (!record.insp_anomalies || record.insp_anomalies.length === 0))) {
             const { data, error } = await supabase.from('insp_records')
-                .select('*, inspection_type(id, code, name), insp_anomalies(*)')
+                .select('*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*)')
                 .eq('insp_id', recordId)
                 .maybeSingle();
                 
@@ -4279,13 +4379,23 @@ function V10PreviewLayout() {
         if (comp) {
             setSelectedComp(comp);
         } else {
-            // Fallback: If component is not in current sidebar list, create a minimal object from record metadata
-            // to ensure component_overrides (e.g. Anode fields) still work based on component_type
+            // Use joined component data if available
+            const jc = fullRecord.structure_components;
+            const md = (typeof jc?.metadata === 'string' ? JSON.parse(jc.metadata) : jc?.metadata) || {};
+            
             setSelectedComp({
                 id: fullRecord.component_id,
-                name: fullRecord.component_name || `Component ${fullRecord.component_id}`,
-                type: fullRecord.component_type,
-                raw: { 
+                name: jc?.q_id || fullRecord.component_name || `Component ${fullRecord.component_id}`,
+                type: jc?.code || fullRecord.component_type,
+                depth: md.water_depth || jc?.water_depth || '-',
+                startNode: md.f_node || md.start_node || '-',
+                endNode: md.s_node || md.end_node || '-',
+                startLeg: md.f_leg || md.start_leg || '-',
+                endLeg: md.s_leg || md.end_leg || '-',
+                startElev: md.elv_1 || md.start_elevation || '-',
+                endElev: md.elv_2 || md.end_elevation || '-',
+                nominalThk: md.nominal_thickness || '-',
+                raw: jc || { 
                     type: fullRecord.component_type,
                     code: fullRecord.component_type
                 }
@@ -5549,6 +5659,7 @@ function V10PreviewLayout() {
                                         vidState={vidState}
                                         onChangeTaskClick={() => setShowTaskSelector(true)}
                                         onChangeComponentClick={() => setShowCompSelector(true)}
+                                        libOptionsMap={libOptionsMap}
                                     />
                                 )}
                             </div>
@@ -5716,7 +5827,11 @@ function V10PreviewLayout() {
                                                 };
 
                                                 return (
-                                                    <tr key={r.insp_id} className="hover:bg-slate-50 group">
+                                                    <tr 
+                                                        key={r.insp_id} 
+                                                        className="hover:bg-slate-50 group cursor-pointer"
+                                                        onDoubleClick={() => handleEditRecord(r)}
+                                                    >
                                                         {activeTableColumns.map(col => {
                                                             switch (col.id) {
                                                                 case 'actions':
@@ -6120,7 +6235,11 @@ function V10PreviewLayout() {
                                         };
 
                                         return (
-                                            <tr key={r.insp_id} className="hover:bg-slate-50 group">
+                                            <tr 
+                                                key={r.insp_id} 
+                                                className="hover:bg-slate-50 group cursor-pointer"
+                                                onDoubleClick={() => handleEditRecord(r)}
+                                            >
                                                 {activeTableColumns.map(col => {
                                                     switch (col.id) {
                                                         case 'actions':

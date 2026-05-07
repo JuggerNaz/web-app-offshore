@@ -1582,6 +1582,7 @@ export function WorkspaceDialogs({
                             onRefreshInspection={() => {
                                 syncDeploymentState();
                                 queryClient.invalidateQueries({ queryKey: ['inspection-records'] });
+                                queryClient.invalidateQueries({ queryKey: ['sow-data'] });
                             }}
                         />
                     </div>

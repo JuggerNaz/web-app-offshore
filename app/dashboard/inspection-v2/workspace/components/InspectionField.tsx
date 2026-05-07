@@ -57,14 +57,13 @@ const InspectionField = ({
     const isMarineGrowth = fieldName.includes('marine growth') || fieldName.includes('marinegrowth') || fieldName === 'mgi' || fieldName.includes('marine_growth');
     const isCoating = fieldName.includes('coating condition') || fieldName.includes('coatingcondition') || fieldName.includes('coating_condition');
     const isCompCondition = fieldName.includes('component condition') || fieldName.includes('componentcondition') || fieldName.includes('component_condition');
-
     const isAnodeType = fieldName === 'anode type' || fieldName === 'anode_type';
     const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
     const isCpField = fieldName.includes('cp');
 
     const isTimeField = fieldName.includes('time') || fieldName.includes('counter') || p.type === 'time' || p.name === 'tape_count_no' || p.name === 'inspection_time';
 
-    const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code;
+    const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code || !!p.optionsSource;
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
 
@@ -99,6 +98,14 @@ const InspectionField = ({
             if (libOpts && Array.isArray(libOpts)) {
                 const libDescriptions = libOpts.map((o: any) => o.lib_desc);
                 options = Array.from(new Set([...options, ...libDescriptions]));
+            }
+        }
+
+        if (p.optionsSource) {
+            const srcOpts = libOptionsMap[p.optionsSource];
+            if (srcOpts && Array.isArray(srcOpts)) {
+                const names = srcOpts.map((o: any) => o.name || o.label || o);
+                options = Array.from(new Set([...options, ...names]));
             }
         }
 
@@ -249,6 +256,25 @@ const InspectionField = ({
                                         </button>
                                     ))}
                                 </div>
+                            ) : searchTerm ? (
+                                <div className="p-1">
+                                    <button
+                                        className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 text-blue-600 rounded transition-colors font-bold flex items-center gap-2"
+                                        onClick={() => {
+                                            handler(p.name || p.label, searchTerm);
+                                            if (type === 'primary') {
+                                                setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: searchTerm }));
+                                            }
+                                            setOpenPopovers((prev: any) => ({ ...prev, [p.name || p.label]: false }));
+                                            setSearchTerm("");
+                                        }}
+                                    >
+                                        <div className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center">
+                                            <span className="text-[10px]">+</span>
+                                        </div>
+                                        Add "{searchTerm}"
+                                    </button>
+                                </div>
                             ) : (
                                 <div className="p-3 text-center text-xs text-slate-400 italic">No matches found</div>
                             )}
@@ -272,9 +298,16 @@ const InspectionField = ({
                 className={`flex h-8 w-full rounded-md border ${borderClass} bg-white px-2.5 text-xs font-semibold ${ringClass}`}
             >
                 <option value="">Select {p.label}</option>
-                {(p.options || []).map((opt: string) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                ))}
+                {(() => {
+                    let opts = [...(p.options || [])];
+                    if (p.optionsSource && libOptionsMap[p.optionsSource]) {
+                        const srcOpts = libOptionsMap[p.optionsSource].map((o: any) => o.name || o.label || o);
+                        opts = Array.from(new Set([...opts, ...srcOpts]));
+                    }
+                    return opts.map((opt: string) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                    ));
+                })()}
             </select>
         );
     }

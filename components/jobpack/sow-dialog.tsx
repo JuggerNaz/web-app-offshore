@@ -12,7 +12,8 @@ import {
     PanelLeftClose, PanelLeftOpen, ChevronLeft, LayoutGrid, Maximize2, Minimize2,
     Download, Copy, Save, Info, MoreHorizontal, Activity, BarChart3, PieChart,
     ChevronRightSquare, KanbanSquare, Sliders, Waves, PlaneTakeoff, Zap,
-    Anchor, Target, Eye, Navigation, Box, ClipboardCheck, BarChart
+    Anchor, Target, Eye, Navigation, Box, ClipboardCheck, BarChart, RefreshCw, ArrowUpDown,
+    ChevronUp
 } from "lucide-react";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SOW, SOWItem, ReportNumber, InspectionStatus } from "@/types/sow";
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface SOWDialogProps {
     open: boolean;
@@ -93,6 +95,8 @@ export function SOWDialog({
     const [expandedMode, setExpandedMode] = useState<string | null>(null);
     const [expandedTaskType, setExpandedTaskType] = useState<string | null>(null);
     const [expandedCompType, setExpandedCompType] = useState<string | null>(null);
+    const [compSortConfig, setCompSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'qid', direction: 'asc' });
+    const [isCorrecting, setIsCorrecting] = useState(false);
     
     // Logic state
     const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -163,6 +167,39 @@ export function SOWDialog({
                 setComponentBreakpoints(finalBreakpoints);
             }
         } catch (e) { console.error(e); } finally { setLoading(false); }
+    };
+
+    const handleStatusCorrection = async () => {
+        if (!sow?.id || !structure?.id) {
+            toast.error("No SOW or structure selected");
+            return;
+        }
+        setIsCorrecting(true);
+        try {
+            const res = await fetch("/api/sow/correct", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sow_id: sow.id, structure_id: structure.id })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const updated = data.updated_count || 0;
+                const inserted = data.inserted_count || 0;
+                if (updated === 0 && inserted === 0) {
+                    toast.info("All SOW items are already up to date.");
+                } else {
+                    toast.success(`Correction Complete: ${updated} items updated, ${inserted} items inserted.`);
+                }
+                loadSOW();
+            } else {
+                toast.error(data.error || "Correction failed");
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error("An error occurred during correction");
+        } finally {
+            setIsCorrecting(false);
+        }
     };
 
     // ── CORE LOGIC ──
@@ -297,39 +334,61 @@ export function SOWDialog({
         return selectedItems.has(`${activeReport}:${compId}:${typeId}:${s}:${e}`);
     };
 
-    const activeComponents = useMemo(() => components.filter(c => {
-        let matchesSearch = true;
-        if (componentSearch) {
-            const s = componentSearch.toLowerCase();
-            matchesSearch = [
-                c.qid, c.type, c.s_node, c.f_node, c.s_leg, c.f_leg, 
-                c.top_und, c.comp_group, 
-                c.elv_1?.toString(), c.elv_2?.toString()
-            ].some(val => val && val.toString().toLowerCase().includes(s));
-        }
-        if (!matchesSearch) return false;
-        
-        // Combine status and inspection filters
-        let matchesStatus = true;
-        if (scopeStatusFilter === 'selected') {
-            matchesStatus = validInspections.some(it => isSelected(c.id, it.id, 0, 0));
-        } else if (scopeStatusFilter === 'pending') {
-            matchesStatus = validInspections.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'pending');
-        } else if (scopeStatusFilter === 'completed') {
-            matchesStatus = validInspections.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'completed');
-        } else if (scopeStatusFilter === 'incomplete') {
-            matchesStatus = validInspections.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'incomplete');
-        }
-        
-        if (!matchesStatus) return false;
+    const activeComponents = useMemo(() => {
+        let filtered = components.filter(c => {
+            let matchesSearch = true;
+            if (componentSearch) {
+                const s = componentSearch.toLowerCase();
+                matchesSearch = [
+                    c.qid, c.type, c.s_node, c.f_node, c.s_leg, c.f_leg, 
+                    c.top_und, c.comp_group, 
+                    c.elv_1?.toString(), c.elv_2?.toString()
+                ].some(val => val && val.toString().toLowerCase().includes(s));
+            }
+            if (!matchesSearch) return false;
+            
+            // Combine status and inspection filters
+            let matchesStatus = true;
+            const inspectionsToCheck = selectedInspectionFilter === 'all' 
+                ? validInspections 
+                : validInspections.filter(it => String(it.id) === String(selectedInspectionFilter));
 
-        // Inspection filter (additive)
-        if (selectedInspectionFilter !== 'all') {
-            return isSelected(c.id, Number(selectedInspectionFilter), 0, 0);
-        }
+            if (scopeStatusFilter === 'selected') {
+                matchesStatus = inspectionsToCheck.some(it => isSelected(c.id, it.id, 0, 0));
+            } else if (scopeStatusFilter === 'pending') {
+                matchesStatus = inspectionsToCheck.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'pending');
+            } else if (scopeStatusFilter === 'completed') {
+                matchesStatus = inspectionsToCheck.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'completed');
+            } else if (scopeStatusFilter === 'incomplete') {
+                matchesStatus = inspectionsToCheck.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'incomplete');
+            } else if (scopeStatusFilter === 'all') {
+                // If 'all' is selected, we don't filter rows by status or inspection selection
+                matchesStatus = true;
+            }
+            
+            return matchesStatus;
+        });
 
-        return true;
-    }), [components, componentSearch, scopeStatusFilter, selectedInspectionFilter, validInspections, selectedItems, sowItems, activeReport]);
+        // Sorting
+        return filtered.sort((a, b) => {
+            const key = compSortConfig.key as keyof typeof a;
+            let valA: any = a[key];
+            let valB: any = b[key];
+
+            // Handle numeric values for elevations
+            if (key === 'elv_1' || key === 'elv_2') {
+                valA = Number(valA || 0);
+                valB = Number(valB || 0);
+            } else {
+                valA = String(valA || '').toLowerCase();
+                valB = String(valB || '').toLowerCase();
+            }
+
+            if (valA < valB) return compSortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return compSortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [components, componentSearch, scopeStatusFilter, selectedInspectionFilter, validInspections, selectedItems, sowItems, activeReport, compSortConfig]);
 
     // ── ACTIONS ──
     const handleAddReportNumber = () => {
@@ -468,6 +527,19 @@ export function SOWDialog({
                                 <ArrowLeft className="h-4 w-4" /> Back
                             </Button>
                         )}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn(
+                                "h-9 px-3 text-slate-600 hover:text-blue-600 flex items-center gap-2 font-bold text-[10px] bg-white rounded-xl border border-slate-100 shadow-sm transition-all",
+                                isCorrecting && "animate-pulse opacity-70"
+                            )}
+                            onClick={handleStatusCorrection}
+                            disabled={isCorrecting || readOnly}
+                        >
+                            <RefreshCw className={cn("h-3.5 w-3.5", isCorrecting && "animate-spin")} />
+                            {isCorrecting ? "Correcting..." : "Correct Status"}
+                        </Button>
                         <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg"><ShieldCheck className="h-5 w-5 text-white" /></div>
                         <div className="flex flex-col">
                             <DialogTitle className="text-sm font-black leading-tight text-slate-900">
@@ -659,7 +731,41 @@ export function SOWDialog({
                             <table className="w-full text-xs border-collapse">
                                 <thead className="bg-[#fbfcff] sticky top-0 z-40">
                                     <tr>
-                                        <th className="p-4 text-left border-r border-b border-slate-50 sticky left-0 bg-[#fbfcff] w-[260px] z-50"><div className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-2 group flex items-center gap-2">Component Identifier <ChevronDown className="h-3 w-3" /></div></th>
+                                        <th 
+                                            className="p-4 text-left border-r border-b border-slate-50 sticky left-0 bg-[#fbfcff] w-[260px] z-50 transition-colors"
+                                        >
+                                            <div className="flex flex-col gap-1 px-2">
+                                                <div 
+                                                    className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-2 cursor-pointer hover:text-slate-500 group"
+                                                    onClick={() => setCompSortConfig(prev => ({
+                                                        key: 'qid',
+                                                        direction: prev.key === 'qid' && prev.direction === 'asc' ? 'desc' : 'asc'
+                                                    }))}
+                                                >
+                                                    Component Identifier 
+                                                    {compSortConfig.key === 'qid' ? (
+                                                        compSortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3 text-blue-600" /> : <ChevronDown className="h-3 w-3 text-blue-600" />
+                                                    ) : (
+                                                        <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-100" />
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <div 
+                                                        className={cn("text-[8px] font-bold uppercase cursor-pointer hover:text-blue-600 px-1 rounded transition-colors", compSortConfig.key === 'type' ? "text-blue-600 bg-blue-50" : "text-slate-400")}
+                                                        onClick={() => setCompSortConfig(prev => ({ key: 'type', direction: prev.key === 'type' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                                                    >
+                                                        Type {compSortConfig.key === 'type' && (compSortConfig.direction === 'asc' ? '↑' : '↓')}
+                                                    </div>
+                                                    <div className="text-slate-200">|</div>
+                                                    <div 
+                                                        className={cn("text-[8px] font-bold uppercase cursor-pointer hover:text-blue-600 px-1 rounded transition-colors", compSortConfig.key === 'elv_1' ? "text-blue-600 bg-blue-50" : "text-slate-400")}
+                                                        onClick={() => setCompSortConfig(prev => ({ key: 'elv_1', direction: prev.key === 'elv_1' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                                                    >
+                                                        Elev {compSortConfig.key === 'elv_1' && (compSortConfig.direction === 'asc' ? '↑' : '↓')}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </th>
                                         {validInspections
                                             .filter(it => selectedInspectionFilter === 'all' || String(it.id) === String(selectedInspectionFilter))
                                             .map(it => {

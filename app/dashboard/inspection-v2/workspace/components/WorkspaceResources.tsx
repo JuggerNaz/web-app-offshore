@@ -39,6 +39,9 @@ interface WorkspaceResourcesProps {
     unitSystem: "METRIC" | "IMPERIAL";
 }
 
+type SortKey = 'name' | 'depth' | 'startElev';
+type SortDir = 'asc' | 'desc';
+
 export function WorkspaceResources(props: WorkspaceResourcesProps) {
     const {
         compView, setCompView, compSearchTerm, setCompSearchTerm,
@@ -51,6 +54,34 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
     } = props;
 
     const [isRegisterOpen, setIsRegisterOpen] = React.useState(false);
+    const [sortKey, setSortKey] = React.useState<SortKey>('name');
+    const [sortDir, setSortDir] = React.useState<SortDir>('asc');
+
+    const toggleSort = (key: SortKey) => {
+        if (sortKey === key) {
+            setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortKey(key);
+            setSortDir('asc');
+        }
+    };
+
+    const sortFn = (a: any, b: any) => {
+        let valA = a[sortKey];
+        let valB = b[sortKey];
+
+        if (sortKey === 'depth' || sortKey === 'startElev') {
+            valA = parseFloat(valA) || 0;
+            valB = parseFloat(valB) || 0;
+        } else {
+            valA = String(valA || '').toLowerCase();
+            valB = String(valB || '').toLowerCase();
+        }
+
+        if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+        if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+    };
 
     return (
         <div className="w-[360px] flex flex-col gap-3 shrink-0 overflow-hidden">
@@ -96,7 +127,23 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                         <ScrollArea className="flex-1 p-2">
                             <div className="space-y-4">
                                 <div>
-                                    <div className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded tracking-widest mb-1.5 border border-blue-100">SOW Scope</div>
+                                    <div className="flex items-center justify-between bg-blue-50 px-2 py-1 rounded border border-blue-100 mb-1.5">
+                                        <div className="text-[9px] font-black uppercase text-blue-600 tracking-widest">SOW Scope</div>
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={() => toggleSort('name')}
+                                                className={`text-[8px] font-black uppercase tracking-tighter flex items-center gap-0.5 px-1.5 py-0.5 rounded transition-colors ${sortKey === 'name' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-400 hover:bg-blue-100'}`}
+                                            >
+                                                QID {sortKey === 'name' && (sortDir === 'asc' ? '↑' : '↓')}
+                                            </button>
+                                            <button 
+                                                onClick={() => toggleSort('startElev')}
+                                                className={`text-[8px] font-black uppercase tracking-tighter flex items-center gap-0.5 px-1.5 py-0.5 rounded transition-colors ${sortKey === 'startElev' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-400 hover:bg-blue-100'}`}
+                                            >
+                                                Elev {sortKey === 'startElev' && (sortDir === 'asc' ? '↑' : '↓')}
+                                            </button>
+                                        </div>
+                                    </div>
                                     <div className="space-y-1">
                                         {componentsSow.filter((c: any) => {
                                             let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
@@ -121,7 +168,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                             const nodeStr = `${c.startNode || ''} ${c.endNode || ''}`.toLowerCase();
                                             
                                             return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term) || nodeStr.includes(term);
-                                        }).map((c: any) => {
+                                        }).sort(sortFn).map((c: any) => {
                                             const isSelected = selectedComp?.id === c.id;
                                             return (
                                                 <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
@@ -175,7 +222,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                             const qid = (c.name || '').toLowerCase();
                                             const code = (c.raw?.code || '').toLowerCase();
                                             return qid.includes(term) || code.includes(term);
-                                        }).map((c: any) => (
+                                        }).sort(sortFn).map((c: any) => (
                                             <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
                                                 <div className="flex justify-between font-bold">
                                                     <span>{c.name}</span>

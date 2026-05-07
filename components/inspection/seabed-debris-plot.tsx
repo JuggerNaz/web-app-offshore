@@ -27,9 +27,9 @@ interface SeabedDebrisPlotProps {
     legCount?: 3 | 4 | 6 | 8 | 16;
     gridDistances?: number[]; // e.g. [3, 6, 9, 12, 15, 18, 21]
     debrisItems?: DebrisItem[];
-    onDebrisMove?: (id: string | number, x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number }) => void;
-    onAddDebris?: (x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number }) => void;
-    onHover?: (x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number } | null) => void;
+    onDebrisMove?: (id: string | number, x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number, nearestLeg?: string, distToNearestLeg?: number }) => void;
+    onAddDebris?: (x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number, nearestLeg?: string, distToNearestLeg?: number }) => void;
+    onHover?: (x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number, nearestLeg?: string, distToNearestLeg?: number } | null) => void;
     onSelectDebris?: (id: string | number | null) => void;
     readOnly?: boolean;
 
@@ -41,6 +41,8 @@ interface SeabedDebrisPlotProps {
     };
     distanceOffset?: number;
     referenceItems?: DebrisItem[];
+    registeredQids?: string[];
+    legsMetadata?: any[];
 }
 
 const VIEW_SIZE = 600;
@@ -61,6 +63,8 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
     manualEntry,
     distanceOffset = 0,
     referenceItems = [],
+    registeredQids = [],
+    legsMetadata = [],
 }) => {
     const isDraggingRef = React.useRef(false);
 
@@ -172,6 +176,26 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
         else if (angle >= 135 && angle < 225) { face = 'SOUTH'; startLeg = bl; endLeg = br; }
         else { face = 'WEST'; startLeg = tl; endLeg = bl; }
 
+        // Find nearest leg and distance to it
+        let nearestLeg = startLeg;
+        let distToNearestLeg = 0;
+        
+        const startPos = legPositions.find(p => p.name === startLeg);
+        const endPos = legPositions.find(p => p.name === endLeg);
+        
+        if (startPos && endPos) {
+            const dStart = Math.sqrt(Math.pow(screenX - startPos.x, 2) + Math.pow(screenY - startPos.y, 2));
+            const dEnd = Math.sqrt(Math.pow(screenX - endPos.x, 2) + Math.pow(screenY - endPos.y, 2));
+            
+            if (dStart < dEnd) {
+                nearestLeg = startLeg;
+                distToNearestLeg = dStart / pxPerMeter;
+            } else {
+                nearestLeg = endLeg;
+                distToNearestLeg = dEnd / pxPerMeter;
+            }
+        }
+
         // Find target box distance (always round UP to the next interval to identify the "area")
         let nearestDistance = gridDistances[0];
         if (gridDistances.length > 0) {
@@ -184,7 +208,16 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
             }
         }
 
-        return { distance: logicalDist, angle, face, startLeg, endLeg, nearestDistance };
+        return { 
+            distance: logicalDist, 
+            angle, 
+            face, 
+            startLeg, 
+            endLeg, 
+            nearestDistance,
+            nearestLeg,
+            distToNearestLeg: distToNearestLeg + distanceOffset
+        };
     };
 
     // Auto-calculate position from manual text fields
@@ -225,21 +258,42 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
             const offsetPx = renderDist * pxPerMeter;
             
             if (layoutType === 'rectangular') {
+                const x1 = bounds.minX - offsetPx;
+                const x2 = bounds.maxX + offsetPx;
+                const y1 = bounds.minY - offsetPx;
+                const y2 = bounds.maxY + offsetPx;
+
+                // Identify 4 faces for this distance
+                const outCols = 2;
+                const outRows = 2;
+                const tl = 'A1';
+                const tr = `A${outCols}`;
+                const bl = `${String.fromCharCode(64 + outRows)}1`;
+                const br = `${String.fromCharCode(64 + outRows)}${outCols}`;
+
+                const qidN = `S/BED(${tl}-${tr})-${dist}M`.toUpperCase();
+                const qidS = `S/BED(${bl}-${br})-${dist}M`.toUpperCase();
+                const qidE = `S/BED(${tr}-${br})-${dist}M`.toUpperCase();
+                const qidW = `S/BED(${tl}-${bl})-${dist}M`.toUpperCase();
+
+                const colorActive = "rgba(100, 116, 139, 0.4)";
+                const colorInactive = "rgba(239, 68, 68, 0.15)"; // Light red for unregistered
+
+                const hasN = registeredQids.length === 0 || registeredQids.includes(qidN);
+                const hasS = registeredQids.length === 0 || registeredQids.includes(qidS);
+                const hasE = registeredQids.length === 0 || registeredQids.includes(qidE);
+                const hasW = registeredQids.length === 0 || registeredQids.includes(qidW);
+
                 return (
-                    <rect
-                        key={`grid-${i}`}
-                        x={bounds.minX - offsetPx}
-                        y={bounds.minY - offsetPx}
-                        width={(bounds.maxX - bounds.minX) + offsetPx * 2}
-                        height={(bounds.maxY - bounds.minY) + offsetPx * 2}
-                        fill="none"
-                        stroke="rgba(100, 116, 139, 0.3)"
-                        strokeDasharray="4 4"
-                        strokeWidth="1"
-                    />
+                    <g key={`grid-${i}`}>
+                        <line x1={x1} y1={y1} x2={x2} y2={y1} stroke={hasN ? colorActive : colorInactive} strokeDasharray={hasN ? "4 4" : "2 2"} strokeWidth="1" />
+                        <line x1={x1} y1={y2} x2={x2} y2={y2} stroke={hasS ? colorActive : colorInactive} strokeDasharray={hasS ? "4 4" : "2 2"} strokeWidth="1" />
+                        <line x1={x2} y1={y1} x2={x2} y2={y2} stroke={hasE ? colorActive : colorInactive} strokeDasharray={hasE ? "4 4" : "2 2"} strokeWidth="1" />
+                        <line x1={x1} y1={y1} x2={x1} y2={y2} stroke={hasW ? colorActive : colorInactive} strokeDasharray={hasW ? "4 4" : "2 2"} strokeWidth="1" />
+                    </g>
                 );
             } else {
-                // Triangle grid lines expanded from center
+                // Triangle/Polygon - Fallback to full polygon if registeredQids logic not yet complex enough for 3+ legs
                 const outerPoints = legPositions.map(p => {
                     const dx = p.x - CENTER;
                     const dy = p.y - CENTER;
@@ -348,31 +402,49 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                         {gridDistances.map((dist, i) => {
                             const renderDist = Math.max(0, dist - distanceOffset);
                             const offsetPx = renderDist * pxPerMeter;
-                            const topY = bounds.minY - offsetPx;
-                            const bottomY = bounds.maxY + offsetPx;
-                            const leftX = bounds.minX - offsetPx;
-                            const rightX = bounds.maxX + offsetPx;
+                            const x1 = bounds.minX - offsetPx;
+                            const x2 = bounds.maxX + offsetPx;
+                            const y1 = bounds.minY - offsetPx;
+                            const y2 = bounds.maxY + offsetPx;
+
+                            const tl = 'A1';
+                            const tr = `A${legCount / 2}`;
+                            const bl = `${String.fromCharCode(64 + 2)}1`;
+                            const br = `${String.fromCharCode(64 + 2)}${legCount / 2}`;
+
+                            const qidN = `S/BED(${tl}-${tr})-${dist}M`.toUpperCase();
+                            const qidS = `S/BED(${bl}-${br})-${dist}M`.toUpperCase();
+                            const qidE = `S/BED(${tr}-${br})-${dist}M`.toUpperCase();
+                            const qidW = `S/BED(${tl}-${bl})-${dist}M`.toUpperCase();
+
+                            const hasN = registeredQids.length === 0 || registeredQids.includes(qidN);
+                            const hasS = registeredQids.length === 0 || registeredQids.includes(qidS);
+                            const hasE = registeredQids.length === 0 || registeredQids.includes(qidE);
+                            const hasW = registeredQids.length === 0 || registeredQids.includes(qidW);
+
+                            const colorActive = "fill-slate-500";
+                            const colorInactive = "fill-red-400/40";
 
                             return (
                                 <React.Fragment key={`lbl-${i}`}>
                                     {/* Corners (Distances) */}
-                                    <text x={leftX - 4} y={topY - 4} textAnchor="end">{dist}m</text>
-                                    <text x={rightX + 4} y={topY - 4} textAnchor="start">{dist}m</text>
-                                    <text x={leftX - 4} y={bottomY + 10} textAnchor="end">{dist}m</text>
-                                    <text x={rightX + 4} y={bottomY + 10} textAnchor="start">{dist}m</text>
+                                    <text x={x1 - 4} y={y1 - 4} textAnchor="end" className={hasN || hasW ? colorActive : colorInactive}>{dist}m</text>
+                                    <text x={x2 + 4} y={y1 - 4} textAnchor="start" className={hasN || hasE ? colorActive : colorInactive}>{dist}m</text>
+                                    <text x={x1 - 4} y={y2 + 10} textAnchor="end" className={hasS || hasW ? colorActive : colorInactive}>{dist}m</text>
+                                    <text x={x2 + 4} y={y2 + 10} textAnchor="start" className={hasS || hasE ? colorActive : colorInactive}>{dist}m</text>
 
-                                    {/* Box Sector QIDs (Light color in 4 faces) */}
-                                    <text x={CENTER} y={topY + 12} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                        S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'})-{dist}M
+                                    {/* Box Sector QIDs */}
+                                    <text x={CENTER} y={y1 + 12} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-opacity", hasN ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                        {qidN}
                                     </text>
-                                    <text x={CENTER} y={bottomY - 4} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                        S/BED({legPositions.find(p => p.name === 'B1')?.name || 'B1'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
+                                    <text x={CENTER} y={y2 - 4} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-opacity", hasS ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                        {qidS}
                                     </text>
-                                    <text x={rightX - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${rightX - 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                        S/BED({legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
+                                    <text x={x2 - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${x2 - 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-opacity", hasE ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                        {qidE}
                                     </text>
-                                    <text x={leftX + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${leftX + 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                        S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === 'B1')?.name || 'B1'})-{dist}M
+                                    <text x={x1 + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${x1 + 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-opacity", hasW ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                        {qidW}
                                     </text>
                                 </React.Fragment>
                             );
@@ -381,24 +453,76 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
 
                     {/* Platform Legs */}
                     <g>
-                        {legPositions.map((pos, i) => (
-                            <g key={`leg-${i}`}>
-                                <circle
-                                    cx={pos.x}
-                                    cy={pos.y}
-                                    r="8"
-                                    className="fill-white dark:fill-slate-800 stroke-slate-500 stroke-2"
-                                />
-                                <text
-                                    x={pos.x}
-                                    y={pos.y + 20}
-                                    textAnchor="middle"
-                                    className="text-[8px] fill-slate-600 dark:fill-slate-400 font-bold"
-                                >
-                                    {pos.name}
-                                </text>
-                            </g>
-                        ))}
+                        {legPositions.map((pos, i) => {
+                            // Find matching metadata using the business rules
+                            const meta = legsMetadata.find(c => {
+                                const m = c.metadata || {};
+                                const isNotDeleted = m.del === 0 || m.del === null || m.del === undefined;
+                                const matchesLegName = (m.f_leg === pos.name && m.s_leg === pos.name) || 
+                                                     c.q_id.toUpperCase() === `LEG ${pos.name.toUpperCase()}` ||
+                                                     c.q_id.toUpperCase() === pos.name.toUpperCase();
+                                const nodesDifferent = m.f_node && m.s_node && m.f_node !== m.s_node;
+                                return isNotDeleted && matchesLegName && nodesDifferent;
+                            })?.metadata;
+
+                            let nodeInfo = '';
+                            let elevInfo = '';
+                            if (meta) {
+                                const e1 = parseFloat(meta.elv_1 || meta.elevation_1 || '0');
+                                const e2 = parseFloat(meta.elv_2 || meta.elevation_2 || '0');
+                                
+                                // Identify the bottom elevation (minimum value) and its corresponding node
+                                if (e2 <= e1) {
+                                    nodeInfo = meta.f_node || meta.start_node || '';
+                                    elevInfo = `${e2}m`;
+                                } else {
+                                    nodeInfo = meta.s_node || meta.end_node || '';
+                                    elevInfo = `${e1}m`;
+                                }
+                            }
+
+                            return (
+                                <g key={`leg-${i}`}>
+                                    <circle
+                                        cx={pos.x}
+                                        cy={pos.y}
+                                        r="8"
+                                        className="fill-white dark:fill-slate-800 stroke-slate-500 stroke-2 shadow-sm"
+                                    />
+                                    <g transform={`translate(${pos.x}, ${pos.y + 20})`}>
+                                        <text
+                                            x={0}
+                                            y={0}
+                                            textAnchor="middle"
+                                            className="text-[9px] fill-blue-600 dark:fill-blue-400 font-black uppercase"
+                                        >
+                                            {pos.name}
+                                        </text>
+                                        {nodeInfo && (
+                                            <text
+                                                x={0}
+                                                y={10}
+                                                textAnchor="middle"
+                                                className="text-[7px] fill-slate-400 font-bold"
+                                            >
+                                                N:{nodeInfo}
+                                            </text>
+                                        )}
+                                        {elevInfo && (
+                                            <text
+                                                x={0}
+                                                y={18}
+                                                textAnchor="middle"
+                                                className="text-[7px] fill-slate-400 font-bold"
+                                            >
+                                                EL:{elevInfo}
+                                            </text>
+                                        )}
+                                    </g>
+                                    <title>{`Leg: ${pos.name}${nodeInfo ? `\nNodes: ${nodeInfo}` : ''}${elevInfo ? `\nBottom Elevation: ${elevInfo}` : ''}`}</title>
+                                </g>
+                            );
+                        })}
                     </g>
 
                     {/* Plot Lines connecting legs (Visual only) */}

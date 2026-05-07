@@ -73,6 +73,7 @@ interface InspectionFormProps {
     handleDynamicPropChange?: (name: string, value: any) => void;
     activeMGIProfile?: any;
     supabase?: any;
+    libOptionsMap?: Record<string, any[]>;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -119,7 +120,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     dynamicProps = {},
     handleDynamicPropChange,
     activeMGIProfile,
-    supabase
+    supabase,
+    libOptionsMap
 }) => {
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
@@ -141,6 +143,15 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         // If editing, we should ideally have a value, but if not, fallback to 0 or vidTimer
         return vidTimer;
     };
+
+    const shouldShowField = (p: any) => {
+        if (!p.condition) return true;
+        const { field, value } = p.condition;
+        // Check dynamicProps for the condition field value
+        const actualValue = dynamicProps[field];
+        return actualValue === value;
+    };
+
     const currentDisplayCount = getCounterAsSeconds(savedTapeCount);
 
     // MGI Threshold Validation Logic
@@ -495,18 +506,87 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 distance: dynamicProps?.distance_from_leg ? parseFloat(dynamicProps.distance_from_leg) : undefined,
                                                 face: dynamicProps?.face || dynamicProps?.orientation
                                             }}
+                                            registeredQids={libOptionsMap?.registeredQids}
                                             onDebrisMove={(id, x, y, geometry) => {
                                                 if (handleDynamicPropChange) {
+                                                    // Spatial Validation based on QID (e.g. S/BED(A1-A2)-18M)
+                                                    const qid = selectedComp?.name || "";
+                                                    const distMatch = qid.match(/-(\d+)M$/i);
+                                                    const faceMatch = qid.match(/\(([^)]+)\)/);
+                                                    const targetDist = distMatch ? parseInt(distMatch[1]) : null;
+                                                    const targetFace = faceMatch ? faceMatch[1] : null;
+
+                                                    const currentDist = Math.round(geometry.distance);
+                                                    const currentFace = `${geometry.startLeg}-${geometry.endLeg}`;
+                                                    const currentInterval = geometry.nearestDistance;
+
+                                                    if (targetDist !== null && currentInterval !== targetDist) {
+                                                        if (window.confirm(`You are flagging in the ${currentInterval}m range, but this task is for ${targetDist}m. Change current task?`)) {
+                                                            onChangeTaskClick?.();
+                                                        }
+                                                        return;
+                                                    }
+                                                    if (targetFace && currentFace !== targetFace) {
+                                                        if (window.confirm(`You are flagging on ${currentFace} face, but this task is for ${targetFace}. Change current task?`)) {
+                                                            onChangeTaskClick?.();
+                                                        }
+                                                        return;
+                                                    }
+
                                                     handleDynamicPropChange('x', x.toFixed(2));
                                                     handleDynamicPropChange('y', y.toFixed(2));
                                                     handleDynamicPropChange('distance_from_leg', geometry.distance.toFixed(1));
+                                                    
+                                                    if (geometry.nearestLeg) {
+                                                        handleDynamicPropChange('nearest_leg', geometry.nearestLeg);
+                                                    }
+                                                    if (geometry.distToNearestLeg !== undefined) {
+                                                        handleDynamicPropChange('dist_to_nearest_leg', geometry.distToNearestLeg.toFixed(1));
+                                                    }
+                                                    if (geometry.face) {
+                                                        handleDynamicPropChange('face', geometry.face);
+                                                    }
                                                 }
                                             }}
                                             onAddDebris={(x, y, geometry) => {
                                                 if (handleDynamicPropChange) {
+                                                    // Spatial Validation based on QID (e.g. S/BED(A1-A2)-18M)
+                                                    const qid = selectedComp?.name || "";
+                                                    const distMatch = qid.match(/-(\d+)M$/i);
+                                                    const faceMatch = qid.match(/\(([^)]+)\)/);
+                                                    const targetDist = distMatch ? parseInt(distMatch[1]) : null;
+                                                    const targetFace = faceMatch ? faceMatch[1] : null;
+
+                                                    const currentDist = Math.round(geometry.distance);
+                                                    const currentFace = `${geometry.startLeg}-${geometry.endLeg}`;
+                                                    const currentInterval = geometry.nearestDistance;
+
+                                                    if (targetDist !== null && currentInterval !== targetDist) {
+                                                        if (window.confirm(`You are flagging in the ${currentInterval}m range, but this task is for ${targetDist}m. Change current task?`)) {
+                                                            onChangeTaskClick?.();
+                                                        }
+                                                        return;
+                                                    }
+                                                    if (targetFace && currentFace !== targetFace) {
+                                                        if (window.confirm(`You are flagging on ${currentFace} face, but this task is for ${targetFace}. Change current task?`)) {
+                                                            onChangeTaskClick?.();
+                                                        }
+                                                        return;
+                                                    }
+
                                                     handleDynamicPropChange('x', x.toFixed(2));
                                                     handleDynamicPropChange('y', y.toFixed(2));
                                                     handleDynamicPropChange('distance_from_leg', geometry.distance.toFixed(1));
+
+                                                    if (geometry.nearestLeg) {
+                                                        handleDynamicPropChange('nearest_leg', geometry.nearestLeg);
+                                                    }
+                                                    if (geometry.distToNearestLeg !== undefined) {
+                                                        handleDynamicPropChange('dist_to_nearest_leg', geometry.distToNearestLeg.toFixed(1));
+                                                    }
+                                                    if (geometry.face) {
+                                                        handleDynamicPropChange('face', geometry.face);
+                                                    }
                                                 }
                                                 toast.info(`Point added at ${geometry.distance.toFixed(1)}m on ${geometry.face} face`);
                                             }}
@@ -854,6 +934,89 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
                                                 </div>
                                             );
+                                        })() : activeSpec?.toUpperCase() === 'RSEAB' ? (() => {
+                                            const technicalFields = ['face', 'dist_to_nearest_leg', 'distance_from_leg_unit', 'crater_depth_unit', 'crater_diameter_unit', 'finding_type', 'type', 'orientation'];
+                                            const visibleFields = otherFields.filter((p: any) => shouldShowField(p) && !technicalFields.includes(p.name));
+                                            
+                                            const locationFields = visibleFields.filter((p: any) => p.group === 'location');
+                                            const itemDetailsFields = visibleFields.filter((p: any) => p.group === 'item_details');
+                                            const gridFields = visibleFields.filter((p: any) => p.group === 'grid_coordinates');
+                                            const restFields = visibleFields.filter((p: any) => 
+                                                !locationFields.includes(p) && 
+                                                !itemDetailsFields.includes(p) && 
+                                                !gridFields.includes(p)
+                                            );
+
+                                            return (
+                                                <div className="space-y-4">
+                                                    {locationFields.length > 0 && (
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5 text-blue-600">
+                                                                Location
+                                                            </label>
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                {locationFields.map((p: any) => (
+                                                                    <div key={p.name} className="space-y-1">
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                            {p.label || p.name}
+                                                                        </label>
+                                                                        {renderInspectionField(p, 'primary')}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {itemDetailsFields.length > 0 && (
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5 text-indigo-600">
+                                                                Item Details
+                                                            </label>
+                                                            <div className="grid grid-cols-3 gap-3">
+                                                                {itemDetailsFields.map((p: any) => (
+                                                                    <div key={p.name} className={p.name === 'category' ? 'col-span-3 border-b border-slate-50 pb-2 mb-1' : 'space-y-1'}>
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                            {p.label || p.name}
+                                                                        </label>
+                                                                        {renderInspectionField(p, 'primary')}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {gridFields.length > 0 && (
+                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5 text-emerald-600">
+                                                                Grid & Offset
+                                                            </label>
+                                                            <div className="grid grid-cols-4 gap-3">
+                                                                {gridFields.map((p: any) => (
+                                                                    <div key={p.name} className="space-y-1">
+                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                            {p.label || p.name}
+                                                                        </label>
+                                                                        {renderInspectionField(p, 'primary')}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {restFields.length > 0 && (
+                                                        <div className="grid grid-cols-3 gap-3">
+                                                            {restFields.map((p: any) => (
+                                                                <div key={p.name} className="space-y-1">
+                                                                    <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                        {p.label || p.name}
+                                                                    </label>
+                                                                    {renderInspectionField(p, 'primary')}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
                                         })() : activeSpec?.toUpperCase() === 'PL_AN' ? (() => {
                                             const cpFields = otherFields.filter((p: any) => 
                                                 p.name === 'member_cp' || 
@@ -950,6 +1113,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <div className="grid grid-cols-3 gap-x-4 gap-y-2.5">
                                                 {otherFields.map((p: any, idx: number) => {
                                                     if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
+                                                    if (!shouldShowField(p)) return null;
 
                                                     return (
                                                         <motion.div 

@@ -55,6 +55,20 @@ const STANDARD_FINDINGS: Record<string, string[]> = {
     "Weld profile appears smooth and consistent with no visible surface-breaking defects.",
     "Minor undercut noted at the weld toe; no further action required at this stage.",
     "Significant erosion/corrosion observed at the weld heat-affected zone (HAZ).",
+  ],
+  "DEBRIS": [
+    "Metallic debris (scaffolding tube/grating) observed on the seabed near the structure base.",
+    "Non-metallic debris (cement bag/plastic shroud) noted partially buried in the silt.",
+    "Scrapped wire rope observed coiled on the seabed; no contact with the structure.",
+    "Unknown metallic object noted; item appears to be legacy construction debris.",
+    "Debris item is in close proximity to the component; potential snagging hazard.",
+  ],
+  "SEABED_SURVEY": [
+    "Active gas seepage (moderate bubbles) observed from the seabed.",
+    "Intermittent gas seepage noted; no associated cratering observed.",
+    "Small crater (estimated 1m diameter) observed; likely from legacy activities.",
+    "Depression/Scour observed near the component base; approx. 0.5m deep.",
+    "Seabed appears clear of any significant debris or anomalies in the immediate vicinity.",
   ]
 };
 
@@ -214,7 +228,17 @@ export function FindingsSuggestionEngine({
                 )
               ) : (
                 <div className="space-y-4 pt-1">
-                  {Object.entries(STANDARD_FINDINGS).map(([category, items]) => {
+                  {Object.entries(STANDARD_FINDINGS)
+                    .sort(([catA], [catB]) => {
+                      if (inspectionTypeCode === 'RSEAB') {
+                        if (catA === 'SEABED_SURVEY') return -1;
+                        if (catB === 'SEABED_SURVEY') return 1;
+                        if (catA === 'DEBRIS') return -1;
+                        if (catB === 'DEBRIS') return 1;
+                      }
+                      return 0;
+                    })
+                    .map(([category, items]) => {
                     const filteredItems = searchQuery 
                       ? items.filter(f => f.toLowerCase().includes(searchQuery.toLowerCase()))
                       : items;
