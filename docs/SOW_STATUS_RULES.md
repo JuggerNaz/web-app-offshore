@@ -55,3 +55,15 @@ When identifying a leg (e.g., "A1") for spatial calculations or display, the sys
 When a new Seabed Debris (SD) component is registered between two legs:
 *   **Nodes**: Inherits `f_node` and `s_node` from the selected "LG" segments of the adjacent legs.
 *   **Elevation**: Inherits the bottom elevation (`elv_2`) from the legs to populate its own spatial metadata.
+
+### C. Active Sector Highlighting
+When an inspection task is active for a specific Seabed Survey QID (e.g., `S/BED(A2-B2)-27M`):
+*   **Visual Feedback**: The matching QID text on the map is highlighted in bold blue.
+*   **Spatial Overlay**: A semi-transparent blue pulse is rendered over the corresponding sector area (e.g., the zone between legs A2 and B2 at the 27M boundary).
+*   **Label Emphasis**: Distance markers associated with the active sector are scaled up and colored blue for better visibility.
+
+### D. Automatic Pagination
+The survey map supports extended distance ranges by paging the 21m grid:
+*   **Distance Detection**: The system parses the distance from the active inspection QID (e.g., `27M` from `S/BED(A2-B2)-27M`).
+*   **Auto-Switching**: If the distance exceeds the current 21m view, the map automatically flips to the correct "page" (e.g., Page 2 for 21m–42m, Page 3 for 42m–63m).
+*   **Seamless Context**: This ensures that when an operator starts a task at a far distance, the map is already focused on the correct sector without manual paging.

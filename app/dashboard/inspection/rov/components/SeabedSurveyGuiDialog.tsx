@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { SeabedDebrisPlot } from '@/components/inspection/seabed-debris-plot';
@@ -26,10 +26,11 @@ interface SeabedSurveyGuiDialogProps {
     isStreamRecording?: boolean;
     isStreamPaused?: boolean;
     onRefreshInspection?: () => void;
+    sowIdFull?: string | null;
 }
 
 export function SeabedSurveyGuiInline({
-    open, onClose, structureId, jobpackId, sowRecordId, sowReportNo, rovJob, tapeId, tapeCounter, telemetryData, isStreamRecording, isStreamPaused, onRefreshInspection
+    open, onClose, structureId, jobpackId, sowRecordId, sowIdFull, sowReportNo, rovJob, tapeId, tapeCounter, telemetryData, isStreamRecording, isStreamPaused, onRefreshInspection
 }: SeabedSurveyGuiDialogProps) {
     const supabase = createClient();
     const [existingDebris, setExistingDebris] = useState<any[]>([]);
@@ -63,6 +64,7 @@ export function SeabedSurveyGuiInline({
     const [comparisonDebris, setComparisonDebris] = useState<any[]>([]);
     const [availableSectors, setAvailableSectors] = useState<string[]>([]);
     const [legsMetadata, setLegsMetadata] = useState<any[]>([]);
+    const [currentJobpackSow, setCurrentJobpackSow] = useState<any>(null);
 
     const generateQid = (geometry: any) => {
         if (!geometry || !geometry.startLeg || !geometry.endLeg) return '';
@@ -78,6 +80,70 @@ export function SeabedSurveyGuiInline({
             fetchLegsMetadata();
         }
     }, [open, structureId, rovJob]);
+
+    // Auto-resolve current SOW item and handle pagination
+    useEffect(() => {
+        async function resolveCurrentSow() {
+            if (!open) return;
+            
+            try {
+                // Priority 1: Specific Item from sowIdFull (e.g. "123-456")
+                if (sowIdFull && sowIdFull.includes('-')) {
+                    const itemId = sowIdFull.split('-')[1];
+                    console.log(`[GUI] Resolving SOW Item from ID: ${itemId}`);
+                    const { data } = await supabase.from('u_sow_items')
+                        .select('*')
+                        .eq('id', Number(itemId))
+                        .maybeSingle();
+                    if (data) {
+                        setCurrentJobpackSow(data);
+                        return;
+                    }
+                }
+
+                // Priority 2: If rovJob has it, use it
+                if (rovJob?.currentSow) {
+                    setCurrentJobpackSow(rovJob.currentSow);
+                    return;
+                }
+
+                // Priority 3: Fallback to sowRecordId (parent SOW)
+                if (sowRecordId) {
+                    const { data } = await supabase.from('u_sow_items')
+                        .select('*')
+                        .eq('sow_id', sowRecordId)
+                        .eq('inspection_code', 'RSEAB')
+                        .order('id', { ascending: true })
+                        .limit(1)
+                        .maybeSingle();
+                    
+                    if (data) setCurrentJobpackSow(data);
+                }
+            } catch (e) {
+                console.error("Error resolving current SOW:", e);
+            }
+        }
+        resolveCurrentSow();
+    }, [open, sowRecordId, sowIdFull, rovJob]);
+
+    const hasAutoPaged = useRef<string | null>(null);
+    useEffect(() => {
+        if (currentJobpackSow?.component_qid && hasAutoPaged.current !== currentJobpackSow.component_qid) {
+            const qid = currentJobpackSow.component_qid.toUpperCase();
+            const match = qid.match(/-(\d+)M$/);
+            if (match) {
+                const dist = parseInt(match[1]);
+                const targetPage = Math.floor((dist - 0.1) / 21);
+                if (targetPage >= 0) {
+                    setCurrentPage(targetPage);
+                    hasAutoPaged.current = currentJobpackSow.component_qid;
+                }
+            }
+        }
+        if (!currentJobpackSow) {
+            hasAutoPaged.current = null;
+        }
+    }, [currentJobpackSow]);
 
     const fetchLegsMetadata = async () => {
         try {
@@ -405,7 +471,8 @@ export function SeabedSurveyGuiInline({
                         elv_1: startLegMeta?.elv_2 || startLegMeta?.elevation_2 || startLegMeta?.lvl || startLegMeta?.elevation || structureDepth || null,
                         elv_2: endLegMeta?.elv_2 || endLegMeta?.elevation_2 || endLegMeta?.lvl || endLegMeta?.elevation || structureDepth || null,
                         f_node: startLegMeta?.f_node || startLegMeta?.start_node || null,
-                        s_node: endLegMeta?.f_node || endLegMeta?.start_node || null
+                        s_node: endLegMeta?.f_node || endLegMeta?.start_node || null,
+                        water_depth: structureDepth
                     }
                 }).select('id').single();
                 if (compErr) throw compErr;
@@ -415,50 +482,72 @@ export function SeabedSurveyGuiInline({
             // 2. Add to SOW if sowRecordId exists and not already mapped
             let sowItemId = null;
 
-            if (sowRecordId && (componentId || generatedQid)) {
-                // Check by QID and Type since SOW items often don't have component_id FK
+            if (sowRecordId && componentId) {
+                // Check by component_id primarily as it is the most reliable FK
                 const { data: existingSow } = await supabase.from('u_sow_items')
                     .select('id')
-                    .eq('sow_id', sowRecordId)
+                    .eq('sow_id', Number(sowRecordId))
+                    .eq('component_id', componentId)
                     .eq('inspection_type_id', inspTypeId)
-                    .eq('component_qid', generatedQid)
                     .maybeSingle();
                 
                 if (existingSow) {
                     sowItemId = existingSow.id;
-                    console.log(`[SOW] Found existing item for ${generatedQid}: ${sowItemId}`);
+                    console.log(`[SOW] Found existing item for component ${componentId}: ${sowItemId}`);
                 } else {
                     if (inspTypeId) {
                         const { data: it } = await supabase.from('inspection_type').select('name').eq('id', inspTypeId).single();
                         
                         const effectiveReportNo = sowReportNo || rovJob?.raw?.sow_report_no || "N/A";
                         
+                        const userName = authData?.user?.user_metadata?.full_name || authData?.user?.email || authData?.user?.id || 'system';
+                        
                         const sowPayload: any = {
-                            sow_id: sowRecordId,
+                            sow_id: Number(sowRecordId),
                             component_id: componentId,
                             component_qid: generatedQid,
                             component_type: 'SD',
                             inspection_type_id: inspTypeId,
                             inspection_code: 'RSEAB',
-                            inspection_name: it?.name || 'Seabed Survey',
+                            inspection_name: it?.name || 'ROV Seabed Inspection',
                             status: 'completed',
                             report_number: effectiveReportNo,
-                            inspection_count: 1,
-                            last_inspection_date: new Date().toISOString(),
-                            created_by: authData?.user?.id || null,
-                            updated_by: authData?.user?.id || null
+                            metadata: {
+                                created_from: 'Multi-Drop GUI',
+                                timestamp: new Date().toISOString()
+                            },
+                            created_by: userName,
+                            updated_by: userName
                         };
 
-                        console.log(`[SOW] Inserting new item for ${generatedQid}:`, sowPayload);
+                        console.log(`[SOW] Inserting new item for component ${componentId}:`, sowPayload);
 
-                        const { data: newSowData, error: sowErr } = await supabase.from('u_sow_items').insert(sowPayload).select('id');
+                        let { data: newSowData, error: sowErr } = await supabase.from('u_sow_items').insert(sowPayload).select('id');
+                        
+                        // Handle duplicate key error gracefully by re-fetching by component_id
+                        if (sowErr && sowErr.code === '23505') {
+                            console.log(`[SOW] Duplicate detected for CID ${componentId}, fetching existing ID...`);
+                            const { data: retrySow } = await supabase.from('u_sow_items')
+                                .select('id')
+                                .eq('sow_id', Number(sowRecordId))
+                                .eq('component_id', componentId)
+                                .limit(1)
+                                .maybeSingle();
+                            
+                            if (retrySow) {
+                                sowItemId = retrySow.id;
+                                sowErr = null; // Recovery successful
+                                console.log(`[SOW] Recovered existing ID: ${sowItemId}`);
+                            }
+                        }
                         
                         if (sowErr) {
-                            console.error("[SOW] Insert error:", sowErr);
+                            console.error("[SOW] Insert error detail:", JSON.stringify(sowErr, null, 2));
+                            console.error("[SOW] Insert error object:", sowErr);
                             toast.error("SOW Task Creation Failed: " + (sowErr.message || "Unknown Error"));
-                        } else if (newSowData && newSowData[0]) {
-                            sowItemId = newSowData[0].id;
-                            console.log(`[SOW] Successfully created item: ${sowItemId}`);
+                        } else if (sowItemId || (newSowData && newSowData[0])) {
+                            if (!sowItemId && newSowData) sowItemId = newSowData[0].id;
+                            console.log(`[SOW] Using item ID: ${sowItemId}`);
 
                             // Update u_sow counters
                             const { data: sowMeta } = await supabase.from('u_sow').select('total_items').eq('id', sowRecordId).maybeSingle();
@@ -522,7 +611,7 @@ export function SeabedSurveyGuiInline({
                 inspection_date: now.toISOString().split('T')[0],
                 inspection_time: now.toTimeString().split(' ')[0],
                 has_anomaly: false,
-                elevation: 0,
+                elevation: parseFloat(startLegMeta?.elv_2 || endLegMeta?.elv_2 || structureDepth || '0'),
                 cr_user: authData?.user?.id || null
             });
 
@@ -686,7 +775,7 @@ export function SeabedSurveyGuiInline({
                     } else if (inspTypeId) {
                         const { data: it } = await supabase.from('inspection_type').select('name').eq('id', inspTypeId).single();
                         const sowPayload: any = {
-                            sow_id: sowRecordId,
+                            sow_id: Number(sowRecordId),
                             component_id: componentId,
                             component_qid: generatedQid,
                             component_type: 'SD',
@@ -856,7 +945,7 @@ export function SeabedSurveyGuiInline({
                         await supabase.from('u_sow_items').update({ status: 'completed' }).eq('id', existingNewSow.id);
                      } else if (record?.inspection_type_id) {
                         await supabase.from('u_sow_items').insert({
-                            sow_id: sowRecordId,
+                            sow_id: Number(sowRecordId),
                             component_id: componentId,
                             inspection_type_id: record.inspection_type_id,
                             status: 'completed',
@@ -1096,6 +1185,7 @@ export function SeabedSurveyGuiInline({
                                 referenceItems={comparisonDebris.filter(d => typeFilter === 'All' || d.type === typeFilter)}
                                 registeredQids={availableSectors}
                                 legsMetadata={legsMetadata}
+                                highlightQid=""
                             />
                             {!isAdding && !activeId && (
                                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-lg shadow-sm font-bold text-slate-700 text-sm border-l-4 border-blue-500">

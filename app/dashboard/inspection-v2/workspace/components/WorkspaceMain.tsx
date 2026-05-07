@@ -381,32 +381,47 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                             onClick={() => {
                               setActiveSpec(t);
                               const newProps: Record<string, any> = {};
-                              const compNT = selectedComp.nominalThk && selectedComp.nominalThk !== "-" ? selectedComp.nominalThk : 
+                               const compNT = selectedComp.nominalThk && selectedComp.nominalThk !== "-" ? selectedComp.nominalThk : 
                                              (selectedComp.wallThickness && selectedComp.wallThickness !== "-" ? selectedComp.wallThickness : null);
-                              if (compNT) {
-                                const specProps = it?.default_properties || [];
-                                let propsList: any[] = [];
-                                if (typeof specProps === "string") {
-                                  try {
-                                    const parsed = JSON.parse(specProps);
-                                    propsList = Array.isArray(parsed)
-                                      ? parsed
-                                      : parsed.properties || [];
-                                  } catch (e) {}
-                                } else if (Array.isArray(specProps)) {
-                                  propsList = specProps;
-                                }
+                              
+                              const compElev = (selectedComp.lowestElev && selectedComp.lowestElev !== '-') ? selectedComp.lowestElev : 
+                                              ((selectedComp.endElev && selectedComp.endElev !== '-') ? selectedComp.endElev : 
+                                              (selectedComp.depth ? selectedComp.depth.replace(/[^\d.-]/g, '') : null));
 
-                                const ntField = propsList.find(
-                                  (p: any) =>
-                                    String(p.label || p.name || "")
-                                      .toLowerCase()
-                                      .includes("nominal thickness") ||
-                                    String(p.label || p.name || "").toLowerCase() === "nt"
-                                );
-                                if (ntField) {
-                                  newProps[ntField.name || ntField.label] = compNT;
-                                }
+                              const specProps = it?.default_properties || [];
+                              let propsList: any[] = [];
+                              if (typeof specProps === "string") {
+                                try {
+                                  const parsed = JSON.parse(specProps);
+                                  propsList = Array.isArray(parsed)
+                                    ? parsed
+                                    : parsed.properties || [];
+                                } catch (e) {}
+                              } else if (Array.isArray(specProps)) {
+                                propsList = specProps;
+                              }
+
+                              const ntField = propsList.find(
+                                (p: any) =>
+                                  String(p.label || p.name || "")
+                                    .toLowerCase()
+                                    .includes("nominal thickness") ||
+                                  String(p.label || p.name || "").toLowerCase() === "nt"
+                              );
+                              if (ntField && compNT) {
+                                newProps[ntField.name || ntField.label] = compNT;
+                              }
+
+                              const elevField = propsList.find(
+                                (p: any) =>
+                                  String(p.label || p.name || "").toLowerCase().includes("depth") ||
+                                  String(p.label || p.name || "").toLowerCase().includes("elevation") ||
+                                  String(p.label || p.name || "").toLowerCase() === "el"
+                              );
+                              if (elevField && compElev) {
+                                // Prefer 'verification_depth' as the standard key for this form field
+                                const targetKey = elevField.name === 'verification_depth' || elevField.label === 'Verification Depth' ? 'verification_depth' : (elevField.name || elevField.label);
+                                newProps[targetKey] = compElev;
                               }
                               setDynamicProps(newProps);
                               setFindingType("Complete");

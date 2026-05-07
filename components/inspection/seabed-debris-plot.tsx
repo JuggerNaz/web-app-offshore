@@ -43,6 +43,7 @@ interface SeabedDebrisPlotProps {
     referenceItems?: DebrisItem[];
     registeredQids?: string[];
     legsMetadata?: any[];
+    highlightQid?: string;
 }
 
 const VIEW_SIZE = 600;
@@ -65,6 +66,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
     referenceItems = [],
     registeredQids = [],
     legsMetadata = [],
+    highlightQid = '',
 }) => {
     const isDraggingRef = React.useRef(false);
 
@@ -425,25 +427,53 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                             const colorActive = "fill-slate-500";
                             const colorInactive = "fill-red-400/40";
 
+                            const isHighlightedN = highlightQid && highlightQid.toUpperCase() === qidN;
+                            const isHighlightedS = highlightQid && highlightQid.toUpperCase() === qidS;
+                            const isHighlightedE = highlightQid && highlightQid.toUpperCase() === qidE;
+                            const isHighlightedW = highlightQid && highlightQid.toUpperCase() === qidW;
+
                             return (
                                 <React.Fragment key={`lbl-${i}`}>
+                                    {/* Sector Highlights (rectangles) */}
+                                    {(() => {
+                                        const prevDist = i === 0 ? distanceOffset : gridDistances[i - 1];
+                                        const boxSizePx = (dist - prevDist) * pxPerMeter;
+                                        
+                                        return (
+                                            <>
+                                                {isHighlightedN && (
+                                                    <rect x={x1} y={y1} width={x2 - x1} height={boxSizePx} className="fill-blue-500/10 pointer-events-none animation-pulse" />
+                                                )}
+                                                {isHighlightedS && (
+                                                    <rect x={x1} y={y2 - boxSizePx} width={x2 - x1} height={boxSizePx} className="fill-blue-500/10 pointer-events-none animation-pulse" />
+                                                )}
+                                                {isHighlightedE && (
+                                                    <rect x={x2 - boxSizePx} y={y1} width={boxSizePx} height={y2 - y1} className="fill-blue-500/10 pointer-events-none animation-pulse" />
+                                                )}
+                                                {isHighlightedW && (
+                                                    <rect x={x1} y={y1} width={boxSizePx} height={y2 - y1} className="fill-blue-500/10 pointer-events-none animation-pulse" />
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+
                                     {/* Corners (Distances) */}
-                                    <text x={x1 - 4} y={y1 - 4} textAnchor="end" className={hasN || hasW ? colorActive : colorInactive}>{dist}m</text>
-                                    <text x={x2 + 4} y={y1 - 4} textAnchor="start" className={hasN || hasE ? colorActive : colorInactive}>{dist}m</text>
-                                    <text x={x1 - 4} y={y2 + 10} textAnchor="end" className={hasS || hasW ? colorActive : colorInactive}>{dist}m</text>
-                                    <text x={x2 + 4} y={y2 + 10} textAnchor="start" className={hasS || hasE ? colorActive : colorInactive}>{dist}m</text>
+                                    <text x={x1 - 4} y={y1 - 4} textAnchor="end" className={cn(hasN || hasW ? colorActive : colorInactive, (isHighlightedN || isHighlightedW) && "fill-blue-600 scale-110")}>{dist}m</text>
+                                    <text x={x2 + 4} y={y1 - 4} textAnchor="start" className={cn(hasN || hasE ? colorActive : colorInactive, (isHighlightedN || isHighlightedE) && "fill-blue-600 scale-110")}>{dist}m</text>
+                                    <text x={x1 - 4} y={y2 + 10} textAnchor="end" className={cn(hasS || hasW ? colorActive : colorInactive, (isHighlightedS || isHighlightedW) && "fill-blue-600 scale-110")}>{dist}m</text>
+                                    <text x={x2 + 4} y={y2 + 10} textAnchor="start" className={cn(hasS || hasE ? colorActive : colorInactive, (isHighlightedS || isHighlightedE) && "fill-blue-600 scale-110")}>{dist}m</text>
 
                                     {/* Box Sector QIDs */}
-                                    <text x={CENTER} y={y1 + 12} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-opacity", hasN ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                    <text x={CENTER} y={y1 + 12} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedN ? "fill-blue-600 opacity-100 font-black scale-110" : hasN ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
                                         {qidN}
                                     </text>
-                                    <text x={CENTER} y={y2 - 4} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-opacity", hasS ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                    <text x={CENTER} y={y2 - 4} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedS ? "fill-blue-600 opacity-100 font-black scale-110" : hasS ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
                                         {qidS}
                                     </text>
-                                    <text x={x2 - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${x2 - 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-opacity", hasE ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                    <text x={x2 - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${x2 - 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedE ? "fill-blue-600 opacity-100 font-black scale-110" : hasE ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
                                         {qidE}
                                     </text>
-                                    <text x={x1 + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${x1 + 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-opacity", hasW ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                    <text x={x1 + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${x1 + 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedW ? "fill-blue-600 opacity-100 font-black scale-110" : hasW ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
                                         {qidW}
                                     </text>
                                 </React.Fragment>

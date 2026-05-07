@@ -370,6 +370,20 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         }
     }, [selectedComp, activeSpec, activeFormProps, isEditing]);
 
+    // Default Seabed Survey elevation to bottom elevation
+    React.useEffect(() => {
+        if (!isEditing && activeSpec?.toUpperCase() === 'RSEAB' && handleDynamicPropChange) {
+            const currentDepth = dynamicProps?.verification_depth;
+            const targetDepth = (selectedComp.lowestElev && selectedComp.lowestElev !== '-') ? selectedComp.lowestElev : 
+                              ((selectedComp.endElev && selectedComp.endElev !== '-') ? selectedComp.endElev : 
+                              (selectedComp.depth ? selectedComp.depth.replace(/[^\d.-]/g, '') : null));
+            
+            if ((currentDepth === undefined || currentDepth === null || currentDepth === "" || currentDepth === 0 || currentDepth === "0" || currentDepth === "-0.0" || currentDepth === -0.0) && targetDepth) {
+                handleDynamicPropChange('verification_depth', targetDepth);
+            }
+        }
+    }, [activeSpec, selectedComp, isEditing, dynamicProps]);
+
     return (
 
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white z-10">
@@ -417,7 +431,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             <div className="flex items-center gap-1">
                                 <Input 
                                     type="text"
-                                    value={dynamicProps?.verification_depth ?? (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : (selectedComp.depth || ''))} 
+                                    value={dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : (selectedComp.endElev && selectedComp.endElev !== '-' ? selectedComp.endElev : (selectedComp.depth ? selectedComp.depth.replace(/[^\d.-]/g, '') : '')))} 
                                     onChange={(e) => {
                                         handleDynamicPropChange?.('verification_depth', e.target.value);
                                     }}
@@ -490,107 +504,118 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                 <div className="col-span-full space-y-3 mb-4">
                                     <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">Graphical Seabed Plot <span className="text-[9px] font-normal text-muted-foreground ml-2">(Drag to persist X/Y)</span></label>
                                     <div className="w-full max-w-xl mx-auto">
-                                        <SeabedDebrisPlot
-                                            layoutType={headerData?.structureName?.includes('8') ? 'rectangular' : 'rectangular'} 
-                                            legCount={headerData?.structureName?.includes('8') ? 8 : 4} 
-                                            gridDistances={[3, 6, 9, 12, 15, 18, 21]}
-                                            debrisItems={dynamicProps?.x && dynamicProps?.y ? [{
-                                                id: 'current',
-                                                x: parseFloat(dynamicProps.x),
-                                                y: parseFloat(dynamicProps.y),
-                                                label: '1',
-                                                isMetallic: dynamicProps?.debris_material?.toLowerCase().includes('metal') || false
-                                            }] : []}
-                                            manualEntry={{
-                                                leg: dynamicProps?.reference_leg || dynamicProps?.associated_leg || dynamicProps?.leg,
-                                                distance: dynamicProps?.distance_from_leg ? parseFloat(dynamicProps.distance_from_leg) : undefined,
-                                                face: dynamicProps?.face || dynamicProps?.orientation
-                                            }}
-                                            registeredQids={libOptionsMap?.registeredQids}
-                                            onDebrisMove={(id, x, y, geometry) => {
-                                                if (handleDynamicPropChange) {
-                                                    // Spatial Validation based on QID (e.g. S/BED(A1-A2)-18M)
-                                                    const qid = selectedComp?.name || "";
-                                                    const distMatch = qid.match(/-(\d+)M$/i);
-                                                    const faceMatch = qid.match(/\(([^)]+)\)/);
-                                                    const targetDist = distMatch ? parseInt(distMatch[1]) : null;
-                                                    const targetFace = faceMatch ? faceMatch[1] : null;
+                                        {(() => {
+                                            const qid = selectedComp?.name || "";
+                                            const distMatch = qid.toUpperCase().match(/-(\d+)M$/);
+                                            const dist = distMatch ? parseInt(distMatch[1]) : 0;
+                                            const page = Math.floor((Math.max(0, dist - 0.1)) / 21);
+                                            const offset = page * 21;
+                                            const grid = [...Array(7)].map((_, i) => offset + (i + 1) * 3);
 
-                                                    const currentDist = Math.round(geometry.distance);
-                                                    const currentFace = `${geometry.startLeg}-${geometry.endLeg}`;
-                                                    const currentInterval = geometry.nearestDistance;
+                                            return (
+                                                <SeabedDebrisPlot
+                                                    layoutType={headerData?.structureName?.includes('8') ? 'rectangular' : 'rectangular'} 
+                                                    legCount={headerData?.structureName?.includes('8') ? 8 : 4} 
+                                                    gridDistances={grid}
+                                                    distanceOffset={offset}
+                                                    highlightQid={qid}
+                                                    debrisItems={dynamicProps?.x && dynamicProps?.y ? [{
+                                                        id: 'current',
+                                                        x: parseFloat(dynamicProps.x),
+                                                        y: parseFloat(dynamicProps.y),
+                                                        label: '1',
+                                                        isMetallic: dynamicProps?.debris_material?.toLowerCase().includes('metal') || false
+                                                    }] : []}
+                                                    manualEntry={{
+                                                        leg: dynamicProps?.reference_leg || dynamicProps?.associated_leg || dynamicProps?.leg,
+                                                        distance: dynamicProps?.distance_from_leg ? parseFloat(dynamicProps.distance_from_leg) : undefined,
+                                                        face: dynamicProps?.face || dynamicProps?.orientation
+                                                    }}
+                                                    registeredQids={[qid]}
+                                                    onDebrisMove={(id, x, y, geometry) => {
+                                                        if (handleDynamicPropChange) {
+                                                            // Spatial Validation based on QID (e.g. S/BED(A1-A2)-18M)
+                                                            const distMatch = qid.match(/-(\d+)M$/i);
+                                                            const faceMatch = qid.match(/\(([^)]+)\)/);
+                                                            const targetDist = distMatch ? parseInt(distMatch[1]) : null;
+                                                            const targetFace = faceMatch ? faceMatch[1] : null;
 
-                                                    if (targetDist !== null && currentInterval !== targetDist) {
-                                                        if (window.confirm(`You are flagging in the ${currentInterval}m range, but this task is for ${targetDist}m. Change current task?`)) {
-                                                            onChangeTaskClick?.();
+                                                            const currentDist = Math.round(geometry.distance);
+                                                            const currentFace = `${geometry.startLeg}-${geometry.endLeg}`;
+                                                            const currentInterval = geometry.nearestDistance;
+
+                                                            if (targetDist !== null && currentInterval !== targetDist) {
+                                                                if (window.confirm(`You are flagging in the ${currentInterval}m range, but this task is for ${targetDist}m. Change current task?`)) {
+                                                                    onChangeTaskClick?.();
+                                                                }
+                                                                return;
+                                                            }
+                                                            if (targetFace && currentFace !== targetFace) {
+                                                                if (window.confirm(`You are flagging on ${currentFace} face, but this task is for ${targetFace}. Change current task?`)) {
+                                                                    onChangeTaskClick?.();
+                                                                }
+                                                                return;
+                                                            }
+
+                                                            handleDynamicPropChange('x', x.toFixed(2));
+                                                            handleDynamicPropChange('y', y.toFixed(2));
+                                                            handleDynamicPropChange('distance_from_leg', geometry.distance.toFixed(1));
+                                                            
+                                                            if (geometry.nearestLeg) {
+                                                                handleDynamicPropChange('nearest_leg', geometry.nearestLeg);
+                                                            }
+                                                            if (geometry.distToNearestLeg !== undefined) {
+                                                                handleDynamicPropChange('dist_to_nearest_leg', geometry.distToNearestLeg.toFixed(1));
+                                                            }
+                                                            if (geometry.face) {
+                                                                handleDynamicPropChange('face', geometry.face);
+                                                            }
                                                         }
-                                                        return;
-                                                    }
-                                                    if (targetFace && currentFace !== targetFace) {
-                                                        if (window.confirm(`You are flagging on ${currentFace} face, but this task is for ${targetFace}. Change current task?`)) {
-                                                            onChangeTaskClick?.();
+                                                    }}
+                                                    onAddDebris={(x, y, geometry) => {
+                                                        if (handleDynamicPropChange) {
+                                                            // Spatial Validation based on QID (e.g. S/BED(A1-A2)-18M)
+                                                            const distMatch = qid.match(/-(\d+)M$/i);
+                                                            const faceMatch = qid.match(/\(([^)]+)\)/);
+                                                            const targetDist = distMatch ? parseInt(distMatch[1]) : null;
+                                                            const targetFace = faceMatch ? faceMatch[1] : null;
+
+                                                            const currentDist = Math.round(geometry.distance);
+                                                            const currentFace = `${geometry.startLeg}-${geometry.endLeg}`;
+                                                            const currentInterval = geometry.nearestDistance;
+
+                                                            if (targetDist !== null && currentInterval !== targetDist) {
+                                                                if (window.confirm(`You are flagging in the ${currentInterval}m range, but this task is for ${targetDist}m. Change current task?`)) {
+                                                                    onChangeTaskClick?.();
+                                                                }
+                                                                return;
+                                                            }
+                                                            if (targetFace && currentFace !== targetFace) {
+                                                                if (window.confirm(`You are flagging on ${currentFace} face, but this task is for ${targetFace}. Change current task?`)) {
+                                                                    onChangeTaskClick?.();
+                                                                }
+                                                                return;
+                                                            }
+
+                                                            handleDynamicPropChange('x', x.toFixed(2));
+                                                            handleDynamicPropChange('y', y.toFixed(2));
+                                                            handleDynamicPropChange('distance_from_leg', geometry.distance.toFixed(1));
+
+                                                            if (geometry.nearestLeg) {
+                                                                handleDynamicPropChange('nearest_leg', geometry.nearestLeg);
+                                                            }
+                                                            if (geometry.distToNearestLeg !== undefined) {
+                                                                handleDynamicPropChange('dist_to_nearest_leg', geometry.distToNearestLeg.toFixed(1));
+                                                            }
+                                                            if (geometry.face) {
+                                                                handleDynamicPropChange('face', geometry.face);
+                                                            }
                                                         }
-                                                        return;
-                                                    }
-
-                                                    handleDynamicPropChange('x', x.toFixed(2));
-                                                    handleDynamicPropChange('y', y.toFixed(2));
-                                                    handleDynamicPropChange('distance_from_leg', geometry.distance.toFixed(1));
-                                                    
-                                                    if (geometry.nearestLeg) {
-                                                        handleDynamicPropChange('nearest_leg', geometry.nearestLeg);
-                                                    }
-                                                    if (geometry.distToNearestLeg !== undefined) {
-                                                        handleDynamicPropChange('dist_to_nearest_leg', geometry.distToNearestLeg.toFixed(1));
-                                                    }
-                                                    if (geometry.face) {
-                                                        handleDynamicPropChange('face', geometry.face);
-                                                    }
-                                                }
-                                            }}
-                                            onAddDebris={(x, y, geometry) => {
-                                                if (handleDynamicPropChange) {
-                                                    // Spatial Validation based on QID (e.g. S/BED(A1-A2)-18M)
-                                                    const qid = selectedComp?.name || "";
-                                                    const distMatch = qid.match(/-(\d+)M$/i);
-                                                    const faceMatch = qid.match(/\(([^)]+)\)/);
-                                                    const targetDist = distMatch ? parseInt(distMatch[1]) : null;
-                                                    const targetFace = faceMatch ? faceMatch[1] : null;
-
-                                                    const currentDist = Math.round(geometry.distance);
-                                                    const currentFace = `${geometry.startLeg}-${geometry.endLeg}`;
-                                                    const currentInterval = geometry.nearestDistance;
-
-                                                    if (targetDist !== null && currentInterval !== targetDist) {
-                                                        if (window.confirm(`You are flagging in the ${currentInterval}m range, but this task is for ${targetDist}m. Change current task?`)) {
-                                                            onChangeTaskClick?.();
-                                                        }
-                                                        return;
-                                                    }
-                                                    if (targetFace && currentFace !== targetFace) {
-                                                        if (window.confirm(`You are flagging on ${currentFace} face, but this task is for ${targetFace}. Change current task?`)) {
-                                                            onChangeTaskClick?.();
-                                                        }
-                                                        return;
-                                                    }
-
-                                                    handleDynamicPropChange('x', x.toFixed(2));
-                                                    handleDynamicPropChange('y', y.toFixed(2));
-                                                    handleDynamicPropChange('distance_from_leg', geometry.distance.toFixed(1));
-
-                                                    if (geometry.nearestLeg) {
-                                                        handleDynamicPropChange('nearest_leg', geometry.nearestLeg);
-                                                    }
-                                                    if (geometry.distToNearestLeg !== undefined) {
-                                                        handleDynamicPropChange('dist_to_nearest_leg', geometry.distToNearestLeg.toFixed(1));
-                                                    }
-                                                    if (geometry.face) {
-                                                        handleDynamicPropChange('face', geometry.face);
-                                                    }
-                                                }
-                                                toast.info(`Point added at ${geometry.distance.toFixed(1)}m on ${geometry.face} face`);
-                                            }}
-                                        />
+                                                        toast.info(`Point added at ${geometry.distance.toFixed(1)}m on ${geometry.face} face`);
+                                                    }}
+                                                />
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             )}

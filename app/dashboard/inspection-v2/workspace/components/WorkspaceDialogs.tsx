@@ -1572,17 +1572,20 @@ export function WorkspaceDialogs({
                             jobpackId={jobPackId || "0"}
                             structureId={structureId || "0"}
                             sowRecordId={sowId ? Number(sowId) : null}
+                            sowIdFull={sowIdFull}
                             sowReportNo={headerData?.sowReportNo}
                             rovJob={activeDep || undefined}
                             tapeId={tapeId?.toString()}
                             tapeCounter={vidTimer?.toString()} 
                             telemetryData={dataAcqFields}
                             isStreamRecording={manualOverride || vidState !== "IDLE"}
-                            isStreamPaused={!manualOverride && vidState === "PAUSED"}
+                            isStreamPaused={manualOverride ? false : (vidState === "PAUSED")}
                             onRefreshInspection={() => {
                                 syncDeploymentState();
-                                queryClient.invalidateQueries({ queryKey: ['inspection-records'] });
-                                queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+                                if (queryClient) {
+                                    queryClient.invalidateQueries({ queryKey: ['inspection-records'] });
+                                    queryClient.invalidateQueries({ queryKey: ['sow-data'] });
+                                }
                             }}
                         />
                     </div>
