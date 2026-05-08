@@ -140,6 +140,7 @@ interface WorkspaceDialogsProps {
         cuPreviewOpen: boolean;
         gvinsPreviewOpen: boolean;
         szonePreviewOpen: boolean;
+        cpclbPreviewOpen: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
@@ -201,6 +202,7 @@ interface WorkspaceDialogsProps {
         setCuPreviewOpen: (open: boolean) => void;
         setGvinsPreviewOpen: (open: boolean) => void;
         setSzonePreviewOpen: (open: boolean) => void;
+        setCpclbPreviewOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
 
         setRovCalibrationDialogOpen: (open: boolean) => void;
@@ -247,6 +249,7 @@ interface WorkspaceDialogsProps {
         generateGVINSReport: () => void;
         generateGVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateCPCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -342,7 +345,9 @@ export function WorkspaceDialogs({
         rgPreviewOpen,
         sgPreviewOpen,
         cuPreviewOpen,
-        gvinsPreviewOpen
+        gvinsPreviewOpen,
+        szonePreviewOpen,
+        cpclbPreviewOpen
     } = states;
 
 
@@ -397,7 +402,9 @@ export function WorkspaceDialogs({
         setRgPreviewOpen,
         setSgPreviewOpen,
         setCuPreviewOpen,
-        setGvinsPreviewOpen
+        setGvinsPreviewOpen,
+        setSzonePreviewOpen,
+        setCpclbPreviewOpen
     } = setters;
 
 
@@ -437,7 +444,9 @@ export function WorkspaceDialogs({
         generatePhotographyReportBlob,
         generatePhotographyLogReportBlob,
         generateGVINSReport,
-        generateGVINSReportBlob
+        generateGVINSReportBlob,
+        generateSZONEReportBlob,
+        generateCPCLBReportBlob
     } = handlers;
 
 
@@ -1857,6 +1866,14 @@ export function WorkspaceDialogs({
                 title="Diving Splash Zone Inspection Report Preview" 
                 fileName={`Diving_SZONE_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={handlers.generateSZONEReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={cpclbPreviewOpen} 
+                onOpenChange={setCpclbPreviewOpen} 
+                title="Diving CP Calibration Report Preview" 
+                fileName={`Diving_CP_Calibration_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateCPCLBReportBlob} 
             />
 
 

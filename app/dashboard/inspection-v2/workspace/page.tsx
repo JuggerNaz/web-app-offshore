@@ -1002,6 +1002,7 @@ function V10PreviewLayout() {
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         gvinsPreviewOpen, setGvinsPreviewOpen,
         szonePreviewOpen, setSzonePreviewOpen,
+        cpclbPreviewOpen, setCpclbPreviewOpen,
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
@@ -1054,6 +1055,8 @@ function V10PreviewLayout() {
         generateGVINSReportBlob,
         generateSZONEReport,
         generateSZONEReportBlob,
+        generateCPCLBReport,
+        generateCPCLBReportBlob,
 
         generateInspectionReportByType,
         generateFullInspectionReport
@@ -4946,6 +4949,8 @@ function V10PreviewLayout() {
                 generateCPReport={() => setCpPreviewOpen(true)}
                 generateRGVIReport={() => setRgviPreviewOpen(true)}
                 generateGVINSReport={() => setGvinsPreviewOpen(true)}
+                generateSZONEReport={() => setSzonePreviewOpen(true)}
+                generateCPCLBReport={() => setCpclbPreviewOpen(true)}
                 generateRCASNReport={() => setRcasnPreviewOpen(true)}
                 generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
                 generateRCONDReport={() => setRcondPreviewOpen(true)}
@@ -6664,7 +6669,8 @@ function V10PreviewLayout() {
                     jtisiPreviewOpen,
                     itisiPreviewOpen,
                     gvinsPreviewOpen,
-                    szonePreviewOpen
+                    szonePreviewOpen,
+                    cpclbPreviewOpen
 
                 }}
                 setters={{
@@ -6721,7 +6727,8 @@ function V10PreviewLayout() {
                     setJtisiPreviewOpen,
                     setItisiPreviewOpen,
                     setGvinsPreviewOpen,
-                    setSzonePreviewOpen
+                    setSzonePreviewOpen,
+                    setCpclbPreviewOpen
                 }}
 
                 handlers={{
@@ -6761,7 +6768,8 @@ function V10PreviewLayout() {
                     generatePhotographyLogReportBlob,
                     generateGVINSReport,
                     generateGVINSReportBlob,
-                    generateSZONEReportBlob
+                    generateSZONEReportBlob,
+                    generateCPCLBReportBlob
 
                 }}
                 refs={{

@@ -40,7 +40,8 @@ const TOC_SECTIONS = [
       { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
   ]},
   { id: 3, name: "Cathodic Protection Potential Survey", templates: [
-      { id: "rov-cp-report", name: "ROV CP Survey Report", mode: "ROV" }
+      { id: "rov-cp-report", name: "ROV CP Survey Report", mode: "ROV" },
+      { id: "diving-cpclb-report", name: "Diving CP Calibration Report", mode: "Diving" }
   ]},
   { id: 4, name: "Flooded Member Detection", templates: [
       { id: "fmd-report", name: "ROV FMD Survey Report", mode: "ROV" }

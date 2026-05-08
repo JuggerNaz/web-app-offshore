@@ -26,6 +26,7 @@ import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-p
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
 import { generateDivingSZONEReport } from "@/utils/report-generators/diving-szone-report";
+import { generateDivingCPCLBReport } from "@/utils/report-generators/diving-cpclb-report";
 
 
 export function useWorkspaceReports(
@@ -62,6 +63,7 @@ export function useWorkspaceReports(
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
     const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
     const [szonePreviewOpen, setSzonePreviewOpen] = useState(false);
+    const [cpclbPreviewOpen, setCpclbPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -759,28 +761,9 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.lib_path || '';
         }
 
-        // Fetch ALL UT and CP calibration records for the current structure
-        // We filter by structure_id primarily and then match dive jobs in memory to be safe
-        let calibrationData: any[] = [];
-        if (structureId) {
-            const { data: calibs } = await supabase
-                .from('insp_records')
-                .select(`
-                    insp_id, 
-                    dive_job_id, 
-                    inspection_type_code, 
-                    inspection_data,
-                    insp_dive_jobs!left(id, dive_no)
-                `)
-                .in('inspection_type_code', ['CPCLB', 'UTCLB', 'cpclb', 'utclb'])
-                .eq('structure_id', Number(structureId));
-            
-            calibrationData = calibs || [];
-        }
-
         return await generateDivingSZONEReport(
             records, 
-            { ...headerData, contractorLogoUrl, calibrationData }, 
+            { ...headerData, contractorLogoUrl }, 
             { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, 
             { 
                 returnBlob: true, 
@@ -790,6 +773,72 @@ export function useWorkspaceReports(
                 jobPackId: Number(jobPackId)
             },
             supabase
+        ) as Blob;
+    };
+
+    const fetchCPCLBRecords = async () => {
+        const { data, error } = await supabase.from('insp_records').select(`
+            *,
+            inspection_type:inspection_type_id!left(id, code, name),
+            structure_components:component_id!left(id, q_id, code, metadata),
+            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+            insp_anomalies(*)
+        `)
+        .eq('structure_id', Number(structureId))
+        .eq('jobpack_id', Number(jobPackId));
+
+        if (error) {
+            console.error("Error fetching CPCLB records:", error);
+            return [];
+        }
+
+        const filtered = (data || []).filter((r: any) => {
+            const isCPCLB = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'CPCLB';
+            const sowMatches = !headerData?.sowReportNo || String(r.sow_report_no || '').toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+            return isCPCLB && sowMatches;
+        });
+
+        filtered.sort((a: any, b: any) => {
+            const diveA = String(a.insp_dive_jobs?.job_no || a.insp_dive_jobs?.name || a.dive_job_id || '');
+            const diveB = String(b.insp_dive_jobs?.job_no || b.insp_dive_jobs?.name || b.dive_job_id || '');
+            return diveA.localeCompare(diveB, undefined, { numeric: true });
+        });
+
+        return filtered;
+    };
+
+    const generateCPCLBReport = async () => {
+        const records = await fetchCPCLBRecords();
+        if (records.length === 0) {
+            toast.error("No CP Calibration records found for this SOW/Jobpack");
+            return;
+        }
+        setCpclbPreviewOpen(true);
+    };
+
+    const generateCPCLBReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = await fetchCPCLBRecords();
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return await generateDivingCPCLBReport(
+            records, 
+            { ...headerData, contractorLogoUrl }, 
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, 
+            { 
+                returnBlob: true, 
+                printFriendly, 
+                showSignatures: showSignatures ?? true,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId)
+            }
         ) as Blob;
     };
 
@@ -1162,6 +1211,7 @@ export function useWorkspaceReports(
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         gvinsPreviewOpen, setGvinsPreviewOpen,
         szonePreviewOpen, setSzonePreviewOpen,
+        cpclbPreviewOpen, setCpclbPreviewOpen,
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
@@ -1214,6 +1264,8 @@ export function useWorkspaceReports(
         generateGVINSReportBlob,
         generateSZONEReport,
         generateSZONEReportBlob,
+        generateCPCLBReport,
+        generateCPCLBReportBlob,
         generateInspectionReportByType,
 
         generateFullInspectionReport

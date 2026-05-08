@@ -49,6 +49,8 @@ interface InspectionHeaderProps {
     generateRGVIReport: () => void;
     generateGVINSReport: () => void;
     generateRCASNReport: () => void;
+    generateSZONEReport: () => void;
+    generateCPCLBReport: () => void;
 
     generateRCASNSketchReport: () => void;
     generateRCONDReport: () => void;
@@ -88,6 +90,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateRGVIReport,
     generateGVINSReport,
     generateRCASNReport,
+    generateSZONEReport,
+    generateCPCLBReport,
 
     generateRCASNSketchReport,
     generateRCONDReport,
@@ -193,23 +197,41 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 <span>General & Photo</span>
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="w-56">
-                                {currentRecords.some(r => {
+                                {inspMethod === 'ROV' && currentRecords.some(r => {
                                     const code = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase();
-                                    return code === 'RGVI' || code === 'DGVI';
+                                    return code === 'RGVI';
                                 }) && (
                                     <DropdownMenuItem onClick={() => generateRGVIReport()} className="text-xs py-2 cursor-pointer">
-                                        {inspMethod} General Visual (GVI)
+                                        ROV General Visual (GVI)
                                     </DropdownMenuItem>
                                 )}
-                                {currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'GVINS') && (
+                                {inspMethod === 'DIVING' && currentRecords.some(r => {
+                                    const code = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase();
+                                    return code === 'DGVI';
+                                }) && (
+                                    <DropdownMenuItem onClick={() => generateRGVIReport()} className="text-xs py-2 cursor-pointer">
+                                        Diving General Visual (GVI)
+                                    </DropdownMenuItem>
+                                )}
+                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'GVINS') && (
                                     <DropdownMenuItem onClick={() => generateGVINSReport()} className="text-xs py-2 cursor-pointer">
                                         Diving General Visual (GVINS)
+                                    </DropdownMenuItem>
+                                )}
+                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'SZONE') && (
+                                    <DropdownMenuItem onClick={() => generateSZONEReport()} className="text-xs py-2 cursor-pointer">
+                                        Diving Splashzone (SZONE)
                                     </DropdownMenuItem>
                                 )}
 
                                 {currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) && (
                                     <DropdownMenuItem onClick={() => generateCPReport()} className="text-xs py-2 cursor-pointer">
                                         {inspMethod} CP Survey
+                                    </DropdownMenuItem>
+                                )}
+                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'CPCLB') && (
+                                    <DropdownMenuItem onClick={() => generateCPCLBReport()} className="text-xs py-2 cursor-pointer">
+                                        Diving CP Calibration (CPCLB)
                                     </DropdownMenuItem>
                                 )}
                                 {currentRecords.some(r => (r.structure_components?.code || '').toUpperCase() === 'AN' || (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE') && (
@@ -233,19 +255,19 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 <span>NDT & Survey</span>
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="w-56">
-                                {currentRecords.some(r => ['RFMD', 'DFMD'].includes(r.inspection_type_code)) && (
+                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RFMD' : 'DFMD')) && (
                                     <DropdownMenuItem onClick={() => generateFMDReport()} className="text-xs py-2 cursor-pointer">{inspMethod} FMD Survey</DropdownMenuItem>
                                 )}
-                                {currentRecords.some(r => ['RUTWT', 'DUTWT'].includes(r.inspection_type_code)) && (
+                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RUTWT' : 'DUTWT')) && (
                                     <DropdownMenuItem onClick={() => generateUTWTReport()} className="text-xs py-2 cursor-pointer">{inspMethod} UTWT Survey</DropdownMenuItem>
                                 )}
-                                {currentRecords.some(r => ['RMGI', 'DMGI'].includes(r.inspection_type_code)) && (
+                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RMGI' : 'DMGI')) && (
                                     <DropdownMenuItem onClick={() => generateMGIReport()} className="text-xs py-2 cursor-pointer">{inspMethod} MGI Survey</DropdownMenuItem>
                                 )}
-                                {currentRecords.some(r => ['RSZCI', 'DSZCI'].includes(r.inspection_type_code)) && (
+                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RSZCI' : 'DSZCI')) && (
                                     <DropdownMenuItem onClick={() => generateSZCIReport()} className="text-xs py-2 cursor-pointer">{inspMethod} SZCI Survey</DropdownMenuItem>
                                 )}
-                                {currentRecords.some(r => ['RSCOR', 'DSCOR'].includes(r.inspection_type_code)) && (
+                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RSCOR' : 'DSCOR')) && (
                                     <DropdownMenuItem onClick={() => generateRSCORReport()} className="text-xs py-2 cursor-pointer">{inspMethod} Scour Survey</DropdownMenuItem>
                                 )}
                             </DropdownMenuSubContent>
@@ -258,20 +280,20 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 <span>Structural Components</span>
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="w-56">
-                                {currentRecords.some(r => ['RRISI', 'DRISI', 'JTISI', 'ITISI'].includes(r.inspection_type_code)) && (
+                                {currentRecords.some(r => [inspMethod === 'ROV' ? 'RRISI' : 'DRISI', 'JTISI', 'ITISI'].includes(r.inspection_type_code)) && (
                                     <>
                                         <DropdownMenuItem onClick={() => generateRRISIReport()} className="text-xs py-2 cursor-pointer">{inspMethod} Riser Survey</DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => generateJTISIReport()} className="text-xs py-2 cursor-pointer">{inspMethod} J-Tube Inspection</DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => generateITISIReport()} className="text-xs py-2 cursor-pointer">{inspMethod} I-Tube Inspection</DropdownMenuItem>
                                     </>
                                 )}
-                                {currentRecords.some(r => (r.inspection_type_code || '').startsWith('RCASN') || (r.inspection_type_code || '').startsWith('DCASN') || (r.structure_components?.code || '') === 'CS') && (
+                                {currentRecords.some(r => (r.inspection_type_code || '').startsWith(inspMethod === 'ROV' ? 'RCASN' : 'DCASN') || (r.structure_components?.code || '') === 'CS') && (
                                     <>
                                         <DropdownMenuItem onClick={() => generateRCASNReport()} className="text-xs py-2 cursor-pointer border-t border-slate-50 mt-1">{inspMethod} Caisson Survey</DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => generateRCASNSketchReport()} className="text-xs py-2 cursor-pointer">{inspMethod} Caisson (Sketch)</DropdownMenuItem>
                                     </>
                                 )}
-                                {currentRecords.some(r => ['RCOND', 'DCOND', 'RCON', 'DCON'].includes(r.inspection_type_code) || ['CD', 'CON'].includes(r.structure_components?.code)) && (
+                                {currentRecords.some(r => [(inspMethod === 'ROV' ? 'RCOND' : 'DCOND'), (inspMethod === 'ROV' ? 'RCON' : 'DCON')].includes(r.inspection_type_code) || ['CD', 'CON'].includes(r.structure_components?.code)) && (
                                     <>
                                         <DropdownMenuItem onClick={() => generateRCONDReport()} className="text-xs py-2 cursor-pointer border-t border-slate-50 mt-1">{inspMethod} Conductor Survey</DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => generateRCONDSketchReport()} className="text-xs py-2 cursor-pointer">{inspMethod} Conductor (Sketch)</DropdownMenuItem>
@@ -328,9 +350,13 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         {/* Dynamic Inspection Reports (Filtered) */}
                         {(() => {
                             const filteredReports = allInspectionTypes.filter(t => 
-                                !['RGVI', 'DGVI', 'RSEAB', 'RMGI', 'DMGI', 'RFMD', 'DFMD', 'RSZCI', 'DSZCI', 'RUTWT', 'DUTWT', 'RSCOR', 'DSCOR', 'RRISI', 'DRISI', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RG', 'SG', 'CU', 'BL', 'RISERGUARD', 'CAISSONGUARD', 'CONDUCTORGUARD'].includes(t.code) &&
+                                !['RGVI', 'DGVI', 'GVINS', 'SZONE', 'RSEAB', 'RMGI', 'DMGI', 'RFMD', 'DFMD', 'RSZCI', 'DSZCI', 'RUTWT', 'DUTWT', 'RSCOR', 'DSCOR', 'RRISI', 'DRISI', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RG', 'SG', 'CU', 'BL', 'RISERGUARD', 'CAISSONGUARD', 'CONDUCTORGUARD'].includes(t.code) &&
                                 currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))
-                            );
+                            ).filter(t => {
+                                if (inspMethod === 'DIVING' && t.code.startsWith('R') && t.code.length > 2) return false;
+                                if (inspMethod === 'ROV' && t.code.startsWith('D') && t.code.length > 2) return false;
+                                return true;
+                            });
 
                             if (filteredReports.length === 0) return null;
 
