@@ -44,6 +44,7 @@ import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-repor
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
 import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
+import { generateDivingSZONEReport } from "@/utils/report-generators/diving-szone-report";
 import { FinalDatasheetBuilder } from "./final-datasheet-builder";
 
 // Types
@@ -131,6 +132,7 @@ const REPORT_TEMPLATES = {
         { id: "rov-photo-report", name: "ROV Photography Report", icon: Eye, description: "Portrait report displaying all photos attached to inspections in a 2x3 grid with descriptions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-photo-log-report", name: "ROV Photography Log Report", icon: Eye, description: "Portrait report displaying a tabular log of all photos attached to inspections", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-gvins-report", name: "Diving GVI Report (GVINS)", icon: FileBarChart, description: "Portrait Diving General Visual Inspection report — marine growth, condition, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-szone-report", name: "Diving Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with grouped clock positions", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -174,7 +176,8 @@ const TOC_SECTIONS = [
       { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", mode: "ROV" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
-      { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" }
+      { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" },
+      { id: "diving-szone-report", name: "Diving Splash Zone Inspection", mode: "Diving" }
   ]},
   { id: 8, name: "Anode Inspection", templates: [
       { id: "rov-anode-report", name: "ROV Anode Inspection Report", mode: "ROV" }
@@ -599,11 +602,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                         return (
                                             <div
                                                 key={jp.id}
+                                                ref={isSelected ? (el) => { if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } : undefined}
                                                 onClick={() => setSelections({ ...selections, jobPackId: jp.id.toString(), structureId: "", componentId: "", sowReportNo: "" })}
                                                 className={`
                                                     p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group
                                                     ${isSelected
-                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm ring-1 ring-blue-500"
                                                         : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
                                                 `}
                                             >
@@ -2234,6 +2238,76 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("GVINS Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Splashzone Inspection Report (SZONE)
+        if (currentTemplateId === "diving-szone-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const szoneRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isSZONE = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'SZONE';
+                return sowMatches && jobPackMatches && isSZONE;
+            });
+
+            if (!szoneRecords || szoneRecords.length === 0) {
+                alert(`No Diving SZONE records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingSZONEReport(
+                    szoneRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), jobPackId: Number(selections.jobPackId) } as any,
+                    supabase
+                );
+            } catch (error) {
+                console.error("SZONE Generator Error:", error);
                 throw error;
             }
         }

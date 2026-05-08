@@ -421,6 +421,7 @@ export default function ROVJobSetupDialog({
         try {
             const jobId = existingJob.rov_job_id;
 
+            // 1. Check for inspection records
             const { count: inspCount, error: inspError } = await supabase
                 .from("insp_records")
                 .select("*", { count: "exact", head: true })
@@ -428,6 +429,7 @@ export default function ROVJobSetupDialog({
 
             if (inspError) throw inspError;
 
+            // 2. Check for movements (logs)
             const { count: movCount, error: movError } = await supabase
                 .from("insp_rov_movements")
                 .select("*", { count: "exact", head: true })
@@ -435,20 +437,49 @@ export default function ROVJobSetupDialog({
 
             if (movError) throw movError;
 
+            // 3. Validation & Cascade Confirmation
             if ((inspCount || 0) > 0) {
-                toast.error(`Cannot delete: This deployment has ${inspCount} inspection records. Please remove them first.`);
-                return;
+                if (!confirm(`Warning: This deployment has ${inspCount} inspection records. Deleting this deployment will also PERMANENTLY delete all associated records, anomalies, and logs. \n\nAre you sure you want to proceed?`)) {
+                    setLoading(false);
+                    return;
+                }
             }
 
-            const { error: matchError } = await supabase
+            // 4. Cleanup dependencies to prevent FK constraint errors
+            // Order: Anomalies/Logs -> Records -> Movements -> Job
+
+            // A. Get all record IDs for this job to clean up sub-tables
+            const { data: recordData } = await supabase
+                .from("insp_records")
+                .select("insp_id")
+                .eq("rov_job_id", jobId);
+
+            if (recordData && recordData.length > 0) {
+                const recordIds = recordData.map(r => r.insp_id);
+                console.log(`[Delete Job] Cleaning up data for ${recordIds.length} records...`);
+
+                // i. Delete Anomalies
+                await supabase.from("insp_anomalies").delete().in("inspection_id", recordIds);
+                
+                // ii. Delete Video Logs
+                await supabase.from("insp_video_logs").delete().in("inspection_id", recordIds);
+
+                // iii. Delete Attachment Metadata
+                await supabase.from("attachment").delete().in("source_id", recordIds).eq("source_type", "INSPECTION");
+            }
+
+            // B. Delete the inspection records themselves
+            const { error: recordDelErr } = await supabase
                 .from("insp_records")
                 .delete()
                 .eq("rov_job_id", jobId);
 
-            if (matchError) {
-                console.warn("Could not delete from insp_records directly (might be a view or permission issue, or just dependency):", matchError);
+            if (recordDelErr) {
+                console.error("Error deleting records:", recordDelErr);
+                throw new Error("Failed to clear inspection records: " + recordDelErr.message);
             }
 
+            // C. Clean insp_rov_movements (Logs)
             const { error: moveDelError } = await supabase
                 .from("insp_rov_movements")
                 .delete()
@@ -459,6 +490,7 @@ export default function ROVJobSetupDialog({
                 throw moveDelError;
             }
 
+            // D. Delete the job
             const { error: deleteError } = await supabase
                 .from("insp_rov_jobs")
                 .delete()
@@ -466,6 +498,7 @@ export default function ROVJobSetupDialog({
 
             if (deleteError) throw deleteError;
 
+            // Verify deletion
             const { count: checkCount } = await supabase
                 .from("insp_rov_jobs")
                 .select("*", { count: "exact", head: true })

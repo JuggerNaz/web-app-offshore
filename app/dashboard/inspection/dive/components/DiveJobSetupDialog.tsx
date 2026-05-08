@@ -18,7 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Anchor, Info, Users, RotateCw, Trash2, History } from "lucide-react";
+import { Anchor, Info, Users, RotateCw, Trash2, History, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -150,16 +150,13 @@ export default function DiveJobSetupDialog({
     }
 
     function generateDiveNo() {
-        // ... (existing implementation)
         const now = new Date();
         const year = now.getFullYear().toString();
         const month = (now.getMonth() + 1).toString().padStart(2, "0");
-        const random = Math.floor(Math.random() * 1000)
-            .toString()
-            .padStart(3, "0");
+        // Start with a clean sequence number for the month
         setFormData((prev) => ({
             ...prev,
-            dive_no: `DIVE-${year}${month}-${random}`,
+            dive_no: `DIVE-${year}${month}-001`,
         }));
     }
 
@@ -399,15 +396,24 @@ export default function DiveJobSetupDialog({
             };
 
             if (existingJob) {
-                // UPDATE
+                // UPDATE or UPGRADE LEGACY
+                // We use upsert so that if it's a legacy record (exists in insp_records but not insp_dive_jobs),
+                // it creates the job entry with the correct ID.
                 query = supabase
                     .from("insp_dive_jobs")
-                    .update(payload)
-                    .eq("dive_job_id", existingJob.dive_job_id)
+                    .upsert({
+                        ...payload,
+                        dive_job_id: existingJob.dive_job_id,
+                        structure_id: structureId ? parseInt(structureId) : null,
+                        jobpack_id: jobpackId ? parseInt(jobpackId) : null,
+                        sow_report_no: sowId,
+                        status: existingJob.status || "IN_PROGRESS",
+                        cr_user: user.id
+                    })
                     .select()
                     .single();
             } else {
-                // CREATE
+                // CREATE NEW
                 query = supabase
                     .from("insp_dive_jobs")
                     .insert({
@@ -467,30 +473,49 @@ export default function DiveJobSetupDialog({
 
             if (movError) throw movError;
 
-            // 3. Validation: Prevent delete ONLY if inspection records exist
-            // (We allow deleting logs/movements, as that's just time tracking)
+            // 3. Validation & Cascade Confirmation
             if ((inspCount || 0) > 0) {
-                toast.error(`Cannot delete: This deployment has ${inspCount} inspection records. Please remove them first.`);
-                return;
+                if (!confirm(`Warning: This deployment has ${inspCount} inspection records. Deleting this deployment will also PERMANENTLY delete all associated records, anomalies, and logs. \n\nAre you sure you want to proceed?`)) {
+                    setLoading(false);
+                    return;
+                }
             }
 
             // 4. Cleanup dependencies to prevent FK constraint errors
-            // Order is important: Data -> Logs -> Job
+            // Order: Anomalies/Logs -> Records -> Movements -> Job
 
-            // A. Clean insp_records (Findings) - this might be the core blocker
-            // We ignore errors here in case it's a view, but we try it.
-            const { error: matchError } = await supabase
+            // A. Get all record IDs for this job to clean up sub-tables
+            const { data: recordData } = await supabase
+                .from("insp_records")
+                .select("insp_id")
+                .eq("dive_job_id", jobId);
+
+            if (recordData && recordData.length > 0) {
+                const recordIds = recordData.map(r => r.insp_id);
+                console.log(`[Delete Job] Cleaning up data for ${recordIds.length} records...`);
+
+                // i. Delete Anomalies
+                await supabase.from("insp_anomalies").delete().in("inspection_id", recordIds);
+                
+                // ii. Delete Video Logs
+                await supabase.from("insp_video_logs").delete().in("inspection_id", recordIds);
+
+                // iii. Delete Attachment Metadata (Storage cleanup should ideally happen too, but DB safety first)
+                await supabase.from("attachment").delete().in("source_id", recordIds).eq("source_type", "INSPECTION");
+            }
+
+            // B. Delete the inspection records themselves
+            const { error: recordDelErr } = await supabase
                 .from("insp_records")
                 .delete()
                 .eq("dive_job_id", jobId);
 
-            if (matchError) {
-                console.warn("Could not delete from insp_records directly (might be a view or permission issue, or just dependency):", matchError);
+            if (recordDelErr) {
+                console.error("Error deleting records:", recordDelErr);
+                throw new Error("Failed to clear inspection records: " + recordDelErr.message);
             }
 
-
-
-            // B. Clean insp_dive_movements (Logs) - Must be deleted before Job if FK exists
+            // C. Clean insp_dive_movements (Logs)
             const { error: moveDelError } = await supabase
                 .from("insp_dive_movements")
                 .delete()
@@ -554,6 +579,19 @@ export default function DiveJobSetupDialog({
                 </DialogHeader>
 
                 {/* Info Banner */}
+                {existingJob?.is_legacy && (
+                    <div className="p-3 mb-4 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-3">
+                        <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                            <p className="text-sm font-bold text-amber-900">Legacy Record Placeholder</p>
+                            <p className="text-xs text-amber-700">
+                                This Dive ID exists in the inspection database but has no registered setup. 
+                                Save this form to register it properly, or delete it to remove the orphaned records.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900">
                     <div className="flex items-start gap-3">
                         <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />

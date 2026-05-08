@@ -403,15 +403,20 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 propsList = specProps;
                               }
 
-                              const ntField = propsList.find(
-                                (p: any) =>
-                                  String(p.label || p.name || "")
-                                    .toLowerCase()
-                                    .includes("nominal thickness") ||
-                                  String(p.label || p.name || "").toLowerCase() === "nt"
-                              );
+                              const ntField = propsList.find((p: any) => {
+                                const label = String(p.label || p.name || "").toLowerCase();
+                                return label.includes("nominal thickness") || 
+                                       label === "nt" || 
+                                       label.includes("wall thickness") ||
+                                       label === "wt" ||
+                                       label === "wall_thk" ||
+                                       label === "nominal_thickness";
+                              });
+                              
                               if (ntField && compNT) {
-                                newProps[ntField.name || ntField.label] = compNT;
+                                const fieldKey = ntField.name || ntField.label;
+                                newProps[fieldKey] = compNT;
+                                console.log(`[Auto-fill Main] Populating ${fieldKey} with ${compNT} from component data.`);
                               }
 
                               const elevField = propsList.find(

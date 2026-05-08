@@ -81,6 +81,7 @@ type ComponentSpecDialogProps = {
   component: Component | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: (updatedComponent: any) => void;
   mode?: "view" | "create";
   defaultCode?: string | null;
   typeName?: string | null;
@@ -92,6 +93,7 @@ export function ComponentSpecDialog({
   component,
   open,
   onOpenChange,
+  onSuccess,
   mode = "view",
   defaultCode,
   typeName,
@@ -1260,6 +1262,9 @@ export function ComponentSpecDialog({
         depth: formData.depth,
         depth_unit: formData.depth_unit,
         additionalInfo: formData.additionalInfo,
+        // Mirror wall_thk to common keys for better compatibility across various inspection templates
+        wall_thk: formData.additionalInfo?.wall_thk || component.metadata?.wall_thk || "",
+        nominal_thickness: formData.additionalInfo?.wall_thk || component.metadata?.wall_thk || "",
       };
 
       const payload = {
@@ -1268,7 +1273,7 @@ export function ComponentSpecDialog({
         metadata: metadata,
       };
 
-      await fetcher(`/api/structure-components/item/${component.id}`, {
+      const { data: updatedComp } = await fetcher(`/api/structure-components/item/${component.id}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
@@ -1281,6 +1286,10 @@ export function ComponentSpecDialog({
 
       toast("Component updated successfully");
       setIsEditing(false);
+      
+      if (onSuccess && updatedComp) {
+        onSuccess(updatedComp);
+      }
     } catch (error) {
       console.error("Error updating component:", error);
       toast("Failed to update component");
@@ -3348,6 +3357,30 @@ export function ComponentSpecDialog({
                 )}
                 {isSaving ? "Saving..." : "Create Component"}
               </Button>
+            ) : isEditMode ? (
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                  className="rounded-xl font-bold px-6 h-11"
+                >
+                  Cancel Edit
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleUpdate}
+                  disabled={isSaving}
+                  className="rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]"
+                >
+                  {isSaving ? (
+                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
             ) : (
               <Button
                 type="button"

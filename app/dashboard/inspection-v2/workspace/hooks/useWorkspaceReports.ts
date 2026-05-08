@@ -25,6 +25,7 @@ import { generateROVPhotographyReport } from "@/utils/report-generators/rov-phot
 import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
+import { generateDivingSZONEReport } from "@/utils/report-generators/diving-szone-report";
 
 
 export function useWorkspaceReports(
@@ -60,6 +61,7 @@ export function useWorkspaceReports(
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
     const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
+    const [szonePreviewOpen, setSzonePreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -737,6 +739,60 @@ export function useWorkspaceReports(
         return await generateDivingGVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
+    const generateSZONEReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SZONE');
+        if (records.length === 0) {
+            toast.error("No Splashzone records found to generate report");
+            return;
+        }
+        setSzonePreviewOpen(true);
+    };
+
+    const generateSZONEReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SZONE');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        // Fetch ALL UT and CP calibration records for the current structure
+        // We filter by structure_id primarily and then match dive jobs in memory to be safe
+        let calibrationData: any[] = [];
+        if (structureId) {
+            const { data: calibs } = await supabase
+                .from('insp_records')
+                .select(`
+                    insp_id, 
+                    dive_job_id, 
+                    inspection_type_code, 
+                    inspection_data,
+                    insp_dive_jobs!left(id, dive_no)
+                `)
+                .in('inspection_type_code', ['CPCLB', 'UTCLB', 'cpclb', 'utclb'])
+                .eq('structure_id', Number(structureId));
+            
+            calibrationData = calibs || [];
+        }
+
+        return await generateDivingSZONEReport(
+            records, 
+            { ...headerData, contractorLogoUrl, calibrationData }, 
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, 
+            { 
+                returnBlob: true, 
+                printFriendly, 
+                showSignatures: showSignatures ?? true,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId)
+            },
+            supabase
+        ) as Blob;
+    };
+
     const generateRCASNReport = async () => {
         const records = currentRecords.filter(r => {
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
@@ -1007,6 +1063,10 @@ export function useWorkspaceReports(
             await generateSZCIReport();
             return;
         }
+        if (typeCode === 'SZONE' || typeCode === 'SZ') {
+            await generateSZONEReport();
+            return;
+        }
         if (typeCode === 'SEABED') {
             await generateSeabedReport();
             return;
@@ -1101,6 +1161,7 @@ export function useWorkspaceReports(
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         gvinsPreviewOpen, setGvinsPreviewOpen,
+        szonePreviewOpen, setSzonePreviewOpen,
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
@@ -1151,6 +1212,8 @@ export function useWorkspaceReports(
         generatePhotographyLogReportBlob,
         generateGVINSReport,
         generateGVINSReportBlob,
+        generateSZONEReport,
+        generateSZONEReportBlob,
         generateInspectionReportByType,
 
         generateFullInspectionReport

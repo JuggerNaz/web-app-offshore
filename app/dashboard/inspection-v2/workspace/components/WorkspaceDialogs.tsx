@@ -65,6 +65,7 @@ interface WorkspaceDialogsProps {
     recordedFiles: any[];
     pendingAttachments: any[];
     setPendingAttachments: React.Dispatch<React.SetStateAction<any[]>>;
+    onCompSpecSuccess?: (updatedComp: any) => void;
     
     // States
     states: {
@@ -138,6 +139,7 @@ interface WorkspaceDialogsProps {
         sgPreviewOpen: boolean;
         cuPreviewOpen: boolean;
         gvinsPreviewOpen: boolean;
+        szonePreviewOpen: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
@@ -198,6 +200,7 @@ interface WorkspaceDialogsProps {
         setSgPreviewOpen: (open: boolean) => void;
         setCuPreviewOpen: (open: boolean) => void;
         setGvinsPreviewOpen: (open: boolean) => void;
+        setSzonePreviewOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
 
         setRovCalibrationDialogOpen: (open: boolean) => void;
@@ -243,6 +246,7 @@ interface WorkspaceDialogsProps {
         generatePhotographyLogReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateGVINSReport: () => void;
         generateGVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -263,6 +267,7 @@ export function WorkspaceDialogs({
     recordedFiles,
     pendingAttachments,
     setPendingAttachments,
+    onCompSpecSuccess,
     states,
     setters,
     handlers,
@@ -960,6 +965,7 @@ export function WorkspaceDialogs({
             <ComponentSpecDialog
                 open={compSpecDialogOpen}
                 onOpenChange={setCompSpecDialogOpen}
+                onSuccess={onCompSpecSuccess}
                 component={selectedComp?.raw}
                 mode="view"
             />
@@ -1843,6 +1849,14 @@ export function WorkspaceDialogs({
                 title="Diving General Visual Inspection Report Preview" 
                 fileName={`Diving_GVINS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateGVINSReportBlob} 
+            />
+            
+            <ReportPreviewDialog 
+                open={states.szonePreviewOpen} 
+                onOpenChange={setters.setSzonePreviewOpen} 
+                title="Diving Splash Zone Inspection Report Preview" 
+                fileName={`Diving_SZONE_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={handlers.generateSZONEReportBlob} 
             />
 
 

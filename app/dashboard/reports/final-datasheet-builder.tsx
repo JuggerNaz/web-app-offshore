@@ -61,7 +61,8 @@ const TOC_SECTIONS = [
       { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", mode: "ROV" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
-      { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" }
+      { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" },
+      { id: "diving-szone-report", name: "Diving Splash Zone Inspection", mode: "Diving" }
   ]},
   { id: 8, name: "Anode Inspection", templates: [
       { id: "rov-anode-report", name: "ROV Anode Inspection Report", mode: "ROV" }

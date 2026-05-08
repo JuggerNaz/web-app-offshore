@@ -1001,6 +1001,7 @@ function V10PreviewLayout() {
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         gvinsPreviewOpen, setGvinsPreviewOpen,
+        szonePreviewOpen, setSzonePreviewOpen,
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
@@ -1051,6 +1052,8 @@ function V10PreviewLayout() {
         generatePhotographyLogReportBlob,
         generateGVINSReport,
         generateGVINSReportBlob,
+        generateSZONEReport,
+        generateSZONEReportBlob,
 
         generateInspectionReportByType,
         generateFullInspectionReport
@@ -2481,7 +2484,7 @@ function V10PreviewLayout() {
                     metadata
                 ),
                 insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
                 insp_video_tapes:tape_id!left(tape_no),
                 insp_anomalies(*)
             `).eq(inspCol, depId);
@@ -3138,38 +3141,39 @@ function V10PreviewLayout() {
 
             // REMOVED BAD FALLBACK (that was cross-pollinating jobs)
 
-            // DEEP FALLBACK: If still empty, check if any inspection records exist for this jobpack/structure/sow
-            // This happens if the job records were deleted but the inspection records remain.
-            if (results.length === 0) {
-                console.log(`[fetchDeps] No job records found in ${table}. Checking insp_records...`);
-                const targetColumn = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
+            // DEEP FALLBACK & MERGE: Check if any inspection records exist for this jobpack/structure/sow
+            // that are NOT represented in the job table results. This happens if the job records were 
+            // deleted/missing but the inspection records remain.
+            const targetColumn = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
+            const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
 
-                let recQuery = supabase.from('insp_records')
-                    .select(targetColumn)
-                    .eq('jobpack_id', queryJobPackId)
-                    .eq('structure_id', Number(structureId))
-                    .not(targetColumn, 'is', null)
-                    .limit(10);
-                
-                if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
-                    recQuery = recQuery.eq('sow_report_no', headerData.sowReportNo);
-                }
+            let recQuery = supabase.from('insp_records')
+                .select(targetColumn)
+                .eq('jobpack_id', queryJobPackId)
+                .eq('structure_id', Number(structureId))
+                .not(targetColumn, 'is', null)
+                .limit(20); // Check for potential orphans
+            
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
+                recQuery = recQuery.eq('sow_report_no', headerData.sowReportNo);
+            }
 
-                const { data: recJobs } = await recQuery;
+            const { data: recJobs } = await recQuery;
 
-                if (recJobs && recJobs.length > 0) {
-                    const uniqueJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]).filter(id => id !== null)));
-                    console.log("[fetchDeps] Discovered job IDs from records:", uniqueJobIds);
+            if (recJobs && recJobs.length > 0) {
+                const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn])))
+                    .filter(id => !existingJobIds.has(id));
 
-                    if (uniqueJobIds.length > 0) {
-                        // Create virtual job objects
-                        results = uniqueJobIds.map(jid => ({
-                            [targetColumn]: jid,
-                            dive_no: `JOB-${jid}`,
-                            diver_name: "Legacy Records",
-                            status: 'COMPLETED'
-                        })) as any;
-                    }
+                if (orphanedJobIds.length > 0) {
+                    console.log("[fetchDeps] Merging orphaned job IDs from records:", orphanedJobIds);
+                    const virtualJobs = orphanedJobIds.map(jid => ({
+                        [targetColumn]: jid,
+                        dive_no: `Legacy-${jid}`,
+                        diver_name: "Legacy Records",
+                        status: 'COMPLETED',
+                        is_legacy: true
+                    }));
+                    results = [...results, ...virtualJobs];
                 }
             }
 
@@ -3181,7 +3185,12 @@ function V10PreviewLayout() {
                     const idStr = String(rawId);
 
                     // jobNo: Prefer dive_no/deployment_no for display
-                    const jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
+                    let jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
+                    
+                    // Add legacy indicator if applicable
+                    if ((d as any).is_legacy) {
+                        jNo = `Legacy-${rawId}`;
+                    }
 
                     // name: Prefer diver_name/rov_system for display
                     const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
@@ -3353,7 +3362,8 @@ function V10PreviewLayout() {
                 const endLeg = md.s_leg || md.end_leg || md.f_leg || md.leg_2 || md.EndLeg || md.Leg_2 || comp.endLeg || comp.end_leg || '-';
                 const startElev = md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || '-';
                 const endElev = md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || '-';
-                const nominalThk = md.nominal_thickness || md.NominalThickness || md.nominal_thk || comp.nominal_thickness || '-';
+                const nominalThk = md.nominal_thickness || md.NominalThickness || md.nominal_thk || md.wall_thk || md.additionalInfo?.wall_thk || comp.nominal_thickness || '-';
+                const wallThickness = md.wall_thk || md.additionalInfo?.wall_thk || '-';
                 const taskItems = assignedCompsMap.get(comp.id) || [];
 
                 const elv1Num = parseFloat(String(startElev).replace(/[^\d.-]/g, ''));
@@ -3378,7 +3388,7 @@ function V10PreviewLayout() {
                     name: comp.q_id || comp.name || `Node ${comp.id}`,
                     depth: displayDepth,
                     lowestElev,
-                    startNode, endNode, startLeg, endLeg, startElev, endElev, nominalThk,
+                    startNode, endNode, startLeg, endLeg, startElev, endElev, nominalThk, wallThickness,
                     raw: comp,
                     tasks: Array.from(new Set(taskItems.map(t => t.code))),
                     taskStatuses: Array.from(new Map(taskItems.map(item => [item.code, item])).values())
@@ -4401,7 +4411,8 @@ function V10PreviewLayout() {
                 endLeg: md.s_leg || md.end_leg || '-',
                 startElev: md.elv_1 || md.start_elevation || '-',
                 endElev: md.elv_2 || md.end_elevation || '-',
-                nominalThk: md.nominal_thickness || '-',
+                nominalThk: md.nominal_thickness || md.nominal_thk || md.wall_thk || md.additionalInfo?.wall_thk || '-',
+                wallThickness: md.wall_thk || md.additionalInfo?.wall_thk || '-',
                 raw: jc || { 
                     type: fullRecord.component_type,
                     code: fullRecord.component_type
@@ -4498,6 +4509,102 @@ function V10PreviewLayout() {
             const formArea = document.getElementById(FORM_AREA_ID);
             if (formArea) formArea.scrollIntoView({ behavior: 'smooth' });
         }, 100);
+    };
+
+    const handleCompSpecSuccess = (updatedRaw: any) => {
+        if (!selectedComp) return;
+
+        const md = (typeof updatedRaw.metadata === 'string' ? JSON.parse(updatedRaw.metadata) : updatedRaw.metadata) || {};
+        
+        // Re-derive derived fields to maintain consistency with list view
+        const startElev = md.elv_1 || md.start_elevation || '-';
+        const endElev = md.elv_2 || md.end_elevation || '-';
+        const elv1Num = parseFloat(String(startElev).replace(/[^\d.-]/g, ''));
+        const elv2Num = parseFloat(String(endElev).replace(/[^\d.-]/g, ''));
+        let lowestElev = '-';
+        let displayDepth = selectedComp.depth || '-0.0m';
+        
+        if (!isNaN(elv1Num) && !isNaN(elv2Num)) {
+            lowestElev = String(Math.min(elv1Num, elv2Num));
+            displayDepth = `${lowestElev}m`;
+        } else if (!isNaN(elv1Num)) {
+            lowestElev = String(elv1Num);
+            displayDepth = `${elv1Num}m`;
+        } else if (!isNaN(elv2Num)) {
+            lowestElev = String(elv2Num);
+            displayDepth = `${elv2Num}m`;
+        }
+
+        const updatedComp = {
+            ...selectedComp,
+            nominalThk: md.additionalInfo?.wall_thk || md.wall_thk || md.nominal_thickness || md.nominal_thk || '-',
+            wallThickness: md.additionalInfo?.wall_thk || md.wall_thk || md.nominal_thk || '-',
+            startNode: md.s_node || md.f_node || '-',
+            endNode: md.f_node || md.s_node || '-',
+            startLeg: md.s_leg || '-',
+            endLeg: md.f_leg || '-',
+            startElev,
+            endElev,
+            lowestElev,
+            depth: displayDepth,
+            raw: updatedRaw
+        };
+
+        setSelectedComp(updatedComp);
+
+        // Update all local lists to reflect the change globally in the workspace
+        setAllComps(prev => prev.map(c => c.id === updatedRaw.id ? updatedComp : c));
+        setComponentsSow(prev => prev.map(c => c.id === updatedRaw.id ? updatedComp : c));
+        setComponentsNonSow(prev => prev.map(c => c.id === updatedRaw.id ? updatedComp : c));
+
+        // Real-time synchronization for Nominal/Wall Thickness
+        if (activeSpec && activeFormProps.length > 0) {
+            const compNT = updatedComp.nominalThk && updatedComp.nominalThk !== '-' ? updatedComp.nominalThk : null;
+            if (compNT) {
+                // Find thickness field in current form
+                const ntField = activeFormProps.find((p: any) => {
+                    const label = String(p.label || '').toLowerCase();
+                    const name = String(p.name || '').toLowerCase();
+                    return label === 'nominal' || 
+                           label.includes('nominal thickness') || 
+                           name === 'nt' || 
+                           name === 'nominal_thickness' ||
+                           label.includes('wall thickness') ||
+                           name === 'wt' ||
+                           name === 'wall_thk';
+                });
+
+                if (ntField) {
+                    const fieldKey = ntField.name || ntField.label;
+                    const unitFieldKey = `${fieldKey}_unit`;
+                    
+                    // Check if current value is "empty-ish" (including numeric zero placeholders)
+                    const isValueEmpty = (val: any) => {
+                        if (val === null || val === undefined || val === '') return true;
+                        const s = String(val).trim();
+                        return s === '0' || s === '0.00' || s === '0.0' || s === '--' || s === '-' || s === '0.000';
+                    };
+
+                    const currentValue = dynamicProps[fieldKey];
+                    if (isValueEmpty(currentValue)) {
+                        const updates: any = { [fieldKey]: compNT };
+                        
+                        // Also auto-fill unit if available in field definition
+                        const defaultUnit = (unitSystem === "IMPERIAL" ? ntField.defaultImperial : ntField.defaultMetric) || ntField.defaultUnit;
+                        if (defaultUnit && isValueEmpty(dynamicProps[unitFieldKey])) {
+                            updates[unitFieldKey] = defaultUnit;
+                        }
+
+                        setDynamicProps(prev => ({
+                            ...prev,
+                            ...updates
+                        }));
+                        toast.success(`Auto-filled ${fieldKey.replace(/_/g, ' ')} with ${compNT}`);
+                        console.log(`[Auto-fill Sync] Populating ${fieldKey} with ${compNT} and unit from component data update.`);
+                    }
+                }
+            }
+        }
     };
 
     const handlePrintAnomaly = async (record: any) => {
@@ -5408,12 +5515,30 @@ function V10PreviewLayout() {
                                                                 const compNT = selectedComp.nominalThk && selectedComp.nominalThk !== '-' ? selectedComp.nominalThk : 
                                                                                (selectedComp.wallThickness && selectedComp.wallThickness !== '-' ? selectedComp.wallThickness : null);
                                                                 if (compNT) {
-                                                                    const ntField = propsList.find((p: any) => 
-                                                                        String(p.label || p.name || '').toLowerCase().includes('nominal thickness') ||
-                                                                        String(p.label || p.name || '').toLowerCase() === 'nt'
-                                                                    );
+                                                                    const ntField = propsList.find((p: any) => {
+                                                                        const label = String(p.label || '').toLowerCase();
+                                                                        const name = String(p.name || '').toLowerCase();
+                                                                        return label === 'nominal' || 
+                                                                               label.includes('nominal thickness') || 
+                                                                               name === 'nt' || 
+                                                                               name === 'nominal_thickness' ||
+                                                                               label.includes('wall thickness') ||
+                                                                               name === 'wt' ||
+                                                                               name === 'wall_thk';
+                                                                    });
+                                                                    
                                                                     if (ntField) {
-                                                                        newProps[ntField.name || ntField.label] = compNT;
+                                                                        const fieldKey = ntField.name || ntField.label;
+                                                                        newProps[fieldKey] = compNT;
+                                                                        
+                                                                        // Also auto-fill unit
+                                                                        const unitFieldKey = `${fieldKey}_unit`;
+                                                                        const defaultUnit = (unitSystem === "IMPERIAL" ? ntField.defaultImperial : ntField.defaultMetric) || ntField.defaultUnit;
+                                                                        if (defaultUnit) {
+                                                                            newProps[unitFieldKey] = defaultUnit;
+                                                                        }
+
+                                                                        console.log(`[Auto-fill] Populating ${fieldKey} with ${compNT} and unit from component data.`);
                                                                     }
                                                                 }
 
@@ -6465,6 +6590,7 @@ function V10PreviewLayout() {
                 recordedFiles={recordedFiles}
                 pendingAttachments={pendingAttachments}
                 setPendingAttachments={setPendingAttachments}
+                onCompSpecSuccess={handleCompSpecSuccess}
                 states={{
                     isDiveSetupOpen,
                     isDiveSetupForNew,
@@ -6537,7 +6663,8 @@ function V10PreviewLayout() {
                     rrisiPreviewOpen,
                     jtisiPreviewOpen,
                     itisiPreviewOpen,
-                    gvinsPreviewOpen
+                    gvinsPreviewOpen,
+                    szonePreviewOpen
 
                 }}
                 setters={{
@@ -6593,7 +6720,8 @@ function V10PreviewLayout() {
                     setRrisiPreviewOpen,
                     setJtisiPreviewOpen,
                     setItisiPreviewOpen,
-                    setGvinsPreviewOpen
+                    setGvinsPreviewOpen,
+                    setSzonePreviewOpen
                 }}
 
                 handlers={{
@@ -6632,7 +6760,8 @@ function V10PreviewLayout() {
                     generatePhotographyReportBlob,
                     generatePhotographyLogReportBlob,
                     generateGVINSReport,
-                    generateGVINSReportBlob
+                    generateGVINSReportBlob,
+                    generateSZONEReportBlob
 
                 }}
                 refs={{
