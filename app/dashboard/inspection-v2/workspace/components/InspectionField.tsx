@@ -332,7 +332,7 @@ const InspectionField = ({
                     htmlFor={`${p.name || p.label}-${type}`}
                     className="text-xs font-bold text-slate-600 cursor-pointer select-none"
                 >
-                    {isChecked ? "Yes" : "No"}
+                    Yes
                 </label>
             </div>
         );

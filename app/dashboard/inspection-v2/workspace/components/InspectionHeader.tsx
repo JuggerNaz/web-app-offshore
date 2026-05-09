@@ -45,12 +45,14 @@ interface InspectionHeaderProps {
     generateJTISIReport: () => void;
     generateITISIReport: () => void;
     generateAnodeReport: () => void;
+    generateDivingAnodeReport: () => void;
     generateCPReport: () => void;
     generateRGVIReport: () => void;
     generateGVINSReport: () => void;
     generateRCASNReport: () => void;
     generateSZONEReport: () => void;
     generateCPCLBReport: () => void;
+    generateUTCLBReport: () => void;
 
     generateRCASNSketchReport: () => void;
     generateRCONDReport: () => void;
@@ -86,12 +88,14 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateJTISIReport,
     generateITISIReport,
     generateAnodeReport,
+    generateDivingAnodeReport,
     generateCPReport,
     generateRGVIReport,
     generateGVINSReport,
     generateRCASNReport,
     generateSZONEReport,
     generateCPCLBReport,
+    generateUTCLBReport,
 
     generateRCASNSketchReport,
     generateRCONDReport,
@@ -234,9 +238,19 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                         Diving CP Calibration (CPCLB)
                                     </DropdownMenuItem>
                                 )}
-                                {currentRecords.some(r => (r.structure_components?.code || '').toUpperCase() === 'AN' || (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE') && (
+                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'UTCLB') && (
+                                    <DropdownMenuItem onClick={() => generateUTCLBReport()} className="text-xs py-2 cursor-pointer">
+                                        Diving UT Calibration (UTCLB)
+                                    </DropdownMenuItem>
+                                )}
+                                {inspMethod === 'ROV' && currentRecords.some(r => (r.structure_components?.code || '').toUpperCase() === 'AN' || (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE') && (
                                     <DropdownMenuItem onClick={() => generateAnodeReport()} className="text-xs py-2 cursor-pointer">
-                                        {inspMethod} Anode Survey
+                                        ROV Anode Survey
+                                    </DropdownMenuItem>
+                                )}
+                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'PL_AN') && (
+                                    <DropdownMenuItem onClick={() => generateDivingAnodeReport()} className="text-xs py-2 cursor-pointer">
+                                        Diving Selected Anode Report
                                     </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem onClick={() => generatePhotographyReport()} className="text-xs py-2 cursor-pointer">

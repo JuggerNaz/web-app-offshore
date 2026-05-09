@@ -1003,6 +1003,8 @@ function V10PreviewLayout() {
         gvinsPreviewOpen, setGvinsPreviewOpen,
         szonePreviewOpen, setSzonePreviewOpen,
         cpclbPreviewOpen, setCpclbPreviewOpen,
+        utclbPreviewOpen, setUtclbPreviewOpen,
+        divingAnodePreviewOpen, setDivingAnodePreviewOpen,
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
@@ -1057,6 +1059,9 @@ function V10PreviewLayout() {
         generateSZONEReportBlob,
         generateCPCLBReport,
         generateCPCLBReportBlob,
+        generateUTCLBReport,
+        generateUTCLBReportBlob,
+        generateDivingAnodeReportBlob,
 
         generateInspectionReportByType,
         generateFullInspectionReport
@@ -4951,6 +4956,8 @@ function V10PreviewLayout() {
                 generateGVINSReport={() => setGvinsPreviewOpen(true)}
                 generateSZONEReport={() => setSzonePreviewOpen(true)}
                 generateCPCLBReport={() => setCpclbPreviewOpen(true)}
+                generateUTCLBReport={() => setUtclbPreviewOpen(true)}
+                generateDivingAnodeReport={() => setDivingAnodePreviewOpen(true)}
                 generateRCASNReport={() => setRcasnPreviewOpen(true)}
                 generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
                 generateRCONDReport={() => setRcondPreviewOpen(true)}
@@ -5124,7 +5131,7 @@ function V10PreviewLayout() {
                                         <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50">
                                             <div className={`whitespace-nowrap text-[9px] font-bold px-2 py-1 rounded shadow-lg border ${item.ok ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
                                                 }`}>
-                                                {item.ok ? `âœ“ ${item.label}` : `âœ— ${item.label} â€” ${item.hint}`}
+                                                {item.ok ? `✓ ${item.label}` : `✗ ${item.label} — ${item.hint}`}
                                             </div>
                                         </div>
                                     </div>
@@ -5151,8 +5158,8 @@ function V10PreviewLayout() {
                                 title={manualOverride ? 'Currently in Manual Entry mode (click to switch to Live)' : 'Switch to Manual Entry mode to insert missing records'}
                             >
                                 {manualOverride 
-                                    ? <span className="flex items-center gap-1.5"><span className="text-[10px]">&#9889;</span> MANUAL</span> 
-                                    : <span className="flex items-center gap-1.5"><span className="text-red-500 text-[8px]">&#11044;</span> LIVE</span>
+                                    ? <span className="flex items-center gap-1.5"><span className="text-[10px]">⚡</span> MANUAL</span> 
+                                    : <span className="flex items-center gap-1.5"><span className="text-red-500 text-[8px]">●</span> LIVE</span>
                                 }
                             </button>
                         </div>
@@ -5203,7 +5210,7 @@ function V10PreviewLayout() {
                                 <span className="text-[12px] font-mono font-black text-white dark:text-white">{field.value}</span>
                             </div>
                         )) : (
-                            <span className="text-[10px] text-amber-300 dark:text-amber-300 italic font-semibold">No fields configured â€” Go to Settings â†’ Data Acquisition</span>
+                            <span className="text-[10px] text-amber-300 dark:text-amber-300 italic font-semibold">No fields configured — Go to Settings → Data Acquisition</span>
                         )}
                     </div>
 
@@ -5239,7 +5246,7 @@ function V10PreviewLayout() {
                         {/* Error indicator */}
                         {dataAcqError && !dataAcqConnected && (
                             <div className="relative group">
-                                <span className="text-red-400 text-sm cursor-help">âš </span>
+                                <span className="text-red-400 text-sm cursor-help">⚠</span>
                                 <div className="absolute bottom-full mb-2 right-0 hidden group-hover:block z-50">
                                     <div className="whitespace-nowrap text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-xl bg-red-900 text-red-200 border border-red-700 max-w-[300px] whitespace-normal">
                                         {dataAcqError}
@@ -6670,8 +6677,9 @@ function V10PreviewLayout() {
                     itisiPreviewOpen,
                     gvinsPreviewOpen,
                     szonePreviewOpen,
-                    cpclbPreviewOpen
-
+                    cpclbPreviewOpen,
+                    utclbPreviewOpen,
+                    divingAnodePreviewOpen
                 }}
                 setters={{
                     setIsDiveSetupOpen,
@@ -6728,7 +6736,9 @@ function V10PreviewLayout() {
                     setItisiPreviewOpen,
                     setGvinsPreviewOpen,
                     setSzonePreviewOpen,
-                    setCpclbPreviewOpen
+                    setCpclbPreviewOpen,
+                    setUtclbPreviewOpen,
+                    setDivingAnodePreviewOpen
                 }}
 
                 handlers={{
@@ -6769,8 +6779,9 @@ function V10PreviewLayout() {
                     generateGVINSReport,
                     generateGVINSReportBlob,
                     generateSZONEReportBlob,
-                    generateCPCLBReportBlob
-
+                    generateCPCLBReportBlob,
+                    generateUTCLBReportBlob,
+                    generateDivingAnodeReportBlob
                 }}
                 refs={{
                     fileInputRef

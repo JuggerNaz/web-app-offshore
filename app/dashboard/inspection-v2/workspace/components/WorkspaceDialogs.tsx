@@ -141,6 +141,8 @@ interface WorkspaceDialogsProps {
         gvinsPreviewOpen: boolean;
         szonePreviewOpen: boolean;
         cpclbPreviewOpen: boolean;
+        utclbPreviewOpen: boolean;
+        divingAnodePreviewOpen: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
@@ -203,6 +205,8 @@ interface WorkspaceDialogsProps {
         setGvinsPreviewOpen: (open: boolean) => void;
         setSzonePreviewOpen: (open: boolean) => void;
         setCpclbPreviewOpen: (open: boolean) => void;
+        setUtclbPreviewOpen: (open: boolean) => void;
+        setDivingAnodePreviewOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
 
         setRovCalibrationDialogOpen: (open: boolean) => void;
@@ -250,6 +254,8 @@ interface WorkspaceDialogsProps {
         generateGVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateUTCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -347,7 +353,9 @@ export function WorkspaceDialogs({
         cuPreviewOpen,
         gvinsPreviewOpen,
         szonePreviewOpen,
-        cpclbPreviewOpen
+        cpclbPreviewOpen,
+        utclbPreviewOpen,
+        divingAnodePreviewOpen
     } = states;
 
 
@@ -404,7 +412,9 @@ export function WorkspaceDialogs({
         setCuPreviewOpen,
         setGvinsPreviewOpen,
         setSzonePreviewOpen,
-        setCpclbPreviewOpen
+        setCpclbPreviewOpen,
+        setUtclbPreviewOpen,
+        setDivingAnodePreviewOpen
     } = setters;
 
 
@@ -446,7 +456,9 @@ export function WorkspaceDialogs({
         generateGVINSReport,
         generateGVINSReportBlob,
         generateSZONEReportBlob,
-        generateCPCLBReportBlob
+        generateCPCLBReportBlob,
+        generateUTCLBReportBlob,
+        generateDivingAnodeReportBlob
     } = handlers;
 
 
@@ -1796,6 +1808,13 @@ export function WorkspaceDialogs({
                 generateReport={generateCPReportBlob} 
             />
             <ReportPreviewDialog 
+                open={divingAnodePreviewOpen} 
+                onOpenChange={setDivingAnodePreviewOpen} 
+                title="Diving Selected Anode Report Preview" 
+                fileName={`Diving_Anode_Report_${headerData.sowReportNo}`} 
+                generateReport={generateDivingAnodeReportBlob} 
+            />
+            <ReportPreviewDialog 
                 open={rgviPreviewOpen} 
                 onOpenChange={setRgviPreviewOpen} 
                 title="ROV General Visual Inspection Report Preview" 
@@ -1874,6 +1893,14 @@ export function WorkspaceDialogs({
                 title="Diving CP Calibration Report Preview" 
                 fileName={`Diving_CP_Calibration_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateCPCLBReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={utclbPreviewOpen} 
+                onOpenChange={setUtclbPreviewOpen} 
+                title="Diving UT Calibration Report Preview" 
+                fileName={`Diving_UT_Calibration_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateUTCLBReportBlob} 
             />
 
 

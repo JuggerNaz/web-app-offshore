@@ -27,6 +27,8 @@ import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-sur
 import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
 import { generateDivingSZONEReport } from "@/utils/report-generators/diving-szone-report";
 import { generateDivingCPCLBReport } from "@/utils/report-generators/diving-cpclb-report";
+import { generateDivingUTCLBReport } from "@/utils/report-generators/diving-utclb-report";
+import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anode-report";
 
 
 export function useWorkspaceReports(
@@ -64,6 +66,8 @@ export function useWorkspaceReports(
     const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
     const [szonePreviewOpen, setSzonePreviewOpen] = useState(false);
     const [cpclbPreviewOpen, setCpclbPreviewOpen] = useState(false);
+    const [utclbPreviewOpen, setUtclbPreviewOpen] = useState(false);
+    const [divingAnodePreviewOpen, setDivingAnodePreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -842,6 +846,139 @@ export function useWorkspaceReports(
         ) as Blob;
     };
 
+    const fetchUTCLBRecords = async () => {
+        const { data, error } = await supabase.from('insp_records').select(`
+            *,
+            inspection_type:inspection_type_id!left(id, code, name),
+            structure_components:component_id!left(id, q_id, code, metadata),
+            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+            insp_anomalies(*)
+        `)
+        .eq('structure_id', Number(structureId))
+        .eq('jobpack_id', Number(jobPackId));
+
+        if (error) {
+            console.error("Error fetching UTCLB records:", error);
+            return [];
+        }
+
+        const filtered = (data || []).filter((r: any) => {
+            const isUTCLB = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'UTCLB';
+            const sowMatches = !headerData?.sowReportNo || String(r.sow_report_no || '').toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+            return isUTCLB && sowMatches;
+        });
+
+        filtered.sort((a: any, b: any) => {
+            const diveA = String(a.insp_dive_jobs?.job_no || a.insp_dive_jobs?.name || a.dive_job_id || '');
+            const diveB = String(b.insp_dive_jobs?.job_no || b.insp_dive_jobs?.name || b.dive_job_id || '');
+            return diveA.localeCompare(diveB, undefined, { numeric: true });
+        });
+
+        return filtered;
+    };
+
+    const generateUTCLBReport = async () => {
+        const records = await fetchUTCLBRecords();
+        if (records.length === 0) {
+            toast.error("No UT Calibration records found for this SOW/Jobpack");
+            return;
+        }
+        setUtclbPreviewOpen(true);
+    };
+
+    const generateUTCLBReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = await fetchUTCLBRecords();
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return await generateDivingUTCLBReport(
+            records, 
+            { ...headerData, contractorLogoUrl }, 
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, 
+            { 
+                returnBlob: true, 
+                printFriendly, 
+                showSignatures: showSignatures ?? true,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId)
+            }
+        ) as Blob;
+    };
+
+    const fetchDivingAnodeRecords = async () => {
+        const { data, error } = await supabase.from('insp_records').select(`
+            *,
+            inspection_type:inspection_type_id!left(id, code, name),
+            structure_components:component_id!left(id, q_id, code, metadata),
+            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+            insp_anomalies(*)
+        `)
+        .eq('structure_id', Number(structureId))
+        .eq('jobpack_id', Number(jobPackId));
+
+        if (error) {
+            console.error("Error fetching Diving Anode records:", error);
+            return [];
+        }
+
+        const filtered = (data || []).filter((r: any) => {
+            const isPL_AN = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'PL_AN';
+            const sowMatches = !headerData?.sowReportNo || String(r.sow_report_no || '').toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+            return isPL_AN && sowMatches;
+        });
+
+        filtered.sort((a: any, b: any) => {
+            const diveA = String(a.insp_dive_jobs?.job_no || a.insp_dive_jobs?.name || a.dive_job_id || '');
+            const diveB = String(b.insp_dive_jobs?.job_no || b.insp_dive_jobs?.name || b.dive_job_id || '');
+            return diveA.localeCompare(diveB, undefined, { numeric: true });
+        });
+
+        return filtered;
+    };
+
+    const generateDivingAnodeReport_ws = async () => {
+        const records = await fetchDivingAnodeRecords();
+        if (records.length === 0) {
+            toast.error("No Diving Selected Anode (PL_AN) records found for this SOW/Jobpack");
+            return;
+        }
+        setDivingAnodePreviewOpen(true);
+    };
+
+    const generateDivingAnodeReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = await fetchDivingAnodeRecords();
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return await generateDivingAnodeReport(
+            records, 
+            { ...headerData, contractorLogoUrl }, 
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, 
+            { 
+                returnBlob: true, 
+                printFriendly, 
+                showSignatures: showSignatures ?? true,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId)
+            },
+            supabase
+        ) as Blob;
+    };
+
     const generateRCASNReport = async () => {
         const records = currentRecords.filter(r => {
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
@@ -1120,6 +1257,10 @@ export function useWorkspaceReports(
             await generateSeabedReport();
             return;
         }
+        if (typeCode === 'PL_AN') {
+            setDivingAnodePreviewOpen(true);
+            return;
+        }
 
         const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
         if (recordsToPrint.length === 0) {
@@ -1212,6 +1353,8 @@ export function useWorkspaceReports(
         gvinsPreviewOpen, setGvinsPreviewOpen,
         szonePreviewOpen, setSzonePreviewOpen,
         cpclbPreviewOpen, setCpclbPreviewOpen,
+        utclbPreviewOpen, setUtclbPreviewOpen,
+        divingAnodePreviewOpen, setDivingAnodePreviewOpen,
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
@@ -1266,6 +1409,9 @@ export function useWorkspaceReports(
         generateSZONEReportBlob,
         generateCPCLBReport,
         generateCPCLBReportBlob,
+        generateUTCLBReport,
+        generateUTCLBReportBlob,
+        generateDivingAnodeReportBlob,
         generateInspectionReportByType,
 
         generateFullInspectionReport
