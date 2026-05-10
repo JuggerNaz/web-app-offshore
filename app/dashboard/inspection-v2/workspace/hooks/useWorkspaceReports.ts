@@ -29,6 +29,7 @@ import { generateDivingSZONEReport } from "@/utils/report-generators/diving-szon
 import { generateDivingCPCLBReport } from "@/utils/report-generators/diving-cpclb-report";
 import { generateDivingUTCLBReport } from "@/utils/report-generators/diving-utclb-report";
 import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anode-report";
+import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-report";
 
 
 export function useWorkspaceReports(
@@ -68,6 +69,7 @@ export function useWorkspaceReports(
     const [cpclbPreviewOpen, setCpclbPreviewOpen] = useState(false);
     const [utclbPreviewOpen, setUtclbPreviewOpen] = useState(false);
     const [divingAnodePreviewOpen, setDivingAnodePreviewOpen] = useState(false);
+    const [divingMgiPreviewOpen, setDivingMgiPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -1261,6 +1263,10 @@ export function useWorkspaceReports(
             setDivingAnodePreviewOpen(true);
             return;
         }
+        if (typeCode === 'MGROW') {
+            setDivingMgiPreviewOpen(true);
+            return;
+        }
 
         const recordsToPrint = currentRecords.filter(r => r.inspection_type_id === typeId || r.inspection_type?.id === typeId);
         if (recordsToPrint.length === 0) {
@@ -1412,6 +1418,65 @@ export function useWorkspaceReports(
         generateUTCLBReport,
         generateUTCLBReportBlob,
         generateDivingAnodeReportBlob,
+        divingMgiPreviewOpen, setDivingMgiPreviewOpen,
+        generateDivingMGIReport: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.lib_path || '';
+            }
+
+            const mgiRecords = currentRecords.filter(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                return code === 'MGROW' || code === 'RMGI';
+            });
+            let profile = null;
+            const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
+            if (profileId) {
+                const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
+                profile = data;
+            }
+
+            return await generateDivingMGIReport(
+                mgiRecords,
+                profile,
+                { ...headerData, contractorLogoUrl, waterDepth: headerData.waterDepth || 0 },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { printFriendly: printFriendly || false, sowReportNo: headerData.sowReportNo, structureId: Number(structureId), returnBlob: false },
+                supabase
+            );
+        },
+        generateDivingMGIReportBlob: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.lib_path || '';
+            }
+
+            const mgiRecords = currentRecords.filter(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                return code === 'MGROW' || code === 'RMGI';
+            });
+            let profile = null;
+            const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
+            if (profileId) {
+                const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
+                profile = data;
+            }
+
+            return await generateDivingMGIReport(
+                mgiRecords,
+                profile,
+                { ...headerData, contractorLogoUrl, waterDepth: headerData.waterDepth || 0 },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { printFriendly: printFriendly || false, sowReportNo: headerData.sowReportNo, structureId: Number(structureId), returnBlob: true },
+                supabase
+            );
+        },
         generateInspectionReportByType,
 
         generateFullInspectionReport

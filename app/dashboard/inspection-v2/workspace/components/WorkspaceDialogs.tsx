@@ -143,6 +143,7 @@ interface WorkspaceDialogsProps {
         cpclbPreviewOpen: boolean;
         utclbPreviewOpen: boolean;
         divingAnodePreviewOpen: boolean;
+        divingMgiPreviewOpen: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
@@ -207,6 +208,7 @@ interface WorkspaceDialogsProps {
         setCpclbPreviewOpen: (open: boolean) => void;
         setUtclbPreviewOpen: (open: boolean) => void;
         setDivingAnodePreviewOpen: (open: boolean) => void;
+        setDivingMgiPreviewOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
 
         setRovCalibrationDialogOpen: (open: boolean) => void;
@@ -256,6 +258,7 @@ interface WorkspaceDialogsProps {
         generateCPCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -355,7 +358,8 @@ export function WorkspaceDialogs({
         szonePreviewOpen,
         cpclbPreviewOpen,
         utclbPreviewOpen,
-        divingAnodePreviewOpen
+        divingAnodePreviewOpen,
+        divingMgiPreviewOpen
     } = states;
 
 
@@ -414,7 +418,8 @@ export function WorkspaceDialogs({
         setSzonePreviewOpen,
         setCpclbPreviewOpen,
         setUtclbPreviewOpen,
-        setDivingAnodePreviewOpen
+        setDivingAnodePreviewOpen,
+        setDivingMgiPreviewOpen
     } = setters;
 
 
@@ -458,7 +463,8 @@ export function WorkspaceDialogs({
         generateSZONEReportBlob,
         generateCPCLBReportBlob,
         generateUTCLBReportBlob,
-        generateDivingAnodeReportBlob
+        generateDivingAnodeReportBlob,
+        generateDivingMGIReportBlob
     } = handlers;
 
 
@@ -1901,6 +1907,14 @@ export function WorkspaceDialogs({
                 title="Diving UT Calibration Report Preview" 
                 fileName={`Diving_UT_Calibration_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateUTCLBReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={divingMgiPreviewOpen} 
+                onOpenChange={setDivingMgiPreviewOpen} 
+                title="Diving Marine Growth Inspection Report Preview" 
+                fileName={`Diving_MGI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingMGIReportBlob} 
             />
 
 

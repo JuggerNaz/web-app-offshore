@@ -339,6 +339,68 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         activeSpec
     ]);
 
+    // Marine Growth (MGROW/RMGI) ET Auto-Calculation
+    const lastCalculatedETRef = React.useRef<number | null>(null);
+
+    React.useEffect(() => {
+        const specStr = String(activeSpec || '').toUpperCase();
+        const specName = (allInspectionTypes?.find(t => t.code === activeSpec)?.name || '').toUpperCase();
+        const keys = Object.keys(dynamicProps || {});
+        
+        // Broad detection for MG scope
+        const isMG = specStr.includes('MGROW') || 
+                     specStr.includes('RMGI') || 
+                     specStr.includes('MARINE GROWTH') || 
+                     specName.includes('MARINE GROWTH') ||
+                     keys.some(k => k.toLowerCase().includes('circumferential')) ||
+                     keys.some(k => k.toLowerCase().replace(/[\s_]/g, '') === 'effectivethickness');
+        
+        if (!isMG) return;
+
+        // Try to get values from various possible keys (snake_case, Title Case, etc.)
+        const getVal = (baseName: string) => {
+            if (!dynamicProps) return 0;
+            const target = baseName.toLowerCase().replace(/[\s_]/g, '');
+            const keys = Object.keys(dynamicProps);
+            
+            // Find all matching keys
+            const matchingKeys = keys.filter(k => k.toLowerCase().replace(/[\s_]/g, '') === target);
+            
+            if (matchingKeys.length === 0) return 0;
+            
+            // If multiple matches (e.g. 'nominal_diameter' and 'Nominal Diameter'), 
+            // prefer the one that is NOT the baseName if it exists, as it's likely the user-edited one.
+            const preferredKey = matchingKeys.find(k => k !== baseName) || matchingKeys[0];
+            return parseFloat(dynamicProps[preferredKey]) || 0;
+        };
+
+        const c1 = getVal('circumferential_measurement_5m_above');
+        const c2 = getVal('circumferential_measurement_0m');
+        const c3 = getVal('circumferential_measurement_5m_below');
+        const nominalDia = getVal('nominal_diameter');
+        
+        const avgC = (c1 + c2 + c3) / 3;
+        
+        // Formula: ET = ((AvgC / 3.142) - NominalDia) / 2
+        const etValue = avgC > 0 ? ((avgC / 3.142) - nominalDia) / 2 : 0;
+        const roundedET = parseFloat(etValue.toFixed(2));
+
+        // DEBUG: Log all values to console for verification
+        console.log(`[ET DEBUG] Inputs: C1=${c1}, C2=${c2}, C3=${c3}, AvgC=${avgC.toFixed(2)}, NomDia=${nominalDia} | Result: ${roundedET}`);
+
+        // Determine which key to use for setting the ET (must match the existing key in dynamicProps)
+        const targetET = 'effectivethickness';
+        const existingETKey = Object.keys(dynamicProps || {}).find(k => k.toLowerCase().replace(/[\s_]/g, '') === targetET);
+        const etKey = existingETKey || 'effective_thickness';
+
+        const currentETVal = parseFloat(dynamicProps?.[etKey]);
+        const isDifferent = isNaN(currentETVal) || Math.abs(currentETVal - roundedET) > 0.01;
+
+        if (handleDynamicPropChange && isDifferent) {
+            handleDynamicPropChange(etKey, roundedET);
+        }
+    }, [dynamicProps, activeSpec, allInspectionTypes]);
+
     // Pre-fill Nominal Diameter and Nominal Wall Thickness from assigned component if empty
     React.useEffect(() => {
         if (!isEditing && selectedComp && handleDynamicPropChange && Array.isArray(activeFormProps)) {

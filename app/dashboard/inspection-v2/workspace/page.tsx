@@ -175,6 +175,7 @@ export default function WorkspaceV2Page() {
 }
 
 function V10PreviewLayout() {
+    console.log("[DEBUG] V10PreviewLayout Reached - Route is active");
     const searchParams = useSearchParams();
     const router = useRouter();
     const supabase = createClient();
@@ -731,25 +732,6 @@ function V10PreviewLayout() {
         setDynamicProps(prev => {
             const updated = { ...prev, [name]: value };
             
-            if (activeSpec === 'MGROW') {
-                const c5Above = parseFloat(updated.circumferential_measurement_5m_above) || 0;
-                const c0m = parseFloat(updated.circumferential_measurement_0m) || 0;
-                const c5Below = parseFloat(updated.circumferential_measurement_5m_below) || 0;
-
-                const hasAnyCirc = updated.circumferential_measurement_5m_above || 
-                                   updated.circumferential_measurement_0m || 
-                                   updated.circumferential_measurement_5m_below;
-
-                if (hasAnyCirc) {
-                    const avgCirc = (c5Above + c0m + c5Below) / 3;
-                    const md = (typeof selectedComp?.raw?.metadata === 'string' ? JSON.parse(selectedComp.raw.metadata) : selectedComp?.raw?.metadata) || {};
-                    const nominalDiameter = parseFloat(md.outer_diameter || md.diameter || md.nominal_diameter || md.od || md.nominal_od || md.nominal_diameter_mm || selectedComp?.raw?.outer_diameter || selectedComp?.raw?.diameter || selectedComp?.raw?.nominal_diameter || "0") || 0;
-                    
-                    const calc = Math.sqrt(avgCirc / 3.142) - nominalDiameter;
-                    updated.effective_thickness = parseFloat(calc.toFixed(2));
-                }
-            }
-
             if (activeSpec?.toUpperCase() === 'RSEAB' && (name === 'northing' || name === 'easting')) {
                 const n = parseFloat(name === 'northing' ? value : updated.northing) || 0;
                 const e = parseFloat(name === 'easting' ? value : updated.easting) || 0;
@@ -789,6 +771,12 @@ function V10PreviewLayout() {
         const currentProps = type === 'primary' ? dynamicProps : requiredProps;
         const currentValue = currentProps[p.name || p.label] || "";
 
+        // Auto-calculated fields that should be read-only
+        let readOnly = false;
+        if (activeSpec?.toUpperCase() === 'MGROW' && p.name === 'effective_thickness') {
+            readOnly = true;
+        }
+
         return (
             <InspectionField 
                 p={p} 
@@ -802,6 +790,7 @@ function V10PreviewLayout() {
                 setDebouncedProps={setDebouncedProps}
                 unitSystem={unitSystem}
                 dynamicProps={dynamicProps}
+                readOnly={readOnly}
             />
         );
     };
@@ -1062,6 +1051,9 @@ function V10PreviewLayout() {
         generateUTCLBReport,
         generateUTCLBReportBlob,
         generateDivingAnodeReportBlob,
+        divingMgiPreviewOpen,
+        setDivingMgiPreviewOpen,
+        generateDivingMGIReportBlob,
 
         generateInspectionReportByType,
         generateFullInspectionReport
@@ -6679,7 +6671,8 @@ function V10PreviewLayout() {
                     szonePreviewOpen,
                     cpclbPreviewOpen,
                     utclbPreviewOpen,
-                    divingAnodePreviewOpen
+                    divingAnodePreviewOpen,
+                    divingMgiPreviewOpen
                 }}
                 setters={{
                     setIsDiveSetupOpen,
@@ -6738,7 +6731,8 @@ function V10PreviewLayout() {
                     setSzonePreviewOpen,
                     setCpclbPreviewOpen,
                     setUtclbPreviewOpen,
-                    setDivingAnodePreviewOpen
+                    setDivingAnodePreviewOpen,
+                    setDivingMgiPreviewOpen
                 }}
 
                 handlers={{
@@ -6781,7 +6775,8 @@ function V10PreviewLayout() {
                     generateSZONEReportBlob,
                     generateCPCLBReportBlob,
                     generateUTCLBReportBlob,
-                    generateDivingAnodeReportBlob
+                    generateDivingAnodeReportBlob,
+                    generateDivingMGIReportBlob
                 }}
                 refs={{
                     fileInputRef

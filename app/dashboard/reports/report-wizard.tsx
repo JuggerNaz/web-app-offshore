@@ -48,6 +48,7 @@ import { generateDivingSZONEReport } from "@/utils/report-generators/diving-szon
 import { generateDivingCPCLBReport } from "@/utils/report-generators/diving-cpclb-report";
 import { generateDivingUTCLBReport } from "@/utils/report-generators/diving-utclb-report";
 import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anode-report";
+import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-report";
 import { FinalDatasheetBuilder } from "./final-datasheet-builder";
 
 // Types
@@ -138,6 +139,7 @@ const REPORT_TEMPLATES = {
         { id: "diving-szone-report", name: "Diving Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with grouped clock positions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-cpclb-report", name: "Diving CP Calibration Report", icon: FileBarChart, description: "CP calibration in water survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-utclb-report", name: "Diving UT Calibration Report", icon: FileBarChart, description: "UT calibration survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-mgi-report", name: "Diving Marine Growth Inspection Graph Report", icon: FileBarChart, description: "Diving marine growth thickness vs allowable thresholds with graphical elevation profile", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -190,7 +192,8 @@ const TOC_SECTIONS = [
       { id: "diving-anode-report", name: "Diving Selected Anode Report", mode: "Diving" }
   ]},
   { id: 9, name: "Marine Growth Survey", templates: [
-      { id: "mgi-report", name: "ROV MGI Survey Report", mode: "ROV" }
+      { id: "mgi-report", name: "ROV MGI Survey Report", mode: "ROV" },
+      { id: "diving-mgi-report", name: "Diving Marine Growth Inspection Graph Report", mode: "Diving" }
   ]},
   { id: 10, name: "Base Level Survey (Scour Survey)", templates: [
       { id: "rov-scour-report", name: "ROV Scour Survey Report", mode: "ROV" }
@@ -2542,6 +2545,104 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("Diving Anode Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Marine Growth Inspection Graph Report (MGROW)
+        if (currentTemplateId === "diving-mgi-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const mgiRecords = (records || []).filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isMGROW = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'MGROW';
+                return sowMatches && jobPackMatches && isMGROW;
+            }).map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat || {} }));
+
+            if (mgiRecords.length === 0) {
+                alert(`No Diving MGROW records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            mgiRecords.sort((a: any, b: any) => {
+                const elevA = parseFloat(a.elevation || a.inspection_data?.elevation || 0);
+                const elevB = parseFloat(b.elevation || b.inspection_data?.elevation || 0);
+                return elevB - elevA;
+            });
+
+            // Fetch MGI Profile
+            let activeMGIProfile: any = null;
+            try {
+                const profileId = mgiRecords.find(r => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id 
+                                || jobPack.mgi_profile_id;
+                
+                if (profileId) {
+                    const pRes = await fetch(`/api/mgi-profiles/${profileId}`);
+                    const pJson = await pRes.json();
+                    activeMGIProfile = pJson.data;
+                } else {
+                    const pRes = await fetch(`/api/mgi-profiles`);
+                    const pJson = await pRes.json();
+                    activeMGIProfile = pJson.data?.find((p: any) => p.is_active && !p.is_job_specific);
+                }
+            } catch (e) { console.error("Profile fetch error", e); }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) {
+                        contractorLogoUrl = found.logo_url;
+                        // Handle potential relative paths if Supabase URL is not full
+                    }
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack),
+                waterDepth: structure.depth || structure.metadata?.water_depth || 0
+            };
+
+            try {
+                return await generateDivingMGIReport(
+                    mgiRecords,
+                    activeMGIProfile,
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), jobPackId: Number(selections.jobPackId) } as any,
+                    supabase
+                );
+            } catch (error) {
+                console.error("Diving MGI Generator Error:", error);
                 throw error;
             }
         }

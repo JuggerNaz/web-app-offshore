@@ -34,6 +34,7 @@ interface InspectionFieldProps {
     setDebouncedProps: React.Dispatch<React.SetStateAction<Record<string, any>>>;
     unitSystem: "METRIC" | "IMPERIAL";
     dynamicProps: Record<string, any>;
+    readOnly?: boolean;
 }
 
 const InspectionField = ({ 
@@ -47,7 +48,8 @@ const InspectionField = ({
     selectedComp, 
     setDebouncedProps,
     unitSystem,
-    dynamicProps
+    dynamicProps,
+    readOnly = false
 }: InspectionFieldProps) => {
     const [searchTerm, setSearchTerm] = useState("");
     const fieldName = String(p.label || p.name || '').toLowerCase();
@@ -156,8 +158,9 @@ const InspectionField = ({
                                 placeholder={`Select or enter ${p.label || p.name}`}
                                 className={`h-8 text-sm bg-white pr-16 ${type === 'secondary' ? 'border-amber-200' : 'border-slate-200'}`}
                                 value={currentValue}
-                                onChange={(e) => handler(p.name || p.label, e.target.value)}
+                                onChange={(e) => !readOnly && handler(p.name || p.label, e.target.value)}
                                 onBlur={(e) => {
+                                    if (readOnly) return;
                                     let val = e.target.value;
                                     if (isCpField && val) {
                                         const num = Number(val);
@@ -170,6 +173,7 @@ const InspectionField = ({
                                         setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: val }));
                                     }
                                 }}
+                                readOnly={readOnly}
 
                             />
                             <div className="absolute right-1 top-1 flex items-center gap-0.5">
@@ -498,8 +502,9 @@ const InspectionField = ({
                 type={p.type === 'date' ? 'date' : (isTimeField ? 'text' : (p.type === 'number' ? 'number' : 'text'))}
                 step={p.step}
                 value={currentValue || ""}
-                onChange={isTimeField ? handleTimeChange : (e) => handler(p.name || p.label, e.target.value)}
+                onChange={isTimeField ? handleTimeChange : (e) => !readOnly && handler(p.name || p.label, e.target.value)}
                 onBlur={isTimeField ? handleTimeBlur : (e) => {
+                    if (readOnly) return;
                     let val = e.target.value;
                     if (isCpField && val) {
                         const num = Number(val);
@@ -512,6 +517,7 @@ const InspectionField = ({
                         setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: val }));
                     }
                 }}
+                readOnly={readOnly}
 
                 placeholder={isTimeField ? "HH:MM:SS" : `Enter ${p.label || p.name}`}
                 maxLength={isTimeField ? 8 : undefined}
