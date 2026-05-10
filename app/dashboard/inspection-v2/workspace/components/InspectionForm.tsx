@@ -1360,6 +1360,15 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             />
                                         </div>
                                     </div>
+                                    <div className="space-y-1.5 col-span-2">
+                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Recommendation</label>
+                                        <textarea
+                                            value={anomalyData.recommendedAction}
+                                            onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, recommendedAction: e.target.value }))}
+                                            placeholder="Enter recommendation for this defect/finding..."
+                                            className={`w-full min-h-[60px] rounded-md border border-slate-300 bg-white p-2 text-xs font-semibold focus:outline-none focus:ring-2 ${ringClass}`}
+                                        />
+                                    </div>
                                 </div>
 
 

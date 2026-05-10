@@ -161,6 +161,7 @@ import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components
 import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { resolveInspectionType } from "@/utils/inspection-schema";
 import { getReportHeaderData } from "@/utils/company-settings";
+import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 import { useWorkspaceReports } from "./hooks/useWorkspaceReports";
 import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
@@ -2537,6 +2538,10 @@ function V10PreviewLayout() {
 
                 const inspsWithCounts = insps.map(r => ({
                     ...r,
+                    inspection_type: r.inspection_type ? {
+                        ...r.inspection_type,
+                        name: formatInspectionTypeName(r.inspection_type.name)
+                    } : null,
                     attachment_count: countMap[r.insp_id] || 0
                 }));
 
@@ -3431,13 +3436,19 @@ function V10PreviewLayout() {
 
                 const mergedTypes = typesData.map(dbType => {
                     const registryEntry = registryMap.get(dbType.code);
+                    const formattedName = formatInspectionTypeName(dbType.name);
+                    
                     if (registryEntry) {
                         return {
                             ...dbType,
+                            name: formattedName,
                             default_properties: registryEntry // Store the whole registry entry (including fields, overrides)
                         };
                     }
-                    return dbType;
+                    return {
+                        ...dbType,
+                        name: formattedName
+                    };
                 });
 
                 const discardedCodes = ['PLATGI', 'LOGS', 'EXSUM', 'NAVIG'];

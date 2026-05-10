@@ -44,6 +44,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
+import { formatInspectionTypeName } from "@/utils/inspection-utils";
 import { InspectionForm } from "./InspectionForm";
 
 interface WorkspaceMainProps {
@@ -1262,7 +1263,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                               case 'type':
                                 return (
                                   <td key={col.id} className="px-3 py-3 font-bold text-slate-800 align-top">
-                                    <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
+                                    <div className="truncate max-w-[200px] text-sm" title={formatInspectionTypeName(r.inspection_type?.name)}>{formatInspectionTypeName(r.inspection_type?.name) || "UNK"}</div>
                                     <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
                                       {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
                                     </Badge>

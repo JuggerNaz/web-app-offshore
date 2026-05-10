@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 const ATTACHMENT_GROUPS: Record<string, string[]> = {
     "Riser":        ["RS", "RIS", "RISER"],
@@ -483,7 +484,7 @@ export async function GET(request: NextRequest) {
         const inspTypeBreakdown: Record<string, { name: string; count: number; rov: number; dive: number; anomaly: number; finding: number }> = {};
         records.forEach((r: any) => {
             const code = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
-            const name = r.inspection_type?.name || code;
+            const name = formatInspectionTypeName(r.inspection_type?.name) || code;
             if (!inspTypeBreakdown[code]) {
                 inspTypeBreakdown[code] = { name, count: 0, rov: 0, dive: 0, anomaly: 0, finding: 0 };
             }

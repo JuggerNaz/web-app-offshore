@@ -36,6 +36,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/utils/supabase/client";
+import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SummaryData {
@@ -269,7 +270,7 @@ function InspTypeCard({
         >
             {/* Name with Mode in Brackets */}
             <span className="text-[13px] font-semibold text-slate-200 flex-1 truncate">
-                {name} <span className="text-slate-300 font-medium ml-1">({modeStr})</span>
+                {formatInspectionTypeName(name)} <span className="text-slate-300 font-medium ml-1">({modeStr})</span>
             </span>
 
             {/* Anomaly badge — only when > 0 */}

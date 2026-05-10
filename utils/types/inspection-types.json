@@ -1616,7 +1616,7 @@
         },
         {
             "code": "UTWTK",
-            "name": "UT Thickness",
+            "name": "UT Wall Thickness",
             "methods": [
                 "DIVING"
             ],
@@ -2428,7 +2428,7 @@
         },
         {
             "code": "RUTWT",
-            "name": "ROV UT Wall Thickness",
+            "name": "UT Wall Thickness",
             "methods": [
                 "ROV"
             ],

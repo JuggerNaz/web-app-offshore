@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, ImageIcon, AlertCircle, Plus, FileVideo, ArrowUpDown, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 interface AttachmentProps {
   jobpackId: string;
@@ -25,6 +26,7 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
     key: 'anomaly_ref_no',
     direction: 'asc'
   });
+  const REQUIRED_CODES = ["BB", "FD", "BL", "CL", "CG", "CU", "SG", "CF", "FV", "WP", "RG", "GP"];
   const supabase = createClient();
 
   useEffect(() => {
@@ -41,26 +43,32 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
     setSortConfig({ key, direction });
   };
 
-  const getSortedRecords = () => {
-    if (!sortConfig) return records;
+  const sortData = (data: any[]) => {
+    if (!sortConfig) return data;
 
-    return [...records].sort((a, b) => {
-      let valA: any = a[sortConfig.key];
-      let valB: any = b[sortConfig.key];
+    return [...data].sort((a, b) => {
+      let valA: any;
+      let valB: any;
 
-      // Handle nested or complex fields
-      if (sortConfig.key === 'findings') {
-        valA = a.insp_records?.inspection_data?.findings || a.insp_records?.inspection_data?.finding || "";
-        valB = b.insp_records?.inspection_data?.findings || b.insp_records?.inspection_data?.finding || "";
+      if (sortConfig.key === 'anomaly_ref_no') {
+        valA = a.anomaly_ref_no || "";
+        valB = b.anomaly_ref_no || "";
+      } else if (sortConfig.key === 'q_id') {
+        valA = a.component?.q_id || `REC #${a.insp_id}`;
+        valB = b.component?.q_id || `REC #${b.insp_id}`;
+      } else if (sortConfig.key === 'findings') {
+        valA = a.insp_records?.inspection_data?.findings || a.insp_records?.inspection_data?.finding || a.inspection_data?.findings || a.inspection_data?.finding || a.inspection_data?.observation || "";
+        valB = b.insp_records?.inspection_data?.findings || b.insp_records?.inspection_data?.finding || b.inspection_data?.findings || b.inspection_data?.finding || b.inspection_data?.observation || "";
+      } else {
+        valA = a[sortConfig.key];
+        valB = b[sortConfig.key];
       }
 
-      // Natural Sort for anomaly_ref_no
-      if (sortConfig.key === 'anomaly_ref_no') {
-        const strA = String(valA || "");
-        const strB = String(valB || "");
+      // Natural Sort for string comparison
+      if (typeof valA === 'string' && typeof valB === 'string') {
         return sortConfig.direction === 'asc' 
-          ? strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' })
-          : strB.localeCompare(strA, undefined, { numeric: true, sensitivity: 'base' });
+          ? valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' })
+          : valB.localeCompare(valA, undefined, { numeric: true, sensitivity: 'base' });
       }
 
       if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -68,8 +76,6 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
       return 0;
     });
   };
-
-  const sortedRecords = getSortedRecords();
 
   const [anomalyRecords, setAnomalyRecords] = useState<any[]>([]);
   const [findingRecords, setFindingRecords] = useState<any[]>([]);
@@ -93,7 +99,8 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
             structure_id,
             sow_report_no,
             insp_id,
-            inspection_data
+            inspection_data,
+            component:component_id (q_id, code)
           )
         `)
         .eq("insp_records.jobpack_id", jobpackId)
@@ -109,7 +116,7 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
           insp_id,
           inspection_data,
           inspection_type:inspection_type_id (name, code),
-          component:component_id (q_id)
+          component:component_id (q_id, code)
         `)
         .eq("jobpack_id", jobpackId)
         .eq("structure_id", structureId)
@@ -197,7 +204,8 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
       // Filter for Other (completed inspections without an anomaly entry)
       const anomalyInspIds = new Set(allAnomalies?.map(a => a.inspection_id).filter(Boolean));
       allInspRecords?.forEach(r => {
-        if (!anomalyInspIds.has(r.insp_id)) {
+        const compCode = (r as any).component?.code;
+        if (compCode && REQUIRED_CODES.includes(compCode) && !anomalyInspIds.has(r.insp_id)) {
           const analyzed = analyzeRecord(r, false);
           if (analyzed) others.push(analyzed);
         }
@@ -276,7 +284,7 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
                 Missing Attachments
               </CardTitle>
               <CardDescription>
-                Categorized records requiring photographic and video evidence.
+                Auditing missing media for all Anomalies/Findings, and specific appurtenances (BB, FD, BL, CL, CG, CU, SG, CF, FV, WP, RG, GP) for Other Records.
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -304,7 +312,7 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
 
             <TabsContent value="anomalies">
               <MissingRecordsTable 
-                records={anomalyRecords} 
+                records={sortData(anomalyRecords)} 
                 uploading={uploading} 
                 triggerUpload={triggerUpload} 
                 requestSort={requestSort}
@@ -314,7 +322,7 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
 
             <TabsContent value="findings">
               <MissingRecordsTable 
-                records={findingRecords} 
+                records={sortData(findingRecords)} 
                 uploading={uploading} 
                 triggerUpload={triggerUpload} 
                 requestSort={requestSort}
@@ -324,7 +332,7 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
 
             <TabsContent value="other">
               <MissingRecordsTable 
-                records={otherRecords} 
+                records={sortData(otherRecords)} 
                 uploading={uploading} 
                 triggerUpload={triggerUpload} 
                 requestSort={requestSort}
@@ -386,14 +394,21 @@ function MissingRecordsTable({ records, uploading, triggerUpload, requestSort, t
                       <span className={cn("font-bold", type === 'anomaly' ? "text-red-600" : type === 'finding' ? "text-amber-600" : "text-blue-600 font-mono")}>
                         {type === 'other' ? (rec.component?.q_id || `REC #${rec.insp_id}`) : rec.anomaly_ref_no}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">ID: {rec.anomaly_id || rec.insp_id}</span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Badge variant="secondary" className="px-1 py-0 h-3.5 text-[9px] font-black bg-blue-50 text-blue-700 border-blue-200">
+                          {rec.component?.code || rec.insp_records?.component?.code || "N/A"}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground font-medium uppercase">
+                          QID: {rec.component?.q_id || rec.insp_records?.component?.q_id || "N/A"}
+                        </span>
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell className="text-sm">
                     <div className="flex flex-col gap-1 max-w-[400px]">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-[10px] py-0 h-4 bg-slate-100">
-                          {rec.defect_type_code || rec.inspection_type?.name || "N/A"}
+                          {rec.defect_type_code || formatInspectionTypeName(rec.inspection_type?.name) || "N/A"}
                         </Badge>
                       </div>
                       <div className="line-clamp-2 italic text-slate-600">"{findings}"</div>
