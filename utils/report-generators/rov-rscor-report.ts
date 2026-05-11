@@ -250,8 +250,16 @@ export const generateROVRSCORReport = async (
                 if (!locValues.has('end')) finalPoints.push({ x: homActualX1 + (homLen * 0.95), depth: 0, burial: 0 });
                 finalPoints.sort((a, b) => a.x - b.x);
 
-                const mudBaseline = homY + 12;
-                const getMudY = (p: any) => p.burial > 0 ? mudBaseline - (p.burial / 100 * 10) : mudBaseline + (p.depth * depthScale);
+                const mudBaseline = homY + 3; // Baseline is the bottom of the horizontal member
+                const getMudY = (p: any) => {
+                    if (p.burial > 0) {
+                        // Burial moves mudline UP from bottom (homY+3) to top (homY-3)
+                        return mudBaseline - (p.burial / 100 * 6);
+                    } else {
+                        // Scour moves mudline DOWN from bottom (homY+3)
+                        return mudBaseline + (p.depth * depthScale);
+                    }
+                };
 
                 da.setDrawColor(...colors.mud); da.setLineWidth(1.5);
                 let curX = margin + 5; let curY = getMudY(finalPoints[0]);
