@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Sparkles,
   Paperclip,
+  Box,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -179,6 +180,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             label="Library"
             icon={<Database className="h-[18px] w-[18px]" />}
             text="Library"
+          />
+          <MenuLink
+            href="/dashboard/utilities/platform-3d"
+            isCollapsed={isCollapsed}
+            label="Platform 3D"
+            icon={<Box className="h-[18px] w-[18px]" />}
+            text="Platform 3D"
           />
           <MenuLink
             href="/dashboard/utilities/inspection-type"

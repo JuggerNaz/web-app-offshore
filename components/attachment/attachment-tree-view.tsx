@@ -563,13 +563,14 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
                                                 </Button>
                                             </CollapsibleTrigger>
                                             <CollapsibleContent>
-                                                <div className="overflow-x-auto">
-                                                    {/* Table Header */}
-                                                    <div className="grid grid-cols-[140px_120px_120px_150px_90px_60px_1fr_80px] gap-2 px-4 py-2.5 bg-slate-50/50 dark:bg-slate-900/30 border-b border-slate-100 dark:border-slate-800/80 text-[10px] font-black uppercase tracking-widest text-slate-400 min-w-[900px]">
+                                                <div className="overflow-x-auto w-full border border-slate-200/60 dark:border-slate-800/60 rounded-2xl shadow-sm bg-white dark:bg-slate-950">
+                                                    {/* Table Header - HIGH VISIBILITY BLUE */}
+                                                    <div 
+                                                        className="grid grid-cols-[1.5fr_100px_100px_80px_3fr_100px] gap-2 px-4 py-3 bg-blue-600 text-white border-b border-blue-700 text-[10px] font-black uppercase tracking-widest"
+                                                        style={{ minWidth: '1100px' }}
+                                                    >
                                                         <span>Component</span>
-                                                        <span>Inspection Type</span>
                                                         <span>Date</span>
-                                                        <span>Jobpack</span>
                                                         <span>SOW Report</span>
                                                         <span className="text-center">Status</span>
                                                         <span>File</span>
@@ -577,18 +578,22 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
                                                     </div>
 
                                                     {/* Table Rows */}
-                                                    <div className="min-w-[900px]">
+                                                    <div className="divide-y divide-slate-100 dark:divide-slate-800/50">
                                                         {items.map((item: any, idx: number) => {
                                                             const { fileUrl, fileName } = processAttachmentUrl(item);
-                                                            const displayText = truncateText(fileName, 35);
+                                                            const baseName = item.anomaly_ref_no 
+                                                                ? `Anomaly ${item.anomaly_ref_no} - ${fileName}` 
+                                                                : fileName;
+                                                            const displayText = truncateText(baseName, 80);
                                                             const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
                                                             return (
                                                                 <div key={item.id} className="flex flex-col border-b border-slate-100 dark:border-slate-800/80 last:border-0">
                                                                     <div
                                                                         className={cn(
-                                                                            "grid grid-cols-[140px_120px_120px_150px_90px_60px_1fr_80px] gap-2 px-4 py-3 text-xs items-center hover:bg-slate-50/80 dark:hover:bg-slate-900/30 transition-colors",
-                                                                            idx % 2 === 0 ? "" : "bg-slate-50/30 dark:bg-slate-900/10"
+                                                                            "grid grid-cols-[1.5fr_100px_100px_80px_3fr_100px] gap-2 px-4 py-3 text-xs items-center hover:bg-slate-50/80 dark:hover:bg-slate-900/30 transition-colors",
+                                                                            idx % 2 === 0 ? "bg-white dark:bg-slate-950" : "bg-slate-50/30 dark:bg-slate-900/10"
                                                                         )}
+                                                                        style={{ minWidth: '1100px' }}
                                                                     >
                                                                         {/* Component */}
                                                                         <div className="flex flex-col min-w-0">
@@ -604,20 +609,6 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
                                                                             )}
                                                                         </div>
 
-                                                                        {/* Inspection Type */}
-                                                                        <div className="flex flex-col min-w-0">
-                                                                            {item.inspection_type_name ? (
-                                                                                <>
-                                                                                    <span className="font-medium text-slate-700 dark:text-slate-200 truncate text-[11px]">{item.inspection_type_name}</span>
-                                                                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{item.inspection_type_code}</span>
-                                                                                </>
-                                                                            ) : (
-                                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-fit">
-                                                                                    {item.inspection_type_code || "N/A"}
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-
                                                                         {/* Date */}
                                                                         <div className="flex items-center gap-1.5 text-slate-500 min-w-0">
                                                                             <Calendar className="h-3 w-3 text-slate-300 shrink-0" />
@@ -626,17 +617,6 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
                                                                                     ? format(new Date(item.inspection_date), "dd MMM yyyy")
                                                                                     : "—"}
                                                                             </span>
-                                                                        </div>
-
-                                                                        {/* Jobpack */}
-                                                                        <div className="min-w-0">
-                                                                            {item.jobpack_name ? (
-                                                                                <span className="font-semibold text-slate-600 dark:text-slate-300 truncate block text-[11px]" title={item.jobpack_name}>
-                                                                                    {item.jobpack_name}
-                                                                                </span>
-                                                                            ) : (
-                                                                                <span className="text-slate-300 dark:text-slate-600 italic text-[10px]">—</span>
-                                                                            )}
                                                                         </div>
 
                                                                         {/* SOW Report */}

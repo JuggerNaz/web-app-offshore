@@ -402,9 +402,6 @@ export default function Spec1Pipeline({ data }: Props) {
 
                 {/* Span Tables section */}
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">Span Details</h4>
-                  </div>
                   <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-50/50 dark:bg-slate-900/50">
                     <Table>
                       <TableHeader>

@@ -98,6 +98,7 @@ import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report
 import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-report";
+import { Inspection3DViewer } from "./_components/Inspection3DViewer";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
@@ -6058,10 +6059,12 @@ function V10PreviewLayout() {
                         )}
 
                         {compView === "MODEL_3D" && (
-                            <div className="flex-1 bg-slate-900 flex flex-col items-center justify-center p-4 text-center border-dashed border-2 border-slate-800 m-2 rounded-lg relative overflow-hidden">
-                                <Layers className="w-12 h-12 mb-3 text-slate-700/50" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">3D Viewer</span>
-                            </div>
+                            <Inspection3DViewer 
+                                componentsSow={componentsSow}
+                                componentsNonSow={componentsNonSow}
+                                selectedCompId={selectedComp?.id}
+                                onSelectComponent={handleComponentSelection}
+                            />
                         )}
                     </Card>
 
