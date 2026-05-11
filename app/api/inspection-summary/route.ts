@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+// Last Updated: 2026-05-11T18:01:00
 import { createClient } from "@/utils/supabase/server";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
@@ -283,9 +284,7 @@ export async function GET(request: NextRequest) {
             const isRov  = !!r.rov_job_id;
             const isDive = !!r.dive_job_id && !r.rov_job_id;
 
-            // ── Primary CP reading ─────────────────────────────────────────────
-            // Shared field 'cp_rdg' (used by RGVI, RRISI, RSZCI, RCOND, RCASN, RSWNI, RSANI)
-            // Dedicated field 'cp_reading_mv' (used by CP inspection type)
+            // --- Primary CP reading ---
             const primaryRaw = d.cp_rdg ?? d.cp_reading_mv ?? "";
             const primary = parseFloat(primaryRaw);
             if (!isNaN(primary) && isFinite(primary)) {
@@ -295,12 +294,8 @@ export async function GET(request: NextRequest) {
                 trackCp(primary);
             }
 
-            // ── Additional CP readings (repeater array: [{reading, location}]) ──
-            const additionals: any[] = Array.isArray(d.cp_rdg_additional)
-                ? d.cp_rdg_additional
-                : [];
-
-            additionals.forEach((a: any) => {
+            // --- Additional CP readings ---
+            (Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : []).forEach((a: any) => {
                 const addVal = parseFloat(a.reading ?? a.cp_rdg ?? "");
                 if (!isNaN(addVal) && isFinite(addVal)) {
                     cpAdditionalCount++;
@@ -311,7 +306,25 @@ export async function GET(request: NextRequest) {
             });
         });
 
-        // ─── 8. ANOMALIES ─────────────────────────────────────────────────────
+        // --- 8. MGI ANALYSIS ---
+        const mgiRecords = rawRecords.filter((r: any) => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === "RMGI" || code === "MGROW" || code === "MGI";
+        });
+        const mgiThicknesses = mgiRecords.map(r => parseFloat(r.inspection_data?.avg_thickness || r.inspection_data?.thickness || '0')).filter(v => !isNaN(v) && v > 0);
+        const mgiMax = mgiThicknesses.length > 0 ? Math.max(...mgiThicknesses) : 0;
+        const mgiAvg = mgiThicknesses.length > 0 ? mgiThicknesses.reduce((a, b) => a + b, 0) / mgiThicknesses.length : 0;
+
+        // --- 9. SCOUR ANALYSIS ---
+        const scourRecords = rawRecords.filter((r: any) => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === "RSCOR" || code === "SCOUR";
+        });
+        const scourExposedCount = scourRecords.filter(r => r.inspection_data?.Exposed_pile === "Yes" || r.inspection_data?.Exposed_pile === true).length;
+        const scourBurials = scourRecords.map(r => parseFloat(r.inspection_data?.Burial_percent || '0')).filter(v => !isNaN(v));
+        const scourMinBurial = scourBurials.length > 0 ? Math.min(...scourBurials) : 100;
+
+        // ─── 10. ANOMALIES ─────────────────────────────────────────────────────
         // Anomaly = has_anomaly=true AND _meta_status != "Finding"
         // Finding = has_anomaly=true AND _meta_status == "Finding"
         const anomalyRecords = rawRecords.filter((r: any) => {
@@ -580,6 +593,8 @@ export async function GET(request: NextRequest) {
                     open: findingValidTotal - findingRectifiedCount,
                     byPriority: findingByPriority,
                 },
+                mgi: { total: mgiRecords.length, max: mgiMax, avg: mgiAvg },
+                scour: { total: scourRecords.length, exposed: scourExposedCount, minBurial: scourMinBurial },
                 attachmentGroups: attachmentGroupBreakdown,
             },
         });
