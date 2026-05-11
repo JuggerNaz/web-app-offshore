@@ -353,10 +353,8 @@ export function useWorkspaceReports(
 
     const generateRGReport = async () => {
         const rgRecords = currentRecords.filter(r => {
-            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return qid.startsWith("RG") || typeCode === "RG" || typeCode === "RISERGUARD" || compCode === "RG";
+            return typeCode === "RGVI";
         });
         if (rgRecords.length === 0) {
             toast.error("No Riser Guard records found to generate report");
@@ -367,10 +365,8 @@ export function useWorkspaceReports(
 
     const generateRGReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const rgRecords = currentRecords.filter(r => {
-            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return qid.startsWith("RG") || typeCode === "RG" || typeCode === "RISERGUARD" || compCode === "RG";
+            return typeCode === "RGVI";
         });
         if (rgRecords.length === 0) return;
 
@@ -607,7 +603,13 @@ export function useWorkspaceReports(
     };
 
     const generateRRISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
-        const records = currentRecords.filter(r => (r.structure_components?.q_id || "").toUpperCase().startsWith('R'));
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const qid = (r.structure_components?.q_id || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            // Strict: Must be RRISI type AND (Component RS OR starts with R but NOT RISG)
+            return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+        });
         if (records.length === 0) return;
         const settings = await getReportHeaderData();
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
@@ -722,6 +724,30 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
+
+        const isRG = records.some(r => {
+            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+            const code = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return qid.startsWith("RG") || qid.startsWith("RISG") || code === "RG";
+        });
+
+        if (isRG) {
+            return await generateROVRiserGuardReport(
+                records.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                { ...headerData, contractorLogoUrl, vessel: headerData.vessel },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                {
+                    jobPackId: Number(jobPackId),
+                    structureId: Number(structureId),
+                    sowReportNo: headerData.sowReportNo,
+                    preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                    returnBlob: true,
+                    printFriendly: printFriendly || false,
+                    showSignatures: showSignatures ?? true
+                }
+            );
+        }
+
         return await generateROVRGVIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 

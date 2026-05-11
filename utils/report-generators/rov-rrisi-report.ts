@@ -62,14 +62,21 @@ export const generateROVRRISIReport = async (
         const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
 
-        // Filter records by QID prefix
+        // Filter records strictly by type and prefix
         const filteredRecords = records.filter(r => {
             const qid = (r.structure_components?.q_id || '').toUpperCase();
+            const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            
+            if (rType === 'R') {
+                // Strict Riser Filter: RRISI only + Prefix R only + NOT RISG
+                return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+            }
             return qid.startsWith(typeConfig.prefix);
         });
 
         if (filteredRecords.length === 0) {
-            console.warn(`No records found for ${typeConfig.title} (Prefix: ${typeConfig.prefix})`);
+            console.warn(`No matching records found for ${typeConfig.title}`);
         }
 
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
@@ -299,7 +306,27 @@ export const generateROVRRISIReport = async (
             });
 
             // --- Table ---
-            const sortedR = [...recordsInGroup].sort((a, b) => (parseFloat(b.elevation) || 0) - (parseFloat(a.elevation) || 0));
+            // Sort by Elevation (descending) but ensure Bends/Pipelines are always last
+            const sortedR = [...recordsInGroup].sort((a, b) => {
+                const itemA = (a.inspection_data?.riser_item || a.description || "").toLowerCase();
+                const itemB = (b.inspection_data?.riser_item || b.description || "").toLowerCase();
+                
+                const isBendA = itemA.includes('bend');
+                const isBendB = itemB.includes('bend');
+                const isPipeA = itemA.includes('pipeline') || itemA.includes('pipe');
+                const isPipeB = itemB.includes('pipeline') || itemB.includes('pipe');
+
+                // Priority: Normal < Bend < Pipeline
+                if (isPipeA && !isPipeB) return 1;
+                if (!isPipeA && isPipeB) return -1;
+                if (isBendA && !isBendB) return 1;
+                if (!isBendA && isBendB) return -1;
+
+                // Otherwise sort by elevation descending
+                const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
+                const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
+                return elB - elA;
+            });
             autoTable(doc, {
                 startY: currentY,
                 margin: { left: dX, right: margin, top: margin + 22 + 6 },

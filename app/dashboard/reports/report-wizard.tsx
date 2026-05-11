@@ -1841,17 +1841,32 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .eq('sow_report_no', selections.sowReportNo);
 
             if (error) throw error;
-            const tubeRecords = records || [];
-
-            if (tubeRecords.length === 0) {
-                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
-                return null;
-            }
-
             // Determine Report Type based on Template ID
             let reportType: 'R' | 'J' | 'I' = 'R';
             if (currentTemplateId === "rov-jtisi-report") reportType = 'J';
             else if (currentTemplateId === "rov-itisi-report") reportType = 'I';
+
+            const filteredTubeRecords = (records || []).filter(r => {
+                const qid = (r.structure_components?.q_id || "").toUpperCase();
+                const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                
+                if (reportType === 'R') {
+                    // Riser: Must be RRISI AND start with R AND NOT RISG
+                    return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+                } else if (reportType === 'J') {
+                    return qid.startsWith('J');
+                } else {
+                    return qid.startsWith('I');
+                }
+            });
+
+            if (filteredTubeRecords.length === 0) {
+                alert(`No records found for ${reportType === 'R' ? 'Riser' : reportType === 'J' ? 'J-Tube' : 'I-Tube'} in this SOW.`);
+                return null;
+            }
+
+            const tubeRecords = filteredTubeRecords;
 
             // Fetch Contractor Logo if available
             let contractorLogoUrl = "";
@@ -2172,6 +2187,24 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             try {
+                // Detect if any record belongs to a Riser Guard
+                const hasRG = rgviRecords.some((r: any) => {
+                    const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                    return qid.startsWith("RG") || qid.startsWith("RISG") || compCode === "RG";
+                });
+
+                if (hasRG) {
+                    const { generateROVRiserGuardReport } = await import("@/utils/report-generators/rov-riser-guard-report");
+                    return await generateROVRiserGuardReport(
+                        rgviRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerData,
+                        companySettings,
+                        { ...reportConfig, returnBlob, structureId: Number(selections.structureId) } as any
+                    );
+                }
+
+                const { generateROVRGVIReport } = await import("@/utils/report-generators/rov-rgvi-report");
                 return await generateROVRGVIReport(
                     rgviRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
@@ -2913,7 +2946,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                return sowMatches && jobPackMatches;
+                
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const isRGVI = typeCode === "RGVI";
+
+                return sowMatches && jobPackMatches && isRGVI;
             });
 
             if (!rgRecords || rgRecords.length === 0) {
