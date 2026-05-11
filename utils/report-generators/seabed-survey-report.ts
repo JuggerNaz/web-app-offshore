@@ -143,6 +143,7 @@ export const generateSeabedSurveyReport = async (
 
         autoTable(d, {
             startY: margin + headerH + 5,
+            margin: { left: margin, right: margin, top: margin + 28 + 6 },
             head: [],
             body: [
                 [
@@ -165,8 +166,7 @@ export const generateSeabedSurveyReport = async (
                 1: { cellWidth: valueColWidth },
                 2: { cellWidth: labelColWidth },
                 3: { cellWidth: valueColWidth }
-            },
-            margin: { left: margin, right: margin }
+            }
         });
     };
 
@@ -382,8 +382,47 @@ export const generateSeabedSurveyReport = async (
                 lineColor: [0, 0, 0]
             },
             styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
-            margin: { left: margin, right: margin }
+            margin: { left: margin, right: margin, top: margin + 28 + 6 },
+            didDrawPage: (data) => {
+                if (data.pageNumber > 1) drawHeader(doc);
+            }
         });
+    }
+
+    const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + headerH + 20);
+    if (config.showSignatures !== false) {
+        let sigY = pageHeight - 38;
+        if (finalY > sigY - 10) {
+            doc.addPage();
+            drawHeader(doc);
+            sigY = pageHeight - 38;
+        }
+        const sigW = contentWidth / 3;
+        const colors = { 
+            navy: [31, 55, 93] as [number, number, number], 
+            text: [30, 41, 59] as [number, number, number] 
+        };
+        const drawSig = (label: string, lx: number) => {
+            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+            doc.rect(lx, sigY, sigW - 4, 18);
+            if (!isPrintFriendly) {
+                doc.setFillColor(...colors.navy);
+                doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                doc.setTextColor(255);
+            } else {
+                doc.setTextColor(...colors.navy);
+            }
+            doc.setFontSize(7); doc.setFont("helvetica", "bold");
+            doc.text(label, lx + 2, sigY + 3.5);
+            doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+            doc.text("Name:", lx + 2, sigY + 10);
+            doc.text("Date:", lx + 2, sigY + 13.5);
+            doc.text("Signature:", lx + 2, sigY + 17);
+        };
+
+        drawSig('PREPARED BY', margin);
+        drawSig('REVIEWED BY', margin + sigW);
+        drawSig('APPROVED BY', margin + (sigW * 2));
     }
 
     // ── Footer ─────────────────────────────────────────────────────────────

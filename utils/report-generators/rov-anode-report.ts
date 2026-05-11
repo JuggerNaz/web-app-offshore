@@ -49,6 +49,15 @@ export const generateROVAnodeReport = async (
         };
 
         // --- 1. Preparation ---
+        let companyLogo: any = null;
+        let contractorLogo: any = null;
+        if (companySettings.logo_url) {
+            try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
+        }
+        if (headerData.contractorLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        }
+
         let startDate: Date | null = null;
         let endDate: Date | null = null;
         if (records.length > 0) {
@@ -63,7 +72,7 @@ export const generateROVAnodeReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
-        const drawHeader = async (d: jsPDF) => {
+        const drawHeader = (d: jsPDF) => {
             const da = d as any;
             const headerH = 22;
             const isPF = config.printFriendly;
@@ -79,23 +88,8 @@ export const generateROVAnodeReport = async (
                 da.setTextColor(255);
             }
 
-            if (companySettings.logo_url) {
-                try {
-                    const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                    if (logoData) {
-                        drawLogo(d, logoData, 16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
-                    }
-                } catch (e) {}
-            }
-
-            if (headerData.contractorLogoUrl) {
-                try {
-                    const logoData = await loadLogoWithTransparency(headerData.contractorLogoUrl);
-                    if (logoData) {
-                        drawLogo(d, logoData, 16, 16, margin + 4, margin + 4, 'left', 'center');
-                    }
-                } catch (e) {}
-            }
+            if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 4, 'left',  'center');
 
             da.setFontSize(10); da.setFont("helvetica", "bold");
             da.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
@@ -134,7 +128,7 @@ export const generateROVAnodeReport = async (
             return tableY + (rowH * 2) + 5;
         };
 
-        await drawHeader(doc);
+        drawHeader(doc);
         const startY = drawContext(doc, margin + 22 + 2);
 
         // --- 2. Data Sorting & Mapping ---
@@ -146,7 +140,7 @@ export const generateROVAnodeReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin },
+            margin: { left: margin, right: margin, top: margin + 22 + 6 },
             head: [[
                 'Item No.', 'QID', 'Elevation (m)', 'Depletion (%)', 
                 'Anode CP (mV)', 'Anode Type', 'Anomaly', 'Dive No.', 'Findings'
@@ -210,43 +204,49 @@ export const generateROVAnodeReport = async (
                 7: { cellWidth: 25, halign: 'center' },
                 8: { cellWidth: 'auto' }
             },
-            didParseCell: (data) => {
-                if (data.section === 'body') {
-                    const r = sortedRecords[data.row.index];
-                    const linkedAnomaly = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                    
-                    const isAnomaly = r.has_anomaly === true || r.is_anomaly === true || r.component_condition === 'Anomalous' || (r.description && r.description.toLowerCase().includes('anomaly')) || !!linkedAnomaly;
-                    const isDefect = r.has_defect === true || r.is_defect === true || (r.description && r.description.toLowerCase().includes('defect'));
-                    const isRectified = linkedAnomaly ? linkedAnomaly.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-                    
-                    if (isAnomaly || isDefect) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = 'bold';
-                    } else if (isRectified) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = 'bold';
-                    }
+            didDrawPage: (data) => {
+                if (data.pageNumber > 1) drawHeader(doc);
+
+                // Bottom bar
+                doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
+                doc.setTextColor(...colors.text);
+                doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
+                doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
+                doc.text(
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Anode Inspection Report  |  SOW: ${headerData.sowReportNo || "N/A"}`,
+                    margin, pageHeight - 6
+                );
+                if (config.showPageNumbers !== false) {
+                    doc.text(`Page ${data.pageNumber}`, margin + contentWidth, pageHeight - 6, { align: "right" });
                 }
             }
             });
 
+        const finalY = (doc as any).lastAutoTable?.finalY ?? startY;
         if (config.showSignatures !== false) {
-            const sigY = pageHeight - 35;
+            let sigY = pageHeight - 38;
+            if (finalY > sigY - 10) {
+                doc.addPage();
+                drawHeader(doc);
+                sigY = pageHeight - 38;
+            }
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number) => {
-                const da = doc as any;
-                const isPF = config.printFriendly;
-                da.setDrawColor(...colors.navy); da.setLineWidth(0.1); da.rect(lx, sigY, sigW - 5, 15, 'S');
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                doc.rect(lx, sigY, sigW - 4, 18);
                 if (!isPF) {
-                    da.setFillColor(...colors.navy); da.rect(lx, sigY, sigW - 5, 4, 'F');
-                    da.setTextColor(255);
+                    doc.setFillColor(...colors.navy);
+                    doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                    doc.setTextColor(255);
                 } else {
-                    da.setTextColor(...colors.navy);
+                    doc.setTextColor(...colors.navy);
                 }
-                da.setFontSize(7); da.text(label, lx + 2, sigY + 3);
-                da.setTextColor(...colors.text); da.setFontSize(6); 
-                da.text('Name:', lx + 2, sigY + 10);
-                da.text('Date:', lx + 2, sigY + 13);
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.5);
+                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.text("Name:", lx + 2, sigY + 10);
+                doc.text("Date:", lx + 2, sigY + 13.5);
+                doc.text("Signature:", lx + 2, sigY + 17);
             };
 
             drawSig('PREPARED BY', margin);

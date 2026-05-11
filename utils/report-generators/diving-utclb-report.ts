@@ -234,7 +234,7 @@ export const generateDivingUTCLBReport = async (
 
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [headerRow],
             body: records.map(buildRow),
             theme: "grid",

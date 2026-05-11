@@ -257,7 +257,7 @@ export const generateDivingMGIReport = async (
 
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin },
+            margin: { left: margin, right: margin, top: margin + 22 + 4 },
             head: [
                 [
                     { content: "Item\nNo.", rowSpan: 2 },
@@ -423,22 +423,7 @@ export const generateDivingMGIReport = async (
                     });
                 }
                 
-                // ── Signatures at Footer ──────────────────────────────────────
-                if (config.showSignatures !== false) {
-                    const sigY = pageHeight - 35;
-                    const sigW = contentWidth / 3;
-                    
-                    const drawSig = (label: string, lx: number) => {
-                        doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); 
-                        doc.rect(lx, sigY, sigW - 5, 15);
-                        doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 4, 'F');
-                        doc.setTextColor(255, 255, 255); doc.setFontSize(7); 
-                        doc.text(label, lx + 2, sigY + 3);
-                    };
-                    drawSig('PREPARED BY', margin);
-                    drawSig('REVIEWED BY', margin + sigW);
-                    drawSig('APPROVED BY', margin + (sigW * 2));
-                }
+
 
                 // Page Footer Info
                 doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
@@ -460,6 +445,30 @@ export const generateDivingMGIReport = async (
                 }
             }
         });
+        
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (pageHeight - 50);
+        if (config.showSignatures !== false) {
+            let sigY = pageHeight - 38;
+            
+            // If the table ended too low, push signatures to a new page
+            if (finalY > sigY - 10) {
+                doc.addPage();
+                drawPageHeader(doc);
+                sigY = pageHeight - 38;
+            }
+            
+            const sigW = contentWidth / 3;
+            const drawSig = (label: string, lx: number) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); 
+                doc.rect(lx, sigY, sigW - 5, 15);
+                doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 4, 'F');
+                doc.setTextColor(255, 255, 255); doc.setFontSize(7); 
+                doc.text(label, lx + 2, sigY + 3);
+            };
+            drawSig('PREPARED BY', margin);
+            drawSig('REVIEWED BY', margin + sigW);
+            drawSig('APPROVED BY', margin + (sigW * 2));
+        }
 
         if (config.returnBlob) return doc.output("blob");
         doc.save(`Diving_MGI_Graph_Report_${headerData.sowReportNo || "N/A"}.pdf`);

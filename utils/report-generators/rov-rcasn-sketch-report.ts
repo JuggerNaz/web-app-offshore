@@ -64,58 +64,86 @@ export const generateROVCasnSketchReport = async (
         });
 
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        // 1. Context & Grouping
         const compRegistry = new Map<number, any>();
-        const qidToId = new Map<string, number>();
+        const qidRegistry  = new Map<string, any>();
         if (allComps) {
             allComps.forEach(c => {
                 compRegistry.set(c.id, c);
-                qidToId.set(c.q_id.toUpperCase(), c.id);
+                qidRegistry.set(c.q_id.toUpperCase(), c);
             });
         }
 
-        // 1. Map all records to their parent Caisson QID if possible
+        const getGroupKey = (r: any): string => {
+            const comp = r.structure_components || {};
+            const metadata = comp.metadata || {};
+            const qid = (comp.q_id || "Unknown").toUpperCase();
+            
+            // 1. Check explicit association in record metadata
+            const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
+            let parentQid  = metadata.parent_qid || metadata.parent_q_id;
+
+            // Helper to find the ultimate "CS" parent in the hierarchy
+            const findUltimateCSParent = (cid: number | null, depth = 0): string | null => {
+                if (!cid || depth > 5) return null;
+                const c = compRegistry.get(cid);
+                if (!c) return null;
+                
+                const meta = c.metadata || {};
+                const pId = meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id;
+                const typeCode = (c.code || "").toUpperCase();
+                
+                // If it's a CS and has no parent, it's our ultimate group key
+                if (typeCode === "CS" && !pId) return c.q_id;
+                
+                // Otherwise keep climbing
+                return findUltimateCSParent(pId, depth + 1) || (typeCode === "CS" ? c.q_id : null);
+            };
+
+            // 2. Try climbing the registry hierarchy
+            const ultimateParent = findUltimateCSParent(parentId || comp.id);
+            if (ultimateParent) return ultimateParent;
+
+            // 3. Fallback to explicit parent QID string
+            if (parentQid) return parentQid;
+
+            // 4. Fallback to prefix matching against all top-level CS components
+            if (qid.startsWith("CS")) {
+                let bestMatch = "";
+                allComps?.forEach(c => {
+                    const cCode = (c.code || "").toUpperCase();
+                    const cQid  = (c.q_id || "").toUpperCase();
+                    const cMeta = c.metadata || {};
+                    const cpId  = cMeta.associated_comp_id || cMeta.parent_id || cMeta.comp_id_parent || cMeta.parent_comp_id || cMeta.associated_id;
+                    
+                    if (cCode === "CS" && !cpId && qid.startsWith(cQid) && cQid.length > bestMatch.length) {
+                        bestMatch = c.q_id;
+                    }
+                });
+                if (bestMatch) return bestMatch;
+            }
+
+            // 5. Fallback to regex for CS-XX pattern
+            const match = qid.match(/^(CS-[^-_ ]+)/i);
+            if (match) return match[1];
+
+            return (comp.code || "").toUpperCase() === "CS" ? qid : "General";
+        };
+
         const caissonGroups: Record<string, any[]> = {};
         const caissonObjects: Record<string, any> = {};
-        const idToQidMap: Record<number, string> = {};
-
-        allComps?.forEach(c => {
-            if ((c.code || "").toUpperCase() === "CS") {
-                idToQidMap[c.id] = c.q_id;
-                caissonObjects[c.q_id.toUpperCase()] = c;
-            }
-        });
 
         filteredRecords.forEach(r => {
             const comp = r.structure_components || {};
-            const metadata = comp.metadata || {};
             const typeCode = (comp.code || "").toUpperCase();
-            const qid = (comp.q_id || "Unknown").trim();
+            const groupKey = getGroupKey(r).toUpperCase();
             
-            let parentQid = metadata.parent_qid || metadata.parent_q_id;
-            const parentId = metadata.parent_id || metadata.comp_id_parent || metadata.associated_comp_id;
-            
-            if (!parentQid && parentId && idToQidMap[parentId]) {
-                parentQid = idToQidMap[parentId];
-            }
-            
-            let groupKey = "General";
-            if (typeCode === "CS") {
-                groupKey = qid;
-            } else if (parentQid) {
-                groupKey = parentQid;
-            } else {
-                const match = qid.match(/^(CS-[^-_ ]+)/i);
-                if (match) groupKey = match[1];
-                else if (qid.toUpperCase().startsWith("CS")) groupKey = qid;
-            }
-            
-            const upperKey = groupKey.toUpperCase();
-            if (!caissonGroups[upperKey]) caissonGroups[upperKey] = [];
-            caissonGroups[upperKey].push(r);
+            if (!caissonGroups[groupKey]) caissonGroups[groupKey] = [];
+            caissonGroups[groupKey].push(r);
             
             // If this record is for the caisson itself, store it as the representative object
-            if (typeCode === "CS" && !caissonObjects[upperKey]) {
-                caissonObjects[upperKey] = comp;
+            if (typeCode === "CS" && !caissonObjects[groupKey]) {
+                caissonObjects[groupKey] = comp;
             }
         });
 
@@ -202,6 +230,15 @@ export const generateROVCasnSketchReport = async (
             const rMeta = caisson?.metadata || {};
             const rAdd = rMeta.additionalInfo || {};
             
+            // Find terminator in this group to define the bottom
+            const terminatorRecord = recordsInGroup.find(r => {
+                const rqid = (r.structure_components?.q_id || '').toUpperCase();
+                const rname = (r.structure_components?.name || '').toUpperCase();
+                return rqid.includes('TERM') || rname.includes('TERMINATOR');
+            });
+            const terminatorQid = terminatorRecord?.structure_components?.q_id || "CAISSON TERMINATOR";
+            const terminatorElev = terminatorRecord ? parseFloat(terminatorRecord.elevation ?? terminatorRecord.inspection_data?.elevation) : NaN;
+
             // Priority list for Elevation 1 (Top)
             const designStart = parseFloat(
                 rMeta.elv_1 ?? 
@@ -214,7 +251,7 @@ export const generateROVCasnSketchReport = async (
             );
 
             // Priority list for Elevation 2 (Bottom / Terminator)
-            const designEnd = parseFloat(
+            const designEnd = !isNaN(terminatorElev) ? terminatorElev : parseFloat(
                 rMeta.elv_2 ?? 
                 rMeta.elevation_2 ?? 
                 rAdd.elv_2 ?? 
@@ -247,28 +284,32 @@ export const generateROVCasnSketchReport = async (
             };
             drawP(cX, pipeStartY, pipeEndY);
 
-            // 2. Draw Circular Terminator at the bottom
-            const termRadius = rWidth / 2;
-            const termY = pipeEndY; // Center exactly at the end to overlap/connect
+            // 2. Draw Oval Terminator at the bottom
+            const rx = rWidth / 2;
+            const ry = rWidth * 0.4;
+            const termY = pipeEndY; 
             
             doc.setDrawColor(50, 50, 50); doc.setLineWidth(0.8);
             doc.setFillColor(80, 95, 115); // Match pipe color
-            doc.circle(cX, termY, termRadius, 'FD');
+            doc.ellipse(cX, termY, rx, ry, 'FD');
             
-            // Grill lines inside the circular terminator
+            // Grill lines inside the oval terminator
             doc.setLineWidth(0.2);
             doc.setDrawColor(40, 40, 40);
             // Horizontal lines
-            doc.line(cX - termRadius * 0.6, termY + termRadius * 0.4, cX + termRadius * 0.6, termY + termRadius * 0.4);
-            doc.line(cX - termRadius * 0.8, termY + termRadius * 0.7, cX + termRadius * 0.8, termY + termRadius * 0.7);
+            doc.line(cX - rx * 0.6, termY + ry * 0.4, cX + rx * 0.6, termY + ry * 0.4);
+            doc.line(cX - rx * 0.8, termY + ry * 0.7, cX + rx * 0.8, termY + ry * 0.7);
             
             // Vertical lines (downward only from pipe end)
-            doc.line(cX, pipeEndY, cX, pipeEndY + termRadius);
-            doc.line(cX - termRadius * 0.4, termY, cX - termRadius * 0.4, termY + termRadius * 0.9);
-            doc.line(cX + termRadius * 0.4, termY, cX + termRadius * 0.4, termY + termRadius * 0.9);
+            doc.line(cX, pipeEndY, cX, pipeEndY + ry);
+            doc.line(cX - rx * 0.4, termY, cX - rx * 0.4, termY + ry * 0.9);
+            doc.line(cX + rx * 0.4, termY, cX + rx * 0.4, termY + ry * 0.9);
             
             doc.setFontSize(6); doc.setTextColor(50, 50, 50);
-            doc.text("CAISSON TERMINATOR", cX + termRadius + 2, termY + termRadius);
+            doc.text(terminatorQid, cX + rx + 2, termY + ry);
+            if (!isNaN(terminatorElev)) {
+                doc.text(`${terminatorElev}m`, cX + rx + 2, termY + ry + 2.5);
+            }
 
             // Scale
             doc.setLineWidth(0.1); doc.setDrawColor(200, 200, 200);
@@ -330,10 +371,14 @@ export const generateROVCasnSketchReport = async (
             });
 
             // --- Table ---
-            const sortedR = [...recordsInGroup].sort((a, b) => (parseFloat(b.elevation) || 0) - (parseFloat(a.elevation) || 0));
+            const sortedR = [...recordsInGroup].sort((a, b) => {
+                const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
+                const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
+                return elB - elA;
+            });
             autoTable(doc, {
                 startY: currentY,
-                margin: { left: dX, right: margin },
+                margin: { left: dX, right: margin, top: margin + 22 + 6 },
                 tableWidth: dW,
                 head: [['Elev (m)', 'CP (mV)', 'Findings / Anomalies']],
                 body: sortedR.map(r => {
@@ -355,20 +400,43 @@ export const generateROVCasnSketchReport = async (
                 theme: 'grid',
                 headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8 },
                 styles: { fontSize: 7, cellPadding: 2 },
-                columnStyles: { 0: { cellWidth: 15 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } }
+                columnStyles: { 0: { cellWidth: 15 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } },
+                didDrawPage: (data) => {
+                    if (data.pageNumber > 1) drawHeader(doc);
+                }
             });
+        }
 
-            // Signatures
-            if (config.showSignatures !== false) {
-                const sigY = pageHeight - 32; const sigW = contentWidth / 3;
-                const drawS = (l: string, lx: number) => {
-                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 4, 15, 'S');
-                    if (!config.printFriendly) { doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 4, 4, 'F'); doc.setTextColor(255, 255, 255); }
-                    else doc.setTextColor(...colors.navy);
-                    doc.setFontSize(7); doc.text(l, lx + 2, sigY + 3);
-                };
-                drawS('PREPARED BY', margin); drawS('REVIEWED BY', margin + sigW); drawS('APPROVED BY', margin + (sigW * 2));
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
+        if (config.showSignatures !== false) {
+            let sigY = pageHeight - 38;
+            if (finalY > sigY - 10) {
+                doc.addPage();
+                drawHeader(doc);
+                sigY = pageHeight - 38;
             }
+            const sigW = contentWidth / 3;
+            const drawSig = (label: string, lx: number) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                doc.rect(lx, sigY, sigW - 4, 18);
+                if (!config.printFriendly) {
+                    doc.setFillColor(...colors.navy);
+                    doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                    doc.setTextColor(255);
+                } else {
+                    doc.setTextColor(...colors.navy);
+                }
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.5);
+                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.text("Name:", lx + 2, sigY + 10);
+                doc.text("Date:", lx + 2, sigY + 13.5);
+                doc.text("Signature:", lx + 2, sigY + 17);
+            };
+
+            drawSig('PREPARED BY', margin);
+            drawSig('REVIEWED BY', margin + sigW);
+            drawSig('APPROVED BY', margin + (sigW * 2));
         }
 
         const totalPages = doc.getNumberOfPages();

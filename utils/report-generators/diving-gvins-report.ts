@@ -177,7 +177,7 @@ export const generateDivingGVINSReport = async (
 
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [[
                 { content: "Item\nNo.",       styles: { halign: "center", valign: "middle" } },
                 { content: "QID",             styles: { halign: "center", valign: "middle" } },

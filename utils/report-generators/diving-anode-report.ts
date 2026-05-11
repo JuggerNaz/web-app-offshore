@@ -234,7 +234,7 @@ export const generateDivingAnodeReport = async (
 
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [topHeader, bottomHeader],
             body: sortedRecords.map(buildRow),
             theme: "grid",
@@ -356,7 +356,7 @@ export const generateDivingAnodeReport = async (
         if (calibRows.length > 0) {
             autoTable(doc, {
                 startY: (doc as any).lastAutoTable.finalY + 10,
-                margin: { left: margin, right: margin },
+                margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
                 head: [
                     [
                         { content: "CP CALIBRATION DATA (-mV)", colSpan: 5, styles: { halign: "center" as const, fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255] } }

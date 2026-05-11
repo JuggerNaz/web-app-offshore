@@ -212,7 +212,7 @@ export const generateDivingSZONEReport = async (
 
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [
                 [
                     { content: "Item No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
@@ -425,7 +425,7 @@ export const generateDivingSZONEReport = async (
 
             autoTable(doc, {
                 startY: (doc as any).lastAutoTable.finalY + 10,
-                margin: { left: margin, right: margin },
+                margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
                 head: [
                     [
                         { content: "", styles: { fillColor: calibHeadFill } },

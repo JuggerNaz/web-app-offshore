@@ -222,7 +222,8 @@ export const generateInspectionReport = async (
         if (attachments.length > 0) {
             if (yPos > pageHeight - 60) {
                 doc.addPage();
-                yPos = 20;
+                await drawPremiumHeader(doc);
+                yPos = margin + 22 + 6;
             }
 
             drawSectionHeader(`ATTACHMENTS / PHOTOS (${attachments.length})`, yPos);
@@ -250,7 +251,8 @@ export const generateInspectionReport = async (
 
                 if (yPos + imgHeight + 25 > pageHeight - 10) {
                     doc.addPage();
-                    yPos = 20;
+                    await drawPremiumHeader(doc);
+                    yPos = margin + 22 + 6;
                 }
 
                 // Get Public URL

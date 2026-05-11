@@ -325,7 +325,7 @@ export const generateROVCondSketchReport = async (
             const sortedR = [...recordsInGroup].sort((a, b) => (parseFloat(b.elevation) || 0) - (parseFloat(a.elevation) || 0));
             autoTable(doc, {
                 startY: currentY,
-                margin: { left: dX, right: margin },
+                margin: { left: dX, right: margin, top: margin + 22 + 6 },
                 tableWidth: dW,
                 head: [['Elev (m)', 'CP (mV)', 'Findings / Anomalies']],
                 body: sortedR.map(r => {
@@ -358,18 +358,43 @@ export const generateROVCondSketchReport = async (
                     fontSize: 8 
                 },
                 styles: { fontSize: 7, cellPadding: 2 },
-                columnStyles: { 0: { cellWidth: 15 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } }
+                columnStyles: { 0: { cellWidth: 15 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } },
+                didDrawPage: (data) => {
+                    if (data.pageNumber > 1) drawHeader(doc);
+                }
             });
+        }
 
-            // Signatures
-            const sigY = pageHeight - 32; const sigW = contentWidth / 3;
-            const drawS = (l: string, lx: number) => {
-                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 4, 15, 'S');
-                if (!config.printFriendly) { doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 4, 4, 'F'); doc.setTextColor(255, 255, 255); }
-                else doc.setTextColor(...colors.navy);
-                doc.setFontSize(7); doc.text(l, lx + 2, sigY + 3);
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
+        if (config.showSignatures !== false) {
+            let sigY = pageHeight - 38;
+            if (finalY > sigY - 10) {
+                doc.addPage();
+                drawHeader(doc);
+                sigY = pageHeight - 38;
+            }
+            const sigW = contentWidth / 3;
+            const drawSig = (label: string, lx: number) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                doc.rect(lx, sigY, sigW - 4, 18);
+                if (!config.printFriendly) {
+                    doc.setFillColor(...colors.navy);
+                    doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                    doc.setTextColor(255);
+                } else {
+                    doc.setTextColor(...colors.navy);
+                }
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.5);
+                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.text("Name:", lx + 2, sigY + 10);
+                doc.text("Date:", lx + 2, sigY + 13.5);
+                doc.text("Signature:", lx + 2, sigY + 17);
             };
-            drawS('PREPARED BY', margin); drawS('REVIEWED BY', margin + sigW); drawS('APPROVED BY', margin + (sigW * 2));
+
+            drawSig('PREPARED BY', margin);
+            drawSig('REVIEWED BY', margin + sigW);
+            drawSig('APPROVED BY', margin + (sigW * 2));
         }
 
         const totalPages = doc.getNumberOfPages();
