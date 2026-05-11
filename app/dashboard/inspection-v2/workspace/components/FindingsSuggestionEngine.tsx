@@ -137,32 +137,32 @@ export function FindingsSuggestionEngine({
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 px-2 text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1.5"
+          className="h-8 px-2 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 gap-1.5"
         >
           <Sparkles className="w-3.5 h-3.5" />
           Suggestions
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0 shadow-2xl border-slate-200" align="end">
+      <PopoverContent className="w-80 p-0 shadow-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950" align="end">
         <div className="flex flex-col h-[400px]">
           {/* Header */}
-          <div className="p-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+          <div className="p-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-blue-500" />
-              <span className="text-[11px] font-black uppercase tracking-widest text-slate-700">Findings Assistant</span>
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">Findings Assistant</span>
             </div>
-            <Badge variant="outline" className="text-[9px] font-bold bg-white text-blue-600 border-blue-100 uppercase">
+            <Badge variant="outline" className="text-[9px] font-bold bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/50 uppercase">
               {inspectionTypeCode}
             </Badge>
           </div>
 
           {/* Search */}
-          <div className="p-2 border-b border-slate-100">
+          <div className="p-2 border-b border-slate-100 dark:border-slate-800">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <Input
                 placeholder="Search suggestions..."
-                className="pl-8 h-8 text-xs bg-white border-slate-200 focus-visible:ring-blue-500"
+                className="pl-8 h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 dark:text-slate-200"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -170,13 +170,13 @@ export function FindingsSuggestionEngine({
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-slate-100 p-1 bg-slate-50/50">
+          <div className="flex border-b border-slate-100 dark:border-slate-800 p-1 bg-slate-50/50 dark:bg-slate-900/50">
             <button
               onClick={() => setTab("history")}
               className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold rounded-md transition-all ${
                 tab === "history" 
-                  ? "bg-white text-blue-600 shadow-sm border border-slate-200" 
-                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                  ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-700" 
+                  : "text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
             >
               <History className="w-3 h-3" />
@@ -186,8 +186,8 @@ export function FindingsSuggestionEngine({
               onClick={() => setTab("standard")}
               className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold rounded-md transition-all ${
                 tab === "standard" 
-                  ? "bg-white text-blue-600 shadow-sm border border-slate-200" 
-                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                  ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-700" 
+                  : "text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
             >
               <Book className="w-3 h-3" />
@@ -212,9 +212,9 @@ export function FindingsSuggestionEngine({
                         onSelect(item);
                         setIsOpen(false);
                       }}
-                      className="w-full text-left p-2.5 rounded-lg border border-slate-100 hover:border-blue-200 hover:bg-blue-50 transition-all group relative"
+                      className="w-full text-left p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group relative"
                     >
-                      <div className="text-[11px] font-medium text-slate-700 leading-relaxed pr-6">
+                      <div className="text-[11px] font-medium text-slate-700 dark:text-slate-300 leading-relaxed pr-6">
                         {item}
                       </div>
                       <Copy className="absolute top-2.5 right-2.5 w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -247,7 +247,7 @@ export function FindingsSuggestionEngine({
 
                     return (
                       <div key={category} className="space-y-1.5">
-                        <div className="px-2 py-0.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-l-2 border-blue-500 bg-blue-50/30">
+                        <div className="px-2 py-0.5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10">
                           {category.replace("_", " ")}
                         </div>
                         {filteredItems.map((item, idx) => (
@@ -257,9 +257,9 @@ export function FindingsSuggestionEngine({
                               onSelect(item);
                               setIsOpen(false);
                             }}
-                            className="w-full text-left p-2.5 rounded-lg border border-slate-100 hover:border-blue-200 hover:bg-blue-50 transition-all group relative"
+                            className="w-full text-left p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group relative"
                           >
-                            <div className="text-[11px] font-medium text-slate-700 leading-relaxed pr-6">
+                            <div className="text-[11px] font-medium text-slate-700 dark:text-slate-300 leading-relaxed pr-6">
                               {item}
                             </div>
                             <Copy className="absolute top-2.5 right-2.5 w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -274,9 +274,9 @@ export function FindingsSuggestionEngine({
           </ScrollArea>
 
           {/* Footer */}
-          <div className="p-2 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Click to apply to findings</span>
-            <Button variant="ghost" size="sm" className="h-6 text-[9px] font-black text-slate-500 hover:text-red-500" onClick={() => setIsOpen(false)}>
+          <div className="p-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
+            <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Click to apply to findings</span>
+            <Button variant="ghost" size="sm" className="h-6 text-[9px] font-black text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400" onClick={() => setIsOpen(false)}>
               CLOSE
             </Button>
           </div>

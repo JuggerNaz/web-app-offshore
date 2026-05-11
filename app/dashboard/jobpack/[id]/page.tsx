@@ -116,6 +116,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const { data: contractors } = useSWR("/api/library/CONTR_NAM", fetcher);
   const { data: compTypesLib } = useSWR("/api/components", fetcher);
   const { data: activeStructureSOW } = useSWR(id && activeStructKey ? `/api/sow?jobpack_id=${id}&structure_id=${activeStructKey.split('-')[1]}` : null, fetcher);
+  const { data: allSOWs } = useSWR(id ? `/api/sow?jobpack_id=${id}` : null, fetcher);
 
 
   // Consolidation Logic
@@ -615,7 +616,8 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                         (s) => `${s.type}-${s.id}` === activeStructKey
                       );
                       if (activeStruct) {
-                        router.push(`/dashboard/jobpack/${id}?tab=sow&structure=${activeStructKey}`);
+                        const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+                        router.push(`/dashboard/jobpack/${id}?tab=sow&structure=${activeStructKey}&returnTo=${returnTo}`);
                       }
                     } else {
                       toast.error("Please select a structure first");
@@ -944,7 +946,19 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                         {selectedStructures.length > 0 ? selectedStructures.map((s, i) => {
                           const key = `${s.type}-${s.id}`;
                           const isActive = activeStructKey === key;
-                          const assignedInspections = inspectionsByStruct[key] || [];
+                          
+                          // Merge inspections from Jobpack assignments and SOW extra additions
+                          const baseInspections = inspectionsByStruct[key] || [];
+                          const structSOW = allSOWs?.data?.find((sow: any) => String(sow.structure_id) === String(s.id));
+                          const extraIds = structSOW?.metadata?.extra_inspection_ids || [];
+                          const extraInspections = (inspectionTypes?.data || []).filter((it: any) => extraIds.includes(it.id));
+                          
+                          const assignedInspections = [...baseInspections];
+                          extraInspections.forEach((extra: any) => {
+                            if (!assignedInspections.some((it: any) => it.id === extra.id)) {
+                              assignedInspections.push(extra);
+                            }
+                          });
 
                           return (
                             <div
@@ -1174,7 +1188,10 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                       }
                                       return true;
                                     }).map((insp: any) => {
-                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
+                                      const structId = activeStructKey.split('-')[1];
+                                      const structSOW = allSOWs?.data?.find((sow: any) => String(sow.structure_id) === String(structId));
+                                      const extraIds = structSOW?.metadata?.extra_inspection_ids || [];
+                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id) || extraIds.includes(insp.id);
                                       const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
                                       return (
                                         <div
@@ -1249,7 +1266,10 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                       }
                                       return true;
                                     }).map((insp: any) => {
-                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id);
+                                      const structId = activeStructKey.split('-')[1];
+                                      const structSOW = allSOWs?.data?.find((sow: any) => String(sow.structure_id) === String(structId));
+                                      const extraIds = structSOW?.metadata?.extra_inspection_ids || [];
+                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id) || extraIds.includes(insp.id);
                                       const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
                                       return (
                                         <div
@@ -1329,11 +1349,13 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
           components={sowComponents}
           onSave={() => {
             // Optionally refresh data
-            setSOWDialogOpen(false);
+            // setSOWDialogOpen(false); // Keep open after save as per user request
           }}
           readOnly={
             data?.data?.status === "CLOSED" ||
-            structureStatus?.[`${sowStructure.type}-${sowStructure.id}`]?.status === "CLOSED"
+            data?.data?.status === "CONSOLIDATED" ||
+            structureStatus?.[`${sowStructure.type}-${sowStructure.id}`]?.status === "CLOSED" ||
+            structureStatus?.[`${sowStructure.type}-${sowStructure.id}`]?.status === "CONSOLIDATED"
           }
           returnTo={searchParams.get('returnTo') ? decodeURIComponent(searchParams.get('returnTo')!) : null}
         />

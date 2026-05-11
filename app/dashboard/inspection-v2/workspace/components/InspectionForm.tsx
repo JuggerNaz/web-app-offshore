@@ -11,6 +11,7 @@ import {
     Clock, 
     Save, 
     Trash2,
+    Printer,
     X,
     Settings,
     Video, 
@@ -75,6 +76,8 @@ interface InspectionFormProps {
     activeMGIProfile?: any;
     supabase?: any;
     libOptionsMap?: Record<string, any[]>;
+    onDeleteRecord?: () => void;
+    onPrintReport?: () => void;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -123,7 +126,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     handleDynamicPropChange,
     activeMGIProfile,
     supabase,
-    libOptionsMap
+    libOptionsMap,
+    onDeleteRecord,
+    onPrintReport
 }) => {
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
@@ -233,8 +238,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
         // 4. Check thickness values across all 8 clock positions
         const thicknessFields = [
-            'mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9',
-            'mgi_soft_thickness_at_12', 'mgi_soft_thickness_at_3', 'mgi_soft_thickness_at_6', 'mgi_soft_thickness_at_9'
+            'mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9'
         ];
         const currentMaxT = Math.max(...thicknessFields.map(f => parseFloat(dynamicProps?.[f]) || 0));
 
@@ -260,7 +264,6 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     }, [
         dynamicProps?.mgi_hard_thickness_at_12, dynamicProps?.mgi_hard_thickness_at_3, dynamicProps?.mgi_hard_thickness_at_6, dynamicProps?.mgi_hard_thickness_at_9,
-        dynamicProps?.mgi_soft_thickness_at_12, dynamicProps?.mgi_soft_thickness_at_3, dynamicProps?.mgi_soft_thickness_at_6, dynamicProps?.mgi_soft_thickness_at_9,
         dynamicProps?.verification_depth, dynamicProps?.verification_depth_unit, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev
     ]);
 
@@ -449,9 +452,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     }, [activeSpec, selectedComp, isEditing, dynamicProps]);
 
     return (
-
-        <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white z-10">
-            <div className="p-3 bg-blue-600 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700">
+        <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white dark:bg-slate-950 z-10 border-none rounded-none shadow-none text-slate-800 dark:text-slate-200">
+            <div className="p-3 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800">
                 <span className="font-black tracking-wide text-sm flex items-center gap-2">
                     <FileText className="w-4 h-4 text-blue-200" />
                     <span className="text-blue-100 opacity-90 font-bold">{selectedComp.name}</span>
@@ -479,6 +481,27 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             <span className="font-mono text-xs font-bold leading-none mt-0.5">{formatTime(currentDisplayCount)}</span>
                         </div>
                     </div>
+                    
+                    {onPrintReport && (findingType === 'Anomaly' || findingType === 'Finding') && (
+                        <button 
+                            onClick={onPrintReport} 
+                            className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" 
+                            title="Print Report"
+                        >
+                            <Printer className="w-4 h-4" />
+                        </button>
+                    )}
+
+                    {isEditing && onDeleteRecord && (
+                        <button 
+                            onClick={onDeleteRecord} 
+                            className="p-1.5 hover:bg-red-500/20 bg-black/10 rounded transition text-red-200 hover:text-red-100" 
+                            title="Delete Record"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
+
                     <button onClick={() => setCompSpecDialogOpen(true)} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications">
                         <Info className="w-4 h-4" />
                     </button>
@@ -491,7 +514,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 <div className="space-y-3">
                     <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-800 uppercase flex items-center gap-1"><MapPinIcon className="w-3 h-3 text-slate-400" /> Verification Depth / Elevation</label>
+                            <label className="text-[10px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-1"><MapPinIcon className="w-3 h-3 text-slate-400 dark:text-slate-500" /> Verification Depth / Elevation</label>
                             <div className="flex items-center gap-1">
                                 <Input 
                                     type="text"
@@ -500,10 +523,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         handleDynamicPropChange?.('verification_depth', e.target.value);
                                     }}
                                     placeholder="Enter depth"
-                                    className="h-10 text-sm font-bold bg-slate-50 focus-visible:ring-blue-500 flex-1" 
+                                    className="h-10 text-sm font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 flex-1 dark:text-slate-200" 
                                 />
                                 <select
-                                    className="h-10 px-2 text-xs font-bold border border-slate-200 rounded-md bg-slate-50 text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[55px]"
+                                    className="h-10 px-2 text-xs font-bold border border-slate-200 dark:border-slate-800 rounded-md bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[55px]"
                                     value={dynamicProps?.verification_depth_unit || 'm'}
                                     onChange={(e) => handleDynamicPropChange?.('verification_depth_unit', e.target.value)}
                                 >
@@ -517,8 +540,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         </div>
                         {(selectedComp.startElev !== '-' || selectedComp.endElev !== '-') && (
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-800 uppercase flex items-center gap-1">Elevation Range</label>
-                                <div className="h-10 px-3 flex items-center text-sm font-bold bg-slate-50 border border-slate-200 rounded-md text-slate-600">
+                                <label className="text-[10px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-1">Elevation Range</label>
+                                <div className="h-10 px-3 flex items-center text-sm font-bold bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-600 dark:text-slate-400">
                                     {selectedComp.startElev} → {selectedComp.endElev} {dynamicProps?.verification_depth_unit || 'm'}
                                 </div>
                             </div>
@@ -532,13 +555,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
                             transition={{ duration: 0.3 }}
-                            className="p-2 border-2 border-slate-200 bg-slate-50/50 rounded-lg space-y-2"
+                            className="p-2 border-2 border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 rounded-lg space-y-2"
                         >
-                            <div className="border-b border-slate-200 pb-2 space-y-3">
-                                <div className="text-[10px] font-black uppercase text-slate-800 tracking-widest">Inspection Specification</div>
+                            <div className="border-b border-slate-200 dark:border-slate-800 pb-2 space-y-3">
+                                <div className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-400 tracking-widest">Inspection Specification</div>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="space-y-1">
-                                        <span className="text-[9px] font-black text-slate-800 uppercase">Insp. Date</span>
+                                        <span className="text-[9px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Date</span>
                                         {renderInspectionField({ 
                                             name: 'inspection_date', 
                                             label: 'Date', 
@@ -546,7 +569,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         }, 'primary')}
                                     </div>
                                     <div className="space-y-1">
-                                        <span className="text-[9px] font-black text-slate-800 uppercase">Insp. Time</span>
+                                        <span className="text-[9px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Time</span>
                                         {renderInspectionField({ 
                                             name: 'inspection_time', 
                                             label: 'Time', 
@@ -554,7 +577,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         }, 'primary')}
                                     </div>
                                     <div className="space-y-1">
-                                        <span className="text-[9px] font-black text-slate-800 uppercase">Counter Override</span>
+                                        <span className="text-[9px] font-black text-slate-800 dark:text-slate-400 uppercase">Counter Override</span>
                                         {renderInspectionField({ 
                                             name: 'tape_count_no', 
                                             label: `Live: ${formatTime(vidTimer)}`, 
@@ -709,10 +732,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <motion.div
                                                 initial={{ opacity: 0, y: 5 }}
                                                 animate={{ opacity: 1, y: 0 }}
-                                                className="col-span-2 border-2 border-teal-200 bg-gradient-to-br from-teal-50/60 to-white rounded-xl p-2 space-y-2 shadow-sm"
+                                                className="col-span-2 border-2 border-teal-200/50 dark:border-teal-800/60 bg-teal-50/30 dark:bg-teal-900/10 rounded-xl p-2 space-y-2 shadow-sm"
                                             >
                                                 {/* Group Header */}
-                                                <div className="flex items-center justify-between border-b border-teal-200 pb-1.5">
+                                                <div className="flex items-center justify-between border-b border-teal-200 dark:border-teal-800 pb-1.5">
                                                      <div className="flex items-center gap-2">
                                                          <div className="w-6 h-6 bg-teal-600 rounded-lg flex items-center justify-center">
                                                              <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -735,7 +758,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                      </div>
                                                      {activeMGIProfile && (
                                                          <div className="flex flex-col items-end">
-                                                            <span className="text-[10px] font-black text-teal-600 bg-teal-100/50 px-2 py-0.5 rounded border border-teal-200">
+                                                            <span className="text-[10px] font-black text-teal-600 dark:text-teal-400 bg-teal-100/50 dark:bg-teal-900/30 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800">
                                                                 MAX: {resolveApplicableMax()?.toFixed(1) ?? '—'}mm
                                                             </span>
                                                          </div>
@@ -743,9 +766,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 </div>
 
                                                 {profileField && !activeMGIProfile && (
-                                                    <div className="flex items-center gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
-                                                        <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                                                        <span className="text-[10px] font-bold text-amber-700">No active MGI Profile found. Configure one in Settings → MGI Profiler.</span>
+                                                    <div className="flex items-center gap-2 p-2.5 bg-amber-50/50 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-800/40 rounded-lg">
+                                                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                                                        <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300">No active MGI Profile found. Configure one in Settings → MGI Profiler.</span>
                                                     </div>
                                                 )}
 
@@ -762,7 +785,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 {/* Hard Thickness Row */}
                                                 {hardFields.length > 0 && (
                                                     <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center">
-                                                        <span className="text-[10px] font-black text-rose-700 uppercase tracking-wider bg-rose-50 border border-rose-200 rounded-md px-2 py-1.5 text-center">Hard</span>
+                                                        <span className="text-[10px] font-black text-rose-700 dark:text-rose-400 uppercase tracking-wider bg-rose-50/50 dark:bg-rose-900/30 border border-rose-200/50 dark:border-rose-800/40 rounded-md px-2 py-1.5 text-center">Hard</span>
                                                         {hardFields.map((p: any) => (
                                                             <div key={p.name}>
                                                                 {renderInspectionField(p, 'primary')}
@@ -774,7 +797,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 {/* Soft Thickness Row */}
                                                 {softFields.length > 0 && (
                                                     <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center">
-                                                        <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5 text-center">Soft</span>
+                                                        <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider bg-emerald-50/50 dark:bg-emerald-900/30 border border-emerald-200/50 dark:border-emerald-800/40 rounded-md px-2 py-1.5 text-center">Soft</span>
                                                         {softFields.map((p: any) => (
                                                             <div key={p.name}>
                                                                 {renderInspectionField(p, 'primary')}
@@ -785,7 +808,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                                                 {/* Unit indicator */}
                                                 <div className="text-right">
-                                                    <span className="text-[9px] font-bold text-slate-400 italic">All values in mm</span>
+                                                    <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 italic">All values in mm</span>
                                                 </div>
                                             </motion.div>
                                         )}
@@ -794,13 +817,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <motion.div
                                                 initial={{ opacity: 0, y: 5 }}
                                                 animate={{ opacity: 1, y: 0 }}
-                                                className="col-span-2 border-2 border-blue-200 bg-gradient-to-br from-blue-50/60 to-white rounded-xl p-2 space-y-2 shadow-sm mb-2"
+                                                className="col-span-2 border-2 border-blue-200/50 dark:border-blue-800/60 bg-blue-50/30 dark:bg-blue-900/10 rounded-xl p-2 space-y-2 shadow-sm mb-2"
                                             >
-                                                <div className="flex items-center gap-2 border-b border-blue-200 pb-1.5">
-                                                     <div className="w-6 h-6 bg-blue-600 rounded-lg flex items-center justify-center">
+                                                <div className="flex items-center gap-2 border-b border-blue-200 dark:border-blue-800 pb-1.5">
+                                                     <div className="w-6 h-6 bg-blue-600 dark:bg-blue-700 rounded-lg flex items-center justify-center">
                                                          <Search className="w-3.5 h-3.5 text-white" />
                                                      </div>
-                                                     <span className="text-[11px] font-black text-blue-800 uppercase tracking-widest leading-none">UT Thickness Readings</span>
+                                                     <span className="text-[11px] font-black text-blue-800 dark:text-blue-300 uppercase tracking-widest leading-none">UT Thickness Readings</span>
                                                 </div>
 
                                                 <div className="grid grid-cols-4 gap-3">
@@ -813,10 +836,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 </div>
 
                                                 {utFields.find((f: any) => f.name === 'nominal_thickness') && (
-                                                    <div className="pt-2 border-t border-blue-100/50">
+                                                    <div className="pt-2 border-t border-blue-100/50 dark:border-blue-900/30">
                                                         <div className="grid grid-cols-2 gap-4">
                                                             <div className="space-y-1">
-                                                                <label className="text-[9px] font-black text-blue-600 uppercase tracking-wider">Nominal Thickness</label>
+                                                                <label className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-wider">Nominal Thickness</label>
                                                                 {renderInspectionField(utFields.find((f: any) => f.name === 'nominal_thickness'), 'primary')}
                                                             </div>
                                                         </div>
@@ -840,8 +863,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             return (
                                                 <div className="space-y-4">
                                                     {circFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-3 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-3 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
                                                                 Circumference
                                                             </label>
                                                             <div className="grid grid-cols-3 gap-3">
@@ -938,8 +961,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             return (
                                                 <div className="space-y-4">
                                                     {mpiSetupFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
                                                                 MPI Equipment & Setup
                                                             </label>
                                                             <div className="grid grid-cols-3 gap-2">
@@ -956,8 +979,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {thicknessFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
                                                                 Thickness Readings (Brace & Chord)
                                                             </label>
                                                             <div className="grid grid-cols-4 gap-2">
@@ -974,8 +997,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {cpFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
                                                                 CP Readings
                                                             </label>
                                                             <div className="grid grid-cols-4 gap-2">
@@ -992,8 +1015,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {locationFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
                                                                 Toe & Weld Descriptions
                                                             </label>
                                                             <div className="grid grid-cols-4 gap-2">
@@ -1039,8 +1062,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             return (
                                                 <div className="space-y-4">
                                                     {locationFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5 text-blue-600">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5 text-blue-600 dark:text-blue-400">
                                                                 Location
                                                             </label>
                                                             <div className="grid grid-cols-2 gap-3">
@@ -1057,13 +1080,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {itemDetailsFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5 text-indigo-600">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5 text-indigo-600 dark:text-indigo-400">
                                                                 Item Details
                                                             </label>
                                                             <div className="grid grid-cols-3 gap-3">
                                                                 {itemDetailsFields.map((p: any) => (
-                                                                    <div key={p.name} className={p.name === 'category' ? 'col-span-3 border-b border-slate-50 pb-2 mb-1' : 'space-y-1'}>
+                                                                    <div key={p.name} className={p.name === 'category' ? 'col-span-3 border-b border-slate-50 dark:border-slate-800 pb-2 mb-1' : 'space-y-1'}>
                                                                         <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                                                                             {p.label || p.name}
                                                                         </label>
@@ -1075,8 +1098,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {gridFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5 text-emerald-600">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5 text-emerald-600 dark:text-emerald-400">
                                                                 Grid & Offset
                                                             </label>
                                                             <div className="grid grid-cols-4 gap-3">
@@ -1144,8 +1167,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {cpFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
                                                                 CP Readings
                                                             </label>
                                                             <div className="grid grid-cols-3 gap-2">
@@ -1162,8 +1185,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {pittingFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
                                                                 Pitting
                                                             </label>
                                                             <div className="grid grid-cols-3 gap-2">
@@ -1180,8 +1203,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {circFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 bg-white rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">
+                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
+                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
                                                                 Circumference
                                                             </label>
                                                             <div className="grid grid-cols-3 gap-2">
@@ -1236,8 +1259,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         </motion.div>
                     </AnimatePresence>
 
-                    <div className="space-y-2 p-3 border-2 border-slate-200 rounded-lg bg-white shadow-sm animate-in fade-in slide-in-from-top-2">
-                        <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 pb-1.5">Inspection Result</label>
+                    <div className="space-y-2 p-3 border-2 border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950 shadow-sm animate-in fade-in slide-in-from-top-2">
+                        <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">Inspection Result</label>
                         <div className="grid grid-cols-4 gap-2">
                             <Button
                                 variant={findingType === 'Complete' ? 'default' : 'outline'}
@@ -1253,7 +1276,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     }
                                     setFindingType('Complete');
                                 }}
-                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Complete' ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-green-50'}`}
+                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Complete' ? 'bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-green-50 dark:hover:bg-green-900/20'}`}
                             >
                                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Complete
                             </Button>
@@ -1264,7 +1287,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     setFindingType('Finding');
                                     setIsManualOverride(true);
                                 }}
-                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Finding' ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-blue-50'}`}
+                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Finding' ? 'bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
                             >
                                 <FileText className="w-3.5 h-3.5 mr-1" /> Finding
                             </Button>
@@ -1275,7 +1298,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     setFindingType('Anomaly');
                                     setIsManualOverride(true);
                                 }}
-                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Anomaly' ? 'bg-red-600 hover:bg-red-700 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-red-50'}`}
+                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Anomaly' ? 'bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20'}`}
                             >
                                 <AlertCircle className="w-3.5 h-3.5 mr-1" /> Anomaly
                             </Button>
@@ -1292,7 +1315,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     setFindingType('Incomplete');
                                     setIsManualOverride(true);
                                 }}
-                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Incomplete' ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md' : 'text-slate-600 border-slate-300 hover:bg-amber-50'}`}
+                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Incomplete' ? 'bg-amber-500 dark:bg-amber-600 hover:bg-amber-600 dark:hover:bg-amber-700 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-900/20'}`}
                             >
                                 <Clock className="w-3.5 h-3.5 mr-1" /> Incomplete
                             </Button>
@@ -1304,8 +1327,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
                         const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
                         return (
-                            <div className={`mt-3 p-3 rounded-lg border-2 space-y-3 animate-in fade-in slide-in-from-top-2 ${isAnomaly ? 'border-red-200 bg-red-50/30' : 'border-blue-200 bg-blue-50/30'}`}>
-                                <div className={`text-[10px] font-black uppercase tracking-widest border-b pb-2 ${isAnomaly ? 'text-red-700 border-red-200' : 'text-blue-700 border-blue-200'}`}>
+                            <div className={`mt-3 p-3 rounded-lg border-2 space-y-3 animate-in fade-in slide-in-from-top-2 ${isAnomaly ? 'border-red-200 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/10' : 'border-blue-200 dark:border-blue-900/30 bg-blue-50/30 dark:bg-blue-900/10'}`}>
+                                <div className={`text-[10px] font-black uppercase tracking-widest border-b pb-2 ${isAnomaly ? 'text-red-700 dark:text-red-400 border-red-200 dark:border-red-800' : 'text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'}`}>
                                     {isAnomaly ? '⚠ Anomaly / Defect Details' : '📋 Finding Details'}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
@@ -1314,7 +1337,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         <select
                                             value={anomalyData.defectCode}
                                             onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, defectCode: e.target.value }))}
-                                            className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                            className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-semibold dark:text-slate-200 ${ringClass}`}
                                         >
                                             <option value="">Select Code</option>
                                             {defectCodes.map(c => (
@@ -1327,7 +1350,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         <select
                                             value={anomalyData.defectType}
                                             onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, defectType: e.target.value }))}
-                                            className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                            className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-semibold dark:text-slate-200 ${ringClass}`}
                                         >
                                             <option value="">Select Type</option>
                                             {availableDefectTypes.map(t => (
@@ -1340,7 +1363,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         <select
                                             value={anomalyData.priority}
                                             onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, priority: e.target.value }))}
-                                            className={`flex h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                                            className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-semibold dark:text-slate-200 ${ringClass}`}
                                         >
                                             <option value="">Select Priority</option>
                                             {priorities.map(p => (
@@ -1356,7 +1379,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 readOnly
                                                 value={anomalyData.referenceNo}
                                                 placeholder="Auto-generated on Save..."
-                                                className={`flex h-9 w-full rounded-md border border-slate-200 bg-slate-50/50 px-2.5 text-xs font-mono font-bold text-slate-500 cursor-not-allowed`}
+                                                className={`flex h-9 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 px-2.5 text-xs font-mono font-bold text-slate-500 dark:text-slate-400 cursor-not-allowed`}
                                             />
                                         </div>
                                     </div>
@@ -1366,23 +1389,23 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             value={anomalyData.recommendedAction}
                                             onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, recommendedAction: e.target.value }))}
                                             placeholder="Enter recommendation for this defect/finding..."
-                                            className={`w-full min-h-[60px] rounded-md border border-slate-300 bg-white p-2 text-xs font-semibold focus:outline-none focus:ring-2 ${ringClass}`}
+                                            className={`w-full min-h-[60px] rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 p-2 text-xs font-semibold dark:text-slate-200 focus:outline-none focus:ring-2 ${ringClass}`}
                                         />
                                     </div>
                                 </div>
 
 
 
-                                <div className="p-3 border border-green-100 bg-green-50/80 rounded-lg space-y-3">
+                                <div className="p-3 border border-green-100 dark:border-green-900/30 bg-green-50/80 dark:bg-green-900/10 rounded-lg space-y-3">
                                     <div className="flex items-center gap-2">
                                         <input
                                             type="checkbox"
                                             id="rectifyCheck"
                                             checked={anomalyData.rectify}
                                             onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, rectify: e.target.checked }))}
-                                            className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-green-300 cursor-pointer"
+                                            className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-green-300 dark:border-green-800 cursor-pointer"
                                         />
-                                        <label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800 cursor-pointer">Rectify {categoryLabel}</label>
+                                        <label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800 dark:text-green-400 cursor-pointer">Rectify {categoryLabel}</label>
                                     </div>
                                     {anomalyData.rectify && (
                                         <div className="space-y-3 animate-in fade-in zoom-in-95">
@@ -1392,7 +1415,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     type="date"
                                                     value={anomalyData.rectifiedDate}
                                                     onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, rectifiedDate: e.target.value }))}
-                                                    className="h-8 text-xs bg-white border-green-200"
+                                                    className="h-8 text-xs bg-white dark:bg-slate-950 border-green-200 dark:border-green-900/30"
                                                 />
                                             </div>
                                             <div className="space-y-1">
@@ -1401,7 +1424,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     value={anomalyData.rectifiedRemarks}
                                                     onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, rectifiedRemarks: e.target.value }))}
                                                     placeholder="How was it rectified?"
-                                                    className="w-full min-h-[50px] rounded border border-green-200 p-2 text-xs bg-white focus:ring-green-500"
+                                                    className="w-full min-h-[50px] rounded border border-green-200 dark:border-green-900/30 p-2 text-xs bg-white dark:bg-slate-950 dark:text-slate-200 focus:ring-green-500"
                                                 ></textarea>
                                             </div>
                                         </div>
@@ -1418,7 +1441,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                 value={incompleteReason}
                                 onChange={(e) => setIncompleteReason(e.target.value)}
                                 placeholder="e.g. Visibility issues, limited access, dive time limit..."
-                                className="w-full min-h-[80px] rounded border border-amber-200 p-2 text-xs bg-amber-50/30 focus:ring-amber-500"
+                                className="w-full min-h-[80px] rounded border border-amber-200 dark:border-amber-900/30 p-2 text-xs bg-amber-50/30 dark:bg-amber-900/10 dark:text-slate-200 focus:ring-amber-500"
                             ></textarea>
                         </div>
                     )}
@@ -1445,7 +1468,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             value={recordNotes} 
                             onChange={(e) => setRecordNotes(e.target.value)} 
                             placeholder="Observation specifics, dimensions, characteristics..." 
-                            className="w-full min-h-[80px] rounded-lg border border-slate-300 p-2 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50 shadow-inner"
+                            className="w-full min-h-[80px] rounded-lg border border-slate-300 dark:border-slate-700 p-2 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50 dark:bg-slate-950/50 dark:text-slate-200 shadow-inner"
                         ></textarea>
                     </div>
 
@@ -1458,7 +1481,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                 <Button 
                                     variant="outline" 
                                     size="sm" 
-                                    className="h-7 text-[10px] font-bold border-slate-300 hover:bg-slate-100"
+                                    className="h-7 text-[10px] font-bold border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                                     onClick={() => {
                                         const snaps = recordedFiles.filter(f => f.type === 'photo');
                                         if (snaps.length > 0) {
@@ -1473,7 +1496,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                 <Button 
                                     variant="outline" 
                                     size="sm" 
-                                    className="h-7 text-[10px] font-bold border-slate-300 hover:bg-slate-100"
+                                    className="h-7 text-[10px] font-bold border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                                     onClick={() => {
                                         const input = document.createElement('input');
                                         input.type = 'file';
@@ -1510,17 +1533,17 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         </div>
 
                         {pendingAttachments.length > 0 && (
-                            <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-1 bg-slate-50/50 rounded-lg border border-slate-100">
+                            <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-1 bg-slate-50/50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
                                 {pendingAttachments.map(att => (
-                                    <div key={att.id} className="relative group bg-white border border-slate-200 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 transition-all">
+                                    <div key={att.id} className="relative group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 dark:hover:border-blue-700 transition-all">
                                         <div 
-                                            className="w-12 h-12 bg-slate-100 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                                            className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                                             onClick={() => setEditingAttachment(att)}
                                         >
                                             {att.previewUrl ? (
                                                 <img src={att.previewUrl} className="w-full h-full object-cover" />
                                             ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-slate-200">
+                                                <div className="w-full h-full flex items-center justify-center bg-slate-200 dark:bg-slate-800">
                                                     {att.type === 'VIDEO' ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}
                                                 </div>
                                             )}
@@ -1529,7 +1552,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <Input 
                                                 value={att.title} 
                                                 onChange={(e) => setPendingAttachments((prev: any[]) => prev.map(a => a.id === att.id ? { ...a, title: e.target.value } : a))}
-                                                className="h-5 text-[10px] font-black border-none bg-slate-50/50 rounded-sm px-1 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-800"
+                                                className="h-5 text-[10px] font-black border-none bg-slate-50/50 dark:bg-slate-950/50 rounded-sm px-1 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-800 dark:text-slate-200"
                                                 placeholder="Title..."
                                             />
                                             <Input 
@@ -1541,7 +1564,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         </div>
                                         <button 
                                             onClick={() => setPendingAttachments((prev: any[]) => prev.filter(a => a.id !== att.id))}
-                                            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                                            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-sm"
                                         >
                                             <X className="w-3 h-3" />
                                         </button>
@@ -1551,9 +1574,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         )}
                         
                         {pendingAttachments.length === 0 && (
-                            <div className="py-6 border border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center bg-slate-50 opacity-60">
-                                <Paperclip className="w-6 h-6 text-slate-300 mb-1" />
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No Attachments Picked</span>
+                            <div className="py-6 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950/50 opacity-60">
+                                <Paperclip className="w-6 h-6 text-slate-300 dark:text-slate-700 mb-1" />
+                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">No Attachments Picked</span>
                             </div>
                         )}
                     </div>
@@ -1561,7 +1584,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             </div>
         </ScrollArea>
 
-            <div className="p-3 border-t border-slate-100 bg-white shrink-0">
+            <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0">
                 {(() => {
                     const isDepActive = !!activeDep && activeDep.raw?.status !== 'COMPLETED';
                     const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
@@ -1578,12 +1601,12 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     return (
                         <div className="w-full">
                             {!canCommit && !isEditing && (
-                                <div className="mb-2 p-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-semibold flex items-start gap-2 shadow-sm">
+                                <div className="mb-2 p-2 rounded-lg border border-amber-200 dark:border-amber-900/30 bg-amber-50 dark:bg-amber-900/10 text-amber-800 dark:text-amber-400 text-[10px] font-semibold flex items-start gap-2 shadow-sm">
                                     <span className="text-amber-500 text-sm leading-none mt-0.5">⚠</span>
                                     <div>
                                         <span className="font-black uppercase text-[9px] tracking-wider block mb-0.5">Checklist incomplete</span>
                                         {issues.map((issue, i) => (
-                                            <span key={i} className="block text-amber-700">• {issue}</span>
+                                            <span key={i} className="block text-amber-700 dark:text-amber-500">• {issue}</span>
                                         ))}
                                         <span className="block mt-1 text-[9px] text-amber-500 italic">Enable <b>Manual Entry</b> mode in the header to bypass.</span>
                                     </div>

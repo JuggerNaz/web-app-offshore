@@ -192,6 +192,26 @@
                 }
             ]
         },
+        "fmd_density_rdg_additional": {
+            "name": "fmd_density_rdg_additional",
+            "label": "FMD Additonal Readings",
+            "type": "repeater",
+            "subFields": [
+                {
+                    "name": "test_point_location",
+                    "label": "Test Point Location",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "density_value",
+                    "label": "Density Value",
+                    "type": "number",
+                    "unitCategory": "DENSITY",
+                    "required": false
+                }
+            ]
+        },
         "ut_readings_additional": {
             "name": "ut_readings_additional",
             "label": "UT Additional Readings",
@@ -2412,6 +2432,12 @@
                     "required": true
                 },
                 {
+                    "name": "test_point_location",
+                    "label": "Test Point Location",
+                    "type": "text",
+                    "required": true
+                },
+                {
                     "name": "density_value",
                     "label": "Density Value",
                     "type": "number",
@@ -2419,10 +2445,7 @@
                     "required": false
                 },
                 {
-                    "name": "test_point_location",
-                    "label": "Test Point Location",
-                    "type": "text",
-                    "required": true
+                    "$ref": "fmd_density_rdg_additional"
                 }
             ]
         },

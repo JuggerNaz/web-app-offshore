@@ -1049,13 +1049,13 @@ export function SeabedSurveyGuiInline({
     if (!open) return null;
 
     return (
-        <Card className="h-full w-full flex flex-col p-0 overflow-hidden shadow-lg border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-900 animate-in slide-in-from-right-8 duration-300">
-            <div className="px-6 py-4 border-b bg-white dark:bg-slate-950 flex items-center justify-between">
-                <h2 className="text-xl font-bold">Seabed Survey Multi-Drop GUI</h2>
+        <Card className="h-full w-full flex flex-col p-0 overflow-hidden shadow-2xl border-2 border-blue-200 dark:border-slate-500 bg-white dark:bg-slate-950 animate-in slide-in-from-right-8 duration-300">
+            <div className="px-6 py-4 border-b dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur-md flex items-center justify-between">
+                <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Seabed Survey Multi-Drop GUI</h2>
                 <div className="flex items-center gap-4">
                     {/* Comparison Selector */}
-                    <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-md shadow-sm">
-                        <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-1">
+                    <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-md shadow-sm">
+                        <span className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                             Compare:
                         </span>
@@ -1067,10 +1067,10 @@ export function SeabedSurveyGuiInline({
                                     fetchComparisonDebris(v);
                                 }}
                             >
-                                <SelectTrigger className="h-7 w-56 text-[10px] bg-white border-amber-200 focus:ring-amber-500">
+                                <SelectTrigger className="h-7 w-56 text-[10px] bg-white dark:bg-slate-800 border-amber-200 dark:border-amber-800 focus:ring-amber-500 dark:text-slate-100">
                                     <SelectValue placeholder="Select Previous Survey" />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="dark:bg-slate-900 dark:border-slate-700">
                                     <SelectItem value="none">No Comparison</SelectItem>
                                     {availableComparisons.map(c => (
                                         <SelectItem key={c.key} value={c.key}>{c.name}</SelectItem>
@@ -1078,32 +1078,32 @@ export function SeabedSurveyGuiInline({
                                 </SelectContent>
                             </Select>
                         ) : (
-                            <span className="text-[10px] font-bold text-amber-600/60 italic px-2">No historical survey data found</span>
+                            <span className="text-[10px] font-bold text-amber-600/60 dark:text-amber-400/40 italic px-2">No historical survey data found</span>
                         )}
                     </div>
 
-                    <div className="flex items-center rounded-md border border-slate-200 bg-slate-50 text-sm">
-                        <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}>Prev Range</Button>
-                        <div className="px-3 font-bold text-slate-600 border-x border-slate-200">
+                    <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm">
+                        <Button variant="ghost" size="sm" className="dark:text-slate-300 dark:hover:bg-slate-700" onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}>Prev Range</Button>
+                        <div className="px-3 font-bold text-slate-600 dark:text-slate-100 border-x border-slate-200 dark:border-slate-700">
                             Page {currentPage + 1}
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => p + 1)}>Next Range</Button>
+                        <Button variant="ghost" size="sm" className="dark:text-slate-300 dark:hover:bg-slate-700" onClick={() => setCurrentPage(p => p + 1)}>Next Range</Button>
                     </div>
                     <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
                 </div>
             </div>
             <div className="flex-1 flex overflow-hidden">
                 {/* Items List Sidebar (Left) */}
-                <div className="w-72 bg-slate-50 border-r border-slate-200 flex flex-col z-10 shadow-[2px_0_10px_rgba(0,0,0,0.05)]">
-                    <div className="px-4 py-3 border-b border-slate-200 bg-white font-bold text-sm text-slate-800 flex justify-between items-center">
+                <div className="w-72 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col z-10 shadow-xl">
+                    <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-black text-sm text-slate-800 dark:text-white uppercase tracking-tight flex justify-between items-center">
                         <span className="flex items-center gap-2">
                             Items Registered
-                            <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-black">{itemsForCurrentPage.length}</span>
+                            <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full text-[10px] font-black">{itemsForCurrentPage.length}</span>
                         </span>
                     </div>
                     {/* Filter Options */}
-                    <div className="px-2 py-2 border-b border-slate-200 bg-slate-50/80 flex flex-col gap-1.5">
-                        <div className="px-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Filter by Type:</div>
+                    <div className="px-2 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 flex flex-col gap-1.5">
+                        <div className="px-2 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Filter by Type:</div>
                         <div className="flex gap-1 overflow-x-auto no-scrollbar scrollbar-hide pb-0.5">
                             {['All', 'Debris', 'Gas Seepage', 'Crater'].map(t => (
                                 <Button 
@@ -1113,7 +1113,7 @@ export function SeabedSurveyGuiInline({
                                     className={`h-7 px-2.5 text-[10px] uppercase font-black tracking-wider transition-all ${
                                         typeFilter === t 
                                             ? 'bg-blue-600 text-white shadow-md' 
-                                            : 'text-slate-500 hover:bg-slate-200'
+                                            : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
                                     }`}
                                     onClick={() => setTypeFilter(t)}
                                 >
@@ -1123,50 +1123,49 @@ export function SeabedSurveyGuiInline({
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-                        {itemsForCurrentPage.length === 0 ? (
-                            <div className="text-center p-4 text-xs text-slate-500 bg-white rounded border border-slate-200 border-dashed">No items plotted</div>
-                        ) : (
-                            itemsForCurrentPage.map(item => (
-                                <div key={item.id} 
-                                     onClick={() => { setActiveId(item.id); setIsAdding(false); }}
-                                     className={`p-2 rounded border text-xs cursor-pointer transition-all hover:-translate-y-[1px] ${activeId === item.id ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-300' : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'}`}>
-                                    <div className="flex items-center gap-1.5 font-bold text-slate-700 mb-1">
-                                        <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm shrink-0 ${
-                                            item.type === 'Gas Seepage' 
-                                                ? 'bg-green-600' 
-                                                : item.type === 'Crater' 
-                                                    ? 'bg-purple-600' 
-                                                    : item.isMetallic 
-                                                        ? 'bg-blue-700' 
-                                                        : 'bg-orange-600'
-                                        }`}>
-                                            {item.label}
-                                        </div>
-                                        <span className="truncate">{item.type || 'Debris'}</span>
-                                        <span className="ml-auto text-[9px] font-bold font-mono bg-slate-200/60 text-slate-600 px-1 rounded border border-slate-200">{item.distance}m</span>
-                                    </div>
-                                    
-                                    {item.description && (
-                                        <div className="text-slate-600 text-[10px] leading-tight mb-1.5 line-clamp-2 px-0.5">
-                                            {item.description}
-                                        </div>
-                                    )}
-
-                                    <div className="flex justify-between items-center pt-1 mt-0.5 border-t border-slate-100">
-                                        <span className="text-[9px] font-mono text-slate-400 truncate pr-2" title={item.qid}>{item.qid}</span>
-                                        <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 shrink-0">
-                                            <span className="w-1 h-1 rounded-full bg-slate-400 block"></span> 
-                                            {item.face}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))
+                        {itemsForCurrentPage.length === 0 && (
+                            <div className="text-center p-4 text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800 border-dashed">No items plotted</div>
                         )}
+                        {itemsForCurrentPage.map(item => (
+                            <div key={item.id} 
+                                 onClick={() => { setActiveId(item.id); setIsAdding(false); }}
+                                 className={`p-2 rounded border-2 text-xs cursor-pointer transition-all hover:-translate-y-[1px] ${activeId === item.id ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 dark:border-blue-500 shadow-lg ring-1 ring-blue-300 dark:ring-blue-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-sm'}`}>
+                                <div className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-white mb-1">
+                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm shrink-0 ${
+                                        item.type === 'Gas Seepage' 
+                                            ? 'bg-green-600' 
+                                            : item.type === 'Crater' 
+                                                ? 'bg-purple-600' 
+                                                : item.isMetallic 
+                                                    ? 'bg-blue-700' 
+                                                    : 'bg-orange-600'
+                                    }`}>
+                                        {item.label}
+                                    </div>
+                                    <span className="truncate">{item.type || 'Debris'}</span>
+                                    <span className="ml-auto text-[9px] font-bold font-mono bg-slate-200/60 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 px-1 rounded border border-slate-200 dark:border-slate-700">{item.distance}m</span>
+                                </div>
+                                
+                                {item.description && (
+                                    <div className="text-slate-600 dark:text-slate-400 text-[10px] leading-tight mb-1.5 line-clamp-2 px-0.5">
+                                        {item.description}
+                                    </div>
+                                )}
+
+                                <div className="flex justify-between items-center pt-1 mt-0.5 border-t border-slate-100 dark:border-slate-800">
+                                    <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500 truncate pr-2" title={item.qid}>{item.qid}</span>
+                                    <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 shrink-0">
+                                        <span className="w-1 h-1 rounded-full bg-slate-400 dark:bg-slate-500 block"></span> 
+                                        {item.face}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
                 {/* Plotter Area */}
-                <div className="flex-1 bg-slate-200/50 p-6 flex flex-col items-center justify-center relative shadow-inner"
+                <div className="flex-1 bg-slate-200/50 dark:bg-slate-950 p-6 flex flex-col items-center justify-center relative shadow-inner"
                      onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
                      onMouseLeave={() => { setMousePos(null); setHoverInfo(null); }}
                 >
@@ -1188,14 +1187,14 @@ export function SeabedSurveyGuiInline({
                                 highlightQid=""
                             />
                             {!isAdding && !activeId && (
-                                <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-lg shadow-sm font-bold text-slate-700 text-sm border-l-4 border-blue-500">
+                                <div className="absolute top-4 left-4 bg-white/90 dark:bg-slate-800/90 backdrop-blur px-4 py-2 rounded-lg shadow-sm font-bold text-slate-700 dark:text-slate-200 text-sm border-l-4 border-blue-500">
                                     Click anywhere on the grid to drop a new debris marker.
                                 </div>
                             )}
 
                             {isSyncing && (
-                                <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] flex flex-col items-center justify-center z-50 rounded-lg animate-in fade-in duration-300">
-                                    <div className="bg-white/90 p-4 rounded-xl shadow-xl flex flex-col items-center gap-3 border border-blue-100">
+                                <div className="absolute inset-0 bg-slate-900/10 dark:bg-slate-950/40 backdrop-blur-[2px] flex flex-col items-center justify-center z-50 rounded-lg animate-in fade-in duration-300">
+                                    <div className="bg-white/90 dark:bg-slate-900/90 p-4 rounded-xl shadow-xl flex flex-col items-center gap-3 border border-blue-100 dark:border-blue-900/30">
                                         <div className="relative">
                                             <div className="absolute inset-0 blur-md bg-blue-400/30 rounded-full animate-pulse" />
                                             <Loader2 className="w-10 h-10 animate-spin text-blue-600 relative" />
@@ -1212,14 +1211,14 @@ export function SeabedSurveyGuiInline({
 
                     {/* Sidebar Form */}
                     {isAdding && newPoint && (
-                        <div className="w-80 bg-white border-l p-6 space-y-6 overflow-y-auto animate-in slide-in-from-right">
+                        <div className="w-80 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 space-y-6 overflow-y-auto animate-in slide-in-from-right">
                             <div>
-                                <h3 className="font-black text-slate-800 uppercase tracking-wider mb-1">New Log Entry</h3>
-                                <p className="text-xs text-slate-500 font-medium">Registering marker at X:{newPoint.x.toFixed(0)}, Y:{newPoint.y.toFixed(0)}</p>
+                                <h3 className="font-black text-slate-800 dark:text-white uppercase tracking-wider mb-1">New Log Entry</h3>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Registering marker at X:{newPoint.x.toFixed(0)}, Y:{newPoint.y.toFixed(0)}</p>
                             </div>
                             
-                            <div className="space-y-4 pt-4 border-t">
-                                <div className="bg-blue-50 py-2 px-3 rounded text-sm text-blue-800 font-bold border border-blue-100 flex flex-col gap-1">
+                            <div className="space-y-4 pt-4 border-t dark:border-slate-800">
+                                <div className="bg-blue-50 dark:bg-blue-900/20 py-2 px-3 rounded text-sm text-blue-800 dark:text-blue-300 font-bold border border-blue-100 dark:border-blue-900/30 flex flex-col gap-1">
                                     <div className="flex justify-between items-center text-xs opacity-70">
                                         <span>Face: {newPoint.geometry.face}</span>
                                         <span>Dist (Face): {newPoint.geometry.distance.toFixed(1)}m</span>
@@ -1228,7 +1227,7 @@ export function SeabedSurveyGuiInline({
                                         <span>Nearest Leg: {newPoint.geometry.nearestLeg}</span>
                                         <span>Dist (Leg): {newPoint.geometry.distToNearestLeg.toFixed(1)}m</span>
                                     </div>
-                                    <div className="flex justify-between items-center border-t border-blue-200/50 pt-1 mt-1">
+                                    <div className="flex justify-between items-center border-t border-blue-200/50 dark:border-blue-800/50 pt-1 mt-1">
                                         <span className="text-xs uppercase tracking-widest font-black opacity-70">Target QID</span>
                                         <span className="font-mono">{generateQid(newPoint.geometry)}</span>
                                     </div>
@@ -1330,9 +1329,10 @@ export function SeabedSurveyGuiInline({
                                         </div>
                                     </div>
                                 )}
-                                <div className="space-y-2 pt-2 border-t border-slate-100">
-                                    <Label className="text-xs text-slate-500 font-bold uppercase">General Description</Label>
+                                <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                    <Label className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase">General Description</Label>
                                     <Input 
+                                        className="dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                                         placeholder="e.g. Scaffolding pipe" 
                                         value={formData.description}
                                         onChange={e => setFormData(p => ({...p, description: e.target.value}))}
@@ -1351,24 +1351,24 @@ export function SeabedSurveyGuiInline({
 
                     {/* Selected Item View */}
                     {activeId && !isAdding && (
-                        <div className="w-80 bg-white border-l p-6 space-y-6 overflow-y-auto animate-in slide-in-from-right">
+                        <div className="w-80 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 space-y-6 overflow-y-auto animate-in slide-in-from-right">
                              {selectedReference ? (
                                  // --- HISTORICAL VIEW ---
                                  <div className="space-y-6">
                                      <div className="flex items-center justify-between">
                                          <div>
                                              <div className="flex items-center gap-2 mb-1">
-                                                 <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">HISTORICAL</Badge>
-                                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ref#{selectedReference.label}</span>
+                                                 <Badge className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 border-amber-200 dark:border-amber-800">HISTORICAL</Badge>
+                                                 <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Ref#{selectedReference.label}</span>
                                              </div>
-                                             <h3 className="font-black text-slate-800 uppercase tracking-wider">{selectedReference.type}</h3>
+                                             <h3 className="font-black text-slate-800 dark:text-white uppercase tracking-wider">{selectedReference.type}</h3>
                                          </div>
                                      </div>
 
-                                     <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-100 space-y-4">
+                                     <div className="bg-amber-50/50 dark:bg-amber-950/20 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30 space-y-4">
                                          <div className="space-y-1">
-                                             <Label className="text-[10px] font-black text-amber-600/60 uppercase tracking-widest">Historical Description</Label>
-                                             <p className="text-sm font-bold text-slate-700 leading-relaxed">
+                                             <Label className="text-[10px] font-black text-amber-600/60 dark:text-amber-400/60 uppercase tracking-widest">Historical Description</Label>
+                                             <p className="text-sm font-bold text-slate-700 dark:text-slate-300 leading-relaxed">
                                                  {selectedReference.description || "No description provided in previous survey."}
                                              </p>
                                          </div>
@@ -1376,33 +1376,33 @@ export function SeabedSurveyGuiInline({
                                          <div className="grid grid-cols-2 gap-4 pt-2">
                                              <div className="space-y-1">
                                                  <Label className="text-[10px] font-bold text-slate-400 uppercase">Material</Label>
-                                                 <p className="text-xs font-bold text-slate-600">{selectedReference.material || 'N/A'}</p>
+                                                 <p className="text-xs font-bold text-slate-600 dark:text-slate-400">{selectedReference.material || 'N/A'}</p>
                                              </div>
                                              <div className="space-y-1">
                                                  <Label className="text-[10px] font-bold text-slate-400 uppercase">Dimensions</Label>
-                                                 <p className="text-xs font-bold text-slate-600">{selectedReference.size || 'N/A'}</p>
+                                                 <p className="text-xs font-bold text-slate-600 dark:text-slate-400">{selectedReference.size || 'N/A'}</p>
                                              </div>
                                          </div>
                                      </div>
 
-                                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-3">
-                                         <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                     <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-100 dark:border-slate-800 space-y-3">
+                                         <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                                              <span>Spatial Context</span>
-                                             <span className="text-slate-300">Historical Sync</span>
+                                             <span className="text-slate-300 dark:text-slate-700">Historical Sync</span>
                                          </div>
                                          <div className="grid grid-cols-2 gap-2">
-                                             <div className="bg-white p-2 rounded border border-slate-200 flex flex-col gap-0.5">
-                                                 <span className="text-[9px] text-slate-400 uppercase font-black">X-Coord</span>
-                                                 <span className="text-xs font-mono font-bold text-slate-600">{selectedReference.x}</span>
+                                             <div className="bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-800 flex flex-col gap-0.5">
+                                                 <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-black">X-Coord</span>
+                                                 <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300">{selectedReference.x}</span>
                                              </div>
-                                             <div className="bg-white p-2 rounded border border-slate-200 flex flex-col gap-0.5">
-                                                 <span className="text-[9px] text-slate-400 uppercase font-black">Y-Coord</span>
-                                                 <span className="text-xs font-mono font-bold text-slate-600">{selectedReference.y}</span>
+                                             <div className="bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-800 flex flex-col gap-0.5">
+                                                 <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-black">Y-Coord</span>
+                                                 <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300">{selectedReference.y}</span>
                                              </div>
                                          </div>
                                      </div>
 
-                                     <div className="pt-4 border-t border-slate-100">
+                                     <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
                                         <p className="text-[10px] text-slate-400 italic leading-normal mb-4">
                                             This is a read-only record from a previous survey. To update this item, you must drop a new flag in the current live grid.
                                         </p>
@@ -1415,12 +1415,12 @@ export function SeabedSurveyGuiInline({
                                 // --- LIVE EDIT VIEW ---
                                 <>
                                      <div>
-                                        <h3 className="font-black text-slate-800 uppercase tracking-wider mb-1">Marker #{activeItem.label}</h3>
-                                        <p className="text-xs text-slate-500 font-medium">Original QID: {activeItem.qid}</p>
+                                        <h3 className="font-black text-slate-800 dark:text-white uppercase tracking-wider mb-1">Marker #{activeItem.label}</h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Original QID: {activeItem.qid}</p>
                                     </div>
         
-                                    <div className="space-y-4 pt-4 border-t">
-                                        <div className="bg-slate-50 py-2 px-3 rounded text-sm text-slate-600 font-bold border border-slate-100 flex flex-col gap-1">
+                                    <div className="space-y-4 pt-4 border-t dark:border-slate-800">
+                                        <div className="bg-slate-50 dark:bg-slate-950 py-2 px-3 rounded text-sm text-slate-600 dark:text-slate-300 font-bold border border-slate-100 dark:border-slate-800 flex flex-col gap-1">
                                             <div className="flex justify-between items-center text-xs opacity-70">
                                                 <span>Face: {activeItem.face}</span>
                                                 <div className="flex items-center gap-1">
@@ -1431,7 +1431,7 @@ export function SeabedSurveyGuiInline({
                                                 <span>Nearest Leg: {activeItem.nearestLeg}</span>
                                                 <span>Dist (Leg): {activeItem.distToNearestLeg}m</span>
                                             </div>
-                                            <div className="flex justify-between items-center text-xs border-t border-slate-200/50 pt-1 mt-1">
+                                            <div className="flex justify-between items-center text-xs border-t border-slate-200/50 dark:border-slate-800/50 pt-1 mt-1">
                                                 <span>X: {activeItem.x}</span>
                                                 <span>Y: {activeItem.y}</span>
                                             </div>
@@ -1441,13 +1441,13 @@ export function SeabedSurveyGuiInline({
                              ) : null}
 
                              {editFormData && (
-                                <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    <div className="p-3 bg-amber-50 border border-amber-100 rounded text-[10px] text-amber-800 leading-normal">
+                                <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                    <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 rounded text-[10px] text-amber-800 dark:text-amber-400 leading-normal">
                                         <span className="font-bold uppercase block mb-1 flex items-center gap-1">Relocate Marker (Manual)</span>
                                         Update the distance or face below to move this marker to another page or distance range.
                                     </div>
                                     
-                                    <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-100">
+                                    <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
                                         <div className="space-y-2">
                                             <Label className="text-[10px] font-bold">Distance (m)</Label>
                                             <Input 
@@ -1479,7 +1479,7 @@ export function SeabedSurveyGuiInline({
                                         </div>
                                     </div>
 
-                                    <h4 className="text-sm font-bold text-slate-700">Edit Details</h4>
+                                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">Edit Details</h4>
                                     <div className="space-y-2">
                                         <Label className="text-xs">Item Category</Label>
                                         <Select value={editFormData.category} onValueChange={v => setEditFormData((p: any) => ({...p, category: v}))}>
@@ -1495,7 +1495,7 @@ export function SeabedSurveyGuiInline({
                                     <div className="space-y-2">
                                         <Label className="text-xs">Description</Label>
                                         <Input 
-                                            className="h-8 text-xs"
+                                            className="h-8 text-xs dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                                             value={editFormData.description}
                                             onChange={e => setEditFormData((p: any) => ({...p, description: e.target.value}))}
                                         />
@@ -1587,10 +1587,10 @@ export function SeabedSurveyGuiInline({
                                 </div>
                             )}
 
-                            <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
+                            <div className="flex flex-col gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                                 {!selectedReference && (
                                     <Button 
-                                        className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50" 
+                                        className="w-full text-red-600 border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-700 dark:hover:text-red-400 disabled:opacity-50" 
                                         variant="outline" 
                                         onClick={handleDeleteDebris} 
                                         disabled={isSaving}

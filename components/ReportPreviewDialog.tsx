@@ -157,8 +157,8 @@ export function ReportPreviewDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 gap-0">
-                <div className="px-6 py-4 border-b flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+            <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 gap-0 border-none overflow-hidden">
+                <div className="px-6 py-4 border-b dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900">
                     <DialogTitle className="text-lg font-bold flex items-center gap-2">
                         <span className="p-1.5 bg-blue-600 rounded-lg text-white">
                             <FileText className="w-4 h-4" />
@@ -241,7 +241,7 @@ export function ReportPreviewDialog({
                     )}
                 </div>
 
-                <div className="p-4 border-t bg-white dark:bg-slate-950 flex justify-end gap-2">
+                <div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-950 flex justify-end gap-2">
                     <Button variant="outline" onClick={handleOpenNewTab} disabled={!previewUrl}>
                         <Eye className="w-4 h-4 mr-2" /> Open PDF
                     </Button>

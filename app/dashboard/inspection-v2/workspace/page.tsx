@@ -5282,7 +5282,7 @@ function V10PreviewLayout() {
                 <div className="w-[320px] flex flex-col gap-3 shrink-0 overflow-hidden">
 
                     {/* 1. Diver / ROV Log */}
-                    <Card className="flex flex-col border-slate-200 shadow-sm rounded-md shrink-0 mb-2">
+                    <Card className="flex flex-col border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md shrink-0 mb-2 bg-white dark:bg-slate-900/60 backdrop-blur-md">
                         <div className="bg-[#1f2937] text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md">
                             <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DIVE LOG"}</span>
                             <div className="flex items-center gap-2 text-slate-300">
@@ -5293,16 +5293,16 @@ function V10PreviewLayout() {
                                 <button onClick={() => { setIsDiveSetupForNew(false); setIsDiveSetupOpen(true); }} className="p-1 hover:text-white transition" title="Settings"><Settings className="w-4 h-4" /></button>
                             </div>
                         </div>
-                        <div className="p-2.5 bg-white space-y-2 rounded-b-md">
+                        <div className="p-2.5 bg-white dark:bg-slate-900 space-y-2 rounded-b-md">
                             <div className="flex justify-between text-xs px-1">
-                                <div><span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-0.5">Active Selection</span><span className="font-bold text-slate-800 text-xs">{activeDep?.jobNo || "None"}</span></div>
-                                <div className="text-right"><span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-0.5">Time In Water</span><span className="font-mono font-bold text-blue-600 text-xs">{timeInWater}</span></div>
+                                <div><span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold block uppercase tracking-wider mb-0.5">Active Selection</span><span className="font-bold text-slate-800 dark:text-slate-200 text-xs">{activeDep?.jobNo || "None"}</span></div>
+                                <div className="text-right"><span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold block uppercase tracking-wider mb-0.5">Time In Water</span><span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">{timeInWater}</span></div>
                             </div>
 
                             {/* Movement Control */}
-                            <div className="bg-slate-50 border border-slate-100/60 rounded px-2 py-1.5 text-center relative">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Current Movement</span>
-                                <span className="font-black text-slate-900 text-[14px] leading-tight flex items-center justify-center">{currentMovement || "Awaiting Deployment"}</span>
+                            <div className="bg-slate-50 dark:bg-slate-950/80 border border-slate-100/60 dark:border-slate-700 rounded px-2 py-1.5 text-center relative ring-1 ring-white/5">
+                                <span className="text-[9px] font-black text-slate-400 dark:text-slate-300 uppercase tracking-widest block mb-0.5">Current Movement</span>
+                                <span className="font-black text-slate-900 dark:text-white text-[14px] leading-tight flex items-center justify-center drop-shadow-sm">{currentMovement || "Awaiting Deployment"}</span>
                             </div>
 
                             <div className="flex gap-1.5">
@@ -5310,7 +5310,7 @@ function V10PreviewLayout() {
                                     onClick={handleMovementPrev}
                                     disabled={currentMovement === 'Awaiting Deployment' || (inspMethod === 'DIVING' && currentMovement === diveActionsList[0].label)}
                                     variant="outline"
-                                    className="flex-1 h-7 text-[11px] font-bold text-slate-500 border-slate-200 hover:text-slate-700 bg-white shadow-sm"
+                                    className="flex-1 h-7 text-[11px] font-bold text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-700 dark:hover:text-slate-200 bg-white dark:bg-slate-900 shadow-sm"
                                 >
                                     <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Rollback
                                 </Button>
@@ -5427,11 +5427,11 @@ function V10PreviewLayout() {
                 <div className="flex-1 flex flex-col gap-3 min-w-[500px] overflow-hidden">
 
                     {/* 5. Inspection Task Form Handling */}
-                    <Card className="flex flex-col flex-1 border-slate-200 shadow-sm rounded-md bg-white overflow-hidden relative">
+                    <Card className="flex flex-col flex-1 border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden relative">
                         {!selectedComp ? (
                             <div className="flex-1 flex items-center justify-center flex-col text-slate-400 p-10 text-center">
                                 <Activity className="w-12 h-12 mb-4 opacity-30 text-blue-500" />
-                                <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-2">Awaiting Target Selection</h2>
+                                <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">Awaiting Target Selection</h2>
                                 <p className="text-xs max-w-[280px]">Please select a component from the right column (List or 3D view) to review history and begin logging inspection scopes.</p>
                             </div>
                         ) : (
@@ -5439,7 +5439,7 @@ function V10PreviewLayout() {
                                 {!activeSpec ? (
                                     <div className="p-5 flex flex-col items-center justify-center text-center h-full">
                                         <div className="w-full max-w-2xl flex flex-col items-center">
-                                            <div className="text-[11px] font-bold uppercase text-slate-400 tracking-widest mb-4">Select Scope to Inspect ({selectedComp.name})</div>
+                                            <div className="text-[11px] font-bold uppercase text-slate-400 dark:text-slate-500 tracking-widest mb-4">Select Scope to Inspect ({selectedComp.name})</div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
                                                 {selectedComp.tasks && selectedComp.tasks.filter((t: string) => {
                                                     const it = (allInspectionTypes || []).find((type: any) => type.code === t || type.name === t);
@@ -5584,13 +5584,13 @@ function V10PreviewLayout() {
                                                                     rectify: false, rectifiedDate: '', rectifiedRemarks: '', severity: 'Minor', referenceNo: '' });
                                                                 setIsManualOverride(false);
                                                                 setIsUserInteraction(false);
-                                                            }} className={`flex-1 h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${
-                                                                statusColor === 'green' ? 'border-green-200 hover:bg-green-50/50' :
-                                                                statusColor === 'red' ? 'border-red-200 hover:bg-red-50/30' :
-                                                                statusColor === 'orange' ? 'border-orange-200 hover:bg-orange-50/30' :
-                                                                statusColor === 'teal' ? 'border-teal-200 hover:bg-teal-50/30' :
-                                                                statusColor === 'amber' ? 'border-amber-200 hover:bg-amber-50/30' :
-                                                                'border-blue-200 hover:bg-blue-50'
+                                                            }} className={`flex-1 h-14 bg-white dark:bg-slate-900 border font-bold shadow-sm flex justify-between items-center group transition-all ${
+                                                                statusColor === 'green' ? 'border-green-200 dark:border-green-900 hover:bg-green-50/50 dark:hover:bg-green-900/30' :
+                                                                statusColor === 'red' ? 'border-red-200 dark:border-red-900 hover:bg-red-50/30 dark:hover:bg-red-900/20' :
+                                                                statusColor === 'orange' ? 'border-orange-200 dark:border-orange-900 hover:bg-orange-50/30 dark:hover:bg-orange-900/20' :
+                                                                statusColor === 'teal' ? 'border-teal-200 dark:border-teal-900 hover:bg-teal-50/30 dark:hover:bg-teal-900/20' :
+                                                                statusColor === 'amber' ? 'border-amber-200 dark:border-amber-900 hover:bg-amber-50/30 dark:hover:bg-amber-900/20' :
+                                                                'border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-900/40'
                                                             }`}>
                                                                 <div className="flex items-center gap-2.5">
                                                                     {/* Status indicator dot */}
@@ -5809,13 +5809,18 @@ function V10PreviewLayout() {
                                         onChangeTaskClick={() => setShowTaskSelector(true)}
                                         onChangeComponentClick={() => setShowCompSelector(true)}
                                         libOptionsMap={libOptionsMap}
+                                        onDeleteRecord={() => editingRecordId && handleDeleteRecord(editingRecordId)}
+                                        onPrintReport={() => {
+                                            const r = currentRecords.find((rec: any) => rec.insp_id === editingRecordId);
+                                            if (r) handlePrintAnomaly(r);
+                                        }}
                                     />
                                 )}
                             </div>
                         )}
                     </Card>
-                       <Card className={`flex flex-col ${capturedEventsPipWindow ? 'h-[40px]' : 'h-[280px]'} border-slate-200 shadow-sm rounded-md bg-white overflow-hidden shrink-0 transition-all duration-500 ease-in-out`}>
-                        <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
+                       <Card className={`flex flex-col ${capturedEventsPipWindow ? 'h-[40px]' : 'h-[280px]'} border-2 border-slate-200 dark:border-slate-500 shadow-2xl rounded-md bg-white dark:bg-slate-900/60 overflow-hidden shrink-0 transition-all duration-500 ease-in-out`}>
+                        <div className="bg-slate-800 dark:bg-slate-900/80 text-white px-3 py-2 text-[11px] font-black uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0 border-b dark:border-slate-700 backdrop-blur-sm">
                             <div className="flex items-center gap-2">
                                 <span>CAPTURED EVENTS</span>
                                 <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -5933,14 +5938,14 @@ function V10PreviewLayout() {
                         {!capturedEventsPipWindow && (
                             <ScrollArea className="flex-1 w-full relative">
                                 <div className="min-w-full inline-block align-middle overflow-x-auto">
-                                    <table className="w-full text-left text-xs whitespace-nowrap table-auto">
-                                        <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider z-20">
+                                    <table className="w-full text-left text-xs whitespace-nowrap table-auto bg-white dark:bg-slate-950">
+                                        <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 border-b border-slate-200 dark:border-slate-600 font-black text-slate-500 dark:text-white uppercase tracking-wider z-20">
                                             <tr>
                                                 {activeTableColumns.map(col => (
                                                     <th 
                                                         key={col.id} 
                                                         className={`px-3 py-3 transition-colors group ${
-                                                            col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-100' : ''
+                                                            col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800' : ''
                                                         } ${
                                                             col.id === 'cr_date' ? 'w-20' : ''
                                                         } ${
@@ -5978,7 +5983,7 @@ function V10PreviewLayout() {
                                                 return (
                                                     <tr 
                                                         key={r.insp_id} 
-                                                        className="hover:bg-slate-50 group cursor-pointer"
+                                                        className="hover:bg-slate-50 dark:hover:bg-slate-900 group cursor-pointer border-b border-slate-100 dark:border-slate-800/50 last:border-0"
                                                         onDoubleClick={() => handleEditRecord(r)}
                                                     >
                                                         {activeTableColumns.map(col => {
@@ -6067,14 +6072,14 @@ function V10PreviewLayout() {
                                                                     );
                                                                 case 'cr_date':
                                                                     return (
-                                                                        <td key={col.id} className="px-3 py-3 text-slate-600 align-top">
+                                                                        <td key={col.id} className="px-3 py-3 text-slate-600 dark:text-white align-top">
                                                                             <div className="text-sm font-medium">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
                                                                             <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), 'HH:mm') : '-'}</div>
                                                                         </td>
                                                                     );
                                                                 case 'type':
                                                                     return (
-                                                                        <td key={col.id} className="px-3 py-3 font-bold text-slate-800 align-top">
+                                                                        <td key={col.id} className="px-3 py-3 font-bold text-slate-800 dark:text-white align-top">
                                                                             <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
                                                                             <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
                                                                                 {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
@@ -6083,20 +6088,20 @@ function V10PreviewLayout() {
                                                                     );
                                                                 case 'component':
                                                                     return (
-                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-white">
                                                                             <div className="font-bold text-sm">{r.structure_components?.q_id || '-'}</div>
                                                                             <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
                                                                         </td>
                                                                     );
                                                                 case 'elev':
                                                                     return (
-                                                                        <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                                                                        <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-white align-top">
                                                                             {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
                                                                         </td>
                                                                     );
                                                                 case 'anomaly_ref':
                                                                     return (
-                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-white">
                                                                             {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
                                                                                 <div className="flex flex-col gap-1">
                                                                                     <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">{r.insp_anomalies[0].anomaly_ref_no}</span>
@@ -6118,7 +6123,7 @@ function V10PreviewLayout() {
                                                                     );
                                                                 case 'cp_reading':
                                                                     return (
-                                                                        <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                                                                        <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-white align-top">
                                                                             {(() => {
                                                                                 const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp;
                                                                                 return cp ? <span className="font-mono text-xs">{cp}</span> : <span className="text-slate-300">-</span>;
@@ -6127,13 +6132,13 @@ function V10PreviewLayout() {
                                                                     );
                                                                 case 'dive_no':
                                                                     return (
-                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-white">
                                                                             <span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300">-</span>}</span>
                                                                         </td>
                                                                     );
                                                                 case 'tape_no':
                                                                     return (
-                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                                                                        <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-white">
                                                                             <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300">-</span>}</span>
                                                                             {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
                                                                                 <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
@@ -6214,8 +6219,8 @@ function V10PreviewLayout() {
             </div>
 
             {capturedEventsPipWindow && createPortal(
-                <div className="h-screen w-screen flex flex-col bg-white overflow-hidden">
-                    <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
+                <div className="h-screen w-screen flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
+                    <div className="bg-slate-800 dark:bg-slate-950 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0 border-b dark:border-slate-800">
                         <div className="flex items-center gap-2">
                             <span>CAPTURED EVENTS (FLOATING)</span>
                             <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -6341,14 +6346,14 @@ function V10PreviewLayout() {
 
                     <ScrollArea className="flex-1 w-full relative">
                         <div className="min-w-full inline-block align-middle overflow-x-auto">
-                        <table className="w-full text-left text-xs whitespace-nowrap table-auto">
-                            <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider z-20">
+                        <table className="w-full text-left text-xs whitespace-nowrap table-auto bg-white dark:bg-slate-900">
+                            <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 border-b border-slate-200 dark:border-slate-500 font-black text-slate-500 dark:text-white uppercase tracking-wider z-20">
                                 <tr>
                                     {activeTableColumns.map(col => (
                                         <th 
                                             key={col.id} 
                                             className={`px-3 py-3 transition-colors group ${
-                                                col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-100' : ''
+                                                col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800' : ''
                                             } ${
                                                 col.id === 'cr_date' ? 'w-20' : ''
                                             } ${
@@ -6386,7 +6391,7 @@ function V10PreviewLayout() {
                                         return (
                                             <tr 
                                                 key={r.insp_id} 
-                                                className="hover:bg-slate-50 group cursor-pointer"
+                                                className="hover:bg-slate-50 dark:hover:bg-slate-900/50 group cursor-pointer border-b border-slate-100 dark:border-slate-700/50 last:border-0"
                                                 onDoubleClick={() => handleEditRecord(r)}
                                             >
                                                 {activeTableColumns.map(col => {
@@ -6397,7 +6402,7 @@ function V10PreviewLayout() {
                                                                     <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
                                                                         <DropdownMenu>
                                                                             <DropdownMenuTrigger asChild>
-                                                                                <button className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600" title="Report Options">
+                                                                                <button className="p-1.5 px-2 bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300" title="Report Options">
                                                                                     <FileText className="w-3.5 h-3.5" /> Actions
                                                                                 </button>
                                                                             </DropdownMenuTrigger>

@@ -278,8 +278,8 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                 const qidE = `S/BED(${tr}-${br})-${dist}M`.toUpperCase();
                 const qidW = `S/BED(${tl}-${bl})-${dist}M`.toUpperCase();
 
-                const colorActive = "rgba(100, 116, 139, 0.4)";
-                const colorInactive = "rgba(239, 68, 68, 0.15)"; // Light red for unregistered
+                const colorActive = "rgba(148, 163, 184, 0.4)"; // Brightened slate-400 equivalent for grid
+                const colorInactive = "rgba(239, 68, 68, 0.25)"; // Brighter red for unregistered
 
                 const hasN = registeredQids.length === 0 || registeredQids.includes(qidN);
                 const hasS = registeredQids.length === 0 || registeredQids.includes(qidS);
@@ -308,7 +308,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                         key={`grid-${i}`}
                         points={outerPoints.join(' ')}
                         fill="none"
-                        stroke="rgba(100, 116, 139, 0.3)"
+                        stroke="rgba(148, 163, 184, 0.3)"
                         strokeDasharray="4 4"
                         strokeWidth="1"
                     />
@@ -333,19 +333,19 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1.5">
                         <div className="w-2.5 h-2.5 rounded-full bg-blue-700 border border-blue-400/30 shadow-sm" />
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Metallic</span>
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Metallic</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <div className="w-2.5 h-2.5 rounded-full bg-orange-600 border border-orange-400/30 shadow-sm" />
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Non-Metallic</span>
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Non-Metallic</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <div className="w-2.5 h-2.5 rounded-full bg-green-600 border border-green-400/30 shadow-sm" />
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Seepage</span>
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Seepage</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <div className="w-2.5 h-2.5 rounded-full bg-purple-600 border-purple-400/30 shadow-sm" />
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Crater</span>
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Crater</span>
                     </div>
                 </div>
             </div>
@@ -389,7 +389,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
 
                 >
                     {/* Background Compass Labels */}
-                    <g className="text-[10px] fill-slate-500 font-bold pointer-events-none">
+                    <g className="text-[10px] fill-slate-500 dark:fill-slate-200 font-black pointer-events-none uppercase tracking-widest">
                         <text x={CENTER} y={20} textAnchor="middle">NORTH</text>
                         <text x={CENTER} y={VIEW_SIZE - 10} textAnchor="middle">SOUTH</text>
                         <text x={VIEW_SIZE - 35} y={CENTER + 4} textAnchor="start">EAST</text>
@@ -424,8 +424,8 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                             const hasE = registeredQids.length === 0 || registeredQids.includes(qidE);
                             const hasW = registeredQids.length === 0 || registeredQids.includes(qidW);
 
-                            const colorActive = "fill-slate-500";
-                            const colorInactive = "fill-red-400/40";
+                            const colorActive = "fill-slate-500 dark:fill-slate-200";
+                            const colorInactive = "fill-red-400/40 dark:fill-red-400/80";
 
                             const isHighlightedN = highlightQid && highlightQid.toUpperCase() === qidN;
                             const isHighlightedS = highlightQid && highlightQid.toUpperCase() === qidS;
@@ -458,22 +458,22 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                                     })()}
 
                                     {/* Corners (Distances) */}
-                                    <text x={x1 - 4} y={y1 - 4} textAnchor="end" className={cn(hasN || hasW ? colorActive : colorInactive, (isHighlightedN || isHighlightedW) && "fill-blue-600 scale-110")}>{dist}m</text>
-                                    <text x={x2 + 4} y={y1 - 4} textAnchor="start" className={cn(hasN || hasE ? colorActive : colorInactive, (isHighlightedN || isHighlightedE) && "fill-blue-600 scale-110")}>{dist}m</text>
-                                    <text x={x1 - 4} y={y2 + 10} textAnchor="end" className={cn(hasS || hasW ? colorActive : colorInactive, (isHighlightedS || isHighlightedW) && "fill-blue-600 scale-110")}>{dist}m</text>
-                                    <text x={x2 + 4} y={y2 + 10} textAnchor="start" className={cn(hasS || hasE ? colorActive : colorInactive, (isHighlightedS || isHighlightedE) && "fill-blue-600 scale-110")}>{dist}m</text>
+                                    <text x={x1 - 4} y={y1 - 4} textAnchor="end" className={cn(hasN || hasW ? colorActive : colorInactive, (isHighlightedN || isHighlightedW) && "fill-blue-600 dark:fill-blue-400 scale-110")}>{dist}m</text>
+                                    <text x={x2 + 4} y={y1 - 4} textAnchor="start" className={cn(hasN || hasE ? colorActive : colorInactive, (isHighlightedN || isHighlightedE) && "fill-blue-600 dark:fill-blue-400 scale-110")}>{dist}m</text>
+                                    <text x={x1 - 4} y={y2 + 10} textAnchor="end" className={cn(hasS || hasW ? colorActive : colorInactive, (isHighlightedS || isHighlightedW) && "fill-blue-600 dark:fill-blue-400 scale-110")}>{dist}m</text>
+                                    <text x={x2 + 4} y={y2 + 10} textAnchor="start" className={cn(hasS || hasE ? colorActive : colorInactive, (isHighlightedS || isHighlightedE) && "fill-blue-600 dark:fill-blue-400 scale-110")}>{dist}m</text>
 
                                     {/* Box Sector QIDs */}
-                                    <text x={CENTER} y={y1 + 12} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedN ? "fill-blue-600 opacity-100 font-black scale-110" : hasN ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                    <text x={CENTER} y={y1 + 12} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedN ? "fill-blue-600 dark:fill-blue-400 opacity-100 font-black scale-110" : hasN ? "fill-slate-400 dark:fill-slate-300 opacity-80" : "fill-red-400 opacity-30")}>
                                         {qidN}
                                     </text>
-                                    <text x={CENTER} y={y2 - 4} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedS ? "fill-blue-600 opacity-100 font-black scale-110" : hasS ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                    <text x={CENTER} y={y2 - 4} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedS ? "fill-blue-600 dark:fill-blue-400 opacity-100 font-black scale-110" : hasS ? "fill-slate-400 dark:fill-slate-300 opacity-80" : "fill-red-400 opacity-30")}>
                                         {qidS}
                                     </text>
-                                    <text x={x2 - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${x2 - 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedE ? "fill-blue-600 opacity-100 font-black scale-110" : hasE ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                    <text x={x2 - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${x2 - 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedE ? "fill-blue-600 dark:fill-blue-400 opacity-100 font-black scale-110" : hasE ? "fill-slate-400 dark:fill-slate-300 opacity-80" : "fill-red-400 opacity-30")}>
                                         {qidE}
                                     </text>
-                                    <text x={x1 + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${x1 + 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedW ? "fill-blue-600 opacity-100 font-black scale-110" : hasW ? "fill-slate-400 opacity-40" : "fill-red-400 opacity-20")}>
+                                    <text x={x1 + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${x1 + 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedW ? "fill-blue-600 dark:fill-blue-400 opacity-100 font-black scale-110" : hasW ? "fill-slate-400 dark:fill-slate-300 opacity-80" : "fill-red-400 opacity-30")}>
                                         {qidW}
                                     </text>
                                 </React.Fragment>
@@ -517,7 +517,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                                         cx={pos.x}
                                         cy={pos.y}
                                         r="8"
-                                        className="fill-white dark:fill-slate-800 stroke-slate-500 stroke-2 shadow-sm"
+                                        className="fill-white dark:fill-slate-800 stroke-slate-500 dark:stroke-slate-400 stroke-2 shadow-sm"
                                     />
                                     <g transform={`translate(${pos.x}, ${pos.y + 20})`}>
                                         <text
@@ -533,7 +533,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                                                 x={0}
                                                 y={10}
                                                 textAnchor="middle"
-                                                className="text-[7px] fill-slate-400 font-bold"
+                                                className="text-[7px] fill-slate-500 dark:fill-slate-300 font-black uppercase tracking-widest"
                                             >
                                                 N:{nodeInfo}
                                             </text>
@@ -543,7 +543,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                                                 x={0}
                                                 y={18}
                                                 textAnchor="middle"
-                                                className="text-[7px] fill-slate-400 font-bold"
+                                                className="text-[7px] fill-slate-500 dark:fill-slate-300 font-bold"
                                             >
                                                 EL:{elevInfo}
                                             </text>
@@ -705,15 +705,17 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                                 cx={CENTER}
                                 cy={CENTER}
                                 r={activeDebrisId === item.id ? "13" : "10"}
-                                className={`stroke-2 ${activeDebrisId === item.id ? 'stroke-cyan-400 stroke-[3px]' : 'stroke-white/30'} ${
+                                className={cn(
+                                    "stroke-2 transition-all duration-300",
+                                    activeDebrisId === item.id ? 'stroke-cyan-400 dark:stroke-cyan-300 stroke-[3px]' : 'stroke-white/50 dark:stroke-white/40',
                                     item.type === 'Gas Seepage' 
-                                        ? 'fill-green-600' 
+                                        ? 'fill-green-600 dark:fill-green-500' 
                                         : item.type === 'Crater' 
-                                            ? 'fill-purple-600' 
+                                            ? 'fill-purple-600 dark:fill-purple-500' 
                                             : item.isMetallic 
-                                                ? 'fill-blue-700' 
-                                                : 'fill-orange-600'
-                                }`}
+                                                ? 'fill-blue-700 dark:fill-blue-600' 
+                                                : 'fill-orange-600 dark:fill-orange-500'
+                                )}
                             />
                             
                             {/* Number */}
