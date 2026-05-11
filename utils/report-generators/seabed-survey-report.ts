@@ -312,10 +312,11 @@ export const generateSeabedSurveyReport = async (
         const maxRangeOnPage = 21; 
         const scale = ((plotSize / 2) - dx - safetyMargin) / maxRangeOnPage;
 
-        // Draw distance grids (every 3m)
+        // Draw distance grids (every 3m relative to current page)
         doc.setDrawColor(220, 220, 220);
         doc.setLineWidth(0.1);
         for (let d = 3; d <= maxRangeOnPage; d += 3) {
+            const actualDistance = minD + d;
             const rx = dx + (d * scale);
             const ry = dy + (d * scale);
             doc.rect(plotCenterX - rx, plotCenterY - ry, 2 * rx, 2 * ry, "S");
@@ -323,17 +324,24 @@ export const generateSeabedSurveyReport = async (
             // Draw text corner labels
             doc.setFontSize(5);
             doc.setTextColor(180, 180, 180);
-            doc.text(`${d}m`, plotCenterX - rx + 0.5, plotCenterY - ry + 3);
-            doc.text(`${d}m`, plotCenterX + rx - 5.5, plotCenterY - ry + 3);
-            doc.text(`${d}m`, plotCenterX + rx - 5.5, plotCenterY + ry - 1);
-            doc.text(`${d}m`, plotCenterX - rx + 0.5, plotCenterY + ry - 1);
+            doc.text(`${actualDistance}m`, plotCenterX - rx + 0.5, plotCenterY - ry + 3);
+            doc.text(`${actualDistance}m`, plotCenterX + rx - 5.5, plotCenterY - ry + 3);
+            doc.text(`${actualDistance}m`, plotCenterX + rx - 5.5, plotCenterY + ry - 1);
+            doc.text(`${actualDistance}m`, plotCenterX - rx + 0.5, plotCenterY + ry - 1);
         }
 
         // Draw Markers
         items.forEach(item => {
-            // Coordinate mapping: (x-50)/100 * plotSize centers it and scales to full bounds
-            const screenX = plotCenterX + ((item.x - 50) / 100) * plotSize;
-            const screenY = plotCenterY + ((item.y - 50) / 100) * plotSize;
+            // Coordinate mapping: Calculate relative distance from current page minD
+            const dRel = Math.max(0, item.distance - minD);
+            const angle = Math.atan2(item.y - 50, item.x - 50);
+            
+            // Map the relative distance to screen radius
+            // We use the same scale as the rings
+            const r = dx + (dRel * scale);
+            
+            const screenX = plotCenterX + r * Math.cos(angle);
+            const screenY = plotCenterY + r * Math.sin(angle);
 
             if (item.type.includes('Gas Seepage')) {
                 doc.setFillColor(34, 197, 94); // Green
