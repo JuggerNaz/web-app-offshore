@@ -369,15 +369,7 @@ export default function Spec1Pipeline({ data }: Props) {
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
-                <Activity className="h-5 w-5 text-orange-500" />
-                <CardTitle className="text-lg">Operational Parameters</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6 pt-2">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                   <div className="flex items-end gap-2">
                     <div className="flex-1">

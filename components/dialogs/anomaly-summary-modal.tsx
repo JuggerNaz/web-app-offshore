@@ -11,12 +11,14 @@ type AnomalySummaryModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   anomalies: any[];
+  onAnomalyClick?: (anomaly: any) => void;
 };
 
 export function AnomalySummaryModal({
   open,
   onOpenChange,
   anomalies,
+  onAnomalyClick,
 }: AnomalySummaryModalProps) {
   const getPriorityBadgeColor = (priority: string | null) => {
     if (!priority) return "bg-slate-700 text-slate-300";
@@ -74,7 +76,11 @@ export function AnomalySummaryModal({
                   {(items as any[]).map((anomaly: any, idx: number) => {
                     const priorityVal = anomaly.priority_code || anomaly.priority;
                     return (
-                      <div key={idx} className="bg-slate-900 border border-slate-800 rounded-lg p-5 relative overflow-hidden">
+                      <div 
+                        key={idx} 
+                        onClick={() => onAnomalyClick?.(anomaly)}
+                        className="bg-slate-900 border border-slate-800 rounded-lg p-5 relative overflow-hidden cursor-pointer hover:border-slate-600 transition-all active:scale-[0.99]"
+                      >
                         {/* Coloured left accent border */}
                         <div className={`absolute left-0 top-0 bottom-0 w-1 ${getPriorityLeftBorderColor(priorityVal)}`} />
 

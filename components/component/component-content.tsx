@@ -23,6 +23,7 @@ import { urlId, urlType } from "@/utils/client-state";
 import useSWR, { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
+import { AnomalyDetailDialog } from "@/components/dialogs/anomaly-detail-dialog";
 
 type Component = {
   id: number;
@@ -80,6 +81,8 @@ export default function ComponentContent() {
   
   const [anomalyModalOpen, setAnomalyModalOpen] = useState(false);
   const [selectedAnomalies, setSelectedAnomalies] = useState<any[]>([]);
+  const [anomalyDetailOpen, setAnomalyDetailOpen] = useState(false);
+  const [selectedAnomalyForDetail, setSelectedAnomalyForDetail] = useState<any>(null);
 
   const getHighestPriorityAnomalyColor = (anomalies: any[]) => {
     if (!anomalies || anomalies.length === 0) return null;
@@ -315,7 +318,7 @@ export default function ComponentContent() {
       <div className="w-72 flex-shrink-0 flex flex-col gap-6 sticky top-0 self-start">
         <div className="bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 flex flex-col gap-6 h-full shadow-sm">
           <div className="space-y-4">
-            <h3 className="px-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Library Sections</h3>
+            <h3 className="px-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Component Sections</h3>
             <div className="flex flex-col gap-1">
               <FilterButton
                 active={!viewArchived && selectedType === "ALL COMPONENTS"}
@@ -767,6 +770,22 @@ export default function ComponentContent() {
         open={anomalyModalOpen}
         onOpenChange={setAnomalyModalOpen}
         anomalies={selectedAnomalies}
+        onAnomalyClick={(anomaly) => {
+          setSelectedAnomalyForDetail(anomaly);
+          setAnomalyDetailOpen(true);
+        }}
+      />
+
+      <AnomalyDetailDialog
+        open={anomalyDetailOpen}
+        onOpenChange={setAnomalyDetailOpen}
+        anomaly={selectedAnomalyForDetail}
+        onSaveSuccess={() => {
+          // Re-fetch component data to reflect changes
+          mutate(`/api/structure-components/${structureId}?view_filter=${viewFilter}`);
+          // Close summary modal if it was open (optional, but probably better to keep it open or update it)
+          // setAnomalyModalOpen(false);
+        }}
       />
     </div>
   );

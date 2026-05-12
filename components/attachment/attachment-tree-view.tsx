@@ -498,12 +498,14 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
 
     const grouped = filtered.reduce((acc: any, item: any) => {
         const jobpack = item.jobpack_name || "Unassigned Jobpack";
+        const discipline = item.rov_job_id ? "ROV Inspection" : (item.dive_job_id ? "Diving Inspection" : "Other");
         const inspType = item.inspection_type_name || item.inspection_type_code || "Unassigned Inspection Type";
-        
+
         if (!acc[jobpack]) acc[jobpack] = {};
-        if (!acc[jobpack][inspType]) acc[jobpack][inspType] = [];
-        
-        acc[jobpack][inspType].push(item);
+        if (!acc[jobpack][discipline]) acc[jobpack][discipline] = {};
+        if (!acc[jobpack][discipline][inspType]) acc[jobpack][discipline][inspType] = [];
+
+        acc[jobpack][discipline][inspType].push(item);
         return acc;
     }, {});
 
@@ -538,7 +540,7 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
                     </div>
                 ) : (
                     <div className="pb-8 space-y-4">
-                        {Object.entries(grouped).map(([jobpack, inspTypes]: [string, any]) => (
+                        {Object.entries(grouped).map(([jobpack, disciplines]: [string, any]) => (
                             <Collapsible key={jobpack} className="border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/30 dark:bg-slate-900/10 shadow-sm overflow-hidden">
                                 <CollapsibleTrigger asChild>
                                     <Button variant="ghost" className="w-full flex items-center justify-start p-3 h-auto hover:bg-slate-100 dark:hover:bg-slate-800 group bg-slate-50 dark:bg-slate-900/50 rounded-none border-b border-slate-200 dark:border-slate-800">
@@ -546,24 +548,40 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
                                         <ClipboardList className="h-5 w-5 mr-3 text-emerald-500" />
                                         <span className="font-bold text-sm text-slate-700 dark:text-slate-200 tracking-wide flex-1 text-left">{jobpack}</span>
                                         <span className="text-xs font-medium text-slate-400 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-2 py-1 rounded-md shadow-sm">
-                                            {Object.values(inspTypes).flat().length} items
+                                            {Object.values(disciplines).reduce((sum: number, types: any) => sum + Object.values(types).flat().length, 0)} items
                                         </span>
                                     </Button>
                                 </CollapsibleTrigger>
                                 <CollapsibleContent className="p-3 space-y-3">
-                                    {Object.entries(inspTypes).map(([inspType, items]: [string, any]) => (
-                                        <Collapsible key={inspType} className="border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950 overflow-hidden shadow-sm">
+                                    {Object.entries(disciplines).map(([discipline, inspTypes]: [string, any]) => (
+                                        <Collapsible key={discipline} className="border border-slate-200/60 dark:border-slate-800/60 rounded-lg bg-white/50 dark:bg-slate-950/50 overflow-hidden shadow-sm">
                                             <CollapsibleTrigger asChild>
-                                                <Button variant="ghost" className="w-full flex items-center justify-start p-2.5 h-auto hover:bg-slate-50 dark:hover:bg-slate-900 group rounded-none border-b border-slate-100 dark:border-slate-800">
+                                                <Button variant="ghost" className="w-full flex items-center justify-start p-2.5 h-auto hover:bg-slate-50 dark:hover:bg-slate-900 group rounded-none border-b border-slate-100 dark:border-slate-800 bg-white/30 dark:bg-slate-900/30">
                                                     <ChevronDown className="h-4 w-4 shrink-0 mr-2 text-slate-400 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
-                                                    <span className="font-bold text-[13px] text-slate-600 dark:text-slate-300 flex-1 text-left">{inspType}</span>
+                                                    <div className={cn(
+                                                        "h-2 w-2 rounded-full mr-2",
+                                                        discipline.includes("ROV") ? "bg-blue-500" : "bg-emerald-500"
+                                                    )} />
+                                                    <span className="font-black text-xs text-slate-800 dark:text-slate-200 flex-1 text-left uppercase tracking-wider">{discipline}</span>
                                                     <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">
-                                                        {items.length}
+                                                        {Object.values(inspTypes).flat().length}
                                                     </span>
                                                 </Button>
                                             </CollapsibleTrigger>
-                                            <CollapsibleContent>
-                                                <div className="overflow-x-auto w-full border border-slate-200/60 dark:border-slate-800/60 rounded-2xl shadow-sm bg-white dark:bg-slate-950">
+                                            <CollapsibleContent className="p-2 space-y-2">
+                                                {Object.entries(inspTypes).map(([inspType, items]: [string, any]) => (
+                                                    <Collapsible key={inspType} className="border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950 overflow-hidden shadow-sm">
+                                                        <CollapsibleTrigger asChild>
+                                                            <Button variant="ghost" className="w-full flex items-center justify-start p-2 h-auto hover:bg-slate-50 dark:hover:bg-slate-900 group rounded-none border-b border-slate-100 dark:border-slate-800">
+                                                                <ChevronDown className="h-3.5 w-3.5 shrink-0 mr-2 text-slate-400 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
+                                                                <span className="font-bold text-[12px] text-slate-600 dark:text-slate-300 flex-1 text-left">{inspType}</span>
+                                                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">
+                                                                    {items.length}
+                                                                </span>
+                                                            </Button>
+                                                        </CollapsibleTrigger>
+                                                        <CollapsibleContent>
+                                                            <div className="overflow-x-auto w-full border border-slate-200/60 dark:border-slate-800/60 rounded-2xl shadow-sm bg-white dark:bg-slate-950">
                                                     {/* Table Header - HIGH VISIBILITY BLUE */}
                                                     <div 
                                                         className="grid grid-cols-[1.5fr_100px_100px_80px_3fr_100px] gap-2 px-4 py-3 bg-blue-600 text-white border-b border-blue-700 text-[10px] font-black uppercase tracking-widest"
@@ -732,6 +750,9 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
                                 </CollapsibleContent>
                             </Collapsible>
                         ))}
+                    </CollapsibleContent>
+                </Collapsible>
+            ))}
                     </div>
                 )}
             </ScrollArea>

@@ -35,6 +35,10 @@ interface Component {
     id_no: string;
     code: string | null;
     metadata: any;
+    created_at: string | null;
+    updated_at: string | null;
+    created_by: string | null;
+    modified_by: string | null;
 }
 
 export default function Platform3DPage() {
@@ -52,7 +56,23 @@ export default function Platform3DPage() {
         selectedPlatform ? `/api/structure-components/${selectedPlatform.plat_id}` : null,
         fetcher
     );
-    const components: Component[] = useMemo(() => componentsData?.data || [], [componentsData]);
+    const components: Component[] = useMemo(() => {
+        const all = componentsData?.data || [];
+        return all.filter((c: any) => !c.is_deleted).map((c: any) => ({
+            ...c,
+            created_at: c.created_at || null,
+            updated_at: c.updated_at || null,
+            created_by: c.created_by || null,
+            modified_by: c.modified_by || null,
+        }));
+    }, [componentsData]);
+
+    // 3. Fetch Platform Details
+    const { data: platformDetailData, isLoading: isPlatformDetailLoading } = useSWR(
+        selectedPlatform ? `/api/platform/${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const platformDetails = platformDetailData?.data;
 
     const filteredPlatforms = useMemo(() => {
         return platforms.filter(p => 
@@ -105,7 +125,7 @@ export default function Platform3DPage() {
 
                 {/* Viewer Container */}
                 <div className="flex-1 p-6 relative">
-                    {isComponentsLoading ? (
+                    {(isComponentsLoading || isPlatformDetailLoading) ? (
                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 dark:bg-slate-950/50 backdrop-blur-sm z-10">
                             <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4" />
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Constructing Structural Mesh...</p>
@@ -114,6 +134,7 @@ export default function Platform3DPage() {
                     
                     <Structural3DViewer 
                         components={components} 
+                        platformDetails={platformDetails}
                         onSelectComponent={handleSelectComponent}
                     />
                 </div>

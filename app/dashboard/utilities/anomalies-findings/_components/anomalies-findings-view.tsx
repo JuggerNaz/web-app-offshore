@@ -41,8 +41,9 @@ import {
   RotateCcw
 } from "lucide-react";
 import { toast } from "sonner";
-import { AttachmentSection } from "./attachment-section";
+import { AttachmentSection } from "@/components/component/attachment-section";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
+import { AnomalyDetailDialog } from "@/components/dialogs/anomaly-detail-dialog";
 
 
 interface ComponentSpec {

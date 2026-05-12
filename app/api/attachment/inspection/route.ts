@@ -225,6 +225,8 @@ export async function GET(request: NextRequest) {
       anomaly_ref_no: isAnomalyAtt ? anomalyRefMap.get(sourceId) : null,
       jobpack_id: insp.jobpack_id,
       jobpack_name: insp.jobpack_id ? jobpackMap.get(insp.jobpack_id) || null : null,
+      rov_job_id: insp.rov_job_id,
+      dive_job_id: insp.dive_job_id,
     };
   });
 

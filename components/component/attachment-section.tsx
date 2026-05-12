@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Card, CardContent } from "@/components/ui/card";
 import { ImageMarkupEditor } from "./image-markup-editor";
+
 interface Attachment {
   id: number;
   name: string;
@@ -151,6 +152,7 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
       setUploading(false);
     }
   };
+
   const handleOverwrite = async (canvasDataUrl: string) => {
     if (!selectedAttachment) return;
     
@@ -192,7 +194,6 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
       setLoading(false);
     }
   };
-
 
   const getFileIcon = (type?: string, path?: string) => {
     const lowerType = type?.toLowerCase() || "";
