@@ -166,6 +166,7 @@ import { formatInspectionTypeName } from "@/utils/inspection-utils";
 import { useWorkspaceReports } from "./hooks/useWorkspaceReports";
 import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
 import { WorkspaceResources } from "./components/WorkspaceResources";
+import { useROVConnection } from "@/components/rov-connection-provider";
 
 export default function WorkspaceV2Page() {
     return (
@@ -1736,238 +1737,25 @@ function V10PreviewLayout() {
         setShowTaskSelector(false);
     };
 
-    const [dataAcqFields, setDataAcqFields] = useState<Array<{ label: string, targetField: string, value: string }>>([]);
-    const [dataAcqConnected, setDataAcqConnected] = useState(false);
-    const [dataAcqConnecting, setDataAcqConnecting] = useState(false);
-    const [dataAcqError, setDataAcqError] = useState<string | null>(null);
-    const dataAcqSerialRef = useRef<any>(null);
-    const dataAcqReaderRef = useRef<any>(null);
-    const dataAcqBufferRef = useRef<string>('');
-    const dataAcqStreamClosedRef = useRef<any>(null);
+    const { isConnected: dataAcqConnected, isConnecting: dataAcqConnecting, error: dataAcqError, fields: dataAcqFields, connect: dataAcqConnect, disconnect: dataAcqDisconnect } = useROVConnection();
 
-    // Data Acquisition Connect
+    // Data Acquisition Connect Wrapper
     const handleDataAcqConnect = async () => {
-        setDataAcqError(null);
-        setDataAcqConnecting(true);
-
-        const DA_STORAGE_KEYS: Record<string, string> = {
-            platform: 'data_acquisition_platform_v1',
-            pipeline: 'data_acquisition_pipeline_v1',
-        };
-        const key = DA_STORAGE_KEYS[headerData.structureType];
-        const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
-        let settings: any = null;
-        if (saved) {
-            try { settings = JSON.parse(saved); } catch (e) { /* ignore */ }
-        }
-
-        if (!settings) {
-            setDataAcqError('No settings configured. Go to Settings â†’ Data Acquisition to configure.');
-            setDataAcqConnecting(false);
-            toast.error('Data acquisition settings not found. Please configure in Settings â†’ Data Acquisition.');
-            return;
-        }
-
-        const connType = settings.connection?.type || 'serial';
-
-        if (connType === 'serial') {
-            if (!('serial' in navigator)) {
-                setDataAcqError('Web Serial API not supported. Use Chrome, Edge, or Opera.');
-                setDataAcqConnecting(false);
-                toast.error('Web Serial API is not supported in this browser. Use Chrome, Edge, or Opera.');
-                return;
-            }
-
-            try {
-                const port = await (navigator as any).serial.requestPort();
-                const serialSettings = settings.connection?.serial || {};
-                await port.open({
-                    baudRate: serialSettings.baudRate || 9600,
-                    dataBits: serialSettings.dataBits || 8,
-                    parity: serialSettings.parity || 'none',
-                    stopBits: serialSettings.stopBits || 1,
-                });
-
-                dataAcqSerialRef.current = port;
-                dataAcqBufferRef.current = '';
-
-                const textDecoder = new TextDecoderStream();
-                const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-                dataAcqStreamClosedRef.current = readableStreamClosed;
-                const reader = textDecoder.readable.getReader();
-                dataAcqReaderRef.current = reader;
-
-                setDataAcqConnected(true);
-                setDataAcqConnecting(false);
-                toast.success('Data acquisition connected!');
-
-                // Parse settings
-                const parseMethod = settings.parsing?.method || 'position';
-                const startChar = settings.parsing?.startCharacter || '$';
-                const strLen = settings.parsing?.stringLength || 100;
-                const fields = settings.fields || [];
-
-                // Read loop
-                const readLoop = async () => {
-                    try {
-                        while (true) {
-                            const { value, done } = await reader.read();
-                            if (done) break;
-                            if (value) {
-                                dataAcqBufferRef.current += value;
-                                if (dataAcqBufferRef.current.length > 10000) {
-                                    dataAcqBufferRef.current = dataAcqBufferRef.current.slice(-5000);
-                                }
-                            }
-                        }
-                    } catch (e) { /* reader cancelled */ }
-                };
-                readLoop();
-
-                // Parse interval
-                const parseInterval = setInterval(() => {
-                    if (!dataAcqBufferRef.current) return;
-                    const data = dataAcqBufferRef.current;
-                    let processedData = data;
-
-                    if (startChar && strLen > 0) {
-                        let startIndex = data.lastIndexOf(startChar);
-                        if (startIndex !== -1 && (startIndex + strLen > data.length)) {
-                            startIndex = data.lastIndexOf(startChar, startIndex - 1);
-                        }
-                        if (startIndex !== -1 && (startIndex + strLen <= data.length)) {
-                            processedData = data.substring(startIndex, startIndex + strLen);
-                        } else {
-                            return;
-                        }
-                    }
-
-                    setDataAcqFields(prev => prev.map(f => {
-                        const fieldDef = fields.find((fd: any) => (fd.targetField || fd.label) === f.targetField);
-                        if (!fieldDef) return f;
-
-                        let val = '';
-                        if (fieldDef.defaultDataOption === 'system_date') {
-                            val = new Date().toISOString().split('T')[0];
-                        } else if (fieldDef.defaultDataOption === 'system_time') {
-                            val = new Date().toTimeString().split(' ')[0];
-                        } else if (parseMethod === 'position') {
-                            const start = parseInt(fieldDef.positionValue || '0');
-                            if (!isNaN(start) && start < processedData.length) {
-                                val = processedData.substring(start, Math.min(start + (fieldDef.length || 1), processedData.length));
-                                if (val.length > 0 && /[a-zA-Z]/.test(val[0])) val = val.substring(1);
-                            }
-                        } else {
-                            const idPrefix = fieldDef.idValue || fieldDef.label;
-                            const escapedPrefix = idPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                            const regex = new RegExp(`${escapedPrefix}([^,]+)`);
-                            const match = processedData.match(regex);
-                            val = match ? match[1].substring(0, fieldDef.length || 10) : '';
-                            if (val.length > 0 && /[a-zA-Z]/.test(val[0])) val = val.substring(1);
-                        }
-
-                        // Apply modification
-                        if (fieldDef.modify && fieldDef.modify !== 'none' && val && !/[a-zA-Z]/.test(val)) {
-                            const numVal = parseFloat(val);
-                            if (!isNaN(numVal)) {
-                                switch (fieldDef.modify) {
-                                    case 'add': val = (numVal + (fieldDef.modifyValue || 0)).toString(); break;
-                                    case 'subtract': val = (numVal - (fieldDef.modifyValue || 0)).toString(); break;
-                                    case 'multiply': val = (numVal * (fieldDef.modifyValue || 1)).toString(); break;
-                                    case 'divide': val = (fieldDef.modifyValue ? (numVal / fieldDef.modifyValue) : numVal).toString(); break;
-                                }
-                            }
-                        }
-
-                        return { ...f, value: val || '--' };
-                    }));
-                }, 200);
-
-                // Store interval for cleanup
-                (port as any).__parseInterval = parseInterval;
-
-            } catch (error: any) {
-                const msg = error?.message || 'Failed to connect to serial port.';
-                setDataAcqError(msg);
-                setDataAcqConnecting(false);
-                toast.error(`Connection failed: ${msg}`);
-            }
-        } else {
-            // Network connection not yet implemented in browser
-            setDataAcqError('Network (TCP/UDP) connection not supported in browser. Use Serial connection.');
-            setDataAcqConnecting(false);
-            toast.error('Network connections are not supported in browser. Please use Serial connection.');
-        }
+        await dataAcqConnect(headerData.structureType);
     };
 
-    // Data Acquisition Disconnect
+    // Data Acquisition Disconnect Wrapper
     const handleDataAcqDisconnect = async () => {
-        try {
-            if (dataAcqReaderRef.current) {
-                await dataAcqReaderRef.current.cancel();
-                dataAcqReaderRef.current = null;
-            }
-            if (dataAcqStreamClosedRef.current) {
-                await dataAcqStreamClosedRef.current.catch(() => { });
-            }
-            if (dataAcqSerialRef.current) {
-                if ((dataAcqSerialRef.current as any).__parseInterval) {
-                    clearInterval((dataAcqSerialRef.current as any).__parseInterval);
-                }
-                await dataAcqSerialRef.current.close();
-                dataAcqSerialRef.current = null;
-            }
-            setDataAcqConnected(false);
-            setDataAcqFields(prev => prev.map(f => ({ ...f, value: '--' })));
-            toast.success('Data acquisition disconnected.');
-        } catch (e: any) {
-            console.error('Error disconnecting data acq:', e);
-            toast.error('Error disconnecting: ' + (e?.message || 'Unknown error'));
-        }
+        await dataAcqDisconnect();
     };
 
+    // Explicitly disconnect when navigating away from the workspace
     useEffect(() => {
-        const DA_STORAGE_KEYS: Record<string, string> = {
-            platform: 'data_acquisition_platform_v1',
-            pipeline: 'data_acquisition_pipeline_v1',
+        return () => {
+            console.log("[Workspace] Navigating away, terminating ROV connection...");
+            dataAcqDisconnect(); 
         };
-
-        const key = DA_STORAGE_KEYS[headerData.structureType];
-        const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
-
-        if (saved) {
-            try {
-                const settings = JSON.parse(saved);
-                if (settings.fields && settings.fields.length > 0) {
-                    setDataAcqFields(settings.fields.map((f: any) => ({
-                        label: f.label || '?',
-                        targetField: f.targetField || f.label || 'field',
-                        value: '--'
-                    })));
-                } else {
-                    setDataAcqFields([]);
-                }
-            } catch (e) {
-                setDataAcqFields([]);
-            }
-        } else {
-            // Use defaults based on structure type
-            if (headerData.structureType === 'pipeline') {
-                setDataAcqFields([
-                    { label: 'KP', targetField: 'kilometer_post', value: '--' },
-                    { label: 'D', targetField: 'depth', value: '--' },
-                    { label: 'CP', targetField: 'cp_reading', value: '--' },
-                ]);
-            } else {
-                setDataAcqFields([
-                    { label: 'NI', targetField: 'northing', value: '--' },
-                    { label: 'E', targetField: 'easting', value: '--' },
-                    { label: 'D', targetField: 'depth', value: '--' },
-                    { label: 'CP', targetField: 'cp_reading', value: '--' },
-                ]);
-            }
-        }
-    }, [headerData.structureType]);
+    }, [dataAcqDisconnect]);
 
     // Load Settings on Mount
     useEffect(() => {

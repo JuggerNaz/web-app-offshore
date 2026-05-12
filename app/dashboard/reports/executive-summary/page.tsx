@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -32,6 +31,7 @@ import { toast } from "sonner";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { EXECUTIVE_SUMMARY_TOC } from "./constants";
+import { SearchableSelect } from "./SearchableSelect";
 
 export default function ExecutiveSummaryPage() {
     const [selections, setSelections] = useState({
@@ -45,8 +45,7 @@ export default function ExecutiveSummaryPage() {
     const [showInsight, setShowInsight] = useState(false);
 
     // Fetch context data
-    const { data: jobpacksData } = useSWR("/api/jobpack", fetcher);
-    const { data: structuresData } = useSWR("/api/structure", fetcher);
+    const { data: jobpacksData } = useSWR("/api/jobpack?has_inspection=true", fetcher);
     const { data: sowsData } = useSWR(
         selections.jobpackId && selections.structureId 
             ? `/api/sow?jobpack_id=${selections.jobpackId}&structure_id=${selections.structureId}` 
@@ -54,11 +53,42 @@ export default function ExecutiveSummaryPage() {
         fetcher
     );
 
-    const jobpacks = jobpacksData?.data || [];
-    const structures = structuresData?.data || [];
+    const jobpacks = useMemo(() => {
+        return [...(jobpacksData?.data || [])].sort((a, b) => 
+            (a.name || "").localeCompare(b.name || "", undefined, { numeric: true })
+        );
+    }, [jobpacksData]);
+
+    const { data: sowsForJobpackData } = useSWR(
+        selections.jobpackId ? `/api/sow?jobpack_id=${selections.jobpackId}` : null,
+        fetcher
+    );
+
+    const filteredStructures = useMemo(() => {
+        if (!selections.jobpackId || !sowsForJobpackData?.data) return [];
+        
+        // Extract unique structures from SOWs
+        const uniqueMap = new Map();
+        sowsForJobpackData.data.forEach((sow: any) => {
+            if (!uniqueMap.has(sow.structure_id)) {
+                uniqueMap.set(sow.structure_id, {
+                    id: sow.structure_id,
+                    name: sow.structure_title || `Structure ${sow.structure_id}`
+                });
+            }
+        });
+
+        return Array.from(uniqueMap.values()).sort((a, b) => 
+            a.name.localeCompare(b.name, undefined, { numeric: true })
+        );
+    }, [selections.jobpackId, sowsForJobpackData]);
+
     const availableSowReports = useMemo(() => {
         if (!sowsData?.data) return [];
-        return sowsData.data.report_numbers?.map((r: any) => r.number || r) || [];
+        const reports = sowsData.data.report_numbers?.map((r: any) => r.number || r) || [];
+        return [...reports].sort((a, b) => 
+            String(a).localeCompare(String(b), undefined, { numeric: true })
+        );
     }, [sowsData]);
 
     // Fetch existing summary
@@ -116,11 +146,16 @@ export default function ExecutiveSummaryPage() {
                 })
             });
 
-            if (!res.ok) throw new Error("Failed to save");
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || "Failed to save");
+            }
+
             toast.success("Executive Summary saved successfully");
             refreshSummary();
-        } catch (error) {
-            toast.error("Error saving summary");
+        } catch (error: any) {
+            console.error("Save error:", error);
+            toast.error(error.message || "Error saving summary");
         } finally {
             setIsSaving(false);
         }
@@ -130,7 +165,7 @@ export default function ExecutiveSummaryPage() {
         if (!selections.jobpackId || !selections.structureId || !selections.sowReportNo) return;
         
         const jp = jobpacks.find((j:any) => j.id.toString() === selections.jobpackId);
-        const str = structures.find((s:any) => (s.str_id || s.id || '').toString() === selections.structureId);
+        const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
         
         const sections = EXECUTIVE_SUMMARY_TOC.map(s => ({
             id: s.id,
@@ -142,7 +177,7 @@ export default function ExecutiveSummaryPage() {
             const { generateExecutiveSummaryDocx } = await import("@/utils/report-generators/executive-summary-docx");
             await generateExecutiveSummaryDocx({
                 jobpackName: jp?.name || selections.jobpackId,
-                platformName: str?.str_title || str?.str_name || selections.structureId,
+                platformName: str?.name || selections.structureId,
                 sowReportNo: selections.sowReportNo,
                 sections,
             });
@@ -165,8 +200,8 @@ export default function ExecutiveSummaryPage() {
         switch(activeSectionId) {
             case "intro":
                 const jp = jobpacks.find((j:any) => j.id.toString() === selections.jobpackId);
-                const str = structures.find((s:any) => (s.str_id || s.id || '').toString() === selections.structureId);
-                wording = `This Executive Summary provides a comprehensive overview of the structural integrity inspection conducted for ${str?.str_title || str?.str_name || 'the platform'} under Job Pack ${jp?.name || selections.jobpackId}. The scope of work was defined in SOW Report ${selections.sowReportNo}.`;
+                const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
+                wording = `This Executive Summary provides a comprehensive overview of the structural integrity inspection conducted for ${str?.name || 'the platform'} under Job Pack ${jp?.name || selections.jobpackId}. The scope of work was defined in SOW Report ${selections.sowReportNo}.`;
                 break;
             case "cp":
                 if (data.cp) {
@@ -226,40 +261,34 @@ export default function ExecutiveSummaryPage() {
 
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
-                        <Select value={selections.jobpackId} onValueChange={(v) => setSelections(s => ({...s, jobpackId: v}))}>
-                            <SelectTrigger className="w-[180px] h-9">
-                                <SelectValue placeholder="Select Job Pack" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {jobpacks.map((jp: any) => (
-                                    <SelectItem key={jp.id} value={jp.id.toString()}>{jp.name || jp.id}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect 
+                            options={jobpacks.map((jp: any) => ({ value: jp.id.toString(), label: jp.name || jp.id }))}
+                            value={selections.jobpackId}
+                            onValueChange={(v) => setSelections({ jobpackId: v, structureId: "", sowReportNo: "" })}
+                            placeholder="Select Job Pack"
+                            searchPlaceholder="Search Job Pack..."
+                            className="w-[220px]"
+                        />
 
-                        <Select value={selections.structureId} onValueChange={(v) => setSelections(s => ({...s, structureId: v}))}>
-                            <SelectTrigger className="w-[180px] h-9">
-                                <SelectValue placeholder="Select Structure" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {structures.map((s: any) => (
-                                    <SelectItem key={s.str_id || s.id} value={(s.str_id || s.id || '').toString()}>
-                                        {s.str_title || s.str_name || s.name || s.str_id || s.id}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect 
+                            options={filteredStructures.map((s: any) => ({ value: s.id.toString(), label: s.name }))}
+                            value={selections.structureId}
+                            onValueChange={(v) => setSelections(s => ({...s, structureId: v, sowReportNo: "" }))}
+                            disabled={!selections.jobpackId}
+                            placeholder="Select Structure"
+                            searchPlaceholder="Search Structure..."
+                            className="w-[200px]"
+                        />
 
-                        <Select value={selections.sowReportNo} onValueChange={(v) => setSelections(s => ({...s, sowReportNo: v}))}>
-                            <SelectTrigger className="w-[180px] h-9">
-                                <SelectValue placeholder="SOW Report No" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {availableSowReports.map((no: string) => (
-                                    <SelectItem key={no} value={no}>{no}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect 
+                            options={availableSowReports.map((no: string) => ({ value: no, label: no }))}
+                            value={selections.sowReportNo}
+                            onValueChange={(v) => setSelections(s => ({...s, sowReportNo: v}))}
+                            disabled={!selections.structureId}
+                            placeholder="SOW Report No"
+                            searchPlaceholder="Search Report No..."
+                            className="w-[180px]"
+                        />
                     </div>
 
                     <Separator orientation="vertical" className="h-6 mx-2" />

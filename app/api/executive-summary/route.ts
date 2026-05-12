@@ -39,11 +39,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
         }
 
+        // Check if exists first to be safe, or just use upsert with id if we had it
+        // For now, we use upsert with onConflict but with better error handling
         const { data, error } = await (supabase as any)
             .from("u_executive_summaries")
             .upsert({
-                jobpack_id,
-                structure_id,
+                jobpack_id: Number(jobpack_id),
+                structure_id: Number(structure_id),
                 sow_report_no,
                 sections,
                 metadata,
@@ -52,12 +54,16 @@ export async function POST(request: NextRequest) {
                 onConflict: 'jobpack_id,structure_id,sow_report_no'
             })
             .select()
-            .single();
+            .maybeSingle();
 
-        if (error) throw error;
+        if (error) {
+            console.error("Supabase upsert error:", error);
+            return NextResponse.json({ error: error.message }, { status: 400 });
+        }
 
         return NextResponse.json({ data });
     } catch (error: any) {
+        console.error("Executive Summary POST error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

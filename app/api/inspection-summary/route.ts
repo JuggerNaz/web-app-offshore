@@ -18,18 +18,22 @@ export async function GET(request: NextRequest) {
 
         const sowIdRaw = searchParams.get("sow_id");
         const sowId = sowIdRaw ? sowIdRaw.split('-')[0] : null;
-        const structureId = searchParams.get("structure_id");
-        const jobpackId = searchParams.get("jobpack_id");
+        const structureIdRaw = searchParams.get("structure_id");
+        const structureId = structureIdRaw ? structureIdRaw.split('-')[0] : null;
+        const jobpackIdRaw = searchParams.get("jobpack_id");
+        const jobpackId = jobpackIdRaw ? jobpackIdRaw.split('-')[0] : null;
         const sowReportNo = searchParams.get("sow_report_no");
 
-        if (!sowId && !structureId) {
-            return NextResponse.json({ error: "sow_id or structure_id required" }, { status: 400 });
+        if (!sowId && !structureId && !jobpackId) {
+            return NextResponse.json({ error: "sow_id, structure_id, or jobpack_id required" }, { status: 400 });
         }
 
-        // If sowId is missing, attempt to resolve it from jobpackId + structureId
+        // ─── 1. RESOLVE SOW ID ────────────────────────────────────────────────
         let resolvedSowId = sowId;
-        const jpNum = Number(jobpackId);
-        const strNum = Number(structureId);
+        const jpNum = parseInt(String(jobpackId));
+        const strNum = parseInt(String(structureId));
+
+        console.log(`[Summary API] sowId=${sowId}, jp=${jpNum}, str=${strNum}`);
 
         if (!resolvedSowId && !isNaN(jpNum) && !isNaN(strNum)) {
             const { data: sowRec } = await (supabase as any)
@@ -39,18 +43,27 @@ export async function GET(request: NextRequest) {
                 .eq("structure_id", strNum)
                 .limit(1)
                 .maybeSingle();
-            if (sowRec) resolvedSowId = String(sowRec.id);
+            if (sowRec) {
+                resolvedSowId = String(sowRec.id);
+                console.log(`[Summary API] Resolved SOW ID to ${resolvedSowId}`);
+            }
         }
 
-        console.log(`[Summary API] sowId=${sowId}, resolvedSowId=${resolvedSowId}, jp=${jobpackId}, str=${structureId}`);
-
-        // Fetch ALL items for this SOW to support both "All Summary" and "Report-Specific" views
+        // ─── 2. SOW ITEMS ─────────────────────────────────────────────────────
         let allSowItems: any[] = [];
         let itemsErr = null;
         if (resolvedSowId) {
             const { data: itemsData, error: err } = await (supabase as any)
                 .from("u_sow_items")
-                .select("status, component_type, component_qid, report_number")
+                .select(`
+                    status, 
+                    component_id, 
+                    component_type, 
+                    report_number, 
+                    structure_components:component_id(
+                        id, q_id, code, metadata
+                    )
+                `)
                 .eq("sow_id", Number(resolvedSowId));
             
             itemsErr = err;
@@ -60,7 +73,6 @@ export async function GET(request: NextRequest) {
             allSowItems = itemsData || [];
         }
 
-        // SOW Completion section should reflect the WHOLE scope defined for this platform
         const sowItems = allSowItems;
 
         const totalSow = sowItems.length;
@@ -73,13 +85,7 @@ export async function GET(request: NextRequest) {
         const incompletePct = totalSow > 0 ? Math.round((incompleteSow / totalSow) * 100) : 0;
         const pendingPct = totalSow > 0 ? Math.round((pendingSow / totalSow) * 100) : 0;
 
-        // Also calculate overall stats for the whole SOW (regardless of report)
-        const overallTotal = allSowItems.length;
-        const overallCompleted = allSowItems.filter((i: any) => i.status === "completed").length;
-        const overallPct = overallTotal > 0 ? Math.round((overallCompleted / overallTotal) * 100) : 0;
-
-        // ─── 2. INSPECTION RECORDS ─────────────────────────────────────────────
-        // Scope: must match BOTH jobpack_id AND sow_report_no when both are provided
+        // ─── 3. INSPECTION RECORDS ─────────────────────────────────────────────
         let recQuery = (supabase as any)
             .from("insp_records")
             .select(`
@@ -93,15 +99,16 @@ export async function GET(request: NextRequest) {
                 component_id,
                 dive_job_id,
                 rov_job_id,
-                structure_components:component_id!left(id, q_id, code, metadata),
+                sow_report_no,
+                structure_components:component_id!left(
+                    id, q_id, code, metadata
+                ),
                 inspection_type:inspection_type_id!left(id, code, name),
                 insp_anomalies(anomaly_id, status, defect_type_code, defect_category_code, priority_code, record_category)
             `);
 
-        // Both jobpack_id AND structure_id are used to scope the records.
-        // We fetch ALL records for this structure + jobpack to allow for "All Summary" comparisons.
-        if (jobpackId && jobpackId !== "null") recQuery = recQuery.eq("jobpack_id", Number(jobpackId));
-        if (structureId) recQuery = recQuery.eq("structure_id", Number(structureId));
+        if (!isNaN(jpNum)) recQuery = recQuery.eq("jobpack_id", jpNum);
+        if (!isNaN(strNum)) recQuery = recQuery.eq("structure_id", strNum);
 
         const { data: allRecordsData, error: recErr } = await recQuery;
         if (recErr) {
@@ -408,42 +415,79 @@ export async function GET(request: NextRequest) {
             findingByPriority[priority] = (findingByPriority[priority] || 0) + 1;
         });
 
-        // ─── 9. ATTACHMENT GROUPS ─────────────────────────────────────────────
-        // Count DISTINCT components per attachment group.
-        // Total (Scope) = Unique component_ids in u_sow_items for that category
-        // Inspected (Actual) = Unique component_ids in insp_records for that category
-        
-        const sowCompIds: Record<string, Set<number>> = {
+        const ATTACHMENT_GROUPS: Record<string, string[]> = {
+            "Riser":        ["RS", "RIS", "RISER"],
+            "Conductor":    ["CD", "COND", "CONDUCTOR", "CON", "C-"],
+            "Caisson":      ["CA", "CAIS", "CAISSON", "CS"],
+            "Riser Guard":  ["RG", "RGUARD", "RISER_GUARD", "RISERGUARD", "SG"],
+            "Boat Landing": ["BL", "BLTG", "BOAT_LANDING", "BOATLANDING", "BLD"],
+        };
+
+        const sowCompIds: Record<string, Set<string>> = {
             "Riser": new Set(), "Conductor": new Set(), "Caisson": new Set(),
             "Riser Guard": new Set(), "Boat Landing": new Set(),
         };
-        const recordCompIds: Record<string, Set<number>> = {
+        const recordCompIds: Record<string, Set<string>> = {
             "Riser": new Set(), "Conductor": new Set(), "Caisson": new Set(),
             "Riser Guard": new Set(), "Boat Landing": new Set(),
+        };
+
+        // Helper to extract a clean component code from QID or Type
+        const getEffectiveCode = (item: any, comp: any) => {
+            const qid = (comp?.q_id || "").toUpperCase();
+            const type = (item.component_type || comp?.code || "").toUpperCase();
+            
+            if (type && type !== "UNKNOWN") return type;
+            
+            // Fallback to parsing QID: PLAT-C/RS-01 -> RS
+            const lastPart = qid.split("/").pop() || "";
+            return lastPart.split("-")[0] || lastPart.split(" ")[0] || "";
+        };
+
+        // Helper to normalize a component to its top-level parent identifier
+        const getParentKey = (item: any, comp: any) => {
+            const meta = comp?.metadata || {};
+            // Try all known metadata fields that might contain the parent reference
+            const parentId = meta.associated_comp_id || 
+                             meta.parent_id || 
+                             meta.comp_id_parent || 
+                             meta.parent_comp_id || 
+                             meta.associated_id ||
+                             meta.associated_comp_qid;
+
+            if (parentId) return String(parentId).toUpperCase();
+            
+            // Priority 2: Use the component's own ID if it's a root item
+            if (item.component_id || comp?.id) return String(item.component_id || comp?.id);
+
+            // Priority 3: Fallback to QID segment analysis
+            const qid = (comp?.q_id || "").toUpperCase();
+            if (!qid) return "";
+            
+            const segments = qid.split("/");
+            if (segments.length >= 2) return segments.slice(0, 2).join("/");
+            
+            const dashSegments = qid.split("-");
+            if (dashSegments.length > 2) return dashSegments.slice(0, 2).join("-");
+            
+            return qid;
         };
 
         // Scope (Total) is based on ALL items in the SOW (the whole platform's scope)
         allSowItems.forEach((item: any) => {
-            const comp = item.structure_components;
-            const componentId = item.component_id || comp?.id;
-            if (!componentId) return;
+            const comp = item.structure_components || item.component || {};
+            const qid = (comp?.q_id || "").toUpperCase();
+            if (!qid && !item.component_id) return;
 
-            // Use component_type from SOW item first, then fallback to component code or QID prefix
-            const qid = (item.component_qid || comp?.q_id || "").toUpperCase();
-            const code = (
-                item.component_type || 
-                comp?.code || 
-                qid.split("-")[0] ||
-                ""
-            ).toUpperCase();
+            const code = getEffectiveCode(item, comp);
+            const parentKey = getParentKey(item, comp);
 
             for (const [group, aliases] of Object.entries(ATTACHMENT_GROUPS)) {
-                // Flexible match: starts with alias OR qid contains group name
                 if (
-                    aliases.some(a => code.startsWith(a) || qid.startsWith(a)) ||
+                    aliases.some(a => code === a || code.startsWith(a) || qid.includes("/" + a) || qid.startsWith(a)) ||
                     qid.includes(group.toUpperCase().replace(" ", ""))
                 ) {
-                    sowCompIds[group].add(componentId);
+                    sowCompIds[group].add(parentKey);
                     break;
                 }
             }
@@ -451,23 +495,19 @@ export async function GET(request: NextRequest) {
 
         // Actual (Inspected) is based on ALL records for this structure/jobpack
         rawRecords.forEach((r: any) => {
-            const componentId = r.component_id;
-            if (!componentId) return;
+            const comp = r.structure_components || r.component || {};
+            const qid = (comp?.q_id || "").toUpperCase();
+            if (!qid && !r.component_id) return;
 
-            const qid = (r.structure_components?.q_id || "").toUpperCase();
-            const code = (
-                r.component_type ||
-                r.structure_components?.code ||
-                qid.split("-")[0] ||
-                ""
-            ).toUpperCase();
+            const code = getEffectiveCode(r, comp);
+            const parentKey = getParentKey(r, comp);
 
             for (const [group, aliases] of Object.entries(ATTACHMENT_GROUPS)) {
                 if (
-                    aliases.some(a => code.startsWith(a) || qid.startsWith(a)) ||
+                    aliases.some(a => code === a || code.startsWith(a) || qid.includes("/" + a) || qid.startsWith(a)) ||
                     qid.includes(group.toUpperCase().replace(" ", ""))
                 ) {
-                    recordCompIds[group].add(componentId);
+                    recordCompIds[group].add(parentKey);
                     break;
                 }
             }
