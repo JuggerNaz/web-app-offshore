@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import inspectionTypesData from "@/utils/types/inspection-types.json";
 
@@ -320,6 +321,36 @@ export function AnomaliesFindingsView() {
 
     fetchData();
   }, []);
+
+  const searchParams = useSearchParams();
+
+  // Handle direct link to anomaly via ID param
+  useEffect(() => {
+    const anomalyId = searchParams.get("id");
+    if (anomalyId && anomalies.length > 0 && !selectedItem) {
+      const targetAnomaly = anomalies.find(a => String(a.anomaly_id) === anomalyId);
+      if (targetAnomaly) {
+        // Select the structure first
+        if (targetAnomaly.inspection?.structure_id) {
+          setSelectedStructureId(String(targetAnomaly.inspection.structure_id));
+        }
+        
+        // Open details
+        setSelectedItem(targetAnomaly);
+        setEditDefectCode(targetAnomaly.defect_type_code || "");
+        setEditDefectType(targetAnomaly.defect_category_code || "");
+        setEditPriority(targetAnomaly.priority_code || "");
+        setRectificationNotes(targetAnomaly.follow_up_notes || "");
+        setRectifiedDate(targetAnomaly.rectified_date 
+          ? new Date(targetAnomaly.rectified_date).toISOString().split('T')[0] 
+          : new Date().toISOString().split('T')[0]);
+        setApprovedBy(targetAnomaly.approved_by || "");
+        setEvaluatedBy(targetAnomaly.reviewed_by || "");
+        setIsDetailOpen(true);
+      }
+    }
+  }, [searchParams, anomalies, selectedItem]);
+
   // Filter Defect Types by selected Defect Code via u_lib_combo
   useEffect(() => {
     async function filterDefectTypes() {
