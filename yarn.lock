@@ -1964,6 +1964,11 @@
     convert-source-map "^2.0.0"
     tinyrainbow "^3.1.0"
 
+"@xmldom/xmldom@^0.9.8":
+  version "0.9.10"
+  resolved "https://registry.yarnpkg.com/@xmldom/xmldom/-/xmldom-0.9.10.tgz#a0ad5a26fe8aa996310870726e1704977f769dee"
+  integrity sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==
+
 acorn-jsx@^5.3.2:
   version "5.3.2"
   resolved "https://registry.yarnpkg.com/acorn-jsx/-/acorn-jsx-5.3.2.tgz#7ed5bb55908b3b2f1bc55c6af1653bada7f07937"
@@ -2744,6 +2749,20 @@ docx@^9.6.1:
     xml "^1.0.1"
     xml-js "^1.6.8"
 
+docxtemplater-image-module-free@^1.1.1:
+  version "1.1.1"
+  resolved "https://registry.yarnpkg.com/docxtemplater-image-module-free/-/docxtemplater-image-module-free-1.1.1.tgz#a7f12125c791624759c4d468412f8cf44c539392"
+  integrity sha512-aWOzVQN7ggDYjfoy3pTTNrcrZ7/CJrQcI9cT+hmyHE6nRLR67nt5yPFPe9hm9VWbfYIED2fi+3itOnF0TE/RWQ==
+  dependencies:
+    xmldom "^0.1.27"
+
+docxtemplater@^3.68.7:
+  version "3.68.7"
+  resolved "https://registry.yarnpkg.com/docxtemplater/-/docxtemplater-3.68.7.tgz#ea6d2ad60b9977e2953de616bb07c71afe10ff28"
+  integrity sha512-FwgeAKqY2vc9eVm2V2XGg8bq25B0OQjtSDITGi9zNnvu5GbtR4WvGjM5QNld/ALB6ZbsSuHskBPK9SvPpKhsbA==
+  dependencies:
+    "@xmldom/xmldom" "^0.9.8"
+
 dom-accessibility-api@^0.6.3:
   version "0.6.3"
   resolved "https://registry.yarnpkg.com/dom-accessibility-api/-/dom-accessibility-api-0.6.3.tgz#993e925cc1d73f2c662e7d75dd5a5445259a8fd8"
@@ -2763,6 +2782,11 @@ dompurify@^3.3.1:
   integrity sha512-JahakDAIg1gyOm7dlgWSDjV4n7Ip2PKR55NIT6jrMfIgLFgWo81vdr1/QGqWtFNRqXP9UV71oVePtjqS2ebnPw==
   optionalDependencies:
     "@types/trusted-types" "^2.0.7"
+
+dotenv@^17.4.2:
+  version "17.4.2"
+  resolved "https://registry.yarnpkg.com/dotenv/-/dotenv-17.4.2.tgz#c07e54a746e11eba021dd9e1047ced5afdc1c034"
+  integrity sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==
 
 dunder-proto@^1.0.0, dunder-proto@^1.0.1:
   version "1.0.1"
@@ -5035,6 +5059,13 @@ pirates@^4.0.1:
   resolved "https://registry.yarnpkg.com/pirates/-/pirates-4.0.7.tgz#643b4a18c4257c8a65104b73f3049ce9a0a15e22"
   integrity sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==
 
+pizzip@^3.2.0:
+  version "3.2.0"
+  resolved "https://registry.yarnpkg.com/pizzip/-/pizzip-3.2.0.tgz#033daeada94d862fc354a2222130ea91e8792615"
+  integrity sha512-X4NPNICxCfIK8VYhF6wbksn81vTiziyLbvKuORVAmolvnUzl1A1xmz9DAWKxPRq9lZg84pJOOAMq3OE61bD8IQ==
+  dependencies:
+    pako "^2.1.0"
+
 possible-typed-array-names@^1.0.0:
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/possible-typed-array-names/-/possible-typed-array-names-1.1.0.tgz#93e3582bc0e5426586d9d07b79ee40fc841de4ae"
@@ -6540,6 +6571,11 @@ xmlchars@^2.2.0:
   version "2.2.0"
   resolved "https://registry.yarnpkg.com/xmlchars/-/xmlchars-2.2.0.tgz#060fe1bcb7f9c76fe2a17db86a9bc3ab894210cb"
   integrity sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==
+
+xmldom@^0.1.27:
+  version "0.1.31"
+  resolved "https://registry.yarnpkg.com/xmldom/-/xmldom-0.1.31.tgz#b76c9a1bd9f0a9737e5a72dc37231cf38375e2ff"
+  integrity sha512-yS2uJflVQs6n+CyjHoaBmVSqIDevTAWrzMmjG1Gc7h1qQ7uVozNhEPJAwZXWyGQ/Gafo3fCwrcaokezLPupVyQ==
 
 xtend@^4.0.0:
   version "4.0.2"

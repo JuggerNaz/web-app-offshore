@@ -17,7 +17,9 @@ import {
     Copy,
     Info,
     PanelRightOpen,
-    ArrowRight
+    ArrowRight,
+    Settings,
+    FileCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -27,11 +29,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { EXECUTIVE_SUMMARY_TOC } from "./constants";
 import { SearchableSelect } from "./SearchableSelect";
+import { ReportSettingsDialog } from "./ReportSettingsDialog";
 
 export default function ExecutiveSummaryPage() {
     const [selections, setSelections] = useState({
@@ -43,9 +47,14 @@ export default function ExecutiveSummaryPage() {
     const [sectionsData, setSectionsData] = useState<Record<string, string>>({});
     const [isSaving, setIsSaving] = useState(false);
     const [showInsight, setShowInsight] = useState(false);
+    const [reportType, setReportType] = useState("final");
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
 
     // Fetch context data
     const { data: jobpacksData } = useSWR("/api/jobpack?has_inspection=true", fetcher);
+    const { data: companySettings } = useSWR("/api/company-settings", fetcher);
+    const { data: templatesRes } = useSWR(`/api/report-templates?type=${reportType}`, fetcher);
     const { data: sowsData } = useSWR(
         selections.jobpackId && selections.structureId 
             ? `/api/sow?jobpack_id=${selections.jobpackId}&structure_id=${selections.structureId}` 
@@ -167,24 +176,52 @@ export default function ExecutiveSummaryPage() {
         const jp = jobpacks.find((j:any) => j.id.toString() === selections.jobpackId);
         const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
         
-        const sections = EXECUTIVE_SUMMARY_TOC.map(s => ({
-            id: s.id,
-            title: s.title,
-            content: sectionsData[s.id] || ""
-        }));
+        // Find default template for selected type
+        const templates = templatesRes?.data || [];
+        const template = templates.find((t: any) => t.is_default) || templates[0];
 
+        if (!template) {
+            toast.error(`No ${reportType} template found. Please upload one in settings.`);
+            setIsSettingsOpen(true);
+            return;
+        }
+
+        setIsGenerating(true);
         try {
-            const { generateExecutiveSummaryDocx } = await import("@/utils/report-generators/executive-summary-docx");
-            await generateExecutiveSummaryDocx({
-                jobpackName: jp?.name || selections.jobpackId,
-                platformName: str?.name || selections.structureId,
-                sowReportNo: selections.sowReportNo,
-                sections,
+            const { generateTemplateReport } = await import("@/utils/report-generators/template-report-generator");
+            
+            const sections = EXECUTIVE_SUMMARY_TOC.map(s => ({
+                id: s.id,
+                title: s.title,
+                content: sectionsData[s.id] || ""
+            }));
+
+            const reportData = {
+                PLATFORM_TITLE: str?.name || selections.structureId,
+                JOB_PACK_NAME: jp?.name || selections.jobpackId,
+                REPORT_NO: selections.sowReportNo,
+                REPORT_TYPE: reportType.toUpperCase(),
+                DATE: new Date().toLocaleDateString("en-GB"),
+                SECTIONS: sections,
+                ANOMALIES: insightData?.data?.anomalies?.items || [],
+                FINDINGS: insightData?.data?.findings?.items || [],
+                STATS: insightData?.data?.records || {},
+                SOW_COMPLETION: insightData?.data?.sow?.completionPct || 0,
+            };
+
+            await generateTemplateReport({
+                templateUrl: template.storage_path,
+                data: reportData,
+                fileName: `${reportType.toUpperCase()}_REPORT_${str?.name || selections.structureId}_${selections.sowReportNo}`,
+                logoUrl: companySettings?.data?.logo_url
             });
-            toast.success("DOCX generated successfully");
+
+            toast.success("Report generated successfully");
         } catch (error) {
             console.error(error);
-            toast.error("Error generating DOCX");
+            toast.error("Error generating report");
+        } finally {
+            setIsGenerating(false);
         }
     };
 
@@ -260,6 +297,15 @@ export default function ExecutiveSummaryPage() {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <Tabs value={reportType} onValueChange={setReportType} className="w-[200px]">
+                        <TabsList className="grid w-full grid-cols-2 h-9">
+                            <TabsTrigger value="preliminary" className="text-[10px] uppercase font-bold">Prelim</TabsTrigger>
+                            <TabsTrigger value="final" className="text-[10px] uppercase font-bold">Final</TabsTrigger>
+                        </TabsList>
+                    </Tabs>
+
+                    <Separator orientation="vertical" className="h-6 mx-1" />
+
                     <div className="flex items-center gap-2">
                         <SearchableSelect 
                             options={jobpacks.map((jp: any) => ({ value: jp.id.toString(), label: jp.name || jp.id }))}
@@ -267,7 +313,7 @@ export default function ExecutiveSummaryPage() {
                             onValueChange={(v) => setSelections({ jobpackId: v, structureId: "", sowReportNo: "" })}
                             placeholder="Select Job Pack"
                             searchPlaceholder="Search Job Pack..."
-                            className="w-[220px]"
+                            className="w-[180px]"
                         />
 
                         <SearchableSelect 
@@ -277,7 +323,7 @@ export default function ExecutiveSummaryPage() {
                             disabled={!selections.jobpackId}
                             placeholder="Select Structure"
                             searchPlaceholder="Search Structure..."
-                            className="w-[200px]"
+                            className="w-[160px]"
                         />
 
                         <SearchableSelect 
@@ -287,19 +333,30 @@ export default function ExecutiveSummaryPage() {
                             disabled={!selections.structureId}
                             placeholder="SOW Report No"
                             searchPlaceholder="Search Report No..."
-                            className="w-[180px]"
+                            className="w-[140px]"
                         />
                     </div>
 
-                    <Separator orientation="vertical" className="h-6 mx-2" />
+                    <Separator orientation="vertical" className="h-6 mx-1" />
 
-                    <Button variant="outline" size="sm" onClick={handleSave} disabled={isSaving || !selections.sowReportNo} className="gap-2">
-                        {isSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        Save Changes
+                    <Button variant="outline" size="icon" onClick={() => setIsSettingsOpen(true)} className="h-9 w-9">
+                        <Settings className="h-4 w-4" />
                     </Button>
-                    <Button variant="default" size="sm" onClick={handleExportDocx} className="bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 gap-2">
-                        <Download className="h-4 w-4" />
-                        Export DOCX
+
+                    <Button variant="outline" size="sm" onClick={handleSave} disabled={isSaving || !selections.sowReportNo} className="gap-2 h-9">
+                        {isSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        <span className="hidden lg:inline">Save</span>
+                    </Button>
+
+                    <Button 
+                        variant="default" 
+                        size="sm" 
+                        onClick={handleExportDocx} 
+                        disabled={isGenerating || !selections.sowReportNo}
+                        className="bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 gap-2 h-9 min-w-[120px]"
+                    >
+                        {isGenerating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                        {reportType === "final" ? "Final DOCX" : "Prelim DOCX"}
                     </Button>
                 </div>
             </header>
@@ -499,6 +556,11 @@ export default function ExecutiveSummaryPage() {
                     )}
                 </AnimatePresence>
             </div>
+
+            <ReportSettingsDialog 
+                open={isSettingsOpen} 
+                onOpenChange={setIsSettingsOpen} 
+            />
         </div>
     );
 }

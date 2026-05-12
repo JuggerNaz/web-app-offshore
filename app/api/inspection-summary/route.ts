@@ -622,16 +622,33 @@ export async function GET(request: NextRequest) {
                     total: anomalyValidTotal,
                     rectified: rectifiedCount,
                     open: anomalyValidTotal - rectifiedCount,
-                    // Grouped by priority (P1, P2, P3, etc.) — Unknown excluded
                     byPriority: anomalyByPriority,
-                    // Also grouped by defect type
                     byDefectType: anomalyByDefectType,
+                    items: anomalyRecords.map((r: any) => {
+                        const anomaly = r.insp_anomalies?.[0];
+                        return {
+                            ref: anomaly?.anomaly_ref_no || `ID: ${r.insp_id}`,
+                            description: anomaly?.defect_description || r.inspection_data?.observation || "N/A",
+                            priority: anomaly?.priority_code || r.inspection_data?.priority || "N/A",
+                            status: anomaly?.status || "OPEN",
+                            rectification: anomaly?.follow_up_notes || "N/A"
+                        };
+                    })
                 },
                 findings: {
                     total: findingValidTotal,
                     rectified: findingRectifiedCount,
                     open: findingValidTotal - findingRectifiedCount,
                     byPriority: findingByPriority,
+                    items: findingRecords.map((r: any) => {
+                        const anomaly = r.insp_anomalies?.[0];
+                        return {
+                            ref: anomaly?.anomaly_ref_no || `ID: ${r.insp_id}`,
+                            description: anomaly?.defect_description || r.inspection_data?.observation || "N/A",
+                            priority: anomaly?.priority_code || r.inspection_data?.priority || "N/A",
+                            status: anomaly?.status || "OPEN"
+                        };
+                    })
                 },
                 mgi: { total: mgiRecords.length, max: mgiMax, avg: mgiAvg },
                 scour: { total: scourRecords.length, exposed: scourExposedCount, minBurial: scourMinBurial },
