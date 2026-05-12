@@ -47,7 +47,7 @@ export const generateROVCondSketchReport = async (
             text: [30, 41, 59] as [number, number, number],
             anomaly: [239, 68, 68] as [number, number, number],
             rectified: [34, 197, 94] as [number, number, number],
-            riser: [71, 85, 105] as [number, number, number],
+            riser: [160, 175, 195] as [number, number, number],
             mudline: [145, 123, 76] as [number, number, number],
         };
 
@@ -256,9 +256,9 @@ export const generateROVCondSketchReport = async (
             // --- Graphics Area ---
             // 1. Draw Conductor Pipe
             const drawP = (x: number, y1: number, y2: number) => {
-                doc.setLineWidth(rWidth); doc.setDrawColor(60, 70, 90); doc.line(x, y1, x, y2);
-                doc.setLineWidth(rWidth * 0.8); doc.setDrawColor(80, 95, 115); doc.line(x, y1, x, y2);
-                doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(180, 190, 210); doc.line(x - rWidth * 0.2, y1, x - rWidth * 0.2, y2);
+                doc.setLineWidth(rWidth); doc.setDrawColor(120, 130, 150); doc.line(x, y1, x, y2);
+                doc.setLineWidth(rWidth * 0.8); doc.setDrawColor(160, 175, 195); doc.line(x, y1, x, y2);
+                doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(220, 230, 240); doc.line(x - rWidth * 0.2, y1, x - rWidth * 0.2, y2);
             };
             drawP(cX, pipeStartY, pipeEndY);
 

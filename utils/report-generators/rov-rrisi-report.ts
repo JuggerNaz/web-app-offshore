@@ -52,7 +52,7 @@ export const generateROVRRISIReport = async (
             text: [30, 41, 59] as [number, number, number],
             anomaly: [239, 68, 68] as [number, number, number],
             rectified: [34, 197, 94] as [number, number, number],
-            riser: [71, 85, 105] as [number, number, number],
+            riser: [160, 175, 195] as [number, number, number],
             mudline: [145, 123, 76] as [number, number, number],
         };
 
@@ -239,9 +239,9 @@ export const generateROVRRISIReport = async (
 
             // --- Draw Riser ---
             const drawP = (x1: number, y1: number, x2: number, y2: number, isV: boolean) => {
-                doc.setLineWidth(rWidth); doc.setDrawColor(50, 60, 80); doc.line(x1, y1, x2, y2);
-                doc.setLineWidth(rWidth * 0.7); doc.setDrawColor(71, 85, 105); doc.line(x1, y1, x2, y2);
-                doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(148, 163, 184); 
+                doc.setLineWidth(rWidth); doc.setDrawColor(120, 130, 150); doc.line(x1, y1, x2, y2);
+                doc.setLineWidth(rWidth * 0.7); doc.setDrawColor(160, 175, 195); doc.line(x1, y1, x2, y2);
+                doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(220, 230, 240); 
                 const o = -rWidth * 0.15; if (isV) doc.line(x1 + o, y1, x2 + o, y2); else doc.line(x1, y1 + o, x2, y2 + o);
             };
             drawP(cX, eToY(designStart), cX, bY, true);
@@ -258,11 +258,11 @@ export const generateROVRRISIReport = async (
                         doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
                     }
                 };
-                drawC([50, 60, 80], rWidth, 0); drawC([71, 85, 105], rWidth * 0.7, 0); drawC([148, 163, 184], rWidth * 0.2, -rWidth * 0.15);
+                drawC([120, 130, 150], rWidth, 0); drawC([160, 175, 195], rWidth * 0.7, 0); drawC([220, 230, 240], rWidth * 0.2, -rWidth * 0.15);
             }
             if (rType !== 'J' && rType !== 'I') {
                 drawP(endX, pipeY, gX + gW - 5, pipeY, false);
-                doc.setFontSize(6); doc.setTextColor(71, 85, 105); doc.text("PIPELINE", endX + 10, pipeY + 8);
+                doc.setFontSize(6); doc.setTextColor(120, 130, 150); doc.text("PIPELINE", endX + 10, pipeY + 8);
             }
 
             // Scale
