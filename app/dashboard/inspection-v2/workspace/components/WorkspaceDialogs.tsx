@@ -44,6 +44,7 @@ import DiveMovementLog from "@/app/dashboard/inspection/dive/components/DiveMove
 import ROVJobSetupDialog from "@/app/dashboard/inspection/rov/components/ROVJobSetupDialog";
 import ROVMovementLog from "@/app/dashboard/inspection/rov/components/ROVMovementLog";
 import { AttachmentEditorDialog } from "./AttachmentEditorDialog";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 import { getReportHeaderData } from "@/utils/company-settings";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
@@ -779,7 +780,7 @@ export function WorkspaceDialogs({
                         {viewingRecordAttachments && viewingRecordAttachments.length > 0 ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {viewingRecordAttachments.map((att: any) => {
-                                    const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(att.path);
+                                    const publicUrl = getAttachmentUrl(att, supabase);
                                     return (
                                         <Card key={att.id} className="overflow-hidden border-slate-200 dark:border-slate-800 group flex flex-col bg-slate-50 dark:bg-slate-900 shadow-sm">
                                             <div className="aspect-video bg-slate-900 flex items-center justify-center text-white relative">
@@ -1005,29 +1006,40 @@ export function WorkspaceDialogs({
                 attachment={editingAttachment}
                 onSave={async (updated) => {
                     if (updated.isEdited || updated.title !== editingAttachment.title || updated.description !== editingAttachment.description) {
-                        // 1. Handle Pending Attachments (local state)
+                        // 1. Handle Pending Attachments (local state - unsaved items)
                         if (pendingAttachments.some(a => a.id === updated.id)) {
                             setPendingAttachments(prev => prev.map(a => a.id === updated.id ? updated : a));
                         } 
-                        // 2. Handle Saved Attachments (Supabase)
+                        // 2. Handle Saved Attachments (database records)
                         else {
                             try {
-                                let newPath = updated.path;
                                 if (updated.isEdited && updated.file) {
-                                    // Upload new version of the image
-                                    const fileExt = updated.name.split('.').pop();
-                                    const fileName = `${Math.random()}.${fileExt}`;
-                                    const filePath = `${jobPackId}/${fileName}`;
-                                    const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, updated.file);
-                                    if (uploadError) throw uploadError;
-                                    newPath = filePath;
+                                    // Use the centralized API to handle multi-provider upload
+                                    const formData = new FormData();
+                                    formData.append("id", String(updated.id));
+                                    formData.append("file", updated.file);
+                                    formData.append("filePath", updated.path || ""); // Old path for deletion
+
+                                    const response = await fetch("/api/attachment", {
+                                        method: "PUT",
+                                        body: formData
+                                    });
+
+                                    if (!response.ok) {
+                                        const errData = await response.json();
+                                        throw new Error(errData.error || "Failed to upload edited image");
+                                    }
+
+                                    const result = await response.json();
+                                    updated.path = result.url; // Update path with the new cloud storage URL
                                 }
 
+                                // Update title, description, and path in the database
                                 const { error } = await supabase
                                     .from('attachment')
                                     .update({
                                         name: updated.title,
-                                        path: newPath,
+                                        path: updated.path,
                                         meta: {
                                             ...updated.meta,
                                             description: updated.description,
@@ -1039,13 +1051,20 @@ export function WorkspaceDialogs({
                                 if (error) throw error;
                                 toast.success("Attachment updated successfully");
                                 
-                                // Update local viewing state
+                                // Refresh local state to reflect changes
                                 if (viewingRecordAttachments) {
-                                    setViewingRecordAttachments((prev: any[] | null) => prev ? prev.map(a => a.id === updated.id ? { ...a, name: updated.title, path: newPath, meta: { ...a.meta, description: updated.description } } : a) : null);
+                                    setViewingRecordAttachments((prev: any[] | null) => 
+                                        prev ? prev.map(a => a.id === updated.id ? { 
+                                            ...a, 
+                                            name: updated.title, 
+                                            path: updated.path,
+                                            meta: { ...a.meta, description: updated.description } 
+                                        } : a) : null
+                                    );
                                 }
                             } catch (err: any) {
                                 console.error("Error updating attachment:", err);
-                                toast.error("Failed to update attachment: " + err.message);
+                                toast.error("Failed to update: " + err.message);
                             }
                         }
                     }

@@ -61,6 +61,8 @@ interface InspectionFormProps {
     setRecordNotes: (s: string) => void;
     pendingAttachments: any[];
     setPendingAttachments: (atts: any[] | ((prev: any[]) => any[])) => void;
+    deletedAttachmentIds: string[];
+    setDeletedAttachmentIds: (ids: string[] | ((prev: string[]) => string[])) => void;
     setEditingAttachment: (att: any) => void;
     setIsAttachmentManagerOpen: (b: boolean) => void;
     recordedFiles: any[];
@@ -112,6 +114,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     setRecordNotes,
     pendingAttachments,
     setPendingAttachments,
+    deletedAttachmentIds,
+    setDeletedAttachmentIds,
     setEditingAttachment,
     setIsAttachmentManagerOpen,
     recordedFiles,
@@ -1540,8 +1544,15 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                                             onClick={() => setEditingAttachment(att)}
                                         >
-                                            {att.previewUrl ? (
+                                            {att.type === 'PHOTO' && att.previewUrl ? (
                                                 <img src={att.previewUrl} className="w-full h-full object-cover" />
+                                            ) : att.type === 'VIDEO' && att.previewUrl ? (
+                                                <div className="w-full h-full relative">
+                                                    <video src={att.previewUrl} className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                                        <Video className="w-5 h-5 text-white opacity-80" />
+                                                    </div>
+                                                </div>
                                             ) : (
                                                 <div className="w-full h-full flex items-center justify-center bg-slate-200 dark:bg-slate-800">
                                                     {att.type === 'VIDEO' ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}
@@ -1563,7 +1574,12 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             />
                                         </div>
                                         <button 
-                                            onClick={() => setPendingAttachments((prev: any[]) => prev.filter(a => a.id !== att.id))}
+                                            onClick={() => {
+                                                if (att.isExisting) {
+                                                    setDeletedAttachmentIds(prev => [...prev, att.id]);
+                                                }
+                                                setPendingAttachments((prev: any[]) => prev.filter(a => a.id !== att.id));
+                                            }}
                                             className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-sm"
                                         >
                                             <X className="w-3 h-3" />

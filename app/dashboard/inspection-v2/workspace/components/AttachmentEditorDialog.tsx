@@ -22,6 +22,9 @@ import {
     Contrast as ContrastIcon, 
     RotateCcw,
     MousePointer2,
+    FileText,
+    Video,
+    ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -63,12 +66,14 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                 const img = new Image();
                 img.crossOrigin = "anonymous";
                 const url = attachment.previewUrl || (attachment.publicUrl);
-                img.src = url;
-                img.onload = () => {
-                    setImageObj(img);
-                    // Use a small delay to ensure refs are ready
-                    setTimeout(() => initCanvas(img), 100);
-                };
+                if (url) {
+                    img.src = url;
+                    img.onload = () => {
+                        setImageObj(img);
+                        // Use a small delay to ensure refs are ready
+                        setTimeout(() => initCanvas(img), 100);
+                    };
+                }
             }
         }
     }, [open, attachment]);
@@ -385,7 +390,61 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
 
                         <div ref={containerRef} className="flex-1 relative flex items-center justify-center p-8 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:20px_20px]">
                             {attachment?.type === 'VIDEO' ? (
-                                <video src={attachment.previewUrl || attachment.publicUrl} controls className="max-w-full max-h-full rounded shadow-2xl" />
+                                <div className="flex flex-col items-center gap-6 w-full max-w-4xl">
+                                    <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-white/5">
+                                        <video 
+                                            key={attachment.previewUrl || attachment.publicUrl}
+                                            controls 
+                                            preload="auto"
+                                            className="w-full h-full"
+                                        >
+                                            <source 
+                                                src={attachment.previewUrl || attachment.publicUrl} 
+                                                type={attachment.file?.type || attachment.meta?.file_type || 
+                                                     (attachment.name?.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 
+                                                      attachment.name?.toLowerCase().endsWith('.webm') ? 'video/webm' : 
+                                                      attachment.name?.toLowerCase().endsWith('.ogg') ? 'video/ogg' : 'video/mp4')} 
+                                            />
+                                            Your browser does not support the video tag or the format is incompatible.
+                                        </video>
+                                    </div>
+                                    <div className="flex flex-col items-center gap-3 bg-slate-900/50 p-4 rounded-lg border border-white/5 w-full">
+                                        <div className="flex items-center gap-4">
+                                            <Button asChild variant="secondary" size="sm" className="font-bold">
+                                                <a href={attachment.previewUrl || attachment.publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                                                    <ExternalLink className="w-4 h-4" /> Open in New Tab
+                                                </a>
+                                            </Button>
+                                            <Button asChild variant="outline" size="sm" className="font-bold border-slate-700">
+                                                <a href={attachment.previewUrl || attachment.publicUrl} download={attachment.name} className="flex items-center gap-2">
+                                                    <Save className="w-4 h-4" /> Download Original
+                                                </a>
+                                            </Button>
+                                        </div>
+                                        <div className="text-center space-y-1">
+                                            <p className="text-[11px] text-slate-400 font-medium">
+                                                Format: <span className="text-blue-400 font-bold uppercase">{attachment.file?.type || attachment.meta?.file_type || 'Unknown'}</span>
+                                            </p>
+                                            <p className="text-[10px] text-slate-500 italic max-w-md">
+                                                Note: Formats like MKV, MOV (some codecs), and WMV may not play directly in all browsers. 
+                                                If you see a black screen, please use the "Open in New Tab" or "Download" buttons above.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : attachment?.type === 'DOCUMENT' ? (
+                                <div className="flex flex-col items-center gap-6 p-12 bg-slate-900 border border-white/5 rounded-xl shadow-2xl">
+                                    <FileText className="w-24 h-24 text-blue-500 opacity-50" />
+                                    <div className="text-center space-y-2">
+                                        <p className="text-white font-bold">{attachment.name}</p>
+                                        <p className="text-slate-400 text-xs">This file type cannot be previewed directly.</p>
+                                    </div>
+                                    <Button asChild variant="secondary">
+                                        <a href={attachment.previewUrl || attachment.publicUrl} target="_blank" rel="noopener noreferrer">
+                                            Open in New Tab
+                                        </a>
+                                    </Button>
+                                </div>
                             ) : (
                                 <canvas 
                                     ref={canvasRef}

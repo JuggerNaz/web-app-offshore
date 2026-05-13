@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Paperclip, X, FileIcon, ImageIcon, Trash2, Eye, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 import Image from "next/image";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 export interface Attachment {
     id: number;
@@ -218,15 +219,14 @@ export default function AttachmentManager({
     };
 
     const handlePreview = async (attachment: Attachment) => {
+        const publicUrl = getAttachmentUrl(attachment, supabase);
         if (isImage(attachment.name)) {
-            const { data } = supabase.storage.from('attachments').getPublicUrl(attachment.path);
-            if (data) {
-                setViewingImage(data.publicUrl);
+            if (publicUrl) {
+                setViewingImage(publicUrl);
             }
         } else {
-            const { data } = supabase.storage.from('attachments').getPublicUrl(attachment.path);
-            if (data?.publicUrl) {
-                window.open(data.publicUrl, '_blank');
+            if (publicUrl) {
+                window.open(publicUrl, '_blank');
             }
         }
     };

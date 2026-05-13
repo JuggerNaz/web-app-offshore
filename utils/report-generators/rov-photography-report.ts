@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { format } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 interface CompanySettings {
     company_name?: string;
@@ -192,13 +193,7 @@ export const generateROVPhotographyReport = async (
                         continue;
                     }
 
-                    let url = "";
-                    if (path.startsWith('blob:') || path.startsWith('http')) {
-                        url = path;
-                    } else {
-                        const { data: publicUrlData } = supabase.storage.from('attachments').getPublicUrl(path);
-                        url = publicUrlData.publicUrl;
-                    }
+                    const url = getAttachmentUrl(photo, supabase);
 
                     const imgData = await loadPhotoData(url);
                     if (imgData) {

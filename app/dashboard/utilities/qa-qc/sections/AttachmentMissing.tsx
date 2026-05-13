@@ -231,28 +231,35 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
     const file = e.target.files?.[0];
     if (!file || !selectedAnomaly) return;
 
-    setUploading(selectedAnomaly.anomaly_id);
+    // Determine the actual record ID and type
+    const recordId = selectedAnomaly.anomaly_id || selectedAnomaly.insp_id;
+    const sourceType = selectedAnomaly.anomaly_id ? "anomaly" : "inspection";
+
+    setUploading(recordId);
     try {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("name", file.name);
-      formData.append("source_type", "anomaly");
-      formData.append("source_id", String(selectedAnomaly.anomaly_id));
+      formData.append("source_type", sourceType);
+      formData.append("source_id", String(recordId));
       formData.append("title", file.name);
-      formData.append("description", `QAQC Upload: ${selectedAnomaly.anomaly_ref_no}`);
+      formData.append("description", `QAQC Upload: ${selectedAnomaly.anomaly_ref_no || `REC #${selectedAnomaly.insp_id}`}`);
 
       const res = await fetch("/api/attachment", {
         method: "POST",
         body: formData,
       });
 
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
+      }
 
       toast.success("Attachment uploaded successfully");
       fetchMissingAttachments(); // Refresh the list
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload error:", error);
-      toast.error("Failed to upload attachment");
+      toast.error(error.message || "Failed to upload attachment");
     } finally {
       setUploading(null);
       setSelectedAnomaly(null);

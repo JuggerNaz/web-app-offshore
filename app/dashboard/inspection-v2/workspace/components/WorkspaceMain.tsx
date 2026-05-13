@@ -122,6 +122,8 @@ interface WorkspaceMainProps {
   findingType: "Complete" | "Anomaly" | "Finding" | "Incomplete";
   activeMGIProfile?: any;
   setEditingAttachment: (att: any) => void;
+  deletedAttachmentIds: string[];
+  setDeletedAttachmentIds: (ids: string[] | ((prev: string[]) => string[])) => void;
 }
 
 export function WorkspaceMain(props: WorkspaceMainProps) {
@@ -191,6 +193,8 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
     supabase,
     activeMGIProfile,
     setEditingAttachment,
+    deletedAttachmentIds,
+    setDeletedAttachmentIds,
   } = props;
 
   const FORM_AREA_ID = "workspace-form-area";
@@ -699,6 +703,8 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                 supabase={supabase}
                 activeMGIProfile={props.activeMGIProfile}
                 setEditingAttachment={setEditingAttachment}
+                deletedAttachmentIds={deletedAttachmentIds}
+                setDeletedAttachmentIds={setDeletedAttachmentIds}
               />
             )}
           </div>

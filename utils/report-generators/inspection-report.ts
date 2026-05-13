@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 import { createClient } from "@/utils/supabase/client";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 // Helper to load image for PDF
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
@@ -256,8 +257,7 @@ export const generateInspectionReport = async (
                 }
 
                 // Get Public URL
-                const { data: publicUrlData } = supabase.storage.from('attachments').getPublicUrl(att.path);
-                const url = publicUrlData.publicUrl;
+                const url = getAttachmentUrl(att, supabase);
 
                 try {
                     const colCenterX = currentX + (imgWidth / 2);

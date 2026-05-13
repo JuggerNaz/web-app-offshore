@@ -165,6 +165,7 @@ import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 import { useWorkspaceReports } from "./hooks/useWorkspaceReports";
 import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { WorkspaceResources } from "./components/WorkspaceResources";
 import { useROVConnection } from "@/components/rov-connection-provider";
 
@@ -556,6 +557,7 @@ function V10PreviewLayout() {
     const [viewingRecordAttachments, setViewingRecordAttachments] = useState<any[] | null>(null);
     const [editingAttachment, setEditingAttachment] = useState<any>(null);
     const [selectorShowAll, setSelectorShowAll] = useState(false);
+    const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<string[]>([]);
 
     // Drawing Tools state
     const [currentTool, setCurrentTool] = useState<DrawingTool>('pen');
@@ -1593,6 +1595,7 @@ function V10PreviewLayout() {
         setPendingRule(null);
         setPhotoLinked(false);
         setPendingAttachments([]);
+        setDeletedAttachmentIds([]);
     };
 
     // Re-classification Logic
@@ -4062,80 +4065,16 @@ function V10PreviewLayout() {
                 });
             }
 
-            // Process Attachments (Upload to Storage & Create attachment entries)
-            if (pendingAttachments.length > 0) {
-                console.log("Processing attachments for insp_id:", opData.insp_id);
-                for (const att of pendingAttachments) {
-                    try {
-                        // If already exists, we only update metadata if it might have changed
-                        if (att.isExisting) {
-                            await supabase.from('attachment').update({
-                                name: att.title || att.name,
-                                meta: {
-                                    ...att.meta,
-                                    description: att.description
-                                }
-                            }).eq('id', att.id);
-                            continue;
-                        }
+            // Prepare data for background processing
+            const attachmentsToProcess = [...pendingAttachments];
+            const idsToDelete = [...deletedAttachmentIds];
+            const finalAutoRefNo = autoRefNo;
+            const finalInspId = opData.insp_id;
 
-                        const fileExt = att.name.split('.').pop();
-                        const filePath = `${opData.insp_id}/${att.id}.${fileExt}`;
-
-                        // Use generated refNo in title if still Draft/Pending
-                        let finalTitle = att.title || att.name;
-                        if (autoRefNo && (finalTitle.includes('Draft') || finalTitle.includes('Pending'))) {
-                            finalTitle = finalTitle.replace('Draft', autoRefNo).replace('Pending', autoRefNo);
-                        }
-                        
-                        // Upload to Storage
-                        if (!att.file) {
-                            console.warn("Skipping upload: No file blob for", att.name);
-                            continue;
-                        }
-
-                        const { error: uploadError } = await supabase.storage
-                            .from('attachments')
-                            .upload(filePath, att.file, {
-                                contentType: (att.file as any).type || undefined,
-                                upsert: true
-                            });
-
-                        if (uploadError) {
-                            console.error("Media Storage Upload Error:", uploadError);
-                            toast.error(`Failed to upload ${att.name}: ${uploadError.message}`);
-                            continue;
-                        }
-
-                        // Insert Metadata to 'attachment' table
-                        const { error: mediaErr } = await supabase.from('attachment').insert({
-                            name: finalTitle,
-                            source_id: opData.insp_id,
-                            source_type: 'INSPECTION',
-                            path: filePath,
-                            user_id: user?.id,
-                            meta: {
-                                type: att.type,
-                                size: (att.file as File).size,
-                                mime: (att.file as File).type || null,
-                                description: att.description
-                            }
-                        });
-
-                        if (mediaErr) {
-                            console.error("Media DB Insert Error:", mediaErr);
-                            toast.error(`Attachment metadata failed for ${att.name}: ${mediaErr.message}`);
-                        }
-                    } catch (err: any) {
-                        console.error("Attachment processing exception:", err);
-                        toast.error(`Unexpected error with attachment ${att.name}`);
-                    }
-                }
-            }
-
-            syncDeploymentState();
-            fetchHistory();
-
+            // Clear local state and reset form IMMEDIATELY to free up the UI
+            setPendingAttachments([]);
+            setDeletedAttachmentIds([]);
+            
             // Optimistic UI update: refresh task status on component list & scope cards
             const taskCode = it?.code || activeSpec;
             const uiStatus = findingType === 'Incomplete' ? 'incomplete' : 'completed';
@@ -4158,19 +4097,115 @@ function V10PreviewLayout() {
             }));
 
             resetForm();
-            setPendingAttachments([]); // Clear attachments
+            
+            // Notification for record save
             toast.success(editingRecordId ? "Record updated" : "Record committed");
+
+            // Define background process
+            const processAttachments = async () => {
+                if (attachmentsToProcess.length === 0 && idsToDelete.length === 0) return;
+
+                const bgToastId = toast.loading(`Processing ${attachmentsToProcess.length} attachments in background...`);
+                
+                try {
+                    // 1. Handle Deleted Existing Attachments
+                    if (idsToDelete.length > 0) {
+                        console.log("[BG] Cleaning up deleted attachments:", idsToDelete);
+                        for (const delId of idsToDelete) {
+                            try {
+                                const response = await fetch(`/api/attachment?id=${delId}`, {
+                                    method: 'DELETE'
+                                });
+                                if (!response.ok) console.error(`[BG] Failed to delete attachment ${delId}`);
+                            } catch (err) {
+                                console.error("[BG] Error calling DELETE /api/attachment:", err);
+                            }
+                        }
+                    }
+
+                    // 2. Process Pending Attachments
+                    if (attachmentsToProcess.length > 0) {
+                        console.log("[BG] Processing attachments for insp_id:", finalInspId);
+                        for (const att of attachmentsToProcess) {
+                            try {
+                                if (att.isExisting) {
+                                    await fetch('/api/attachment', {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            id: att.id,
+                                            title: att.title || att.name,
+                                            name: att.title || att.name,
+                                            description: att.description
+                                        })
+                                    });
+                                    continue;
+                                }
+
+                                let finalTitle = att.title || att.name;
+                                if (finalAutoRefNo && (finalTitle.includes('Draft') || finalTitle.includes('Pending'))) {
+                                    finalTitle = finalTitle.replace('Draft', finalAutoRefNo).replace('Pending', finalAutoRefNo);
+                                }
+                                
+                                if (!att.file) {
+                                    console.warn("[BG] Skipping upload: No file blob for", att.name);
+                                    continue;
+                                }
+
+                                const formData = new FormData();
+                                formData.append('file', att.file);
+                                formData.append('name', finalTitle);
+                                formData.append('source_type', 'INSPECTION');
+                                formData.append('source_id', finalInspId.toString());
+                                formData.append('title', finalTitle);
+                                formData.append('description', att.description);
+
+                                const response = await fetch('/api/attachment', {
+                                    method: 'POST',
+                                    body: formData
+                                });
+
+                                if (!response.ok) {
+                                    const errData = await response.json();
+                                    throw new Error(errData.error || 'Upload failed');
+                                }
+                            } catch (err: any) {
+                                console.error("[BG] Attachment processing exception:", err);
+                                toast.error(`Attachment error (${att.name}): ${err.message}`);
+                            }
+                        }
+                    }
+
+                    toast.success("Background attachments processed", { id: bgToastId });
+                    
+                    // Final refresh to show new attachments
+                    queryClient.invalidateQueries({ queryKey: ['inspection-events'] });
+                    fetchHistory();
+                } catch (err) {
+                    console.error("[BG] Global background processing error:", err);
+                    toast.error("Background attachment processing encountered an error", { id: bgToastId });
+                }
+            };
+
+            // FIRE AND FORGET (Don't await)
+            processAttachments();
+
+            // Initial refresh for the record itself
+            syncDeploymentState();
+            fetchHistory();
         } catch (err: any) {
             console.error("HandleCommitRecord Error:", err);
             toast.error(`Error saving record: ${err.message || 'Unknown error'}`);
         } finally {
             setIsCommitting(false);
         }
+
     };
 
 
 
     const handleEditRecord = async (record: any) => {
+        setDeletedAttachmentIds([]);
         let fullRecord = record;
         const recordId = record.insp_id || record.id;
         
@@ -4261,13 +4296,16 @@ function V10PreviewLayout() {
 
         if (atts && atts.length > 0) {
             const mapped = atts.map(a => {
-                const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(a.path);
+                const publicUrl = getAttachmentUrl(a, supabase);
                 return {
                     id: a.id,
                     name: a.name,
                     title: a.name,
                     description: a.meta?.description || '',
-                    type: a.meta?.type || 'PHOTO',
+                    type: a.meta?.type || 
+                          (a.meta?.file_type?.startsWith('video/') ? 'VIDEO' : 
+                          (a.meta?.file_type?.startsWith('image/') ? 'PHOTO' : 
+                          (a.meta?.file_type?.includes('pdf') || a.meta?.file_type?.includes('document') ? 'DOCUMENT' : 'PHOTO'))),
                     source: a.source_type,
                     previewUrl: publicUrl,
                     path: a.path,
@@ -5587,6 +5625,8 @@ function V10PreviewLayout() {
                                         setRecordNotes={setRecordNotes}
                                         pendingAttachments={pendingAttachments}
                                         setPendingAttachments={setPendingAttachments}
+                                        deletedAttachmentIds={deletedAttachmentIds}
+                                        setDeletedAttachmentIds={setDeletedAttachmentIds}
                                         setEditingAttachment={setEditingAttachment}
                                         setIsAttachmentManagerOpen={setIsAttachmentManagerOpen}
                                         recordedFiles={recordedFiles}

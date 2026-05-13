@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Settings,
     Building2,
@@ -20,6 +22,10 @@ import {
     HardDrive,
     FolderOpen,
     Info,
+    Share2,
+    Box,
+    Globe,
+    ExternalLink,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getSupabaseUrl } from "@/utils/storage";
@@ -41,6 +47,7 @@ interface CompanySettingsData {
     logo_path: string | null;
     logo_url: string | null;
     storage_provider: string;
+    storage_config: any;
     def_unit: string;
     has_structures: boolean;
     created_at: string;
@@ -58,6 +65,10 @@ export default function SettingsPage() {
     const [defUnit, setDefUnit] = useState("METRIC");
     const [serialNo, setSerialNo] = useState("");
     const [localStoragePath, setLocalStoragePath] = useState("");
+    const [storageProvider, setStorageProvider] = useState("Supabase");
+    const [storageConfig, setStorageConfig] = useState<any>({});
+    const [serviceAccount, setServiceAccount] = useState("");
+    const [googleDriveMode, setGoogleDriveMode] = useState<"local" | "api">("local");
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
@@ -70,6 +81,15 @@ export default function SettingsPage() {
             setDepartmentName(settingsResponse.data.department_name || "");
             setDefUnit(settingsResponse.data.def_unit || "METRIC");
             setSerialNo(settingsResponse.data.serial_no || "");
+            setStorageProvider(settingsResponse.data.storage_provider || "Supabase");
+            
+            const config = settingsResponse.data.storage_config || {};
+            setStorageConfig(config);
+            setLocalStoragePath(config.basePath || "");
+            
+            const sa = config.serviceAccount;
+            setServiceAccount(typeof sa === 'object' ? JSON.stringify(sa, null, 2) : sa || "");
+            setGoogleDriveMode(config.serviceAccount ? "api" : "local");
         }
     }, [settingsResponse]);
 
@@ -161,6 +181,12 @@ export default function SettingsPage() {
                     company_name: companyName,
                     department_name: departmentName,
                     def_unit: defUnit,
+                    storage_provider: storageProvider,
+                    storage_config: {
+                        ...storageConfig,
+                        basePath: localStoragePath,
+                        serviceAccount: serviceAccount
+                    }
                 }),
             });
 
@@ -412,165 +438,598 @@ export default function SettingsPage() {
                     <CardContent className="space-y-6">
                         {/* Current Storage Provider */}
                         <div className="space-y-2">
-                            <Label>Current Storage Provider</Label>
+                            <Label>Current Active Storage</Label>
                             <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg">
-                                <Database className="w-5 h-5 text-blue-600" />
+                                {storageProvider === "Supabase" && <Database className="w-5 h-5 text-blue-600" />}
+                                {storageProvider === "Local" && <HardDrive className="w-5 h-5 text-blue-600" />}
+                                {storageProvider === "Google Drive" && <Cloud className="w-5 h-5 text-blue-600" />}
+                                {storageProvider === "OneDrive" && <Share2 className="w-5 h-5 text-blue-600" />}
+                                {storageProvider === "AWS S3" && <Box className="w-5 h-5 text-blue-600" />}
                                 <div className="flex-1">
                                     <p className="font-semibold text-blue-900 dark:text-blue-100">
-                                        {settings?.storage_provider || "Supabase"}
+                                        {storageProvider}
                                     </p>
                                     <p className="text-sm text-blue-700 dark:text-blue-300">
-                                        Active storage backend
+                                        Active storage backend for all attachments
                                     </p>
                                 </div>
-                                <div className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs font-semibold rounded-full">
+                                <div className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-semibold rounded-full">
                                     Active
                                 </div>
                             </div>
                         </div>
 
-                        {/* Storage Location */}
-                        <div className="space-y-2">
-                            <Label htmlFor="storageLocation">Storage Location (URL)</Label>
-                            <Input
-                                id="storageLocation"
-                                value={getSupabaseUrl() || "Not configured"}
-                                readOnly
-                                className="bg-muted font-mono text-sm"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                This is your current Supabase storage endpoint. All attachments and company assets are stored here.
-                            </p>
-                        </div>
-
                         {/* Storage Provider Selection */}
                         <div className="space-y-4 pt-4 border-t">
-                            <Label>Storage Provider</Label>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Cloud Storage Option */}
-                                <Card className="cursor-pointer hover:border-blue-500 transition-colors border-2 border-blue-500 bg-blue-50/50 dark:bg-blue-950/20">
-                                    <CardContent className="p-4">
-                                        <div className="flex items-start gap-3">
-                                            <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
-                                                <Cloud className="w-5 h-5 text-blue-600" />
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="flex items-center justify-between">
-                                                    <h4 className="font-semibold">Cloud Storage</h4>
-                                                    <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded-full font-medium">
-                                                        Active
-                                                    </span>
+                            <Label className="text-base">Select Storage Provider</Label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {[
+                                    { id: "Supabase", name: "Cloud Storage", desc: "Supabase - Default cloud", icon: Cloud, color: "blue" },
+                                    { id: "Local", name: "Local Drive", desc: "Local or Network Drive", icon: HardDrive, color: "slate" },
+                                    { id: "Google Drive", name: "Google Drive", desc: "Google Cloud Sync", icon: Globe, color: "green" },
+                                    { id: "OneDrive", name: "OneDrive", desc: "Microsoft Cloud Storage", icon: Share2, color: "blue" },
+                                    { id: "AWS S3", name: "AWS S3", desc: "Amazon Object Storage", icon: Box, color: "orange" },
+                                    { id: "Backblaze", name: "Backblaze B2", desc: "Free 10GB / S3 API", icon: Database, color: "red" },
+                                    { id: "Cloudinary", name: "Cloudinary", desc: "Best for Media/Video", icon: ExternalLink, color: "indigo" },
+                                ].map((p) => (
+                                    <Card 
+                                        key={p.id}
+                                        className={`cursor-pointer transition-all duration-200 border-2 ${
+                                            storageProvider === p.id 
+                                            ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20" 
+                                            : "hover:border-slate-300 dark:hover:border-slate-700"
+                                        } ${(p as any).disabled ? "opacity-50 grayscale cursor-not-allowed" : ""}`}
+                                        onClick={() => !(p as any).disabled && setStorageProvider(p.id)}
+                                    >
+                                        <CardContent className="p-4">
+                                            <div className="flex items-start gap-3">
+                                                <div className={`p-2 rounded-lg bg-${p.color}-100 dark:bg-${p.color}-900/50`}>
+                                                    <p.icon className={`w-5 h-5 text-${p.color}-600`} />
                                                 </div>
-                                                <p className="text-xs text-muted-foreground mt-1">
-                                                    Supabase - Secure cloud storage
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                {/* Local Drive Option */}
-                                <Card className="cursor-pointer hover:border-slate-400 transition-colors">
-                                    <CardContent className="p-4">
-                                        <div className="flex items-start gap-3">
-                                            <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg">
-                                                <HardDrive className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="flex items-center justify-between">
-                                                    <h4 className="font-semibold">Local Drive</h4>
-                                                    <span className="text-xs bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 px-2 py-1 rounded-full font-medium">
-                                                        Available
-                                                    </span>
+                                                <div className="flex-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <h4 className="font-semibold text-sm">{p.name}</h4>
+                                                        {storageProvider === p.id && (
+                                                            <Check className="w-3 h-3 text-blue-600" />
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                        {p.desc}
+                                                    </p>
                                                 </div>
-                                                <p className="text-xs text-muted-foreground mt-1">
-                                                    Store files on local/network drive
-                                                </p>
                                             </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                                        </CardContent>
+                                    </Card>
+                                ))}
                             </div>
                         </div>
 
-                        {/* Local Drive Configuration */}
+                        {/* Provider Specific Configuration */}
                         <div className="space-y-4 pt-4 border-t">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <Label>Local Attachments Folder</Label>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Map a local or network drive folder for storing attachments
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-3">
-                                <div className="flex gap-2">
-                                    <Input
-                                        value={localStoragePath}
-                                        onChange={(e) => setLocalStoragePath(e.target.value)}
-                                        placeholder="C:\Attachments or \\server\share\attachments"
-                                        className="font-mono text-sm"
-                                    />
-                                    <Button
-                                        variant="outline"
-                                        className="gap-2 shrink-0"
-                                        onClick={() => alert("File browser will open here. For now, please type the path manually.")}
-                                    >
-                                        <FolderOpen className="w-4 h-4" />
-                                        Browse
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        className="gap-2 shrink-0"
-                                        onClick={() => {
-                                            if (!localStoragePath) {
-                                                alert("Please enter a path first");
-                                                return;
-                                            }
-                                            alert(`Testing connection to: ${localStoragePath}\n\nNote: Actual connection test will be implemented in the backend.`);
-                                        }}
-                                    >
-                                        <Check className="w-4 h-4" />
-                                        Test
-                                    </Button>
-                                </div>
-
-                                <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900">
-                                    <AlertCircle className="h-4 w-4 text-amber-600" />
-                                    <AlertDescription className="text-amber-800 dark:text-amber-200">
-                                        <div className="space-y-2">
-                                            <p className="font-semibold">Local Drive Storage Notes:</p>
-                                            <ul className="text-xs space-y-1 ml-4 list-disc">
-                                                <li>Ensure the folder has read/write permissions</li>
-                                                <li>Network drives must be accessible to all users</li>
-                                                <li>Use UNC paths for network locations (\\server\share)</li>
-                                                <li>Local storage is not synchronized across devices</li>
-                                                <li>Configure in .env.local: LOCAL_STORAGE_PATH and STORAGE_MODE</li>
-                                            </ul>
-                                        </div>
-                                    </AlertDescription>
-                                </Alert>
-
-                                <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900">
-                                    <Database className="h-4 w-4 text-blue-600" />
-                                    <AlertDescription className="text-blue-800 dark:text-blue-200">
-                                        <p className="font-semibold mb-2">Quick Setup:</p>
-                                        <p className="text-xs">
-                                            See <code className="bg-blue-100 dark:bg-blue-900 px-1 py-0.5 rounded">docs/LOCAL_STORAGE_SETUP.md</code> for complete implementation guide with code examples and configuration instructions.
+                            {storageProvider === "Supabase" && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="storageLocation">Supabase Storage Endpoint</Label>
+                                        <Input
+                                            id="storageLocation"
+                                            value={getSupabaseUrl() || "Not configured"}
+                                            readOnly
+                                            className="bg-muted font-mono text-sm"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            This is your managed Supabase storage. No additional setup required.
                                         </p>
-                                    </AlertDescription>
-                                </Alert>
-                            </div>
-                        </div>
+                                    </div>
+                                </div>
+                            )}
 
-                        {/* Future Cloud Storage Options */}
-                        <Alert>
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertDescription>
-                                <strong>Coming Soon:</strong> Support for additional cloud storage providers including AWS S3, Google Cloud Storage, and Azure Blob Storage.
-                            </AlertDescription>
-                        </Alert>
+                            {storageProvider === "Local" && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div>
+                                        <Label>Local Attachments Folder</Label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Map a local or network drive folder for storing attachments
+                                        </p>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="flex gap-2">
+                                            <Input
+                                                value={localStoragePath}
+                                                onChange={(e) => setLocalStoragePath(e.target.value)}
+                                                placeholder="C:\Attachments or \\server\share\attachments"
+                                                className="font-mono text-sm"
+                                            />
+                                            <Button
+                                                variant="outline"
+                                                className="gap-2 shrink-0"
+                                                onClick={() => alert("File browser will open here. For now, please type the path manually.")}
+                                            >
+                                                <FolderOpen className="w-4 h-4" />
+                                                Browse
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                className="gap-2 shrink-0"
+                                                onClick={() => {
+                                                    if (!localStoragePath) {
+                                                        alert("Please enter a path first");
+                                                        return;
+                                                    }
+                                                    alert(`Testing connection to: ${localStoragePath}\n\nNote: Actual connection test will be implemented in the backend.`);
+                                                }}
+                                            >
+                                                <Check className="w-4 h-4" />
+                                                Test
+                                            </Button>
+                                        </div>
+
+                                        <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900">
+                                            <AlertCircle className="h-4 w-4 text-amber-600" />
+                                            <AlertDescription className="text-amber-800 dark:text-amber-200">
+                                                <div className="space-y-2 text-xs">
+                                                    <p className="font-semibold">Local Drive Storage Notes:</p>
+                                                    <ul className="space-y-1 ml-4 list-disc">
+                                                        <li>Ensure the folder has read/write permissions</li>
+                                                        <li>Network drives must be accessible to all users</li>
+                                                        <li>Use UNC paths for network locations (\\server\share)</li>
+                                                    </ul>
+                                                </div>
+                                            </AlertDescription>
+                                        </Alert>
+                                    </div>
+                                </div>
+                            )}
+
+                            {storageProvider === "Google Drive" && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <Label className="text-base">Google Drive Configuration</Label>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Choose your connection method for Google Drive
+                                            </p>
+                                        </div>
+                                        <Tabs value={googleDriveMode} onValueChange={(v: any) => setGoogleDriveMode(v)} className="w-[300px]">
+                                            <TabsList className="grid w-full grid-cols-2">
+                                                <TabsTrigger value="local">Desktop Sync</TabsTrigger>
+                                                <TabsTrigger value="api">Direct API</TabsTrigger>
+                                            </TabsList>
+                                        </Tabs>
+                                    </div>
+
+                                    <div className="space-y-4 p-4 border rounded-lg bg-slate-50/50 dark:bg-slate-900/20">
+                                        {googleDriveMode === "local" ? (
+                                            <div className="space-y-4 animate-in fade-in duration-300">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="gdriveLocalPath">Google Drive Desktop Path</Label>
+                                                    <div className="flex gap-2">
+                                                        <Input
+                                                            id="gdriveLocalPath"
+                                                            value={localStoragePath}
+                                                            onChange={(e) => setLocalStoragePath(e.target.value)}
+                                                            placeholder="e.g., G:\My Drive\Inspections"
+                                                            className="font-mono text-sm bg-white dark:bg-black"
+                                                        />
+                                                        <Button
+                                                            variant="outline"
+                                                            className="gap-2 shrink-0"
+                                                            onClick={() => alert("Please browse to your Google Drive Desktop folder.")}
+                                                        >
+                                                            <FolderOpen className="w-4 h-4" />
+                                                            Browse
+                                                        </Button>
+                                                    </div>
+                                                    <p className="text-[10px] text-muted-foreground">
+                                                        Use this if you have <b>Google Drive for Desktop</b> installed. Files will sync automatically.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4 animate-in fade-in duration-300">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="gdriveId">Folder ID or URL</Label>
+                                                    <Input
+                                                        id="gdriveId"
+                                                        value={storageConfig.googleDriveFolderId || ""}
+                                                        onChange={(e) => setStorageConfig({ ...storageConfig, googleDriveFolderId: e.target.value })}
+                                                        placeholder="Enter Google Drive Folder ID or URL"
+                                                        className="font-mono text-sm bg-white dark:bg-black"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="saJson">Service Account JSON</Label>
+                                                    <Textarea
+                                                        id="saJson"
+                                                        value={serviceAccount}
+                                                        onChange={(e) => setServiceAccount(e.target.value)}
+                                                        placeholder='{ "type": "service_account", ... }'
+                                                        className="font-mono text-[10px] h-32 bg-white dark:bg-black"
+                                                    />
+                                                    <p className="text-[10px] text-muted-foreground">
+                                                        Paste the contents of your Google Cloud Service Account JSON key file.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-2"
+                                                onClick={async () => {
+                                                    try {
+                                                        const response = await fetch("/api/storage/test-connection", {
+                                                            method: "POST",
+                                                            headers: { "Content-Type": "application/json" },
+                                                            body: JSON.stringify({
+                                                                provider: "Google Drive",
+                                                                storage_config: {
+                                                                    ...storageConfig,
+                                                                    basePath: localStoragePath,
+                                                                    serviceAccount: serviceAccount
+                                                                }
+                                                            })
+                                                        });
+                                                        const data = await response.json();
+                                                        if (data.success) {
+                                                            alert("✅ " + data.message);
+                                                        } else {
+                                                            alert("❌ " + data.error);
+                                                        }
+                                                    } catch (e: any) {
+                                                        alert("❌ Test failed: " + e.message);
+                                                    }
+                                                }}
+                                            >
+                                                <ExternalLink className="w-4 h-4" />
+                                                Test Connectivity
+                                            </Button>
+                                        </div>
+
+                                        <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900 mt-2">
+                                            <Info className="h-4 w-4 text-blue-600" />
+                                            <AlertDescription className="text-blue-800 dark:text-blue-200 text-xs">
+                                                {googleDriveMode === "local" ? (
+                                                    <p><strong>Desktop Sync:</strong> Best for individual users. Requires the Google Drive app to be running on your machine.</p>
+                                                ) : (
+                                                    <p><strong>Direct API:</strong> Best for team environments. Uploads happen in the background without needing any app installed on your PC.</p>
+                                                )}
+                                            </AlertDescription>
+                                        </Alert>
+                                    </div>
+                                </div>
+                            )}
+
+                            {storageProvider === "AWS S3" && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div>
+                                        <Label>AWS S3 Configuration</Label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Configure Amazon S3 Bucket for attachment storage
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="s3Bucket">Bucket Name</Label>
+                                            <Input
+                                                id="s3Bucket"
+                                                value={storageConfig.bucket || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, bucket: e.target.value })}
+                                                placeholder="my-attachments-bucket"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="s3Region">Region</Label>
+                                            <Input
+                                                id="s3Region"
+                                                value={storageConfig.region || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, region: e.target.value })}
+                                                placeholder="us-east-1"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="s3AccessKey">Access Key ID</Label>
+                                            <Input
+                                                id="s3AccessKey"
+                                                value={storageConfig.accessKeyId || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, accessKeyId: e.target.value })}
+                                                placeholder="AKIA..."
+                                                type="password"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="s3SecretKey">Secret Access Key</Label>
+                                            <Input
+                                                id="s3SecretKey"
+                                                value={storageConfig.secretAccessKey || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, secretAccessKey: e.target.value })}
+                                                placeholder="Secret Key"
+                                                type="password"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                            onClick={async () => {
+                                                try {
+                                                    const response = await fetch("/api/storage/test-connection", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({
+                                                            provider: "AWS S3",
+                                                            storage_config: { ...storageConfig }
+                                                        })
+                                                    });
+                                                    const data = await response.json();
+                                                    if (data.success) alert("✅ " + data.message);
+                                                    else alert("❌ " + data.error);
+                                                } catch (e: any) {
+                                                    alert("❌ Test failed: " + e.message);
+                                                }
+                                            }}
+                                        >
+                                            <ExternalLink className="w-4 h-4" />
+                                            Test Connectivity
+                                        </Button>
+                                    </div>
+                                    <Alert className="bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-900">
+                                        <Info className="h-4 w-4 text-orange-600" />
+                                        <AlertDescription className="text-orange-800 dark:text-orange-200 text-xs">
+                                            Ensure the IAM user has `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` permissions for the specified bucket.
+                                        </AlertDescription>
+                                    </Alert>
+                                </div>
+                            )}
+
+                             {storageProvider === "OneDrive" && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div>
+                                        <Label>OneDrive Configuration</Label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Configure Microsoft OneDrive (Graph API) for attachment storage
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="oneClientId">Client ID (App ID)</Label>
+                                            <Input
+                                                id="oneClientId"
+                                                value={storageConfig.clientId || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, clientId: e.target.value })}
+                                                placeholder="Enter Client ID"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="oneTenantId">Tenant ID</Label>
+                                            <Input
+                                                id="oneTenantId"
+                                                value={storageConfig.tenantId || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, tenantId: e.target.value })}
+                                                placeholder="Enter Tenant ID"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="oneClientSecret">Client Secret</Label>
+                                            <Input
+                                                id="oneClientSecret"
+                                                value={storageConfig.clientSecret || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, clientSecret: e.target.value })}
+                                                placeholder="Enter Client Secret"
+                                                type="password"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="oneDriveId">Drive ID</Label>
+                                            <Input
+                                                id="oneDriveId"
+                                                value={storageConfig.driveId || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, driveId: e.target.value })}
+                                                placeholder="Enter Drive ID"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                            onClick={async () => {
+                                                try {
+                                                    const response = await fetch("/api/storage/test-connection", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({
+                                                            provider: "OneDrive",
+                                                            storage_config: { ...storageConfig }
+                                                        })
+                                                    });
+                                                    const data = await response.json();
+                                                    if (data.success) alert("✅ " + data.message);
+                                                    else alert("❌ " + data.error);
+                                                } catch (e: any) {
+                                                    alert("❌ Test failed: " + e.message);
+                                                }
+                                            }}
+                                        >
+                                            <ExternalLink className="w-4 h-4" />
+                                            Test Connectivity
+                                        </Button>
+                                    </div>
+                                    <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900">
+                                        <Info className="h-4 w-4 text-blue-600" />
+                                        <AlertDescription className="text-blue-800 dark:text-blue-200 text-xs">
+                                            Register an application in Azure Portal with `Files.ReadWrite.All` (Application Permissions) to enable background uploads.
+                                        </AlertDescription>
+                                    </Alert>
+                                </div>
+                            )}
+
+                            {storageProvider === "Backblaze" && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div>
+                                        <Label>Backblaze B2 Configuration (S3 Compatible)</Label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Configure Backblaze B2 Bucket (S3 API). First 10GB is Free.
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="b2Bucket">Bucket Name</Label>
+                                            <Input
+                                                id="b2Bucket"
+                                                value={storageConfig.bucket || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, bucket: e.target.value })}
+                                                placeholder="my-b2-bucket"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="b2Region">Region / Endpoint</Label>
+                                            <Input
+                                                id="b2Region"
+                                                value={storageConfig.region || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, region: e.target.value })}
+                                                placeholder="e.g., us-west-004"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="b2KeyId">Key ID</Label>
+                                            <Input
+                                                id="b2KeyId"
+                                                value={storageConfig.accessKeyId || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, accessKeyId: e.target.value })}
+                                                placeholder="Application Key ID"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="b2AppKey">Application Key</Label>
+                                            <Input
+                                                id="b2AppKey"
+                                                value={storageConfig.secretAccessKey || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, secretAccessKey: e.target.value })}
+                                                placeholder="Application Key Secret"
+                                                type="password"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                            onClick={async () => {
+                                                try {
+                                                    const response = await fetch("/api/storage/test-connection", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({
+                                                            provider: "Backblaze",
+                                                            storage_config: { ...storageConfig }
+                                                        })
+                                                    });
+                                                    const data = await response.json();
+                                                    if (data.success) alert("✅ " + data.message);
+                                                    else alert("❌ " + data.error);
+                                                } catch (e: any) {
+                                                    alert("❌ Test failed: " + e.message);
+                                                }
+                                            }}
+                                        >
+                                            <ExternalLink className="w-4 h-4" />
+                                            Test Connectivity
+                                        </Button>
+                                    </div>
+                                    <Alert className="bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900">
+                                        <Info className="h-4 w-4 text-red-600" />
+                                        <AlertDescription className="text-red-800 dark:text-red-200 text-xs">
+                                            Enable S3 compatibility in Backblaze B2 and use the "Application Key" (not the master key) with S3 permissions.
+                                        </AlertDescription>
+                                    </Alert>
+                                </div>
+                            )}
+
+                            {storageProvider === "Cloudinary" && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div>
+                                        <Label>Cloudinary Configuration</Label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Best for Video and Images. Automatic optimization.
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="cldName">Cloud Name</Label>
+                                            <Input
+                                                id="cldName"
+                                                value={storageConfig.cloudName || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, cloudName: e.target.value })}
+                                                placeholder="Enter Cloud Name"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="cldKey">API Key</Label>
+                                            <Input
+                                                id="cldKey"
+                                                value={storageConfig.apiKey || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, apiKey: e.target.value })}
+                                                placeholder="Enter API Key"
+                                            />
+                                        </div>
+                                        <div className="space-y-2 md:col-span-2">
+                                            <Label htmlFor="cldSecret">API Secret</Label>
+                                            <Input
+                                                id="cldSecret"
+                                                value={storageConfig.apiSecret || ""}
+                                                onChange={(e) => setStorageConfig({ ...storageConfig, apiSecret: e.target.value })}
+                                                placeholder="Enter API Secret"
+                                                type="password"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                            onClick={async () => {
+                                                try {
+                                                    const response = await fetch("/api/storage/test-connection", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({
+                                                            provider: "Cloudinary",
+                                                            storage_config: { ...storageConfig }
+                                                        })
+                                                    });
+                                                    const data = await response.json();
+                                                    if (data.success) alert("✅ " + data.message);
+                                                    else alert("❌ " + data.error);
+                                                } catch (e: any) {
+                                                    alert("❌ Test failed: " + e.message);
+                                                }
+                                            }}
+                                        >
+                                            <ExternalLink className="w-4 h-4" />
+                                            Test Connectivity
+                                        </Button>
+                                    </div>
+                                    <Alert className="bg-indigo-50 border-indigo-200 dark:bg-indigo-950/20 dark:border-indigo-900">
+                                        <Info className="h-4 w-4 text-indigo-600" />
+                                        <AlertDescription className="text-indigo-800 dark:text-indigo-200 text-xs">
+                                            Cloudinary will store your media and provide highly optimized delivery. Great for playback of large video files.
+                                        </AlertDescription>
+                                    </Alert>
+                                </div>
+                            )}
+
+                        </div>
                     </CardContent>
                 </Card>
 

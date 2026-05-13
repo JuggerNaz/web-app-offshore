@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 import { createClient } from "@/utils/supabase/client";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
 
 interface CompanySettings {
@@ -232,8 +233,7 @@ export const generateMultiInspectionReport = async (
                         yPos = margin + 22 + 6;
                     }
 
-                    const { data: publicUrlData } = supabase.storage.from('attachments').getPublicUrl(att.path);
-                    const url = publicUrlData.publicUrl;
+                    const url = getAttachmentUrl(att, supabase);
 
                     try {
                         const colCenterX = currentX + (imgWidth / 2);
