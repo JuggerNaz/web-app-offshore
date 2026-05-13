@@ -25,8 +25,14 @@ export const getDefaultUnit = (category: string | null, isImperial: boolean, fie
   const code = componentCode?.toLowerCase() || '';
   const lowerField = fieldName?.toLowerCase() || '';
 
-  // Special handle for legacy metric overrides if needed,
-  // but prioritize categorical defaults from units.json
+  // Overrides for specific fields often used for elevations or short distances
+  if (category?.toLowerCase() === 'length') {
+    if (lowerField.includes('elv') || lowerField.includes('elevation') || lowerField.includes('dist')) {
+      return isImperial ? 'ft' : 'm';
+    }
+  }
+
+  // Legacy overrides
   if (!isImperial && category?.toLowerCase() === 'length' && (code === 'ce' || code === 'gs')) {
     return 'm';
   }

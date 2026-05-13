@@ -58,7 +58,7 @@ export const GET = withAuth(
 
     // --- Attachment Enrichment ---
     const componentIds = data.map((c: any) => c.id);
-    
+
     // Fetch direct component attachments
     const { data: directAtts } = await supabase
       .from("attachment")
@@ -69,16 +69,20 @@ export const GET = withAuth(
     // Fetch inspection records with jobpack — inspection type name resolved client-side from JSON
     const { data: inspRecords } = await supabase
       .from("insp_records")
-      .select(`
+      .select(
+        `
         insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description, sow_report_no,
         jobpack:jobpack_id(id, name)
-      `)
+      `
+      )
       .in("component_id", componentIds);
 
     // Fetch anomalies directly linked to the components via the view
-    const { data: componentAnomalies } = await supabase
+    const { data: componentAnomalies } = await (supabase as any)
       .from("v_anomaly_details")
-      .select("anomaly_id, component_id, priority, status, defect_type, category, description, display_ref_no, jobpack_name")
+      .select(
+        "anomaly_id, component_id, priority, status, defect_type, category, description, display_ref_no, jobpack_name"
+      )
       .in("component_id", componentIds);
 
     let inspAtts: any[] = [];
@@ -93,7 +97,7 @@ export const GET = withAuth(
     }
 
     const compsWithAtts = new Set();
-    
+
     if (directAtts) {
       directAtts.forEach((att: any) => compsWithAtts.add(att.source_id));
     }
@@ -136,9 +140,7 @@ export const GET = withAuth(
     try {
       const userIds = Array.from(
         new Set(
-          finalData
-            .flatMap((item: any) => [item.created_by, item.modified_by])
-            .filter(Boolean)
+          finalData.flatMap((item: any) => [item.created_by, item.modified_by]).filter(Boolean)
         )
       );
 

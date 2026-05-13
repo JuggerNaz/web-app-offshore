@@ -328,7 +328,7 @@ export default function RovCalibrationDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto dark:bg-slate-900 dark:border-slate-800">
                 <DialogHeader>
                     <DialogTitle className="text-xl font-bold flex items-center gap-2">
                         🛠️ ROV Calibration Registration
@@ -356,7 +356,7 @@ export default function RovCalibrationDialog({
                                 <select
                                     value={cpData.calib_equipment_type} 
                                     onChange={(e) => setCpData({ ...cpData, calib_equipment_type: e.target.value })}
-                                    className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex h-9 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-200"
                                 >
                                     <option value="">Select Equipment Type</option>
                                     {equipmentOptions.map(opt => (
@@ -481,7 +481,7 @@ export default function RovCalibrationDialog({
                                 <select
                                     value={utData.calib_equipment_type} 
                                     onChange={(e) => setUtData({ ...utData, calib_equipment_type: e.target.value })}
-                                    className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex h-9 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-200"
                                 >
                                     <option value="">Select Equipment Type</option>
                                     {equipmentOptions.map(opt => (
@@ -533,14 +533,14 @@ export default function RovCalibrationDialog({
                             <h4 className="font-semibold text-sm mb-3 text-blue-600 dark:text-blue-400">Step Wedge Calibration (Pre-Dive)</h4>
                             <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr_1fr_1fr] gap-2 items-center">
                                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider"></div>
-                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 1</div>
-                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 2</div>
-                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 3</div>
-                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 4</div>
-                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 5</div>
-                                <div className="text-center font-medium text-[10px] text-slate-500 uppercase">Step 6</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 dark:text-slate-400 uppercase">Step 1</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 dark:text-slate-400 uppercase">Step 2</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 dark:text-slate-400 uppercase">Step 3</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 dark:text-slate-400 uppercase">Step 4</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 dark:text-slate-400 uppercase">Step 5</div>
+                                <div className="text-center font-medium text-[10px] text-slate-500 dark:text-slate-400 uppercase">Step 6</div>
 
-                                <div className="text-[11px] font-bold text-slate-600 uppercase tracking-tight">Label</div>
+                                <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">Label</div>
                                 <Input value={utData.label01} onChange={(e) => setUtData({ ...utData, label01: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
                                 <Input value={utData.label02} onChange={(e) => setUtData({ ...utData, label02: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
                                 <Input value={utData.label03} onChange={(e) => setUtData({ ...utData, label03: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
@@ -548,7 +548,7 @@ export default function RovCalibrationDialog({
                                 <Input value={utData.label05} onChange={(e) => setUtData({ ...utData, label05: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
                                 <Input value={utData.label06} onChange={(e) => setUtData({ ...utData, label06: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
 
-                                <div className="text-[11px] font-bold text-slate-600 uppercase tracking-tight">Readings</div>
+                                <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">Readings</div>
                                 <Input type="number" value={utData.reading01} onChange={(e) => setUtData({ ...utData, reading01: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
                                 <Input type="number" value={utData.reading02} onChange={(e) => setUtData({ ...utData, reading02: e.target.value })} placeholder="-" className="text-center text-xs h-8" />
                                 <Input type="number" value={utData.reading03} onChange={(e) => setUtData({ ...utData, reading03: e.target.value })} placeholder="-" className="text-center text-xs h-8" />

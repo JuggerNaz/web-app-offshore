@@ -143,6 +143,7 @@ export const generateSeabedSurveyReport = async (
 
         autoTable(d, {
             startY: margin + headerH + 5,
+            margin: { left: margin, right: margin, top: margin + 28 + 6 },
             head: [],
             body: [
                 [
@@ -165,8 +166,7 @@ export const generateSeabedSurveyReport = async (
                 1: { cellWidth: valueColWidth },
                 2: { cellWidth: labelColWidth },
                 3: { cellWidth: valueColWidth }
-            },
-            margin: { left: margin, right: margin }
+            }
         });
     };
 
@@ -312,10 +312,11 @@ export const generateSeabedSurveyReport = async (
         const maxRangeOnPage = 21; 
         const scale = ((plotSize / 2) - dx - safetyMargin) / maxRangeOnPage;
 
-        // Draw distance grids (every 3m)
+        // Draw distance grids (every 3m relative to current page)
         doc.setDrawColor(220, 220, 220);
         doc.setLineWidth(0.1);
         for (let d = 3; d <= maxRangeOnPage; d += 3) {
+            const actualDistance = minD + d;
             const rx = dx + (d * scale);
             const ry = dy + (d * scale);
             doc.rect(plotCenterX - rx, plotCenterY - ry, 2 * rx, 2 * ry, "S");
@@ -323,17 +324,24 @@ export const generateSeabedSurveyReport = async (
             // Draw text corner labels
             doc.setFontSize(5);
             doc.setTextColor(180, 180, 180);
-            doc.text(`${d}m`, plotCenterX - rx + 0.5, plotCenterY - ry + 3);
-            doc.text(`${d}m`, plotCenterX + rx - 5.5, plotCenterY - ry + 3);
-            doc.text(`${d}m`, plotCenterX + rx - 5.5, plotCenterY + ry - 1);
-            doc.text(`${d}m`, plotCenterX - rx + 0.5, plotCenterY + ry - 1);
+            doc.text(`${actualDistance}m`, plotCenterX - rx + 0.5, plotCenterY - ry + 3);
+            doc.text(`${actualDistance}m`, plotCenterX + rx - 5.5, plotCenterY - ry + 3);
+            doc.text(`${actualDistance}m`, plotCenterX + rx - 5.5, plotCenterY + ry - 1);
+            doc.text(`${actualDistance}m`, plotCenterX - rx + 0.5, plotCenterY + ry - 1);
         }
 
         // Draw Markers
         items.forEach(item => {
-            // Coordinate mapping: (x-50)/100 * plotSize centers it and scales to full bounds
-            const screenX = plotCenterX + ((item.x - 50) / 100) * plotSize;
-            const screenY = plotCenterY + ((item.y - 50) / 100) * plotSize;
+            // Coordinate mapping: Calculate relative distance from current page minD
+            const dRel = Math.max(0, item.distance - minD);
+            const angle = Math.atan2(item.y - 50, item.x - 50);
+            
+            // Map the relative distance to screen radius
+            // We use the same scale as the rings
+            const r = dx + (dRel * scale);
+            
+            const screenX = plotCenterX + r * Math.cos(angle);
+            const screenY = plotCenterY + r * Math.sin(angle);
 
             if (item.type.includes('Gas Seepage')) {
                 doc.setFillColor(34, 197, 94); // Green
@@ -382,8 +390,47 @@ export const generateSeabedSurveyReport = async (
                 lineColor: [0, 0, 0]
             },
             styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
-            margin: { left: margin, right: margin }
+            margin: { left: margin, right: margin, top: margin + 28 + 6 },
+            didDrawPage: (data) => {
+                if (data.pageNumber > 1) drawHeader(doc);
+            }
         });
+    }
+
+    const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + headerH + 20);
+    if (config.showSignatures !== false) {
+        let sigY = pageHeight - 38;
+        if (finalY > sigY - 10) {
+            doc.addPage();
+            drawHeader(doc);
+            sigY = pageHeight - 38;
+        }
+        const sigW = contentWidth / 3;
+        const colors = { 
+            navy: [31, 55, 93] as [number, number, number], 
+            text: [30, 41, 59] as [number, number, number] 
+        };
+        const drawSig = (label: string, lx: number) => {
+            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+            doc.rect(lx, sigY, sigW - 4, 18);
+            if (!isPrintFriendly) {
+                doc.setFillColor(...colors.navy);
+                doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                doc.setTextColor(255);
+            } else {
+                doc.setTextColor(...colors.navy);
+            }
+            doc.setFontSize(7); doc.setFont("helvetica", "bold");
+            doc.text(label, lx + 2, sigY + 3.5);
+            doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+            doc.text("Name:", lx + 2, sigY + 10);
+            doc.text("Date:", lx + 2, sigY + 13.5);
+            doc.text("Signature:", lx + 2, sigY + 17);
+        };
+
+        drawSig('PREPARED BY', margin);
+        drawSig('REVIEWED BY', margin + sigW);
+        drawSig('APPROVED BY', margin + (sigW * 2));
     }
 
     // ── Footer ─────────────────────────────────────────────────────────────

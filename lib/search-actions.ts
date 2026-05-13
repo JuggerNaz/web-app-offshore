@@ -22,17 +22,30 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
   const qidMatch = query.match(/qid\s*:?\s*(\d+)/i) || query.match(/^(\d{4,})$/); // Direct digits or "qid: 123"
   const priorityMatch = query.match(/p\s*(\d)/i) || query.match(/priority\s*(\d)/i);
 
-  // Fetch structures for mapping component URLs
-  const { data: structures } = await supabase.from("structure").select("str_id, str_type");
+  // Fetch structures for mapping component URLs and names
+  const { data: structures } = await (supabase as any).from("structure").select("str_id, str_type");
+  const { data: platformsInfo } = await (supabase as any).from("platform").select("plat_id, title");
+  const { data: pipelinesInfo } = await (supabase as any).from("u_pipeline").select("pipe_id, title");
+
   const structureTypeMap = new Map<number, string>();
+  const structureTitleMap = new Map<number, string>();
+
   structures?.forEach((s: any) => {
     structureTypeMap.set(s.str_id, s.str_type?.toLowerCase() || "platform");
+  });
+
+  platformsInfo?.forEach((p: any) => {
+    structureTitleMap.set(p.plat_id, p.title);
+  });
+
+  pipelinesInfo?.forEach((p: any) => {
+    structureTitleMap.set(p.pipe_id, p.title);
   });
 
   // 1. Platform Search
   const platformPromise = (async () => {
     try {
-      let platformQuery = supabase.from("platform").select("plat_id, title, plegs, ptype");
+      let platformQuery = (supabase as any).from("platform").select("plat_id, title, plegs, ptype");
       
       if (legsMatch) {
         platformQuery = platformQuery.eq("plegs", parseInt(legsMatch[1]));
@@ -43,7 +56,7 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
       }
 
       const { data: platforms } = await platformQuery.limit(5);
-      return (platforms || []).map(p => ({
+      return (platforms || []).map((p: any) => ({
         id: p.plat_id,
         title: p.title,
         subtitle: `${p.ptype || "Platform"} • ${p.plegs || 0} Legs`,
@@ -60,13 +73,13 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
   // 2. Pipeline Search
   const pipelinePromise = (async () => {
     try {
-      const { data: pipelines } = await supabase
+      const { data: pipelines } = await (supabase as any)
         .from("u_pipeline")
         .select("pipe_id, title, ptype")
         .ilike("title", `%${query}%`)
         .limit(5);
 
-      return (pipelines || []).map(p => ({
+      return (pipelines || []).map((p: any) => ({
         id: p.pipe_id,
         title: p.title,
         subtitle: `Pipeline • ${p.ptype || "Standard"}`,
@@ -83,13 +96,13 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
   // 3. Jobpack Search
   const jobpackPromise = (async () => {
     try {
-      const { data: jobpacks } = await supabase
+      const { data: jobpacks } = await (supabase as any)
         .from("jobpack")
         .select("id, name, metadata")
         .or(`name.ilike.%${query}%, metadata->>job_no.ilike.%${query}%`)
         .limit(5);
 
-      return (jobpacks || []).map(j => {
+      return (jobpacks || []).map((j: any) => {
         const metadata = j.metadata as any;
         return {
           id: j.id,
@@ -109,20 +122,21 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
   // 4. Structure Component Search
   const componentPromise = (async () => {
     try {
-      const { data: components } = await supabase
+      const { data: components } = await (supabase as any)
         .from("structure_components")
         .select("id, q_id, id_no, code, structure_id")
         .or(`q_id.ilike.%${query}%, id_no.ilike.%${query}%, code.ilike.%${query}%`)
         .limit(5);
 
-      return (components || []).map(c => {
+      return (components || []).map((c: any) => {
         const type = structureTypeMap.get(c.structure_id) || "platform";
+        const structureTitle = structureTitleMap.get(c.structure_id) || `ID: ${c.structure_id}`;
         return {
           id: c.id,
           title: c.q_id || c.id_no || `Comp #${c.id}`,
-          subtitle: `Component • Code: ${c.code || "N/A"} • Structure ID: ${c.structure_id}`,
+          subtitle: `Component • Code: ${c.code || "N/A"} • ${structureTitle}`,
           type: "component" as const,
-          url: `/dashboard/field/${type}/${c.structure_id}`,
+          url: `/dashboard/field/${type}/${c.structure_id}?tab=components&compId=${c.id}`,
           score: 95
         };
       });
@@ -189,7 +203,7 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
       let anomalyQuery = (supabase as any).from("insp_anomalies").select("anomaly_id, anomaly_ref_no, defect_description, priority_code");
       
       if (priorityMatch) {
-        anomalyQuery = anomalyQuery.eq("priority_code", `P${priorityMatch[1]}`);
+        anomalyQuery = anomalyQuery.eq("priority_code", `PRIORITY ${priorityMatch[1]}`);
       } else {
         anomalyQuery = anomalyQuery.or(`anomaly_ref_no.ilike.%${query}%, defect_description.ilike.%${query}%`);
       }
@@ -197,11 +211,11 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
       const { data: anomalies } = await anomalyQuery.limit(5);
       return (anomalies || []).map((a: any) => ({
         id: a.anomaly_id,
-        title: a.anomaly_ref_no,
-        subtitle: `Anomaly • ${a.priority_code} • ${a.defect_description?.substring(0, 40)}...`,
+        title: a.anomaly_ref_no || `Anomaly #${a.anomaly_id}`,
+        subtitle: `Anomaly • ${a.priority_code || "N/A"} • ${a.defect_description?.substring(0, 50) || "No description"}...`,
         type: "anomaly" as const,
-        url: `/dashboard/inspection/anomalies/${a.anomaly_id}`,
-        score: 80
+        url: `/dashboard/utilities/anomalies-findings?id=${a.anomaly_id}`,
+        score: 90
       }));
     } catch (err) {
       console.error("Anomaly search error:", err);

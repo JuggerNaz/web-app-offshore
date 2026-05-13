@@ -122,7 +122,7 @@ export default function ROVJobSetupDialog({
                 if (structureId) query = query.eq("structure_id", parseInt(structureId));
                 if (sowId) query = query.eq("sow_report_no", sowId);
 
-                const { data, error } = await query.single();
+                const { data, error } = await query.maybeSingle();
 
                 if (!error && data && data.deployment_no) {
                     const nextNo = generateNextDeploymentNumber(data.deployment_no);
@@ -348,6 +348,10 @@ export default function ROVJobSetupDialog({
                 throw new Error("Unable to get current user. Please log in again.");
             }
 
+            // Convert IDs to numbers safely
+            const jid = jobpackId ? parseInt(jobpackId) : null;
+            const sid = structureId ? parseInt(structureId) : null;
+
             let query;
             const payload = {
                 deployment_no: formData.deployment_no,
@@ -372,8 +376,8 @@ export default function ROVJobSetupDialog({
                     .from("insp_rov_jobs")
                     .insert({
                         ...payload,
-                        structure_id: structureId ? parseInt(structureId) : null,
-                        jobpack_id: jobpackId ? parseInt(jobpackId) : null,
+                        structure_id: isNaN(sid as any) ? null : sid,
+                        jobpack_id: isNaN(jid as any) ? null : jid,
                         sow_report_no: sowId,
                         status: "IN_PROGRESS",
                         cr_user: user.id,
@@ -388,14 +392,17 @@ export default function ROVJobSetupDialog({
 
             const { data, error } = await query;
 
-            if (error) throw error;
+            if (error) {
+                console.error("Supabase error saving ROV job:", error);
+                throw error;
+            }
 
             toast.success(existingJob ? "ROV deployment updated successfully!" : "ROV deployment created successfully!");
             onJobCreated(data);
             onOpenChange(false);
         } catch (error: any) {
-            console.error("Error saving ROV job:", error);
-            const errorMessage = error.message || "Failed to save ROV deployment";
+            console.error("Error saving ROV job details:", error);
+            const errorMessage = error.message || (typeof error === 'string' ? error : "Failed to save ROV deployment");
             const errorDetails = error.details || "";
             const errorHint = error.hint || "";
             toast.error(`${errorMessage}${errorDetails ? ` - ${errorDetails}` : ""}${errorHint ? ` (${errorHint})` : ""}`);
@@ -414,6 +421,7 @@ export default function ROVJobSetupDialog({
         try {
             const jobId = existingJob.rov_job_id;
 
+            // 1. Check for inspection records
             const { count: inspCount, error: inspError } = await supabase
                 .from("insp_records")
                 .select("*", { count: "exact", head: true })
@@ -421,6 +429,7 @@ export default function ROVJobSetupDialog({
 
             if (inspError) throw inspError;
 
+            // 2. Check for movements (logs)
             const { count: movCount, error: movError } = await supabase
                 .from("insp_rov_movements")
                 .select("*", { count: "exact", head: true })
@@ -428,20 +437,49 @@ export default function ROVJobSetupDialog({
 
             if (movError) throw movError;
 
+            // 3. Validation & Cascade Confirmation
             if ((inspCount || 0) > 0) {
-                toast.error(`Cannot delete: This deployment has ${inspCount} inspection records. Please remove them first.`);
-                return;
+                if (!confirm(`Warning: This deployment has ${inspCount} inspection records. Deleting this deployment will also PERMANENTLY delete all associated records, anomalies, and logs. \n\nAre you sure you want to proceed?`)) {
+                    setLoading(false);
+                    return;
+                }
             }
 
-            const { error: matchError } = await supabase
+            // 4. Cleanup dependencies to prevent FK constraint errors
+            // Order: Anomalies/Logs -> Records -> Movements -> Job
+
+            // A. Get all record IDs for this job to clean up sub-tables
+            const { data: recordData } = await supabase
+                .from("insp_records")
+                .select("insp_id")
+                .eq("rov_job_id", jobId);
+
+            if (recordData && recordData.length > 0) {
+                const recordIds = recordData.map(r => r.insp_id);
+                console.log(`[Delete Job] Cleaning up data for ${recordIds.length} records...`);
+
+                // i. Delete Anomalies
+                await supabase.from("insp_anomalies").delete().in("inspection_id", recordIds);
+                
+                // ii. Delete Video Logs
+                await supabase.from("insp_video_logs").delete().in("inspection_id", recordIds);
+
+                // iii. Delete Attachment Metadata
+                await supabase.from("attachment").delete().in("source_id", recordIds).eq("source_type", "INSPECTION");
+            }
+
+            // B. Delete the inspection records themselves
+            const { error: recordDelErr } = await supabase
                 .from("insp_records")
                 .delete()
                 .eq("rov_job_id", jobId);
 
-            if (matchError) {
-                console.warn("Could not delete from insp_records directly (might be a view or permission issue, or just dependency):", matchError);
+            if (recordDelErr) {
+                console.error("Error deleting records:", recordDelErr);
+                throw new Error("Failed to clear inspection records: " + recordDelErr.message);
             }
 
+            // C. Clean insp_rov_movements (Logs)
             const { error: moveDelError } = await supabase
                 .from("insp_rov_movements")
                 .delete()
@@ -452,6 +490,7 @@ export default function ROVJobSetupDialog({
                 throw moveDelError;
             }
 
+            // D. Delete the job
             const { error: deleteError } = await supabase
                 .from("insp_rov_jobs")
                 .delete()
@@ -459,6 +498,7 @@ export default function ROVJobSetupDialog({
 
             if (deleteError) throw deleteError;
 
+            // Verify deletion
             const { count: checkCount } = await supabase
                 .from("insp_rov_jobs")
                 .select("*", { count: "exact", head: true })
