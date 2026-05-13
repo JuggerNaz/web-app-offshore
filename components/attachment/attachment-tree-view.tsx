@@ -496,6 +496,19 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
         })
         : allItems;
 
+    const grouped = filtered.reduce((acc: any, item: any) => {
+        const jobpack = item.jobpack_name || "Unassigned Jobpack";
+        const discipline = item.rov_job_id ? "ROV Inspection" : (item.dive_job_id ? "Diving Inspection" : "Other");
+        const inspType = item.inspection_type_name || item.inspection_type_code || "Unassigned Inspection Type";
+
+        if (!acc[jobpack]) acc[jobpack] = {};
+        if (!acc[jobpack][discipline]) acc[jobpack][discipline] = {};
+        if (!acc[jobpack][discipline][inspType]) acc[jobpack][discipline][inspType] = [];
+
+        acc[jobpack][discipline][inspType].push(item);
+        return acc;
+    }, {});
+
     return (
         <TabsContent value="inspection" className="flex-1 overflow-hidden mt-0 border-none outline-none data-[state=inactive]:hidden flex flex-col">
             {/* Search bar */}
@@ -526,198 +539,220 @@ function InspectionAttachmentsTab({ platformId }: { platformId: number }) {
                         </p>
                     </div>
                 ) : (
-                    <div className="pb-8 space-y-0 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-                        {/* Table Header */}
-                        <div className="grid grid-cols-[140px_120px_120px_150px_90px_60px_1fr_80px] gap-2 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                            <span>Component</span>
-                            <span>Inspection Type</span>
-                            <span>Date</span>
-                            <span>Jobpack</span>
-                            <span>SOW Report</span>
-                            <span className="text-center">Status</span>
-                            <span>File</span>
-                            <span></span>
-                        </div>
-
-                        {/* Table Rows */}
-                        {filtered.map((item: any, idx: number) => {
-                            const { fileUrl, fileName } = processAttachmentUrl(item);
-                            const displayText = truncateText(fileName, 35);
-                            const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
-                            return (
-                                <div key={item.id} className="flex flex-col border-b border-slate-100 dark:border-slate-800/80">
-                                    <div
-                                        className={cn(
-                                            "grid grid-cols-[140px_120px_120px_150px_90px_60px_1fr_80px] gap-2 px-4 py-3 text-xs items-center hover:bg-slate-50/80 dark:hover:bg-slate-900/30 transition-colors",
-                                            idx % 2 === 0 ? "" : "bg-slate-50/30 dark:bg-slate-900/10"
-                                        )}
-                                    >
-                                        {/* Component */}
-                                        <div className="flex flex-col min-w-0">
-                                            {item.component_q_id ? (
-                                                <>
-                                                    <span className="font-bold text-slate-800 dark:text-slate-100 truncate">{item.component_q_id}</span>
-                                                    {item.component_description && (
-                                                        <span className="text-[10px] text-slate-400 truncate">{item.component_description}</span>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <span className="text-slate-400 italic">No component</span>
-                                            )}
-                                        </div>
-
-                                        {/* Inspection Type */}
-                                        <div className="flex flex-col min-w-0">
-                                            {item.inspection_type_name ? (
-                                                <>
-                                                    <span className="font-medium text-slate-700 dark:text-slate-200 truncate text-[11px]">{item.inspection_type_name}</span>
-                                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{item.inspection_type_code}</span>
-                                                </>
-                                            ) : (
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-fit">
-                                                    {item.inspection_type_code || "N/A"}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {/* Date */}
-                                        <div className="flex items-center gap-1.5 text-slate-500 min-w-0">
-                                            <Calendar className="h-3 w-3 text-slate-300 shrink-0" />
-                                            <span className="truncate">
-                                                {item.inspection_date
-                                                    ? format(new Date(item.inspection_date), "dd MMM yyyy")
-                                                    : "—"}
-                                            </span>
-                                        </div>
-
-                                        {/* Jobpack */}
-                                        <div className="min-w-0">
-                                            {item.jobpack_name ? (
-                                                <span className="font-semibold text-slate-600 dark:text-slate-300 truncate block text-[11px]" title={item.jobpack_name}>
-                                                    {item.jobpack_name}
-                                                </span>
-                                            ) : (
-                                                <span className="text-slate-300 dark:text-slate-600 italic text-[10px]">—</span>
-                                            )}
-                                        </div>
-
-                                        {/* SOW Report */}
-                                        <div className="min-w-0">
-                                            {item.sow_report_no ? (
-                                                <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 truncate block" title={item.sow_report_no}>
-                                                    {item.sow_report_no}
-                                                </span>
-                                            ) : (
-                                                <span className="text-slate-300 dark:text-slate-600 italic text-[10px]">—</span>
-                                            )}
-                                        </div>
-
-                                        {/* Status / Anomaly */}
-                                        <div className="flex justify-center">
-                                            {item.has_anomaly ? (
-                                                <div title="Anomaly Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100 dark:bg-red-900/30">
-                                                    <AlertTriangle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-                                                </div>
-                                            ) : item.inspection_status === "COMPLETED" ? (
-                                                <div title="Completed" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100 dark:bg-green-900/30">
-                                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-                                                </div>
-                                            ) : (
-                                                <div title="In Progress / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100 dark:bg-amber-900/30">
-                                                    <FileClock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* File link */}
-                                        <div className="flex flex-col gap-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <Paperclip className="h-3 w-3 text-slate-300 shrink-0" />
-                                                {fileUrl ? (
-                                                    <a
-                                                        href={fileUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 max-w-full text-xs font-medium transition-colors truncate"
-                                                        title={fileUrl}
-                                                    >
-                                                        <span className="truncate">{displayText}</span>
-                                                        <ExternalLink className="h-3 w-3 flex-shrink-0 opacity-70" />
-                                                    </a>
-                                                ) : (
-                                                    <span className="text-slate-400 italic text-[10px]">No file</span>
-                                                )}
-                                            </div>
-                                            {item.name && item.name !== fileName && (
-                                                <span className="text-[10px] text-slate-400 pl-5 truncate">{item.name}</span>
-                                            )}
-                                        </div>
-
-                                        {/* File type badge / Preview button */}
-                                        <div className="flex justify-end">
-                                            {isImage && (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className={cn(
-                                                        "h-7 px-2 text-[10px] font-black uppercase transition-all",
-                                                        previewId === item.id 
-                                                            ? "bg-violet-600 text-white hover:bg-violet-700 border-violet-600" 
-                                                            : "bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 border-violet-100 dark:border-violet-800 hover:bg-violet-100"
-                                                    )}
-                                                    onClick={() => setPreviewId(previewId === item.id ? null : item.id)}
-                                                >
-                                                    {previewId === item.id ? "Close" : "Preview"}
+                    <div className="pb-8 space-y-4">
+                        {Object.entries(grouped).map(([jobpack, disciplines]: [string, any]) => (
+                            <Collapsible key={jobpack} className="border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/30 dark:bg-slate-900/10 shadow-sm overflow-hidden">
+                                <CollapsibleTrigger asChild>
+                                    <Button variant="ghost" className="w-full flex items-center justify-start p-3 h-auto hover:bg-slate-100 dark:hover:bg-slate-800 group bg-slate-50 dark:bg-slate-900/50 rounded-none border-b border-slate-200 dark:border-slate-800">
+                                        <ChevronDown className="h-5 w-5 shrink-0 mr-3 text-slate-400 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
+                                        <ClipboardList className="h-5 w-5 mr-3 text-emerald-500" />
+                                        <span className="font-bold text-sm text-slate-700 dark:text-slate-200 tracking-wide flex-1 text-left">{jobpack}</span>
+                                        <span className="text-xs font-medium text-slate-400 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-2 py-1 rounded-md shadow-sm">
+                                            {Object.values(disciplines).reduce((sum: number, types: any) => sum + Object.values(types).flat().length, 0)} items
+                                        </span>
+                                    </Button>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="p-3 space-y-3">
+                                    {Object.entries(disciplines).map(([discipline, inspTypes]: [string, any]) => (
+                                        <Collapsible key={discipline} className="border border-slate-200/60 dark:border-slate-800/60 rounded-lg bg-white/50 dark:bg-slate-950/50 overflow-hidden shadow-sm">
+                                            <CollapsibleTrigger asChild>
+                                                <Button variant="ghost" className="w-full flex items-center justify-start p-2.5 h-auto hover:bg-slate-50 dark:hover:bg-slate-900 group rounded-none border-b border-slate-100 dark:border-slate-800 bg-white/30 dark:bg-slate-900/30">
+                                                    <ChevronDown className="h-4 w-4 shrink-0 mr-2 text-slate-400 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
+                                                    <div className={cn(
+                                                        "h-2 w-2 rounded-full mr-2",
+                                                        discipline.includes("ROV") ? "bg-blue-500" : "bg-emerald-500"
+                                                    )} />
+                                                    <span className="font-black text-xs text-slate-800 dark:text-slate-200 flex-1 text-left uppercase tracking-wider">{discipline}</span>
+                                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">
+                                                        {Object.values(inspTypes).flat().length}
+                                                    </span>
                                                 </Button>
-                                            )}
-                                        </div>
-                                    </div>
+                                            </CollapsibleTrigger>
+                                            <CollapsibleContent className="p-2 space-y-2">
+                                                {Object.entries(inspTypes).map(([inspType, items]: [string, any]) => (
+                                                    <Collapsible key={inspType} className="border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950 overflow-hidden shadow-sm">
+                                                        <CollapsibleTrigger asChild>
+                                                            <Button variant="ghost" className="w-full flex items-center justify-start p-2 h-auto hover:bg-slate-50 dark:hover:bg-slate-900 group rounded-none border-b border-slate-100 dark:border-slate-800">
+                                                                <ChevronDown className="h-3.5 w-3.5 shrink-0 mr-2 text-slate-400 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
+                                                                <span className="font-bold text-[12px] text-slate-600 dark:text-slate-300 flex-1 text-left">{inspType}</span>
+                                                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">
+                                                                    {items.length}
+                                                                </span>
+                                                            </Button>
+                                                        </CollapsibleTrigger>
+                                                        <CollapsibleContent>
+                                                            <div className="overflow-x-auto w-full border border-slate-200/60 dark:border-slate-800/60 rounded-2xl shadow-sm bg-white dark:bg-slate-950">
+                                                    {/* Table Header - HIGH VISIBILITY BLUE */}
+                                                    <div 
+                                                        className="grid grid-cols-[1.5fr_100px_100px_80px_3fr_100px] gap-2 px-4 py-3 bg-blue-600 text-white border-b border-blue-700 text-[10px] font-black uppercase tracking-widest"
+                                                        style={{ minWidth: '1100px' }}
+                                                    >
+                                                        <span>Component</span>
+                                                        <span>Date</span>
+                                                        <span>SOW Report</span>
+                                                        <span className="text-center">Status</span>
+                                                        <span>File</span>
+                                                        <span></span>
+                                                    </div>
 
-                                    {/* Preview Area */}
-                                    {previewId === item.id && fileUrl && (
-                                        <div className="p-4 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-800/50 animate-in slide-in-from-top-2 duration-300">
-                                            <div className="relative group max-w-2xl mx-auto rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shadow-lg bg-white dark:bg-slate-950">
-                                                <img 
-                                                    src={fileUrl} 
-                                                    alt={fileName} 
-                                                    className="w-full h-auto object-contain max-h-[500px]"
-                                                />
-                                                <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Button 
-                                                        variant="secondary" 
-                                                        size="icon" 
-                                                        className="h-8 w-8 bg-white/90 dark:bg-slate-900/90"
-                                                        onClick={() => window.open(fileUrl, '_blank')}
-                                                    >
-                                                        <ExternalLink className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button 
-                                                        variant="destructive" 
-                                                        size="icon" 
-                                                        className="h-8 w-8"
-                                                        onClick={() => setPreviewId(null)}
-                                                    >
-                                                        <span className="text-lg">×</span>
-                                                    </Button>
+                                                    {/* Table Rows */}
+                                                    <div className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                                                        {items.map((item: any, idx: number) => {
+                                                            const { fileUrl, fileName } = processAttachmentUrl(item);
+                                                            const baseName = item.anomaly_ref_no 
+                                                                ? `Anomaly ${item.anomaly_ref_no} - ${fileName}` 
+                                                                : fileName;
+                                                            const displayText = truncateText(baseName, 80);
+                                                            const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
+                                                            return (
+                                                                <div key={item.id} className="flex flex-col border-b border-slate-100 dark:border-slate-800/80 last:border-0">
+                                                                    <div
+                                                                        className={cn(
+                                                                            "grid grid-cols-[1.5fr_100px_100px_80px_3fr_100px] gap-2 px-4 py-3 text-xs items-center hover:bg-slate-50/80 dark:hover:bg-slate-900/30 transition-colors",
+                                                                            idx % 2 === 0 ? "bg-white dark:bg-slate-950" : "bg-slate-50/30 dark:bg-slate-900/10"
+                                                                        )}
+                                                                        style={{ minWidth: '1100px' }}
+                                                                    >
+                                                                        {/* Component */}
+                                                                        <div className="flex flex-col min-w-0">
+                                                                            {item.component_q_id ? (
+                                                                                <>
+                                                                                    <span className="font-bold text-slate-800 dark:text-slate-100 truncate">{item.component_q_id}</span>
+                                                                                    {item.component_description && (
+                                                                                        <span className="text-[10px] text-slate-400 truncate">{item.component_description}</span>
+                                                                                    )}
+                                                                                </>
+                                                                            ) : (
+                                                                                <span className="text-slate-400 italic">No component</span>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Date */}
+                                                                        <div className="flex items-center gap-1.5 text-slate-500 min-w-0">
+                                                                            <Calendar className="h-3 w-3 text-slate-300 shrink-0" />
+                                                                            <span className="truncate">
+                                                                                {item.inspection_date
+                                                                                    ? format(new Date(item.inspection_date), "dd MMM yyyy")
+                                                                                    : "—"}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        {/* SOW Report */}
+                                                                        <div className="min-w-0">
+                                                                            {item.sow_report_no ? (
+                                                                                <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 truncate block" title={item.sow_report_no}>
+                                                                                    {item.sow_report_no}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="text-slate-300 dark:text-slate-600 italic text-[10px]">—</span>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Status / Anomaly */}
+                                                                        <div className="flex justify-center">
+                                                                            {item.has_anomaly ? (
+                                                                                <div title="Anomaly Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100 dark:bg-red-900/30">
+                                                                                    <AlertTriangle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                                                                </div>
+                                                                            ) : item.inspection_status === "COMPLETED" ? (
+                                                                                <div title="Completed" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100 dark:bg-green-900/30">
+                                                                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div title="In Progress / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                                                                                    <FileClock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* File link */}
+                                                                        <div className="flex flex-col gap-1 min-w-0">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <Paperclip className="h-3 w-3 text-slate-300 shrink-0" />
+                                                                                {fileUrl ? (
+                                                                                    <a
+                                                                                        href={fileUrl}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 max-w-full text-xs font-medium transition-colors truncate"
+                                                                                        title={fileUrl}
+                                                                                    >
+                                                                                        <span className="truncate">{displayText}</span>
+                                                                                        <ExternalLink className="h-3 w-3 flex-shrink-0 opacity-70" />
+                                                                                    </a>
+                                                                                ) : (
+                                                                                    <span className="text-slate-400 italic text-[10px]">No file</span>
+                                                                                )}
+                                                                            </div>
+                                                                            {item.name && item.name !== fileName && (
+                                                                                <span className="text-[10px] text-slate-400 pl-5 truncate">{item.name}</span>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* File type badge / Preview button */}
+                                                                        <div className="flex justify-end">
+                                                                            {isImage && (
+                                                                                <Button
+                                                                                    variant="outline"
+                                                                                    size="sm"
+                                                                                    className={cn(
+                                                                                        "h-7 px-2 text-[10px] font-black uppercase transition-all",
+                                                                                        previewId === item.id 
+                                                                                            ? "bg-violet-600 text-white hover:bg-violet-700 border-violet-600" 
+                                                                                            : "bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 border-violet-100 dark:border-violet-800 hover:bg-violet-100"
+                                                                                    )}
+                                                                                    onClick={() => setPreviewId(previewId === item.id ? null : item.id)}
+                                                                                >
+                                                                                    {previewId === item.id ? "Close" : "Preview"}
+                                                                                </Button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Preview Area */}
+                                                                    {previewId === item.id && fileUrl && (
+                                                                        <div className="p-4 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-800/50 animate-in slide-in-from-top-2 duration-300">
+                                                                            <div className="relative group max-w-2xl mx-auto rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shadow-lg bg-white dark:bg-slate-950">
+                                                                                <img 
+                                                                                    src={fileUrl} 
+                                                                                    alt={fileName} 
+                                                                                    className="w-full h-auto object-contain max-h-[500px]"
+                                                                                />
+                                                                                <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                    <Button 
+                                                                                        variant="secondary" 
+                                                                                        size="icon" 
+                                                                                        className="h-8 w-8 bg-white/90 dark:bg-slate-900/90"
+                                                                                        onClick={() => window.open(fileUrl, '_blank')}
+                                                                                    >
+                                                                                        <ExternalLink className="h-4 w-4" />
+                                                                                    </Button>
+                                                                                    <Button 
+                                                                                        variant="destructive" 
+                                                                                        size="icon" 
+                                                                                        className="h-8 w-8"
+                                                                                        onClick={() => setPreviewId(null)}
+                                                                                    >
+                                                                                        <span className="text-lg">×</span>
+                                                                                    </Button>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-
-                        {/* Footer summary */}
-                        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
-                            <span className="text-[10px] text-slate-400 font-medium">
-                                {filtered.length} inspection attachment{filtered.length !== 1 ? "s" : ""} found
-                            </span>
-                            <div className="flex items-center gap-3 text-[9px] text-slate-400">
-                                <span className="flex items-center gap-1"><AlertTriangle className="h-2.5 w-2.5 text-red-400" /> Anomaly</span>
-                                <span className="flex items-center gap-1"><CheckCircle2 className="h-2.5 w-2.5 text-green-400" /> Completed</span>
-                                <span className="flex items-center gap-1"><FileClock className="h-2.5 w-2.5 text-amber-400" /> In Progress</span>
-                            </div>
-                        </div>
+                                            </CollapsibleContent>
+                                        </Collapsible>
+                                    ))}
+                                </CollapsibleContent>
+                            </Collapsible>
+                        ))}
+                    </CollapsibleContent>
+                </Collapsible>
+            ))}
                     </div>
                 )}
             </ScrollArea>

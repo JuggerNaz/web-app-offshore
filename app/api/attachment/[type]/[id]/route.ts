@@ -25,21 +25,70 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   let data = directData ? [...directData] : [];
 
+  if (type === "inspection" || type === "INSPECTION") {
+    const { data: media, error: mediaError } = await supabase
+      .from("insp_media")
+      .select("*")
+      .eq("inspection_id", Number(id));
+    
+    if (media && media.length > 0) {
+      const normalizedMedia = media.map(m => ({
+        id: `media-${m.media_id}`,
+        name: m.name || `Snapshot ${m.media_id}`,
+        path: m.file_path,
+        source_id: m.inspection_id,
+        source_type: "INSPECTION",
+        meta: {
+          ...m.meta,
+          bucket: "inspection-media",
+          is_insp_media: true
+        },
+        cr_date: m.captured_at
+      }));
+      data = [...data, ...normalizedMedia];
+    }
+  }
+
   if (type === "component") {
     const { data: inspRecords } = await (supabase as any)
       .from("insp_records")
       .select("insp_id, jobpack_id, structure_id")
       .eq("component_id", Number(id));
-
+      
     if (inspRecords && inspRecords.length > 0) {
       const inspIds = inspRecords.map((r: any) => r.insp_id);
+      
+      // 1. Fetch from attachment table
       const { data: inspAttachments } = await supabase
         .from("attachment")
         .select("*")
         .in("source_type", ["inspection", "INSPECTION"])
         .in("source_id", inspIds);
 
-      if (inspAttachments && inspAttachments.length > 0) {
+      // 2. Fetch from insp_media table
+      const { data: inspMedia } = await supabase
+        .from("insp_media")
+        .select("*")
+        .in("inspection_id", inspIds);
+
+      const allInspAttachments = [
+        ...(inspAttachments || []),
+        ...(inspMedia || []).map(m => ({
+          id: `media-${m.media_id}`,
+          name: m.name || `Snapshot ${m.media_id}`,
+          path: m.file_path,
+          source_id: m.inspection_id,
+          source_type: "INSPECTION",
+          meta: {
+            ...m.meta,
+            bucket: "inspection-media",
+            is_insp_media: true
+          },
+          cr_date: m.captured_at
+        }))
+      ];
+
+      if (allInspAttachments.length > 0) {
         // Fetch Jobpacks and Platforms for enrichment
         const jobpackIds = Array.from(new Set(inspRecords.map((r: any) => r.jobpack_id).filter(Boolean) as number[]));
         const structureIds = Array.from(new Set(inspRecords.map((r: any) => r.structure_id).filter(Boolean) as number[]));
@@ -59,8 +108,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         const inspMap = new Map();
         inspRecords.forEach((r: any) => inspMap.set(r.insp_id, r));
 
-        const enrichedInspAttachments = inspAttachments.map((att: any) => {
-          const insp = inspMap.get(att.source_id);
+        const enrichedInspAttachments = allInspAttachments.map((att: any) => {
+          const inspId = Number(att.source_id || att.inspection_id);
+          const insp = inspMap.get(inspId);
           let sourceName = "Inspection";
           if (insp) {
             const jpName = jobpackMap.get(insp.jobpack_id);

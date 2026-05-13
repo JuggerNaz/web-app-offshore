@@ -98,6 +98,7 @@ import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report
 import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-report";
+import { Inspection3DViewer } from "./_components/Inspection3DViewer";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
@@ -204,8 +205,12 @@ function V10PreviewLayout() {
         }
     }, [queryClient, structureId, sowIdFull]);
 
+    const compIdParam = searchParams.get('compId');
+    const recordIdParam = searchParams.get('recordId');
+    const modeParam = searchParams.get('mode') as "DIVING" | "ROV" | null;
+
     // Mode
-    const [inspMethod, setInspMethod] = useState<"DIVING" | "ROV">(initialMode || "DIVING");
+    const [inspMethod, setInspMethod] = useState<"DIVING" | "ROV">(modeParam || initialMode || "DIVING");
     const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
     const [isSummaryOpen, setIsSummaryOpen] = useState(false);
 
@@ -1187,32 +1192,17 @@ function V10PreviewLayout() {
 
     useEffect(() => {
         async function fetchHeaderInfo() {
-            if (!jobPackId || !structureId || !sowId) return;
+            if (!jobPackId || !structureId) return;
 
             let jobpackName = jpParam || `JP-${jobPackId}`;
             let platformName = strParam || "Unknown Structure";
             let sowReportNo = sowParam || "Unknown Report";
+            let waterDepth = 0;
 
             // Fetch Jobpack Name
             if (!jpParam) {
                 const { data: jpData } = await supabase.from('jobpack').select('name').eq('id', Number(jobPackId)).single();
                 if (jpData?.name) jobpackName = jpData.name;
-            }
-
-            // Fetch Structure Name & Depth
-            // NOTE: The 'structure' table only has str_id + str_type. Name and depth live in platform table.
-            let waterDepth = 0;
-
-            // Always fetch from platform table — it has 'title' (name) and 'depth' (water depth)
-            const { data: platData } = await supabase
-                .from('platform' as any)
-                .select('title, depth')
-                .eq('plat_id', Number(structureId))
-                .maybeSingle() as any;
-
-            if (platData) {
-                if (!strParam && platData.title) platformName = platData.title;
-                if (platData.depth) waterDepth = Number(platData.depth);
             }
 
             // Fetch Structure Type for data acquisition
@@ -1222,8 +1212,75 @@ function V10PreviewLayout() {
                 detectedStructureType = strTypeData.str_type.toLowerCase().includes('pipeline') ? 'pipeline' : 'platform';
             }
 
-            // Fetch SOW Info
-            if (!sowParam) {
+            // Always fetch from platform table — it has 'title' (name) and 'depth' (water depth)
+            if (detectedStructureType === 'platform') {
+                const { data: platData } = await supabase
+                    .from('platform' as any)
+                    .select('title, depth')
+                    .eq('plat_id', Number(structureId))
+                    .maybeSingle() as any;
+
+                if (platData) {
+                    if (!strParam && platData.title) platformName = platData.title;
+                    if (platData.depth) waterDepth = Number(platData.depth);
+                }
+            } else {
+                // Fetch from pipeline
+                const { data: pipeData } = await supabase
+                    .from('u_pipeline' as any)
+                    .select('pipeline_name, water_depth')
+                    .eq('pipe_id', Number(structureId))
+                    .maybeSingle() as any;
+
+                if (pipeData) {
+                    if (!strParam && pipeData.pipeline_name) platformName = pipeData.pipeline_name;
+                    if (pipeData.water_depth) waterDepth = Number(pipeData.water_depth);
+                }
+            }
+
+            // Resolve SOW ID and Report Number
+            if (!sowId) {
+                // Try to resolve SOW by (Jobpack + Structure) AND Report Number (if available)
+                let sowQuery = supabase.from('u_sow')
+                    .select('id, report_number')
+                    .eq('jobpack_id', Number(jobPackId))
+                    .eq('structure_id', Number(structureId));
+                
+                if (sowParam) {
+                    sowQuery = sowQuery.eq('report_number', sowParam);
+                }
+
+                const { data: resolvedSow } = await sowQuery.order('id', { ascending: false }).limit(1).maybeSingle();
+
+                if (resolvedSow) {
+                    if (resolvedSow.report_number) sowReportNo = resolvedSow.report_number;
+                    // Patch the URL so the workspace knows the sow going forward
+                    const newParams = new URLSearchParams(window.location.search);
+                    if (!newParams.get('sow')) {
+                        newParams.set('sow', String(resolvedSow.id));
+                        router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
+                    }
+                } else if (sowParam) {
+                    // Create it if sowParam is provided but no record exists yet
+                    const userRes = await supabase.auth.getUser();
+                    const userId = userRes.data.user?.id || 'system';
+                    const { data: newSow } = await supabase.from('u_sow').insert({
+                        jobpack_id: Number(jobPackId),
+                        structure_id: Number(structureId),
+                        structure_type: detectedStructureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM',
+                        structure_title: platformName,
+                        report_number: sowParam,
+                        total_items: 0, completed_items: 0, incomplete_items: 0, pending_items: 0,
+                        status: 'pending', created_by: userId
+                    }).select('id').single();
+
+                    if (newSow) {
+                         const newParams = new URLSearchParams(window.location.search);
+                         newParams.set('sow', String(newSow.id));
+                         router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
+                    }
+                }
+            } else if (!sowParam && sowId) {
                 const { data: sowItemData } = await supabase.from('u_sow_items')
                     .select('report_number')
                     .eq('sow_id', sowId)
@@ -2254,6 +2311,7 @@ function V10PreviewLayout() {
     const syncDeploymentState = useCallback(async () => {
         if (!activeDep?.id || activeDep.id === "AWAITING") {
             console.log("[Sync] Skipping sync: no active deployment");
+            setIsReadyForComps(true);
             return;
         }
 
@@ -3012,12 +3070,12 @@ function V10PreviewLayout() {
                 query = query.eq('structure_id', Number(structureId));
             }
 
-            // ADD SOW FILTERING (Flexible match for both Report No and SOW ID)
+            // ADD SOW FILTERING (Include jobs with NO report number as they might be new)
             if (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report") {
                 if (sowIdFull) {
-                    query = query.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.eq."${sowIdFull}"`);
+                    query = query.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.eq."${sowIdFull}",sow_report_no.is.null`);
                 } else {
-                    query = query.eq('sow_report_no', headerData.sowReportNo);
+                    query = query.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`);
                 }
             }
 
@@ -3101,9 +3159,9 @@ function V10PreviewLayout() {
     // Replacement: useQuery for SOW and Component Data
     const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
         queryKey: ['sow-data', structureId, sowId, inspMethod],
-        enabled: !!(sowId && structureId && !isNaN(Number(structureId)) && isReadyForComps),
+        enabled: !!(structureId && !isNaN(Number(structureId)) && isReadyForComps),
         queryFn: async () => {
-            if (!sowId || !structureId) return { assigned: [], unassigned: [], all: [] };
+            if (!structureId) return { assigned: [], unassigned: [], all: [] };
 
             // 1. Fetch ALL active components for this structure (Paginated to bypass 1000 hard limit)
             let allCompsDataRaw: any[] = [];
@@ -3146,34 +3204,36 @@ function V10PreviewLayout() {
 
             // 2. Fetch SOW items scoped strictly to this sowId AND report Number
             let allSowItems: any[] = [];
-            let hasMoreSow = true;
-            let offsetSow = 0;
+            if (sowId) {
+                let hasMoreSow = true;
+                let offsetSow = 0;
 
-            while (hasMoreSow) {
-                let sowItemsQuery = supabase.from('u_sow_items')
-                    .select('*, inspection_type:inspection_type_id!left(id, code, name, metadata)')
-                    .eq('sow_id', sowId)
-                    .range(offsetSow, offsetSow + pageSize - 1);
-                    
-                if (targetReportNumber) {
-                    sowItemsQuery = sowItemsQuery.eq('report_number', targetReportNumber);
-                }
+                while (hasMoreSow) {
+                    let sowItemsQuery = supabase.from('u_sow_items')
+                        .select('*, inspection_type:inspection_type_id!left(id, code, name, metadata)')
+                        .eq('sow_id', sowId)
+                        .range(offsetSow, offsetSow + pageSize - 1);
+                        
+                    if (targetReportNumber) {
+                        sowItemsQuery = sowItemsQuery.eq('report_number', targetReportNumber);
+                    }
 
-                const { data: pageSowItems, error: sowItemsErr } = await sowItemsQuery;
+                    const { data: pageSowItems, error: sowItemsErr } = await sowItemsQuery;
 
-                if (sowItemsErr) {
-                    console.error("Error fetching SOW items:", sowItemsErr);
-                    break;
-                }
+                    if (sowItemsErr) {
+                        console.error("Error fetching SOW items:", sowItemsErr);
+                        break;
+                    }
 
-                if (pageSowItems && pageSowItems.length > 0) {
-                    allSowItems = [...allSowItems, ...pageSowItems];
-                    offsetSow += pageSize;
-                    if (pageSowItems.length < pageSize) {
+                    if (pageSowItems && pageSowItems.length > 0) {
+                        allSowItems = [...allSowItems, ...pageSowItems];
+                        offsetSow += pageSize;
+                        if (pageSowItems.length < pageSize) {
+                            hasMoreSow = false;
+                        }
+                    } else {
                         hasMoreSow = false;
                     }
-                } else {
-                    hasMoreSow = false;
                 }
             }
 
@@ -4696,6 +4756,45 @@ function V10PreviewLayout() {
         />
     );
 
+    // Handle arrival from Component Details Modal (Auto-select component)
+    useEffect(() => {
+        if (!compIdParam || !allComps || allComps.length === 0 || selectedComp) return;
+        
+        const targetComp = allComps.find(c => String(c.id) === String(compIdParam));
+        if (targetComp) {
+            console.log("[Redirect] Auto-selecting component:", targetComp.name);
+            setSelectedComp(targetComp);
+        }
+    }, [compIdParam, allComps, selectedComp]);
+
+    // Handle arrival from Component Details Modal (Auto-edit record)
+    useEffect(() => {
+        if (!recordIdParam || !selectedComp) return;
+        
+        async function loadAndEditRecord() {
+            // Check if record is in current list
+            const localRecord = currentRecords.find(r => String(r.insp_id) === String(recordIdParam));
+            if (localRecord) {
+                console.log("[Redirect] Editing local record:", localRecord.insp_id);
+                handleEditRecord(localRecord);
+                return;
+            }
+
+            // If not in current list (maybe historical), fetch it explicitly
+            console.log("[Redirect] Fetching record for edit:", recordIdParam);
+            const { data: record } = await supabase.from('insp_records')
+                .select('*, inspection_type:inspection_type_id(*), insp_anomalies(*)')
+                .eq('insp_id', Number(recordIdParam))
+                .maybeSingle();
+            
+            if (record) {
+                handleEditRecord(record);
+            }
+        }
+        
+        loadAndEditRecord();
+    }, [recordIdParam, selectedComp, currentRecords, supabase]);
+
     return (
         <div className="flex flex-col h-[calc(100vh)] bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 overflow-hidden">
 
@@ -6058,10 +6157,12 @@ function V10PreviewLayout() {
                         )}
 
                         {compView === "MODEL_3D" && (
-                            <div className="flex-1 bg-slate-900 flex flex-col items-center justify-center p-4 text-center border-dashed border-2 border-slate-800 m-2 rounded-lg relative overflow-hidden">
-                                <Layers className="w-12 h-12 mb-3 text-slate-700/50" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">3D Viewer</span>
-                            </div>
+                            <Inspection3DViewer 
+                                componentsSow={componentsSow}
+                                componentsNonSow={componentsNonSow}
+                                selectedCompId={selectedComp?.id}
+                                onSelectComponent={handleComponentSelection}
+                            />
                         )}
                     </Card>
 

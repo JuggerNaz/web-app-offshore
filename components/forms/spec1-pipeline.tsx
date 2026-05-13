@@ -9,7 +9,7 @@ import { FormFieldWrap } from "./form-field-wrap";
 import { fetcher } from "@/utils/utils";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Save, Info, Settings, MapPin, Ruler, Layers, Package, Globe, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,14 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getUnitOptions, getDefaultUnit } from "@/utils/unit-helpers";
 import { useEffect, useState } from "react";
 
@@ -30,6 +38,8 @@ type Props = {
 
 export default function Spec1Pipeline({ data }: Props) {
   const router = useRouter();
+  const params = useParams();
+  const structureId = params?.id !== "new" ? params?.id : null;
 
   const {
     data: libData,
@@ -42,6 +52,10 @@ export default function Spec1Pipeline({ data }: Props) {
     error: settingsError,
     isLoading: settingsLoading,
   } = useSWR("/api/company-settings", fetcher);
+
+  const {
+    data: componentsData,
+  } = useSWR(structureId ? `/api/structure-components/${structureId}` : null, fetcher);
 
   const normalizeDate = (value: string | null | undefined) => {
     if (!value) return "";
@@ -84,6 +98,7 @@ export default function Spec1Pipeline({ data }: Props) {
     end_y: "m",
     plength: "km",
     line_diam: "mm",
+    wall_thk: "mm",
 
     conc_ctg_per: "%",
     desg_press: "bar",
@@ -106,6 +121,7 @@ export default function Spec1Pipeline({ data }: Props) {
         end_y: getDefaultUnit("LENGTH", isImperial, "end_y") || "m",
         plength: getDefaultUnit("DISTANCE", isImperial, "plength") || "km",
         line_diam: getDefaultUnit("LENGTH", isImperial, "line_diam") || "mm",
+        wall_thk: getDefaultUnit("LENGTH", isImperial, "wall_thk") || "mm",
 
         conc_ctg_per: getDefaultUnit("PERCENT", isImperial) || "%",
         desg_press: getDefaultUnit("PRESSURE", isImperial) || "bar",
@@ -183,6 +199,28 @@ export default function Spec1Pipeline({ data }: Props) {
 
   if (libError || settingsError) return <div>failed to load library data</div>;
   if (libLoading || settingsLoading) return <div>loading...</div>;
+
+  // Compute Span Table Rows
+  const ppComponents = componentsData?.data
+    ?.filter((c: any) => c.code?.toLowerCase() === "pp" && c.metadata?.kp != null && c.metadata?.kp !== "")
+    .sort((a: any, b: any) => Number(a.metadata.kp) - Number(b.metadata.kp)) || [];
+
+  const spanRows = [];
+  let previousKP = 0;
+  for (const comp of ppComponents) {
+    const currentKP = Number(comp.metadata.kp);
+    spanRows.push({
+      range: `${previousKP} - ${currentKP}`,
+      cons_span: comp.metadata.additionalInfo?.cons_span || "N/A",
+      oper_span: comp.metadata.additionalInfo?.oper_span || "N/A",
+      wall_thk: comp.metadata.additionalInfo?.wall_thk || "N/A",
+      pipe_mat: comp.metadata.additionalInfo?.pipe_mat || "N/A",
+      corr_ctg: comp.metadata.additionalInfo?.corr_ctg || "N/A",
+      kp_unit: comp.metadata.kp_unit || "km",
+      id: comp.id
+    });
+    previousKP = currentKP;
+  }
 
   return (
     <Form {...form}>
@@ -331,46 +369,74 @@ export default function Spec1Pipeline({ data }: Props) {
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-4">
-                <Activity className="h-5 w-5 text-orange-500" />
-                <CardTitle className="text-lg">Operational Parameters</CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 pt-2">
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <FormFieldWrap label="Design Pressure" name="desg_press" form={form} type="number" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <FormFieldWrap label="Design Pressure" name="desg_press" form={form} type="number" />
+                    </div>
+                    {renderUnitSelect("desg_press", "PRESSURE")}
                   </div>
-                  {renderUnitSelect("desg_press", "PRESSURE")}
-                </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <FormFieldWrap label="Operating Pressure" name="oper_press" form={form} type="number" />
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <FormFieldWrap label="Operating Pressure" name="oper_press" form={form} type="number" />
+                    </div>
+                    {renderUnitSelect("oper_press", "PRESSURE")}
                   </div>
-                  {renderUnitSelect("oper_press", "PRESSURE")}
-                </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <FormFieldWrap label="Line Burried" name="burial" form={form} type="number" />
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <FormFieldWrap label="Line Burried" name="burial" form={form} type="number" />
+                    </div>
+                    {renderUnitSelect("burial", "PERCENT")}
                   </div>
-                  {renderUnitSelect("burial", "PERCENT")}
+                  <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="N/A" />
                 </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <FormFieldWrap label="Constructional Span" name="span_cons" form={form} type="number" />
+
+                {/* Span Tables section */}
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-50/50 dark:bg-slate-900/50">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-slate-100/50 dark:bg-slate-800/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 border-b-slate-200 dark:border-b-slate-800">
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">KP Range <span className="lowercase">({spanRows[0]?.kp_unit || units.st_fp})</span></TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Construction Span <span className="lowercase">({units.span_cons})</span></TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Operational Span <span className="lowercase">({units.span_oper})</span></TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Wall Thickness <span className="lowercase">({units.wall_thk})</span></TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Pipeline Material</TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Corrosion Coating</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {spanRows.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-8 text-slate-500 text-xs font-medium italic border-0">
+                              No PP components found. Add Pipeline (PP) components to automatically calculate span ranges.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          spanRows.map((row) => (
+                            <TableRow key={row.id} className="border-b-slate-100 dark:border-b-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/80">
+                              <TableCell className="font-medium text-xs text-center">{row.range}</TableCell>
+                              <TableCell className="text-center text-xs">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 font-semibold text-slate-700 dark:text-slate-300 shadow-sm">
+                                  {row.cons_span}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center text-xs">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 font-semibold text-slate-700 dark:text-slate-300 shadow-sm">
+                                  {row.oper_span}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center text-xs text-slate-600 dark:text-slate-400 font-medium">{row.wall_thk}</TableCell>
+                              <TableCell className="text-center text-xs text-slate-600 dark:text-slate-400 font-medium">{row.pipe_mat}</TableCell>
+                              <TableCell className="text-center text-xs text-slate-600 dark:text-slate-400 font-medium">{row.corr_ctg}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
-                  {renderUnitSelect("span_cons", "LENGTH")}
                 </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <FormFieldWrap label="Operational Span" name="span_oper" form={form} type="number" />
-                  </div>
-                  {renderUnitSelect("span_oper", "LENGTH")}
-                </div>
-                <FormFieldWrap label="Installation Contractor" name="inst_ctr" form={form} placeholder="N/A" />
               </CardContent>
             </Card>
 
