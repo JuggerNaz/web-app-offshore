@@ -7,7 +7,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronRight, ChevronDown, ExternalLink } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   Collapsible,
@@ -39,12 +40,14 @@ type InspectionSummaryModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   inspections: any[];
+  structureId?: string | number;
 };
 
 export function InspectionSummaryModal({
   open,
   onOpenChange,
   inspections,
+  structureId,
 }: InspectionSummaryModalProps) {
   // Group inspections by jobpack name — mirrors the inspection page grouping
   const grouped = inspections.reduce((acc: Record<string, any[]>, insp: any) => {
@@ -71,7 +74,7 @@ export function InspectionSummaryModal({
             </div>
           ) : (
             Object.entries(grouped).map(([jobpackName, items]) => (
-              <CollapsibleJobPack key={jobpackName} name={jobpackName} items={items as any[]} />
+              <CollapsibleJobPack key={jobpackName} name={jobpackName} items={items as any[]} structureId={structureId} />
             ))
           )}
         </div>
@@ -80,8 +83,9 @@ export function InspectionSummaryModal({
   );
 }
 
-function CollapsibleJobPack({ name, items }: { name: string; items: any[] }) {
+function CollapsibleJobPack({ name, items, structureId }: { name: string; items: any[]; structureId?: string | number }) {
   const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
 
   return (
     <Collapsible
@@ -116,6 +120,7 @@ function CollapsibleJobPack({ name, items }: { name: string; items: any[] }) {
                 <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Type</th>
                 <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Code</th>
                 <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Status</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -146,6 +151,30 @@ function CollapsibleJobPack({ name, items }: { name: string; items: any[] }) {
                     )}>
                       {insp.status || "—"}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <button
+                      onClick={() => {
+                        const jpId = insp.jobpack?.id || insp.jobpack_id;
+                        const jpName = encodeURIComponent(insp.jobpack?.name || `JP-${jpId}`);
+                        const sowReport = encodeURIComponent(insp.sow_report_no || '');
+                        const mode = insp.rov_job_id ? 'ROV' : 'DIVING';
+                        if (jpId && structureId) {
+                          const url = `/dashboard/inspection-v2/workspace?jobpack=${jpId}&structure=${structureId}&jpName=${jpName}&sowReport=${sowReport}&compId=${insp.component_id}&recordId=${insp.insp_id}&mode=${mode}`;
+                          window.open(url, '_blank');
+                        }
+                      }}
+                      disabled={!(insp.jobpack?.id || insp.jobpack_id) || !structureId}
+                      className={cn(
+                        "h-7 w-7 inline-flex items-center justify-center rounded-lg transition-colors",
+                        (insp.jobpack?.id || insp.jobpack_id) && structureId
+                          ? "bg-slate-800 text-slate-300 hover:bg-blue-600 hover:text-white"
+                          : "bg-slate-800/50 text-slate-600 cursor-not-allowed"
+                      )}
+                      title="View Inspection Record"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </button>
                   </td>
                 </tr>
               ))}

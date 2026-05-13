@@ -70,8 +70,8 @@ export const GET = withAuth(
     const { data: inspRecords } = await supabase
       .from("insp_records")
       .select(`
-        insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description,
-        jobpack:jobpack_id(name)
+        insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description, sow_report_no,
+        jobpack:jobpack_id(id, name)
       `)
       .in("component_id", componentIds);
 

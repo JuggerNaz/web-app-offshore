@@ -764,6 +764,7 @@ export default function ComponentContent() {
         open={inspectionModalOpen}
         onOpenChange={setInspectionModalOpen}
         inspections={selectedInspections}
+        structureId={structureId}
       />
       
       <AnomalySummaryModal
