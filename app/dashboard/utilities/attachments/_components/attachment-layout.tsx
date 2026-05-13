@@ -17,7 +17,7 @@ export function AttachmentLayout() {
                 <AttachmentToolbar />
 
                 {/* View Area */}
-                <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
+                <div className="flex-1 overflow-auto p-6 scroll-smooth">
                     <AttachmentTreeView />
                 </div>
             </div>

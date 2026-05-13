@@ -1,5 +1,7 @@
 "use client";
 
+import * as React from "react";
+
 import { CheckCircle2 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 
@@ -37,6 +39,19 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export function AnomalyTrendChart() {
+    const [mounted, setMounted] = React.useState(false);
+    React.useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    if (!mounted) {
+        return (
+            <Card className="h-[350px] flex items-center justify-center">
+                <p className="text-slate-400 animate-pulse uppercase tracking-widest text-[10px] font-black">Loading Analytics...</p>
+            </Card>
+        );
+    }
+
     return (
         <Card>
             <CardHeader>
@@ -64,7 +79,7 @@ export function AnomalyTrendChart() {
             </CardContent>
             <CardFooter className="flex-col items-start gap-2 text-sm">
                 <div className="flex gap-2 font-medium leading-none text-emerald-600">
-                    Closer rate increased by 20% in 2024 <CheckCircle2 className="h-4 w-4" />
+                    Closure rate increased by 20% in 2024 <CheckCircle2 className="h-4 w-4" />
                 </div>
                 <div className="leading-none text-muted-foreground">
                     Total anomalies registered vs rectified
