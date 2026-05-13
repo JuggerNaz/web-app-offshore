@@ -34,6 +34,7 @@ export interface ConditionRule {
   value: string;
   value2?: string;
   logic?: "AND" | "OR";
+  transform?: string;
 }
 
 export interface ComputedField {
@@ -361,63 +362,131 @@ export const QUERY_OPERATORS: OperatorDef[] = [
 
 // ─── NATURAL LANGUAGE PARSER ───────────────────────────────────────────────
 
+const FIELD_ALIASES: Record<string, string[]> = {
+  plegs: ["legged", "legs", "leg count"],
+  depth: ["water depth", "deep", "shallow"],
+  title: ["named", "called", "name"],
+  priority_code: ["priority", "criticality"],
+  status: ["state", "stage"],
+  inst_date: ["installed", "installation"],
+  line_diam: ["diameter", "diam"],
+  structure_name: ["platform name", "structure"],
+};
+
 export function parseNaturalLanguage(input: string, availableFields: FieldDef[]): ConditionRule[] {
   if (!input.trim()) return [];
+  
+  // Clean input
+  const cleanInput = input.trim().toLowerCase().replace(/\ball\b/g, "").replace(/\bplatforms?\b/g, "").replace(/\bstructures?\b/g, "").trim();
   const conditions: ConditionRule[] = [];
-  const parts = input.split(/\b(and|or)\b/i);
+  
+  // Split by logical separators
+  const parts = cleanInput.split(/\b(and|or)\b/i);
   let currentLogic: "AND" | "OR" = "AND";
 
   for (const rawPart of parts) {
     const part = rawPart.trim();
-    const partLower = part.toLowerCase();
     if (!part) continue;
-    if (partLower === "and") { currentLogic = "AND"; continue; }
-    if (partLower === "or") { currentLogic = "OR"; continue; }
+    if (part === "and") { currentLogic = "AND"; continue; }
+    if (part === "or") { currentLogic = "OR"; continue; }
 
     let matchedField: FieldDef | undefined;
-    let remaining = part;
-    const sortedFields = [...availableFields].sort((a, b) => b.label.length - a.label.length);
+    let operator = "eq";
+    let value = "";
+    let transform: string | undefined;
 
+    // 1. Find Field (Fuzzy)
+    // Sort fields by length descending to match longest possible label first
+    const sortedFields = [...availableFields].sort((a, b) => b.label.length - a.label.length);
+    
     for (const f of sortedFields) {
-      if (partLower.startsWith(f.label.toLowerCase()) || partLower.startsWith(f.key.toLowerCase())) {
+      const aliases = FIELD_ALIASES[f.key] || [];
+      const keywords = [f.label.toLowerCase(), f.key.toLowerCase(), ...aliases];
+      
+      if (keywords.some(k => part.includes(k))) {
         matchedField = f;
-        remaining = part.slice(f.label.toLowerCase().length).trim();
+
+        // Check for transformations (e.g. "year of", "in 2024")
+        if (f.dataType === "date") {
+          if (part.includes("year") || part.match(/\b(in|during)\s+\d{4}\b/)) {
+            transform = "year";
+          }
+        }
+
+        // Check if we can find a number if the field is numeric or has year transform
+        if (f.dataType === "number" || transform === "year") {
+          const numMatch = part.match(/\d+(?:\.\d+)?/);
+          if (numMatch) {
+            value = numMatch[0];
+            // Infer operator if possible
+            if (part.match(/more than|greater|above|>/)) operator = "gt";
+            else if (part.match(/less than|below|under|</)) operator = "lt";
+            else if (part.match(/at least|>=/)) operator = "gte";
+            else if (part.match(/at most|<=/)) operator = "lte";
+          }
+        }
         break;
       }
     }
 
-    if (!matchedField) continue;
+    if (matchedField && (value || operator === "is_empty" || operator === "is_not_empty")) {
+      conditions.push({
+        field: matchedField.key,
+        operator,
+        value: value,
+        logic: currentLogic,
+        transform: transform
+      });
+      continue;
+    }
 
-    const opPatterns: { pattern: RegExp; operator: string }[] = [
-      { pattern: /^(?:is|equals?|=)\s+(.+)$/i, operator: "eq" },
-      { pattern: /^(?:is not|not equals?|!=|<>)\s+(.+)$/i, operator: "neq" },
-      { pattern: /^(?:contains?|includes?|like)\s+(.+)$/i, operator: "contains" },
-      { pattern: /^(?:starts? with|begins? with)\s+(.+)$/i, operator: "starts_with" },
-      { pattern: /^(?:ends? with)\s+(.+)$/i, operator: "ends_with" },
-      { pattern: /^(?:is empty|is null)$/i, operator: "is_empty" },
-      { pattern: /^(?:is not empty|is not null)$/i, operator: "is_not_empty" },
-      { pattern: /^(?:greater than|more than|above|>)\s+(.+)$/i, operator: "gt" },
-      { pattern: /^(?:less than|below|under|<)\s+(.+)$/i, operator: "lt" },
-      { pattern: /^(?:greater or equal|>=|at least)\s+(.+)$/i, operator: "gte" },
-      { pattern: /^(?:less or equal|<=|at most)\s+(.+)$/i, operator: "lte" },
-      { pattern: /^(?:between)\s+(.+?)\s+(?:and|to)\s+(.+)$/i, operator: "between" },
-    ];
+    // 2. Regex Pattern Matching (Fallback/Specific)
+    if (matchedField && !value) {
+      const opPatterns: { pattern: RegExp; operator: string }[] = [
+          { pattern: /(?:is|equals?|=)\s+(.+)$/i, operator: "eq" },
+          { pattern: /(?:is not|not equals?|!=|<>)\s+(.+)$/i, operator: "neq" },
+          { pattern: /(?:contains?|includes?|like)\s+(.+)$/i, operator: "contains" },
+          { pattern: /(?:starts? with|begins? with)\s+(.+)$/i, operator: "starts_with" },
+          { pattern: /(?:ends? with)\s+(.+)$/i, operator: "ends_with" },
+          { pattern: /(?:is empty|is null)$/i, operator: "is_empty" },
+          { pattern: /(?:is not empty|is not null)$/i, operator: "is_not_empty" },
+          { pattern: /(?:between)\s+(.+?)\s+(?:and|to)\s+(.+)$/i, operator: "between" },
+      ];
 
-    for (const { pattern, operator } of opPatterns) {
-      const match = remaining.match(pattern);
-      if (match) {
-        const condition: ConditionRule = {
-          field: matchedField.key,
-          operator,
-          value: match[1]?.trim() || "",
-          logic: currentLogic,
-        };
-        if (operator === "between" && match[2]) condition.value2 = match[2].trim();
-        conditions.push(condition);
-        break;
+      for (const { pattern, operator: op } of opPatterns) {
+        const match = part.match(pattern);
+        if (match) {
+          operator = op;
+          value = match[1]?.trim() || "";
+          break;
+        }
       }
+    }
+
+    // 3. Last Resort: Implicit Value Match (e.g. "P1 priority" where field is detected but no operator)
+    if (matchedField && !value) {
+      // Try to find any word that isn't a keyword/operator as the value
+      const words = part.split(/\s+/);
+      const aliases = FIELD_ALIASES[matchedField.key] || [];
+      const keywords = [matchedField.label.toLowerCase(), matchedField.key.toLowerCase(), ...aliases];
+      
+      const potentialValue = words.find(w => !keywords.some(k => k.includes(w)) && !["is", "equal", "to", "at"].includes(w));
+      if (potentialValue) {
+        value = potentialValue;
+      }
+    }
+
+    if (matchedField && (value || operator === "is_empty" || operator === "is_not_empty")) {
+      conditions.push({
+        field: matchedField.key,
+        operator,
+        value: value,
+        logic: currentLogic,
+        transform: transform
+      });
     }
   }
+
   return conditions;
 }
 

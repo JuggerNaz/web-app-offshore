@@ -59,6 +59,10 @@ export default function DetailPage() {
     const resolvedType = Array.isArray(type) ? type[0] : type;
     setPageId(parseInt(id as string) ?? 0);
     setPageType(resolvedType || "platform");
+    
+    // Set active tab from query param if present
+    const tab = searchParams.get("tab");
+    if (tab) setActiveTab(tab);
   }, []);
 
   // Handle back navigation intelligently
@@ -104,7 +108,7 @@ export default function DetailPage() {
 
   return (
     <div className="flex-1 w-full flex flex-col animate-in fade-in duration-700 h-full overflow-hidden">
-      <Tabs defaultValue="spec1" onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
         {/* Fixed Top Header Section */}
         <div className="bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b px-8 pt-8 pb-6 shadow-sm space-y-6 shrink-0 z-20">
           <div className="flex items-center justify-between max-w-7xl mx-auto w-full">

@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 import { createClient } from "@/utils/supabase/client";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 // Helper to load image for PDF
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
@@ -222,7 +223,8 @@ export const generateInspectionReport = async (
         if (attachments.length > 0) {
             if (yPos > pageHeight - 60) {
                 doc.addPage();
-                yPos = 20;
+                await drawPremiumHeader(doc);
+                yPos = margin + 22 + 6;
             }
 
             drawSectionHeader(`ATTACHMENTS / PHOTOS (${attachments.length})`, yPos);
@@ -250,12 +252,12 @@ export const generateInspectionReport = async (
 
                 if (yPos + imgHeight + 25 > pageHeight - 10) {
                     doc.addPage();
-                    yPos = 20;
+                    await drawPremiumHeader(doc);
+                    yPos = margin + 22 + 6;
                 }
 
                 // Get Public URL
-                const { data: publicUrlData } = supabase.storage.from('attachments').getPublicUrl(att.path);
-                const url = publicUrlData.publicUrl;
+                const url = getAttachmentUrl(att, supabase);
 
                 try {
                     const colCenterX = currentX + (imgWidth / 2);

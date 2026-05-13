@@ -1,9 +1,5 @@
 import { LayoutDashboard, ShieldCheck, Activity, AlertTriangle, FileText } from "lucide-react";
-import { CPTrendChart } from "@/components/charts/cp-trend-chart";
-import { AnodeTrendChart } from "@/components/charts/anode-trend-chart";
-import { MarineGrowthChart } from "@/components/charts/marine-growth-chart";
-import { ScourTrendChart } from "@/components/charts/scour-trend-chart";
-import { AnomalyTrendChart } from "@/components/charts/anomaly-trend-chart";
+import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 
 export default async function DashboardPage() {
   return (
@@ -53,13 +49,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Analytics Charts Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-100 pb-10">
-          <AnomalyTrendChart />
-          <AnodeTrendChart />
-          <CPTrendChart />
-          <MarineGrowthChart />
-          <ScourTrendChart />
-        </div>
+        <DashboardCharts />
       </div>
     </div>
   );

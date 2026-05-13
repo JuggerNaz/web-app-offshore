@@ -131,13 +131,13 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Sidebar with Avatar */}
             <div className="lg:col-span-1">
-                <Card className="border-none shadow-md overflow-hidden bg-white/50 backdrop-blur-sm">
+                <Card className="border-none shadow-md overflow-hidden bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
                     <CardHeader className="text-center pb-2">
                         <div className="flex justify-center mb-6 relative group">
                             <div className="relative">
-                                <Avatar className="h-32 w-32 border-4 border-white shadow-xl">
+                                <Avatar className="h-32 w-32 border-4 border-white dark:border-slate-800 shadow-xl">
                                     <AvatarImage src={avatarUrl} alt="Profile" className="object-cover" />
-                                    <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600">
+                                    <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 text-slate-600 dark:text-slate-400">
                                         {getInitials(fullName, user.email || "U")}
                                     </AvatarFallback>
                                 </Avatar>
@@ -158,7 +158,7 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
                             </div>
                         </div>
                         <div className="space-y-1">
-                            <CardTitle className="text-2xl font-black text-slate-800 tracking-tight">
+                            <CardTitle className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
                                 {fullName || user.email?.split('@')[0]}
                             </CardTitle>
                             <p className="text-sm font-bold text-blue-600 uppercase tracking-widest flex items-center justify-center gap-1.5 mt-1">
@@ -170,12 +170,12 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
                     <CardContent className="pt-6">
                         <Separator className="mb-6 opacity-50" />
                         <div className="space-y-3">
-                            <div className="flex items-center gap-3 text-sm text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                <Mail className="w-4 h-4 text-slate-400" />
+                            <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
+                                <Mail className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                                 <span className="font-medium truncate">{user.email}</span>
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                <Globe className="w-4 h-4 text-slate-400" />
+                            <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
+                                <Globe className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                                 <span className="font-medium">Active Member</span>
                             </div>
                         </div>
@@ -185,11 +185,11 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
 
             {/* Main Profile Info */}
             <div className="lg:col-span-2">
-                <Card className="border-none shadow-md bg-white">
+                <Card className="border-none shadow-md bg-white dark:bg-slate-900">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-7 border-b">
                         <div className="space-y-1">
-                            <CardTitle className="text-xl font-bold flex items-center gap-2">
-                                <UserIcon className="w-5 h-5 text-blue-600" />
+                            <CardTitle className="text-xl font-bold flex items-center gap-2 dark:text-slate-100">
+                                <UserIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                                 Profile Information
                             </CardTitle>
                             <CardDescription>Update your personal details and professional designation</CardDescription>
@@ -219,7 +219,7 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
                                                 id="full_name"
                                                 value={fullName}
                                                 onChange={(e) => setFullName(e.target.value)}
-                                                className="pl-10 h-12 text-sm font-bold border-slate-200 focus:border-blue-400 focus:ring-blue-100 transition-all"
+                                                className="pl-10 h-12 text-sm font-bold border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:border-blue-400 focus:ring-blue-100 dark:focus:ring-blue-900/20 transition-all"
                                                 placeholder="Enter your full name"
                                             />
                                         </div>
@@ -232,7 +232,7 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
                                                 id="designation"
                                                 value={designation}
                                                 onChange={(e) => setDesignation(e.target.value)}
-                                                className="pl-10 h-12 text-sm font-bold border-slate-200 focus:border-blue-400 focus:ring-blue-100 transition-all"
+                                                className="pl-10 h-12 text-sm font-bold border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:border-blue-400 focus:ring-blue-100 dark:focus:ring-blue-900/20 transition-all"
                                                 placeholder="e.g. Senior ROV Engineer"
                                             />
                                         </div>
@@ -258,11 +258,11 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
                                     <div className="space-y-1.5 flex flex-col border-b border-slate-50 pb-4">
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Full Name</span>
-                                        <span className="text-base font-black text-slate-800">{fullName || "Not specified"}</span>
+                                        <span className="text-base font-black text-slate-800 dark:text-slate-100">{fullName || "Not specified"}</span>
                                     </div>
                                     <div className="space-y-1.5 flex flex-col border-b border-slate-50 pb-4">
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Designation</span>
-                                        <span className="text-base font-black text-slate-800">{designation || "Not specified"}</span>
+                                        <span className="text-base font-black text-slate-800 dark:text-slate-100">{designation || "Not specified"}</span>
                                     </div>
                                     <div className="space-y-1.5 flex flex-col border-b border-slate-50 pb-4">
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Email Address</span>
@@ -274,13 +274,13 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
                                     </div>
                                 </div>
 
-                                <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100/50 flex items-start gap-4">
-                                    <div className="p-2 bg-blue-100 rounded-lg shrink-0">
-                                        <Key className="w-5 h-5 text-blue-600" />
+                                <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-xl border border-blue-100/50 dark:border-blue-900/30 flex items-start gap-4">
+                                    <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg shrink-0">
+                                        <Key className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                                     </div>
                                     <div>
-                                        <p className="text-xs font-black text-blue-800 uppercase tracking-widest mb-0.5">System Identifier</p>
-                                        <p className="text-[10px] font-mono font-bold text-blue-500/70">{user.id}</p>
+                                        <p className="text-xs font-black text-blue-800 dark:text-blue-200 uppercase tracking-widest mb-0.5">System Identifier</p>
+                                        <p className="text-[10px] font-mono font-bold text-blue-500/70 dark:text-blue-400/70">{user.id}</p>
                                     </div>
                                 </div>
                             </div>

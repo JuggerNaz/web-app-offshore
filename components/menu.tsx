@@ -19,6 +19,8 @@ import {
   Crown,
   AlertTriangle,
   Sparkles,
+  Paperclip,
+  Box,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -162,6 +164,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<FileSpreadsheet className="h-[18px] w-[18px]" />}
             text="Reports"
           />
+          <MenuLink
+            href="/dashboard/reports/executive-summary"
+            isCollapsed={isCollapsed}
+            label="Executive Summary"
+            icon={<Sparkles className="h-[18px] w-[18px] text-blue-500" />}
+            text="Executive Summary"
+          />
         </div>
 
 
@@ -180,6 +189,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             text="Library"
           />
           <MenuLink
+            href="/dashboard/utilities/platform-3d"
+            isCollapsed={isCollapsed}
+            label="Platform 3D"
+            icon={<Box className="h-[18px] w-[18px]" />}
+            text="Platform 3D"
+          />
+          <MenuLink
             href="/dashboard/utilities/inspection-type"
             isCollapsed={isCollapsed}
             label="Inspection Type"
@@ -190,7 +206,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             href="/dashboard/utilities/attachments"
             isCollapsed={isCollapsed}
             label="Attachments"
-            icon={<FileText className="h-[18px] w-[18px]" />}
+            icon={<Paperclip className="h-[18px] w-[18px]" />}
             text="Attachments"
           />
           <MenuLink

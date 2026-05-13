@@ -192,6 +192,26 @@
                 }
             ]
         },
+        "fmd_density_rdg_additional": {
+            "name": "fmd_density_rdg_additional",
+            "label": "FMD Additonal Readings",
+            "type": "repeater",
+            "subFields": [
+                {
+                    "name": "test_point_location",
+                    "label": "Test Point Location",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "density_value",
+                    "label": "Density Value",
+                    "type": "number",
+                    "unitCategory": "DENSITY",
+                    "required": false
+                }
+            ]
+        },
         "ut_readings_additional": {
             "name": "ut_readings_additional",
             "label": "UT Additional Readings",
@@ -1318,6 +1338,126 @@
             ]
         },
         {
+            "code": "FLOODZONE",
+            "name": "Flooded Member Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "flooded",
+                    "label": "Flooded",
+                    "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "grout",
+                    "label": "Grouted",
+                    "type": "boolean",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "PL_IC",
+            "name": "Item Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "name": "item_type",
+                    "label": "Type of Item",
+                    "type": "combo",
+                    "lib_code": "ITEM_TYPE",
+                    "required": true
+                },
+                {
+                    "name": "description",
+                    "label": "Description",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                }
+            ]
+        },
+        {
+            "code": "PHOTO",
+            "name": "Photographic Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "camera_type",
+                    "label": "Camera Type",
+                    "type": "combo",
+                    "lib_code": "",
+                    "required": true
+                },
+                {
+                    "name": "subject_of_photo",
+                    "label": "Subject of Photo",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "exposure_number",
+                    "label": "Exposure #",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "photo_no",
+                    "label": "Photo #",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "description",
+                    "label": "Description",
+                    "type": "text",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "MEASU",
+            "name": "Measurement Dimensional Survey",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "measurement",
+                    "label": "Measurements",
+                    "type": "repeater",
+                    "subFields": [
+                        {
+                            "name": "type",
+                            "label": "Type",
+                            "type": "text"
+                        },
+                        {
+                            "name": "unit",
+                            "label": "Unit",
+                            "type": "text"
+                        },
+                        {
+                            "name": "results",
+                            "label": "Result",
+                            "type": "text"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
             "code": "SZONE",
             "name": "Splash Zone Inspection",
             "methods": [
@@ -1496,7 +1636,7 @@
         },
         {
             "code": "UTWTK",
-            "name": "UT Thickness",
+            "name": "UT Wall Thickness",
             "methods": [
                 "DIVING"
             ],
@@ -1888,6 +2028,12 @@
                             "required": false
                         },
                         {
+                            "name": "movement_detected",
+                            "label": "Movement Detected",
+                            "type": "boolean",
+                            "required": false
+                        },
+                        {
                             "$ref": "component_condition"
                         },
                         {
@@ -1963,15 +2109,18 @@
             ],
             "fields": [
                 {
-                    "$ref": "northing"
+                    "$ref": "northing",
+                    "group": "location"
                 },
                 {
-                    "$ref": "easting"
+                    "$ref": "easting",
+                    "group": "location"
                 },
                 {
                     "name": "category",
                     "label": "Item Category",
                     "type": "select",
+                    "group": "item_details",
                     "options": [
                         "Debris",
                         "Gas Seepage",
@@ -1984,6 +2133,7 @@
                     "name": "material",
                     "label": "Material",
                     "type": "select",
+                    "group": "item_details",
                     "options": [
                         "Metallic",
                         "Non-Metallic",
@@ -1998,6 +2148,7 @@
                     "name": "size_dimensions",
                     "label": "Size / Dimensions",
                     "type": "text",
+                    "group": "item_details",
                     "condition": {
                         "field": "category",
                         "value": "Debris"
@@ -2007,6 +2158,7 @@
                     "name": "seepage_intensity",
                     "label": "Seepage Intensity",
                     "type": "select",
+                    "group": "item_details",
                     "options": [
                         "Light",
                         "Moderate",
@@ -2021,6 +2173,7 @@
                     "name": "crater_diameter",
                     "label": "Crater Diameter",
                     "type": "number",
+                    "group": "item_details",
                     "unitCategory": "LENGTH",
                     "condition": {
                         "field": "category",
@@ -2033,6 +2186,7 @@
                     "name": "crater_depth",
                     "label": "Crater Depth",
                     "type": "number",
+                    "group": "item_details",
                     "unitCategory": "LENGTH",
                     "condition": {
                         "field": "category",
@@ -2042,9 +2196,18 @@
                     "defaultImperial": "ft"
                 },
                 {
+                    "name": "nearest_leg",
+                    "label": "Nearest Leg",
+                    "type": "select",
+                    "group": "grid_coordinates",
+                    "required": false,
+                    "optionsSource": "legs"
+                },
+                {
                     "name": "distance_from_leg",
                     "label": "Distance From Leg",
                     "type": "number",
+                    "group": "grid_coordinates",
                     "unitCategory": "LENGTH",
                     "required": false,
                     "defaultMetric": "m",
@@ -2054,12 +2217,14 @@
                     "name": "x",
                     "label": "X Coordinate (%)",
                     "type": "number",
+                    "group": "grid_coordinates",
                     "required": false
                 },
                 {
                     "name": "y",
                     "label": "Y Coordinate (%)",
                     "type": "number",
+                    "group": "grid_coordinates",
                     "required": false
                 }
             ]
@@ -2267,6 +2432,12 @@
                     "required": true
                 },
                 {
+                    "name": "test_point_location",
+                    "label": "Test Point Location",
+                    "type": "text",
+                    "required": true
+                },
+                {
                     "name": "density_value",
                     "label": "Density Value",
                     "type": "number",
@@ -2274,16 +2445,13 @@
                     "required": false
                 },
                 {
-                    "name": "test_point_location",
-                    "label": "Test Point Location",
-                    "type": "text",
-                    "required": true
+                    "$ref": "fmd_density_rdg_additional"
                 }
             ]
         },
         {
             "code": "RUTWT",
-            "name": "ROV UT Wall Thickness",
+            "name": "UT Wall Thickness",
             "methods": [
                 "ROV"
             ],

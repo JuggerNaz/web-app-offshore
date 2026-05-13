@@ -415,7 +415,7 @@ export function StepConditions({ category, selectedFields, conditions, onChange 
   const [mode, setMode] = useState<"visual" | "ai">("visual");
   const cat = QUERY_CATEGORIES.find(c => c.id === category);
   if (!cat) return null;
-  const availFields = cat.fields.filter(f => selectedFields.includes(f.key));
+  const availFields = cat.fields;
 
   const add = () => onChange([...conditions, { field: "", operator: "eq", value: "", logic: "AND" }]);
   const update = (idx: number, patch: Partial<ConditionRule>) => {
@@ -476,11 +476,21 @@ export function StepConditions({ category, selectedFields, conditions, onChange 
                     <option value="OR">OR</option>
                   </select>
                 )}
-                <select value={cond.field} onChange={e => update(idx, { field: e.target.value, operator: "eq", value: "" })}
-                  className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm min-w-[140px]">
-                  <option value="">Field...</option>
-                  {availFields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                </select>
+                <div className="flex items-center gap-1">
+                  <select value={cond.field} onChange={e => update(idx, { field: e.target.value, operator: "eq", value: "", transform: "" })}
+                    className="h-9 rounded-l-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm min-w-[140px] border-r-0 focus:ring-0">
+                    <option value="">Field...</option>
+                    {availFields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                  </select>
+                  {fieldDef && (fieldDef.dataType === 'date' || fieldDef.dataType === 'text') && (
+                    <select value={cond.transform || ""} onChange={e => update(idx, { transform: e.target.value })}
+                      className="h-9 rounded-r-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-[10px] font-bold uppercase text-violet-600 focus:ring-0 cursor-pointer">
+                      <option value="">Normal</option>
+                      {fieldDef.dataType === 'date' && <><option value="year">Year</option><option value="month">Month</option></>}
+                      {fieldDef.dataType === 'text' && <><option value="uppercase">Upper</option><option value="length">Length</option></>}
+                    </select>
+                  )}
+                </div>
                 <select value={cond.operator} onChange={e => update(idx, { operator: e.target.value })}
                   className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm min-w-[120px]">
                   {operators.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
@@ -488,7 +498,7 @@ export function StepConditions({ category, selectedFields, conditions, onChange 
                 {opDef && opDef.requiresValue && (
                   <div className="flex items-center gap-1.5">
                     <Input value={cond.value} onChange={e => update(idx, { value: e.target.value })} placeholder="Value..."
-                      type={fieldDef?.dataType === "number" ? "number" : fieldDef?.dataType === "date" ? "date" : "text"}
+                      type={cond.transform === "year" ? "number" : fieldDef?.dataType === "number" ? "number" : fieldDef?.dataType === "date" ? "date" : "text"}
                       className="h-9 rounded-lg text-sm w-32" />
                     {cond.field && (
                       <ValueSuggester 
@@ -520,9 +530,12 @@ export function StepConditions({ category, selectedFields, conditions, onChange 
               return (
                 <Badge key={i} variant="outline" className="text-xs gap-1 py-1 px-2 bg-white dark:bg-slate-900">
                   {i > 0 && <span className="text-violet-500 font-bold">{c.logic}</span>}
-                  <span className="font-bold">{fl?.label || c.field}</span>
+                  <span className="font-bold">
+                    {fl?.label || c.field}
+                    {c.transform && <span className="ml-1 text-[9px] px-1 bg-violet-100 text-violet-600 rounded">{c.transform.toUpperCase()}</span>}
+                  </span>
                   <span className="text-cyan-600">{ol?.symbol || c.operator}</span>
-                  {c.value && <span className="text-slate-600 dark:text-slate-400">{c.value}</span>}
+                  {c.value && <span className="text-slate-600 dark:text-slate-400 font-mono">{c.value}</span>}
                   {c.value2 && <span className="text-slate-600 dark:text-slate-400">→ {c.value2}</span>}
                 </Badge>
               );
