@@ -203,7 +203,7 @@ export const generateROVCPReport = async (
         // ── Main table ─────────────────────────────────────────────────────────
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 4 },
             head: [[
                 { content: "Item\nNo.",       styles: { halign: "center", valign: "middle" } },
                 { content: "Component\nQID",  styles: { halign: "center", valign: "middle" } },
@@ -282,7 +282,15 @@ export const generateROVCPReport = async (
         });
         const finalY = (doc as any).lastAutoTable.finalY || startY;
         if (config.showSignatures !== false) {
-            const sigY   = Math.min(finalY + 8, pageHeight - 38);
+            let sigY = pageHeight - 38;
+            
+            // If the table ended too low, push signatures to a new page
+            if (finalY > sigY - 10) {
+                doc.addPage();
+                drawPageHeader(doc);
+                sigY = pageHeight - 38;
+            }
+            
             const sigW   = contentWidth / 3;
 
             const drawSig = (label: string, lx: number) => {

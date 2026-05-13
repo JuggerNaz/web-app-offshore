@@ -164,6 +164,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<FileSpreadsheet className="h-[18px] w-[18px]" />}
             text="Reports"
           />
+          <MenuLink
+            href="/dashboard/reports/executive-summary"
+            isCollapsed={isCollapsed}
+            label="Executive Summary"
+            icon={<Sparkles className="h-[18px] w-[18px] text-blue-500" />}
+            text="Executive Summary"
+          />
         </div>
 
 

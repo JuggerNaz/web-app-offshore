@@ -332,6 +332,9 @@ export const generateDefectCriteriaReport = async (
                     4: { cellWidth: 25, halign: 'center' }, // Priority
                     5: { cellWidth: 'auto', halign: 'left' } // Alert Message (Remaining space)
                 },
+                didDrawPage: (data: any) => {
+                    if (data.pageNumber > 1) addHeader(data.pageNumber);
+                },
                 didParseCell: (data: any) => {
                     if (data.section === 'body' && data.column.index === 4) {
                         const rawPriorityId = data.cell.raw.rawPriorityId;
@@ -360,10 +363,43 @@ export const generateDefectCriteriaReport = async (
                         }
                     }
                 },
-                margin: { top: 30, bottom: 20, left: 10, right: 10 },
+                margin: { top: 35, bottom: 20, left: 10, right: 10 },
             });
 
             currentY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (currentY);
+        if (config?.reviewedBy || config?.approvedBy) {
+            let sigY = pageHeight - 38;
+            if (finalY > sigY - 10) {
+                doc.addPage();
+                await addHeader(doc.getNumberOfPages());
+                sigY = pageHeight - 38;
+            }
+            const contentWidth = pageWidth - 20;
+            const sigW = contentWidth / 3;
+            const drawSig = (label: string, name: string, date: string, lx: number) => {
+                doc.setDrawColor(31, 55, 93); doc.setLineWidth(0.1);
+                doc.rect(lx, sigY, sigW - 2, 18);
+                if (!isPrintFriendly) {
+                    doc.setFillColor(31, 55, 93);
+                    doc.rect(lx, sigY, sigW - 2, 4.5, "F");
+                    doc.setTextColor(255);
+                } else {
+                    doc.setTextColor(31, 55, 93);
+                }
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.5);
+                doc.setTextColor(0); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.text(`Name: ${name || ""}`, lx + 2, sigY + 10);
+                doc.text(`Date: ${date || ""}`, lx + 2, sigY + 13.5);
+                doc.text("Signature:", lx + 2, sigY + 17);
+            };
+
+            drawSig('PREPARED BY', config.preparedBy?.name, config.preparedBy?.date, 10);
+            drawSig('REVIEWED BY', config.reviewedBy?.name, config.reviewedBy?.date, 10 + sigW);
+            drawSig('APPROVED BY', config.approvedBy?.name, config.approvedBy?.date, 10 + (sigW * 2));
         }
 
         if (!hasContent) {

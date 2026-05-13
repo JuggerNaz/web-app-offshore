@@ -34,6 +34,7 @@ interface InspectionFieldProps {
     setDebouncedProps: React.Dispatch<React.SetStateAction<Record<string, any>>>;
     unitSystem: "METRIC" | "IMPERIAL";
     dynamicProps: Record<string, any>;
+    readOnly?: boolean;
 }
 
 const InspectionField = ({ 
@@ -47,7 +48,8 @@ const InspectionField = ({
     selectedComp, 
     setDebouncedProps,
     unitSystem,
-    dynamicProps
+    dynamicProps,
+    readOnly = false
 }: InspectionFieldProps) => {
     const [searchTerm, setSearchTerm] = useState("");
     const fieldName = String(p.label || p.name || '').toLowerCase();
@@ -57,14 +59,13 @@ const InspectionField = ({
     const isMarineGrowth = fieldName.includes('marine growth') || fieldName.includes('marinegrowth') || fieldName === 'mgi' || fieldName.includes('marine_growth');
     const isCoating = fieldName.includes('coating condition') || fieldName.includes('coatingcondition') || fieldName.includes('coating_condition');
     const isCompCondition = fieldName.includes('component condition') || fieldName.includes('componentcondition') || fieldName.includes('component_condition');
-
     const isAnodeType = fieldName === 'anode type' || fieldName === 'anode_type';
     const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
     const isCpField = fieldName.includes('cp');
 
     const isTimeField = fieldName.includes('time') || fieldName.includes('counter') || p.type === 'time' || p.name === 'tape_count_no' || p.name === 'inspection_time';
 
-    const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code;
+    const isComboEligible = isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code || !!p.optionsSource;
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
 
@@ -99,6 +100,14 @@ const InspectionField = ({
             if (libOpts && Array.isArray(libOpts)) {
                 const libDescriptions = libOpts.map((o: any) => o.lib_desc);
                 options = Array.from(new Set([...options, ...libDescriptions]));
+            }
+        }
+
+        if (p.optionsSource) {
+            const srcOpts = libOptionsMap[p.optionsSource];
+            if (srcOpts && Array.isArray(srcOpts)) {
+                const names = srcOpts.map((o: any) => o.name || o.label || o);
+                options = Array.from(new Set([...options, ...names]));
             }
         }
 
@@ -147,10 +156,11 @@ const InspectionField = ({
                         <div className="relative">
                             <Input
                                 placeholder={`Select or enter ${p.label || p.name}`}
-                                className={`h-9 text-sm bg-white pr-16 ${type === 'secondary' ? 'border-amber-200' : 'border-slate-200'}`}
+                                className={`h-8 text-sm bg-white dark:bg-slate-900 pr-16 ${type === 'secondary' ? 'border-amber-200 dark:border-amber-900/50' : 'border-slate-200 dark:border-slate-800'} dark:text-slate-200`}
                                 value={currentValue}
-                                onChange={(e) => handler(p.name || p.label, e.target.value)}
+                                onChange={(e) => !readOnly && handler(p.name || p.label, e.target.value)}
                                 onBlur={(e) => {
+                                    if (readOnly) return;
                                     let val = e.target.value;
                                     if (isCpField && val) {
                                         const num = Number(val);
@@ -163,6 +173,7 @@ const InspectionField = ({
                                         setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: val }));
                                     }
                                 }}
+                                readOnly={readOnly}
 
                             />
                             <div className="absolute right-1 top-1 flex items-center gap-0.5">
@@ -170,7 +181,7 @@ const InspectionField = ({
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-7 w-7 text-slate-400 hover:text-slate-600"
+                                        className="h-7 w-7 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
                                         onClick={(e) => {
                                             e.preventDefault();
                                             handler(p.name || p.label, "");
@@ -188,13 +199,13 @@ const InspectionField = ({
                             </div>
                         </div>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-white border border-slate-200 shadow-xl z-[200] overflow-hidden rounded-lg" align="start">
-                        <div className="p-2 border-b border-slate-100 bg-slate-50/50">
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xl z-[200] overflow-hidden rounded-lg" align="start">
+                        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
                             <div className="relative">
                                 <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-slate-400" />
                                 <Input 
                                     placeholder="Search..." 
-                                    className="h-8 pl-8 text-xs bg-white border-slate-200 focus-visible:ring-slate-400"
+                                    className="h-8 pl-8 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-slate-400 dark:text-slate-200"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     autoFocus
@@ -206,14 +217,14 @@ const InspectionField = ({
                                 <div className="space-y-1">
                                     {ANODE_DEPLETION_GROUPS.map((group) => (
                                         <div key={group.type}>
-                                            <div className="px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 rounded sticky top-0 z-10 border-b border-slate-100">
+                                            <div className="px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 rounded sticky top-0 z-10 border-b border-slate-100 dark:border-slate-800">
                                                 {group.type}
                                             </div>
                                             <div className="space-y-0.5 mt-0.5">
                                                 {group.options.map((opt) => (
                                                     <button
                                                         key={opt}
-                                                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 hover:text-blue-700 rounded transition-colors font-medium flex items-center justify-between group"
+                                                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-400 rounded transition-colors font-medium flex items-center justify-between group dark:text-slate-300"
                                                         onClick={() => {
                                                             handler(p.name || p.label, opt);
                                                             if (type === 'primary') {
@@ -235,7 +246,7 @@ const InspectionField = ({
                                     {filteredOptions.map((opt) => (
                                         <button
                                             key={opt}
-                                            className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded transition-colors font-medium flex items-center justify-between group"
+                                            className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors font-medium flex items-center justify-between group dark:text-slate-300"
                                             onClick={() => {
                                                 handler(p.name || p.label, opt);
                                                 if (type === 'primary') {
@@ -248,6 +259,25 @@ const InspectionField = ({
                                             {currentValue === opt && <div className={`w-1.5 h-1.5 ${type === 'secondary' ? 'bg-amber-500' : 'bg-slate-800'} rounded-full`} />}
                                         </button>
                                     ))}
+                                </div>
+                            ) : searchTerm ? (
+                                <div className="p-1">
+                                    <button
+                                        className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded transition-colors font-bold flex items-center gap-2"
+                                        onClick={() => {
+                                            handler(p.name || p.label, searchTerm);
+                                            if (type === 'primary') {
+                                                setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: searchTerm }));
+                                            }
+                                            setOpenPopovers((prev: any) => ({ ...prev, [p.name || p.label]: false }));
+                                            setSearchTerm("");
+                                        }}
+                                    >
+                                        <div className="w-4 h-4 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                                            <span className="text-[10px]">+</span>
+                                        </div>
+                                        Add "{searchTerm}"
+                                    </button>
                                 </div>
                             ) : (
                                 <div className="p-3 text-center text-xs text-slate-400 italic">No matches found</div>
@@ -269,12 +299,19 @@ const InspectionField = ({
                         setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
                     }
                 }}
-                className={`flex h-9 w-full rounded-md border ${borderClass} bg-white px-2.5 text-xs font-semibold ${ringClass}`}
+                className={`flex h-8 w-full rounded-md border ${borderClass} bg-white dark:bg-slate-900 px-2.5 text-xs font-semibold ${ringClass} dark:text-slate-200`}
             >
                 <option value="">Select {p.label}</option>
-                {(p.options || []).map((opt: string) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                ))}
+                {(() => {
+                    let opts = [...(p.options || [])];
+                    if (p.optionsSource && libOptionsMap[p.optionsSource]) {
+                        const srcOpts = libOptionsMap[p.optionsSource].map((o: any) => o.name || o.label || o);
+                        opts = Array.from(new Set([...opts, ...srcOpts]));
+                    }
+                    return opts.map((opt: string) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                    ));
+                })()}
             </select>
         );
     }
@@ -282,7 +319,7 @@ const InspectionField = ({
     if (p.type === 'boolean') {
         const isChecked = currentValue === true || currentValue === "true" || currentValue === "Yes";
         return (
-            <div className="flex items-center gap-2 h-9 px-1">
+            <div className="flex items-center gap-2 h-8 px-1">
                 <Checkbox 
                     id={`${p.name || p.label}-${type}`}
                     checked={isChecked}
@@ -293,13 +330,13 @@ const InspectionField = ({
                             setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: finalVal }));
                         }
                     }}
-                    className={`${type === 'secondary' ? 'border-amber-400 data-[state=checked]:bg-amber-600' : 'border-slate-300 data-[state=checked]:bg-blue-600'}`}
+                    className={`${type === 'secondary' ? 'border-amber-400 data-[state=checked]:bg-amber-600' : 'border-slate-300 dark:border-slate-700 data-[state=checked]:bg-blue-600'}`}
                 />
                 <label 
                     htmlFor={`${p.name || p.label}-${type}`}
-                    className="text-xs font-bold text-slate-600 cursor-pointer select-none"
+                    className="text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none"
                 >
-                    {isChecked ? "Yes" : "No"}
+                    Yes
                 </label>
             </div>
         );
@@ -310,11 +347,11 @@ const InspectionField = ({
         return (
             <div className="space-y-3">
                 {rows.map((row: any, idx: number) => (
-                    <div key={idx} className="p-3 border-2 border-slate-100 rounded-lg bg-white shadow-sm space-y-3 relative group-row transition-all hover:border-slate-200">
+                    <div key={idx} className="p-3 border-2 border-slate-100 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-sm space-y-3 relative group-row transition-all hover:border-slate-200 dark:hover:border-slate-700">
                         <Button
                             variant="secondary"
                             size="icon"
-                            className="absolute -right-2 -top-2 h-7 w-7 rounded-full text-red-500 hover:text-red-700 hover:bg-red-50 border border-slate-200 shadow-sm z-10"
+                            className="absolute -right-2 -top-2 h-7 w-7 rounded-full text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 border border-slate-200 dark:border-slate-700 shadow-sm z-10"
                             onClick={() => {
                                 const hasData = Object.values(row).some(v => v !== undefined && v !== null && v !== "");
                                 if (hasData) {
@@ -345,7 +382,7 @@ const InspectionField = ({
 
                                 return (
                                     <div key={sf.name} className="space-y-1">
-                                        <label className="text-[10px] uppercase text-slate-400 font-black tracking-wider">{sf.label}</label>
+                                        <label className="text-[10px] uppercase text-slate-800 dark:text-slate-200 font-black tracking-wider">{sf.label}</label>
                                         <div className="flex items-center gap-1">
                                             <Input
                                                 type={sf.type === 'number' ? 'number' : 'text'}
@@ -367,10 +404,10 @@ const InspectionField = ({
                                                         setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: newRows }));
                                                     }
                                                 }}
-                                                className="h-9 text-sm font-medium border-slate-200 focus-visible:ring-slate-400 flex-1"
+                                                className="h-8 text-sm font-medium border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus-visible:ring-slate-400 flex-1 dark:text-slate-200"
                                             />
                                             {sfCategoryUnits && (
-                                                <div className="relative flex items-center h-9 px-2 border border-slate-200 rounded-md bg-slate-50 min-w-[60px] hover:border-slate-300 transition-colors">
+                                                <div className="relative flex items-center h-8 px-2 border border-slate-200 dark:border-slate-800 rounded-md bg-slate-50 dark:bg-slate-950 min-w-[60px] hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
                                                     <select
                                                         className="w-full bg-transparent border-none text-[10px] font-bold text-slate-500 focus:ring-0 cursor-pointer appearance-none pr-4"
                                                         value={sfCurrentUnit}
@@ -400,7 +437,7 @@ const InspectionField = ({
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full h-8 border-dashed border-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                    className="w-full h-8 border-dashed border-2 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-600"
                     onClick={() => {
                         const newRow: any = {};
                         (p.subFields || []).forEach((sf: any) => {
@@ -465,8 +502,9 @@ const InspectionField = ({
                 type={p.type === 'date' ? 'date' : (isTimeField ? 'text' : (p.type === 'number' ? 'number' : 'text'))}
                 step={p.step}
                 value={currentValue || ""}
-                onChange={isTimeField ? handleTimeChange : (e) => handler(p.name || p.label, e.target.value)}
+                onChange={isTimeField ? handleTimeChange : (e) => !readOnly && handler(p.name || p.label, e.target.value)}
                 onBlur={isTimeField ? handleTimeBlur : (e) => {
+                    if (readOnly) return;
                     let val = e.target.value;
                     if (isCpField && val) {
                         const num = Number(val);
@@ -479,14 +517,15 @@ const InspectionField = ({
                         setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: val }));
                     }
                 }}
+                readOnly={readOnly}
 
                 placeholder={isTimeField ? "HH:MM:SS" : `Enter ${p.label || p.name}`}
                 maxLength={isTimeField ? 8 : undefined}
-                className={`h-9 text-xs font-semibold bg-white ${borderClass} ${ringClass} flex-1`}
+                className={`h-8 text-xs font-semibold bg-white dark:bg-slate-900 ${borderClass} ${ringClass} flex-1 dark:text-slate-200`}
             />
             {categoryUnits && (
                 <select
-                    className="h-7 px-1 text-[10px] font-bold border rounded bg-slate-50 text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    className="h-7 px-1 text-[10px] font-bold border rounded bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                     value={currentUnitValue}
                     onChange={(e) => {
                         handler(unitFieldName, e.target.value);

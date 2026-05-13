@@ -67,57 +67,93 @@ export async function POST(request: NextRequest) {
       for (const cond of conditions) {
         if (!validFieldKeys.has(cond.field)) continue;
 
-        switch (cond.operator) {
+        const fieldType = catDef.fields.find(f => f.key === cond.field)?.dataType;
+        let finalField = cond.field;
+        let finalValue = cond.value;
+        let finalValue2 = cond.value2;
+        let finalOperator = cond.operator;
+
+        // Handle Year Transformation (convert to date range for performance)
+        if (cond.transform === "year" && fieldType === "date" && cond.value) {
+          const year = parseInt(cond.value);
+          if (!isNaN(year)) {
+            const start = `${year}-01-01`;
+            const end = `${year}-12-31`;
+
+            switch (cond.operator) {
+              case "eq":
+                query = query.gte(cond.field, start).lte(cond.field, end);
+                continue;
+              case "neq":
+                query = query.or(`${cond.field}.lt.${start},${cond.field}.gt.${end}`);
+                continue;
+              case "gt":
+                query = query.gt(cond.field, end);
+                continue;
+              case "lt":
+                query = query.lt(cond.field, start);
+                continue;
+              case "gte":
+                query = query.gte(cond.field, start);
+                continue;
+              case "lte":
+                query = query.lte(cond.field, end);
+                continue;
+            }
+          }
+        }
+
+        switch (finalOperator) {
           case "eq":
-            if (catDef.fields.find(f => f.key === cond.field)?.dataType === "text") {
-              query = query.ilike(cond.field, cond.value);
+            if (fieldType === "text") {
+              query = query.ilike(finalField, finalValue);
             } else {
-              query = query.eq(cond.field, cond.value);
+              query = query.eq(finalField, finalValue);
             }
             break;
           case "neq":
-            if (catDef.fields.find(f => f.key === cond.field)?.dataType === "text") {
-              query = query.not(cond.field, "ilike", cond.value);
+            if (fieldType === "text") {
+              query = query.not(finalField, "ilike", finalValue);
             } else {
-              query = query.neq(cond.field, cond.value);
+              query = query.neq(finalField, finalValue);
             }
             break;
           case "gt":
-            query = query.gt(cond.field, cond.value);
+            query = query.gt(finalField, finalValue);
             break;
           case "lt":
-            query = query.lt(cond.field, cond.value);
+            query = query.lt(finalField, finalValue);
             break;
           case "gte":
-            query = query.gte(cond.field, cond.value);
+            query = query.gte(finalField, finalValue);
             break;
           case "lte":
-            query = query.lte(cond.field, cond.value);
+            query = query.lte(finalField, finalValue);
             break;
           case "contains":
-            query = query.ilike(cond.field, `%${cond.value}%`);
+            query = query.ilike(finalField, `%${finalValue}%`);
             break;
           case "starts_with":
-            query = query.ilike(cond.field, `${cond.value}%`);
+            query = query.ilike(finalField, `${finalValue}%`);
             break;
           case "ends_with":
-            query = query.ilike(cond.field, `%${cond.value}`);
+            query = query.ilike(finalField, `%${finalValue}`);
             break;
           case "is_empty":
-            query = query.is(cond.field, null);
+            query = query.is(finalField, null);
             break;
           case "is_not_empty":
-            query = query.not(cond.field, "is", null);
+            query = query.not(finalField, "is", null);
             break;
           case "is_true":
-            query = query.eq(cond.field, true);
+            query = query.eq(finalField, true);
             break;
           case "is_false":
-            query = query.eq(cond.field, false);
+            query = query.eq(finalField, false);
             break;
           case "between":
-            if (cond.value && cond.value2) {
-              query = query.gte(cond.field, cond.value).lte(cond.field, cond.value2);
+            if (finalValue && finalValue2) {
+              query = query.gte(finalField, finalValue).lte(finalField, finalValue2);
             }
             break;
         }

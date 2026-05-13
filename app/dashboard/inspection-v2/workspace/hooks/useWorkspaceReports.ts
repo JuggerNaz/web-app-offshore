@@ -24,6 +24,13 @@ import { generateROVConductorGuardReport } from "@/utils/report-generators/rov-c
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
 import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
+import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
+import { generateDivingSZONEReport } from "@/utils/report-generators/diving-szone-report";
+import { generateDivingCPCLBReport } from "@/utils/report-generators/diving-cpclb-report";
+import { generateDivingUTCLBReport } from "@/utils/report-generators/diving-utclb-report";
+import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anode-report";
+import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-report";
+
 
 export function useWorkspaceReports(
     supabase: any,
@@ -31,6 +38,7 @@ export function useWorkspaceReports(
     structureId: string | null,
     headerData: any,
     currentRecords: any[],
+    pendingAttachments: any[],
     allInspectionTypes: any[]
 ) {
     const [previewOpen, setPreviewOpen] = useState(false);
@@ -56,7 +64,14 @@ export function useWorkspaceReports(
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
+    const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
+    const [szonePreviewOpen, setSzonePreviewOpen] = useState(false);
+    const [cpclbPreviewOpen, setCpclbPreviewOpen] = useState(false);
+    const [utclbPreviewOpen, setUtclbPreviewOpen] = useState(false);
+    const [divingAnodePreviewOpen, setDivingAnodePreviewOpen] = useState(false);
+    const [divingMgiPreviewOpen, setDivingMgiPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
+
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
     const generateAnomalyReportBlob = async (printFriendly?: boolean, showSignatures?: boolean) => {
@@ -338,10 +353,8 @@ export function useWorkspaceReports(
 
     const generateRGReport = async () => {
         const rgRecords = currentRecords.filter(r => {
-            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return qid.startsWith("RG") || typeCode === "RG" || typeCode === "RISERGUARD" || compCode === "RG";
+            return typeCode === "RGVI";
         });
         if (rgRecords.length === 0) {
             toast.error("No Riser Guard records found to generate report");
@@ -352,10 +365,8 @@ export function useWorkspaceReports(
 
     const generateRGReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const rgRecords = currentRecords.filter(r => {
-            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return qid.startsWith("RG") || typeCode === "RG" || typeCode === "RISERGUARD" || compCode === "RG";
+            return typeCode === "RGVI";
         });
         if (rgRecords.length === 0) return;
 
@@ -592,7 +603,13 @@ export function useWorkspaceReports(
     };
 
     const generateRRISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
-        const records = currentRecords.filter(r => (r.structure_components?.q_id || "").toUpperCase().startsWith('R'));
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const qid = (r.structure_components?.q_id || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            // Strict: Must be RRISI type AND (Component RS OR starts with R but NOT RISG)
+            return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+        });
         if (records.length === 0) return;
         const settings = await getReportHeaderData();
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
@@ -707,7 +724,287 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
+
+        const isRG = records.some(r => {
+            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+            const code = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return qid.startsWith("RG") || qid.startsWith("RISG") || code === "RG";
+        });
+
+        if (isRG) {
+            return await generateROVRiserGuardReport(
+                records.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                { ...headerData, contractorLogoUrl, vessel: headerData.vessel },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                {
+                    jobPackId: Number(jobPackId),
+                    structureId: Number(structureId),
+                    sowReportNo: headerData.sowReportNo,
+                    preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                    returnBlob: true,
+                    printFriendly: printFriendly || false,
+                    showSignatures: showSignatures ?? true
+                }
+            );
+        }
+
         return await generateROVRGVIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+    };
+
+    const generateGVINSReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'GVINS');
+        if (records.length === 0) {
+            toast.error("No GVINS records found to generate report");
+            return;
+        }
+        setGvinsPreviewOpen(true);
+    };
+
+    const generateGVINSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'GVINS');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+        return await generateDivingGVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+    };
+
+    const generateSZONEReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SZONE');
+        if (records.length === 0) {
+            toast.error("No Splashzone records found to generate report");
+            return;
+        }
+        setSzonePreviewOpen(true);
+    };
+
+    const generateSZONEReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SZONE');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return await generateDivingSZONEReport(
+            records, 
+            { ...headerData, contractorLogoUrl }, 
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, 
+            { 
+                returnBlob: true, 
+                printFriendly, 
+                showSignatures: showSignatures ?? true,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId)
+            },
+            supabase
+        ) as Blob;
+    };
+
+    const fetchCPCLBRecords = async () => {
+        const { data, error } = await supabase.from('insp_records').select(`
+            *,
+            inspection_type:inspection_type_id!left(id, code, name),
+            structure_components:component_id!left(id, q_id, code, metadata),
+            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+            insp_anomalies(*)
+        `)
+        .eq('structure_id', Number(structureId))
+        .eq('jobpack_id', Number(jobPackId));
+
+        if (error) {
+            console.error("Error fetching CPCLB records:", error);
+            return [];
+        }
+
+        const filtered = (data || []).filter((r: any) => {
+            const isCPCLB = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'CPCLB';
+            const sowMatches = !headerData?.sowReportNo || String(r.sow_report_no || '').toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+            return isCPCLB && sowMatches;
+        });
+
+        filtered.sort((a: any, b: any) => {
+            const diveA = String(a.insp_dive_jobs?.job_no || a.insp_dive_jobs?.name || a.dive_job_id || '');
+            const diveB = String(b.insp_dive_jobs?.job_no || b.insp_dive_jobs?.name || b.dive_job_id || '');
+            return diveA.localeCompare(diveB, undefined, { numeric: true });
+        });
+
+        return filtered;
+    };
+
+    const generateCPCLBReport = async () => {
+        const records = await fetchCPCLBRecords();
+        if (records.length === 0) {
+            toast.error("No CP Calibration records found for this SOW/Jobpack");
+            return;
+        }
+        setCpclbPreviewOpen(true);
+    };
+
+    const generateCPCLBReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = await fetchCPCLBRecords();
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return await generateDivingCPCLBReport(
+            records, 
+            { ...headerData, contractorLogoUrl }, 
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, 
+            { 
+                returnBlob: true, 
+                printFriendly, 
+                showSignatures: showSignatures ?? true,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId)
+            }
+        ) as Blob;
+    };
+
+    const fetchUTCLBRecords = async () => {
+        const { data, error } = await supabase.from('insp_records').select(`
+            *,
+            inspection_type:inspection_type_id!left(id, code, name),
+            structure_components:component_id!left(id, q_id, code, metadata),
+            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+            insp_anomalies(*)
+        `)
+        .eq('structure_id', Number(structureId))
+        .eq('jobpack_id', Number(jobPackId));
+
+        if (error) {
+            console.error("Error fetching UTCLB records:", error);
+            return [];
+        }
+
+        const filtered = (data || []).filter((r: any) => {
+            const isUTCLB = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'UTCLB';
+            const sowMatches = !headerData?.sowReportNo || String(r.sow_report_no || '').toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+            return isUTCLB && sowMatches;
+        });
+
+        filtered.sort((a: any, b: any) => {
+            const diveA = String(a.insp_dive_jobs?.job_no || a.insp_dive_jobs?.name || a.dive_job_id || '');
+            const diveB = String(b.insp_dive_jobs?.job_no || b.insp_dive_jobs?.name || b.dive_job_id || '');
+            return diveA.localeCompare(diveB, undefined, { numeric: true });
+        });
+
+        return filtered;
+    };
+
+    const generateUTCLBReport = async () => {
+        const records = await fetchUTCLBRecords();
+        if (records.length === 0) {
+            toast.error("No UT Calibration records found for this SOW/Jobpack");
+            return;
+        }
+        setUtclbPreviewOpen(true);
+    };
+
+    const generateUTCLBReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = await fetchUTCLBRecords();
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return await generateDivingUTCLBReport(
+            records, 
+            { ...headerData, contractorLogoUrl }, 
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, 
+            { 
+                returnBlob: true, 
+                printFriendly, 
+                showSignatures: showSignatures ?? true,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId)
+            }
+        ) as Blob;
+    };
+
+    const fetchDivingAnodeRecords = async () => {
+        const { data, error } = await supabase.from('insp_records').select(`
+            *,
+            inspection_type:inspection_type_id!left(id, code, name),
+            structure_components:component_id!left(id, q_id, code, metadata),
+            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+            insp_anomalies(*)
+        `)
+        .eq('structure_id', Number(structureId))
+        .eq('jobpack_id', Number(jobPackId));
+
+        if (error) {
+            console.error("Error fetching Diving Anode records:", error);
+            return [];
+        }
+
+        const filtered = (data || []).filter((r: any) => {
+            const isPL_AN = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'PL_AN';
+            const sowMatches = !headerData?.sowReportNo || String(r.sow_report_no || '').toLowerCase().includes(headerData.sowReportNo.toLowerCase());
+            return isPL_AN && sowMatches;
+        });
+
+        filtered.sort((a: any, b: any) => {
+            const diveA = String(a.insp_dive_jobs?.job_no || a.insp_dive_jobs?.name || a.dive_job_id || '');
+            const diveB = String(b.insp_dive_jobs?.job_no || b.insp_dive_jobs?.name || b.dive_job_id || '');
+            return diveA.localeCompare(diveB, undefined, { numeric: true });
+        });
+
+        return filtered;
+    };
+
+    const generateDivingAnodeReport_ws = async () => {
+        const records = await fetchDivingAnodeRecords();
+        if (records.length === 0) {
+            toast.error("No Diving Selected Anode (PL_AN) records found for this SOW/Jobpack");
+            return;
+        }
+        setDivingAnodePreviewOpen(true);
+    };
+
+    const generateDivingAnodeReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = await fetchDivingAnodeRecords();
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+
+        return await generateDivingAnodeReport(
+            records, 
+            { ...headerData, contractorLogoUrl }, 
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, 
+            { 
+                returnBlob: true, 
+                printFriendly, 
+                showSignatures: showSignatures ?? true,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId)
+            },
+            supabase
+        ) as Blob;
     };
 
     const generateRCASNReport = async () => {
@@ -840,7 +1137,37 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
-        return await generateROVPhotographyReport(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+
+        // 1. Get database attachments for currently filtered records
+        const inspIds = currentRecords.map(r => r.insp_id).filter(Boolean);
+        let dbAttachments: any[] = [];
+        
+        if (inspIds.length > 0) {
+            const { data } = await supabase
+                .from('attachment')
+                .select('*')
+                .in('source_id', inspIds)
+                .eq('source_type', 'INSPECTION')
+                .is('is_deleted', false);
+            dbAttachments = data || [];
+        }
+
+        // 2. Map DB attachments to match report format
+        const photosFromDb = dbAttachments.filter(a => !a.type || a.type === 'PHOTO');
+
+        // 3. Include Pending Attachments (local state)
+        // Only include those that are marked as 'PHOTO'
+        const photosFromPending = pendingAttachments
+            .filter(a => a.type === 'PHOTO' || !a.type)
+            .map(a => ({
+                ...a,
+                path: a.path || a.previewUrl // Generator uses path, but pending might only have previewUrl/blob
+            }));
+
+        const allPhotos = [...photosFromDb, ...photosFromPending];
+
+        // Ensure we always return a Blob (even if empty) to avoid "Preview unavailable"
+        return await generateROVPhotographyReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
     const generatePhotographyLogReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
@@ -851,7 +1178,22 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.lib_path || '';
         }
-        return await generateROVPhotographyLogReport(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+
+        const inspIds = currentRecords.map(r => r.insp_id).filter(Boolean);
+        let dbAttachments: any[] = [];
+        if (inspIds.length > 0) {
+            const { data } = await supabase
+                .from('attachment')
+                .select('*')
+                .in('source_id', inspIds)
+                .eq('source_type', 'INSPECTION')
+                .is('is_deleted', false);
+            dbAttachments = data || [];
+        }
+
+        const allPhotos = [...dbAttachments, ...pendingAttachments];
+
+        return await generateROVPhotographyLogReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
     const generatePhotographyReport = async () => {
@@ -935,8 +1277,20 @@ export function useWorkspaceReports(
             await generateSZCIReport();
             return;
         }
+        if (typeCode === 'SZONE' || typeCode === 'SZ') {
+            await generateSZONEReport();
+            return;
+        }
         if (typeCode === 'SEABED') {
             await generateSeabedReport();
+            return;
+        }
+        if (typeCode === 'PL_AN') {
+            setDivingAnodePreviewOpen(true);
+            return;
+        }
+        if (typeCode === 'MGROW') {
+            setDivingMgiPreviewOpen(true);
             return;
         }
 
@@ -1028,6 +1382,12 @@ export function useWorkspaceReports(
         seabedPreviewOpen, setSeabedPreviewOpen,
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
+        gvinsPreviewOpen, setGvinsPreviewOpen,
+        szonePreviewOpen, setSzonePreviewOpen,
+        cpclbPreviewOpen, setCpclbPreviewOpen,
+        utclbPreviewOpen, setUtclbPreviewOpen,
+        divingAnodePreviewOpen, setDivingAnodePreviewOpen,
+
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
         generateAnomalyReportBlob,
@@ -1075,7 +1435,76 @@ export function useWorkspaceReports(
         generatePhotographyReportBlob,
         generatePhotographyLogReport,
         generatePhotographyLogReportBlob,
+        generateGVINSReport,
+        generateGVINSReportBlob,
+        generateSZONEReport,
+        generateSZONEReportBlob,
+        generateCPCLBReport,
+        generateCPCLBReportBlob,
+        generateUTCLBReport,
+        generateUTCLBReportBlob,
+        generateDivingAnodeReportBlob,
+        divingMgiPreviewOpen, setDivingMgiPreviewOpen,
+        generateDivingMGIReport: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.lib_path || '';
+            }
+
+            const mgiRecords = currentRecords.filter(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                return code === 'MGROW' || code === 'RMGI';
+            });
+            let profile = null;
+            const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
+            if (profileId) {
+                const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
+                profile = data;
+            }
+
+            return await generateDivingMGIReport(
+                mgiRecords,
+                profile,
+                { ...headerData, contractorLogoUrl, waterDepth: headerData.waterDepth || 0 },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { printFriendly: printFriendly || false, sowReportNo: headerData.sowReportNo, structureId: Number(structureId), returnBlob: false },
+                supabase
+            );
+        },
+        generateDivingMGIReportBlob: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.lib_path || '';
+            }
+
+            const mgiRecords = currentRecords.filter(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                return code === 'MGROW' || code === 'RMGI';
+            });
+            let profile = null;
+            const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
+            if (profileId) {
+                const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
+                profile = data;
+            }
+
+            return await generateDivingMGIReport(
+                mgiRecords,
+                profile,
+                { ...headerData, contractorLogoUrl, waterDepth: headerData.waterDepth || 0 },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { printFriendly: printFriendly || false, sowReportNo: headerData.sowReportNo, structureId: Number(structureId), returnBlob: true },
+                supabase
+            );
+        },
         generateInspectionReportByType,
+
         generateFullInspectionReport
     };
 }
