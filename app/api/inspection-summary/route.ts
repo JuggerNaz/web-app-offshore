@@ -653,6 +653,28 @@ export async function GET(request: NextRequest) {
                 mgi: { total: mgiRecords.length, max: mgiMax, avg: mgiAvg },
                 scour: { total: scourRecords.length, exposed: scourExposedCount, minBurial: scourMinBurial },
                 attachmentGroups: attachmentGroupBreakdown,
+                
+                // Detailed Item Lists for Tables
+                cp_items: rawRecords.filter(r => {
+                    const d = r.inspection_data || {};
+                    return (d.cp_rdg !== undefined || d.cp_reading_mv !== undefined);
+                }).map(r => ({
+                    component: r.structure_components?.code || r.component_type || "N/A",
+                    reading: r.inspection_data?.cp_rdg || r.inspection_data?.cp_reading_mv || "N/A",
+                    status: r.status || "COMPLETED"
+                })),
+
+                fmd_items: fmdRecords.map(r => ({
+                    component: r.structure_components?.code || r.component_type || "N/A",
+                    status: r.inspection_data?.member_status || "N/A",
+                    mode: r.rov_job_id ? "ROV" : "DIVE"
+                })),
+
+                mgi_items: mgiRecords.map(r => ({
+                    component: r.structure_components?.code || r.component_type || "N/A",
+                    thickness: r.inspection_data?.avg_thickness || r.inspection_data?.thickness || "0",
+                    date: r.inspection_data?.date || new Date().toLocaleDateString("en-GB")
+                })),
             },
         });
     } catch (error: any) {

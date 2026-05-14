@@ -36,6 +36,8 @@ import { fetcher } from "@/utils/utils";
 import { EXECUTIVE_SUMMARY_TOC } from "./constants";
 import { SearchableSelect } from "./SearchableSelect";
 import { ReportSettingsDialog } from "./ReportSettingsDialog";
+import { generateTemplateReport } from "@/utils/report-generators/template-report-generator";
+import { mapInspectionDataForDocx, generateMgiProfileImage, generateSeabedMapImage } from "@/utils/report-generators/report-data-mapper";
 
 export default function ExecutiveSummaryPage() {
     const [selections, setSelections] = useState({
@@ -54,7 +56,7 @@ export default function ExecutiveSummaryPage() {
     // Fetch context data
     const { data: jobpacksData } = useSWR("/api/jobpack?has_inspection=true", fetcher);
     const { data: companySettings } = useSWR("/api/company-settings", fetcher);
-    const { data: templatesRes } = useSWR(`/api/report-templates?type=${reportType}`, fetcher);
+    const { data: templatesRes } = useSWR("/api/report-templates", fetcher);
     const { data: sowsData } = useSWR(
         selections.jobpackId && selections.structureId 
             ? `/api/sow?jobpack_id=${selections.jobpackId}&structure_id=${selections.structureId}` 
@@ -74,12 +76,12 @@ export default function ExecutiveSummaryPage() {
     );
 
     const filteredStructures = useMemo(() => {
-        if (!selections.jobpackId || !sowsForJobpackData?.data) return [];
+        if (!selections.jobpackId || !sowsForJobpackData?.data || !Array.isArray(sowsForJobpackData.data)) return [];
         
         // Extract unique structures from SOWs
         const uniqueMap = new Map();
         sowsForJobpackData.data.forEach((sow: any) => {
-            if (!uniqueMap.has(sow.structure_id)) {
+            if (sow && sow.structure_id && !uniqueMap.has(sow.structure_id)) {
                 uniqueMap.set(sow.structure_id, {
                     id: sow.structure_id,
                     name: sow.structure_title || `Structure ${sow.structure_id}`
@@ -93,8 +95,11 @@ export default function ExecutiveSummaryPage() {
     }, [selections.jobpackId, sowsForJobpackData]);
 
     const availableSowReports = useMemo(() => {
-        if (!sowsData?.data) return [];
-        const reports = sowsData.data.report_numbers?.map((r: any) => r.number || r) || [];
+        if (!sowsData?.data || typeof sowsData.data !== 'object') return [];
+        const reportNumbers = sowsData.data.report_numbers;
+        if (!Array.isArray(reportNumbers)) return [];
+        
+        const reports = reportNumbers.map((r: any) => r.number || r) || [];
         return [...reports].sort((a, b) => 
             String(a).localeCompare(String(b), undefined, { numeric: true })
         );
@@ -177,7 +182,8 @@ export default function ExecutiveSummaryPage() {
         const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
         
         // Find default template for selected type
-        const templates = templatesRes?.data || [];
+        const allTemplates = templatesRes?.data || [];
+        const templates = allTemplates.filter((t: any) => t.type === reportType);
         const template = templates.find((t: any) => t.is_default) || templates[0];
 
         if (!template) {
@@ -188,38 +194,143 @@ export default function ExecutiveSummaryPage() {
 
         setIsGenerating(true);
         try {
-            const { generateTemplateReport } = await import("@/utils/report-generators/template-report-generator");
+            const { mapInspectionDataForDocx, generateMgiProfileImage } = await import("@/utils/report-generators/report-data-mapper");
             
-            const sections = EXECUTIVE_SUMMARY_TOC.map(s => ({
-                id: s.id,
-                title: s.title,
-                content: sectionsData[s.id] || ""
-            }));
+            const sections = EXECUTIVE_SUMMARY_TOC.map(s => {
+                const sectionData: any = {
+                    id: s.id,
+                    title: s.title,
+                    content: sectionsData[s.id] || ""
+                };
+                
+                // Create a boolean flag like 'is_seabed' or 'is_marine_growth'
+                sectionData[`is_${s.id}`] = true;
+                
+                return sectionData;
+            });
+
+            // Fetch Aliases
+            const aliasesRes = await fetch("/api/report-aliases");
+            let aliases = [];
+            if (aliasesRes.ok) {
+                const aliasesData = await aliasesRes.json();
+                aliases = Array.isArray(aliasesData?.data) ? aliasesData.data : [];
+            }
+
+            // Fetch Detailed Records
+            const recordsRes = await fetch(`/api/inspection-records?jobpack_id=${selections.jobpackId}&structure_id=${selections.structureId}&sow_report_no=${selections.sowReportNo}`);
+            if (!recordsRes.ok) {
+                const errText = await recordsRes.text();
+                throw new Error(`Failed to fetch inspection records: ${recordsRes.status} ${recordsRes.statusText}`);
+            }
+            const recordsData = await recordsRes.json();
+            const allRecords = Array.isArray(recordsData?.data) ? recordsData.data : [];
+
+            // Map data for DOCX
+            const mappedData = await mapInspectionDataForDocx(allRecords, aliases);
+
+            // Generate MGI Graph if applicable
+            const mgiRecords = allRecords.filter((r: any) => 
+                (r.inspection_type?.code || "").toUpperCase() === "RMGI" || 
+                (r.inspection_type?.code || "").toUpperCase() === "MGROW"
+            );
+            if (mgiRecords.length > 0) {
+                const mgiGraph = await generateMgiProfileImage(mgiRecords);
+                if (mgiGraph) {
+                    mappedData.MGI_GRAPH = {
+                        data: mgiGraph,
+                        extension: '.png'
+                    };
+                }
+            }
+
+            // Generate Seabed Map Graph if applicable
+            const seabedRecords = allRecords.filter((r: any) => 
+                (r.inspection_type?.code || "").toUpperCase() === "RSEAB"
+            );
+            if (seabedRecords.length > 0) {
+                const seabedGraph = await generateSeabedMapImage(seabedRecords);
+                if (seabedGraph) {
+                    mappedData.SEABED_GRAPH = {
+                        data: seabedGraph,
+                        extension: '.png'
+                    };
+                }
+            }
 
             const reportData = {
-                PLATFORM_TITLE: str?.name || selections.structureId,
-                JOB_PACK_NAME: jp?.name || selections.jobpackId,
+                // ── Core Project Identifiers ─────────────────────────
+                PLATFORM_TITLE: str?.name || "N/A",
+                PLATFORM_NAME: str?.name || "N/A",
+                JOB_PACK_NAME: jp?.name || "N/A",
                 REPORT_NO: selections.sowReportNo,
+                SOW_REPORT_NO: selections.sowReportNo,
                 REPORT_TYPE: reportType.toUpperCase(),
                 DATE: new Date().toLocaleDateString("en-GB"),
+
+                // ── Company / Client Info ────────────────────────────
+                CLIENT_NAME: companySettings?.data?.company_name || jp?.metadata?.contrac || "N/A",
+                DEPARTMENT: companySettings?.data?.department_name || "N/A",
+                PROJECT_NAME: companySettings?.data?.project_name || "N/A",
+
+                // ── Job Pack Metadata ────────────────────────────────
+                VESSEL_NAME: jp?.metadata?.vessel || "NONE",
+                PROJECT_NO: jp?.metadata?.inspno || jp?.project_no || "N/A",
+                CONTRACTOR: jp?.metadata?.contrac || "N/A",
+                START_DATE: jp?.metadata?.istart ? new Date(jp.metadata.istart).toLocaleDateString("en-GB") : (jp?.start_date || "N/A"),
+                END_DATE: jp?.metadata?.iend ? new Date(jp.metadata.iend).toLocaleDateString("en-GB") : (jp?.end_date || "N/A"),
+
+                // ── Signatories ──────────────────────────────────────
+                PREPARED_BY: insightData?.data?.prepared_by?.name || "System",
+                REVIEW_BY: insightData?.data?.reviewed_by?.name || "-",
+                APPROVE_BY: insightData?.data?.approved_by?.name || "-",
+
+                // ── Summary Stats ────────────────────────────────────
+                SOW_COMPLETION: insightData?.data?.sow?.completionPct || 0,
+                TOTAL_RECORDS: insightData?.data?.records?.total || 0,
+
+                // ── Anomaly / Finding Stats ──────────────────────────
+                TOTAL_ANOMALIES: insightData?.data?.anomalies?.total || 0,
+                OPEN_ANOMALIES: insightData?.data?.anomalies?.open || 0,
+                RECTIFIED_ANOMALIES: insightData?.data?.anomalies?.rectified || 0,
+                P1_ANOMALIES: insightData?.data?.anomalies?.byPriority?.P1 || 0,
+                P2_ANOMALIES: insightData?.data?.anomalies?.byPriority?.P2 || 0,
+                P3_ANOMALIES: insightData?.data?.anomalies?.byPriority?.P3 || 0,
+
+                // ── Inspection Metrics ───────────────────────────────
+                CP_MIN: insightData?.data?.cp?.minVal || "N/A",
+                CP_MAX: insightData?.data?.cp?.maxVal || "N/A",
+                MGI_MAX: insightData?.data?.mgi?.max || 0,
+                MGI_AVG: Math.round(insightData?.data?.mgi?.avg || 0),
+                SCOUR_EXPOSED: insightData?.data?.scour?.exposed || 0,
+
+                // ── Sections (User-Written) ──────────────────────────
                 SECTIONS: sections,
+
+                // ── Detailed Loop Tables ─────────────────────────────
                 ANOMALIES: insightData?.data?.anomalies?.items || [],
                 FINDINGS: insightData?.data?.findings?.items || [],
+                CP_RECORDS: insightData?.data?.cp_items || [],
+                FMD_RECORDS: insightData?.data?.fmd_items || [],
+                MGI_RECORDS: insightData?.data?.mgi_items || [],
                 STATS: insightData?.data?.records || {},
-                SOW_COMPLETION: insightData?.data?.sow?.completionPct || 0,
+
+                // ── Mapped Data from Inspection Records ──────────────
+                ...mappedData,
             };
 
+            const { generateTemplateReport } = await import("@/utils/report-generators/template-report-generator");
             await generateTemplateReport({
                 templateUrl: template.storage_path,
                 data: reportData,
-                fileName: `${reportType.toUpperCase()}_REPORT_${str?.name || selections.structureId}_${selections.sowReportNo}`,
+                fileName: `${str?.name}_Executive_Summary_${reportType}.docx`,
                 logoUrl: companySettings?.data?.logo_url
             });
 
             toast.success("Report generated successfully");
-        } catch (error) {
-            console.error(error);
-            toast.error("Error generating report");
+        } catch (error: any) {
+            console.error("Export error:", error);
+            toast.error(error.message || "Error generating report");
         } finally {
             setIsGenerating(false);
         }
@@ -313,7 +424,7 @@ export default function ExecutiveSummaryPage() {
                             onValueChange={(v) => setSelections({ jobpackId: v, structureId: "", sowReportNo: "" })}
                             placeholder="Select Job Pack"
                             searchPlaceholder="Search Job Pack..."
-                            className="w-[180px]"
+                            className="w-[240px]"
                         />
 
                         <SearchableSelect 
@@ -323,7 +434,7 @@ export default function ExecutiveSummaryPage() {
                             disabled={!selections.jobpackId}
                             placeholder="Select Structure"
                             searchPlaceholder="Search Structure..."
-                            className="w-[160px]"
+                            className="w-[240px]"
                         />
 
                         <SearchableSelect 
@@ -333,7 +444,7 @@ export default function ExecutiveSummaryPage() {
                             disabled={!selections.structureId}
                             placeholder="SOW Report No"
                             searchPlaceholder="Search Report No..."
-                            className="w-[140px]"
+                            className="w-[180px]"
                         />
                     </div>
 

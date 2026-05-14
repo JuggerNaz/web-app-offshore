@@ -83,7 +83,7 @@ interface SelectionState {
 }
 
 // Report Templates Definition
-const REPORT_TEMPLATES = {
+export const REPORT_TEMPLATES = {
     structure: [
         { id: "structure-summary", name: "Structure Summary Report", icon: Building2, description: "Complete overview of structure details and specifications", requires: ["structure"] },
         { id: "component-catalog", name: "Component Catalogue", icon: Layers, description: "Detailed list of all components with specifications", requires: ["structure"] },
