@@ -74,6 +74,20 @@ export default function Platform3DPage() {
     );
     const platformDetails = platformDetailData?.data;
 
+    // 4. Fetch Elevations
+    const { data: elevationsData } = useSWR(
+        selectedPlatform ? `/api/platform/elevation/${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const elevations = elevationsData?.data || [];
+
+    // 5. Fetch Structural Faces
+    const { data: facesData } = useSWR(
+        selectedPlatform ? `/api/platform/faces/${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const faces = facesData?.data || [];
+
     const filteredPlatforms = useMemo(() => {
         return platforms.filter(p => 
             p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -135,6 +149,8 @@ export default function Platform3DPage() {
                     <Structural3DViewer 
                         components={components} 
                         platformDetails={platformDetails}
+                        elevations={elevations}
+                        faces={faces}
                         onSelectComponent={handleSelectComponent}
                     />
                 </div>

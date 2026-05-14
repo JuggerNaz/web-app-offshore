@@ -98,16 +98,24 @@ export function PresenceProvider({
                     });
 
                     if (!heartbeatFailed.current) {
-                        supabase.rpc('update_user_heartbeat').then(({ error }) => {
-                            if (error) {
-                                if (error.code === 'PGRST202') {
-                                    heartbeatFailed.current = true;
-                                    console.warn("Presence heartbeat function missing. Disabling DB heartbeat tracking.");
-                                } else {
-                                    console.error("Initial heartbeat error:", error.message || error);
+                        (async () => {
+                            try {
+                                const { error } = await supabase.rpc('update_user_heartbeat');
+                                if (error) {
+                                    if (error.code === 'PGRST202') {
+                                        heartbeatFailed.current = true;
+                                        console.warn("Presence heartbeat function missing. Disabling DB heartbeat tracking.");
+                                    } else if (error.message && !error.message.includes("Failed to fetch")) {
+                                        console.error("Initial heartbeat error:", error.message || error);
+                                    }
+                                }
+                            } catch (err: any) {
+                                // Silent fail for network errors on initial load
+                                if (!err?.message?.includes("Failed to fetch")) {
+                                    console.error("Heartbeat RPC exception:", err);
                                 }
                             }
-                        });
+                        })();
                     }
                 }
             });
@@ -127,19 +135,24 @@ export function PresenceProvider({
 
                 // Database Heartbeat for persistent "last active" tracking
                 if (!heartbeatFailed.current) {
-                    supabase.rpc('update_user_heartbeat').then(({ error }) => {
-                        if (error) {
-                            if (error.code === 'PGRST202') {
-                                heartbeatFailed.current = true;
-                                console.warn("Presence heartbeat function missing. Disabling DB heartbeat tracking.");
-                            } else {
-                                // Only log if it's a real error and we have details
-                                if (error.message || error.code) {
-                                    console.error("Heartbeat interval error:", error.message || error.code);
+                    (async () => {
+                        try {
+                            const { error } = await supabase.rpc('update_user_heartbeat');
+                            if (error) {
+                                if (error.code === 'PGRST202') {
+                                    heartbeatFailed.current = true;
+                                    console.warn("Presence heartbeat function missing. Disabling DB heartbeat tracking.");
+                                } else {
+                                    // Only log if it's a real error and not a transient network failure
+                                    if ((error.message || error.code) && !error.message?.includes("Failed to fetch")) {
+                                        console.error("Heartbeat interval error:", error.message || error.code);
+                                    }
                                 }
                             }
+                        } catch (err: any) {
+                            // Silent fail for background network errors
                         }
-                    });
+                    })();
                 }
             }
         }, 60000);
