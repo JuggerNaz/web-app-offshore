@@ -93,9 +93,9 @@ export const processAttachmentUrl = (
 
   // If path looks like a filename (no http/https), construct the proper URL
   if (fileUrl && !isCompleteUrl(fileUrl)) {
-    // If it starts with 'uploads/', it might be in 'attachments' bucket
-    // or if it is just a filename
-    fileUrl = getStoragePublicUrl("attachments", fileUrl);
+    // Determine bucket from meta or default to "attachments"
+    const bucket = (attachment.meta && (attachment.meta as any).bucket) || "attachments";
+    fileUrl = getStoragePublicUrl(bucket, fileUrl);
   }
 
   return { fileUrl, fileName, isImage, fileType };
