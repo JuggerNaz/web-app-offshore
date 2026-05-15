@@ -25,6 +25,7 @@ interface WorkspaceResourcesProps {
     componentsNonSow: any[];
     selectedComp: any;
     handleComponentSelection: (comp: any) => void;
+    handleTaskChange?: (code: string) => void;
     setCompSpecDialogOpen: (val: boolean) => void;
     currentRecords: any[];
     currentCompRecords: any[];
@@ -37,6 +38,7 @@ interface WorkspaceResourcesProps {
     allInspectionTypes: any[];
     structureType: "platform" | "pipeline";
     unitSystem: "METRIC" | "IMPERIAL";
+    setShowTaskSelector?: (val: boolean) => void;
 }
 
 type SortKey = 'name' | 'depth' | 'startElev';
@@ -46,7 +48,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
     const {
         compView, setCompView, compSearchTerm, setCompSearchTerm,
         componentsSow, componentsNonSow, selectedComp,
-        handleComponentSelection, setCompSpecDialogOpen,
+        handleComponentSelection, handleTaskChange, setShowTaskSelector, setCompSpecDialogOpen,
         currentRecords, currentCompRecords, historicalRecords,
         historyLoading,
         inspMethod, supabase, structureId, onRefreshComponents,
@@ -84,8 +86,8 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
     };
 
     return (
-        <div className="w-[360px] flex flex-col gap-3 shrink-0 overflow-hidden">
-        <Card className="flex flex-col h-[400px] border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md shrink-0 bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden">
+        <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+        <Card className="flex flex-col border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden h-[300px]">
                 <div className="bg-slate-800 dark:bg-slate-900 text-white flex items-center justify-between pl-1 pr-3 shrink-0">
                     <div className="flex">
                         <button 
@@ -174,7 +176,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                             <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-100'}`}>
                                                     <div className="flex justify-between font-bold">
                                                         <div className="flex items-center gap-2">
-                                                            <span className="truncate max-w-[140px]">{c.name}</span>
+                                                            <span className="flex-1 truncate">{c.name}</span>
                                                             <div
                                                                 onClick={(e) => { e.stopPropagation(); handleComponentSelection(c); setCompSpecDialogOpen(true); }}
                                                                 className={`p-1 rounded hover:bg-black/10 transition-colors ${isSelected ? 'text-blue-100' : 'text-slate-300 hover:text-blue-500'}`}
@@ -189,24 +191,35 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                         <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
                                                     )}
                                                     <div className="flex flex-wrap gap-1 mt-1.5">
-                                                        {c.taskStatuses?.filter((ts: any) => {
-                                                            const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
-                                                            if (!it) return true;
-                                                            const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                                                            const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                                                            if (inspMethod === "DIVING" && !isDiving) return false;
-                                                            if (inspMethod === "ROV" && !isRov) return false;
-                                                            return true;
-                                                        }).map((ts: any, idx: number) => {
+                                                        {(c.taskStatuses || []).map((ts: any, idx: number) => {
                                                             const s = ts.status || 'pending';
                                                             const hasAnom = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === ts.code || r.inspection_type_code === ts.code) && r.component_id === c.id);
                                                             return (
-                                                                <span key={idx} className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-white/20 text-blue-100' : 'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800'}`}>
+                                                                <span 
+                                                                    key={idx} 
+                                                                    onClick={(e) => { 
+                                                                        e.stopPropagation(); 
+                                                                        if (handleTaskChange) handleTaskChange(ts.code); 
+                                                                    }}
+                                                                    className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-all ${isSelected ? 'bg-white/20 text-blue-100 hover:bg-white/30' : 'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'}`}
+                                                                >
                                                                     <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500' : s === 'completed' ? 'bg-green-500' : 'bg-slate-400'}`} />
                                                                     {ts.code}
                                                                 </span>
                                                             );
                                                         })}
+                                                        <span 
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                handleComponentSelection(c);
+                                                                setCompSpecDialogOpen(false); 
+                                                                setShowTaskSelector?.(true);
+                                                            }}
+                                                            className={`inline-flex items-center justify-center w-5 h-4 rounded bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white transition-colors cursor-pointer text-[10px] font-bold border border-blue-500/20`}
+                                                            title="Add Additional Inspection Type"
+                                                        >
+                                                            +
+                                                        </span>
                                                     </div>
                                                 </button>
                                             );

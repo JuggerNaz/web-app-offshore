@@ -363,6 +363,9 @@ function V10PreviewLayout() {
       global: { 
         tabEnableClose: false, 
         tabSetEnableMaximize: true,
+        tabSetEnableDivide: true,
+        tabSetEnableDrop: true,
+        enableEdgeDock: true,
       },
       layout: {
         type: "row",
@@ -370,7 +373,7 @@ function V10PreviewLayout() {
         children: [
           {
             type: "row",
-            weight: 20,
+            weight: 18,
             children: [
               {
                 type: "tabset",
@@ -397,38 +400,38 @@ function V10PreviewLayout() {
           },
           {
             type: "row",
-            weight: 55,
+            weight: 62,
             children: [
               {
                 type: "tabset",
-                weight: 65,
+                weight: 100,
                 children: [
                   { type: "tab", name: "Inspection Form", component: "form" },
-                ],
-              },
-              {
-                type: "tabset",
-                weight: 35,
-                children: [
-                  { type: "tab", name: "Captured Events", component: "events" },
                 ],
               },
             ],
           },
           {
             type: "row",
-            weight: 25,
+            weight: 20,
             children: [
               {
                 type: "tabset",
-                weight: 55,
+                weight: 30,
+                children: [
+                  { type: "tab", name: "Captured Events", component: "events" },
+                ],
+              },
+              {
+                type: "tabset",
+                weight: 35,
                 children: [
                   { type: "tab", name: "Component List", component: "components" },
                 ],
               },
               {
                 type: "tabset",
-                weight: 45,
+                weight: 35,
                 children: [
                   { type: "tab", name: "History Data", component: "history" },
                 ],
@@ -894,6 +897,44 @@ function V10PreviewLayout() {
     severity: "Minor",
     referenceNo: "",
   });
+  const [prevRefNo, setPrevRefNo] = useState("");
+
+  const validateAnomalyRef = async (newRef: string) => {
+    if (!newRef || newRef === prevRefNo) return true;
+
+    // Strip postfixes for fuzzy matching
+    const baseNew = newRef.replace(/[AR]$/, "").trim();
+
+    try {
+      const { data: allAnoms } = await supabase
+        .from("insp_anomalies")
+        .select("anomaly_id, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
+        .eq("insp_records.structure_id", parseInt(structureId || "0"))
+        .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"))
+        .eq("insp_records.sow_report_no", headerData.sowReportNo);
+
+      if (allAnoms) {
+        // Find if any existing anomaly (other than one we might be editing) shares the same base ref
+        const isDuplicate = allAnoms.some(a => {
+           // We ignore the match if it's the exact same string AND we are in an edit session
+           // (Though strictly speaking, we check against prevRefNo above)
+           const baseExisting = (a.anomaly_ref_no || "").replace(/[AR]$/, "").trim();
+           return baseExisting === baseNew;
+        });
+
+        if (isDuplicate) {
+          toast.error(`Duplicate Reference No: "${newRef}" conflicts with an existing sequence. Rolling back.`);
+          setAnomalyData(prev => ({ ...prev, referenceNo: prevRefNo }));
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      console.error("[Validation] Error checking duplicate ref:", e);
+      return true;
+    }
+  };
+
   const [incompleteReason, setIncompleteReason] = useState("");
   const [openPopovers, setOpenPopovers] = useState<Record<string, boolean>>({});
   const [libOptionsMap, setLibOptionsMap] = useState<Record<string, any[]>>({});
@@ -1231,6 +1272,42 @@ function V10PreviewLayout() {
     waterDepth: 0,
     vessel: "N/A",
   });
+
+  // AUTO-GENERATE ANOMALY REFERENCE NO WHEN TYPE CHANGES
+  useEffect(() => {
+    if ((findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo && structureId && headerData?.sowReportNo) {
+      const isAnomaly = findingType === "Anomaly";
+      const category = isAnomaly ? "ANOMALY" : "FINDING";
+      const prefix = isAnomaly ? "A" : "F";
+
+      const generateRef = async () => {
+        try {
+          const { data: allAnoms } = await supabase
+            .from("insp_anomalies")
+            .select("sequence_no, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
+            .eq("insp_records.structure_id", parseInt(structureId || "0"))
+            .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"))
+            .eq("insp_records.sow_report_no", headerData.sowReportNo);
+
+          let vMaxSeq = 0;
+          if (allAnoms) {
+            for (const a of allAnoms) {
+              const refCategory = a.anomaly_ref_no?.includes(` / ${prefix}-`) ? category : (isAnomaly ? "FINDING" : "ANOMALY");
+              if (refCategory === category && a.sequence_no > vMaxSeq) {
+                vMaxSeq = a.sequence_no;
+              }
+            }
+          }
+          const seq = vMaxSeq + 1;
+          const baseRef = `${new Date().getFullYear()} / ${headerData.platformName || "REF"} / ${prefix}-${seq.toString().padStart(3, "0")}`;
+          setAnomalyData(prev => ({ ...prev, referenceNo: baseRef }));
+        } catch (e) {
+          console.error("[AnomalyRef] Failed to pre-generate ref:", e);
+        }
+      };
+      generateRef();
+    }
+  }, [findingType, structureId, headerData?.sowReportNo, jobPackId, headerData?.platformName]);
 
   const {
     previewOpen,
@@ -2159,6 +2236,31 @@ function V10PreviewLayout() {
     } else {
       setSelectedComp(c);
       resetForm();
+      // AUTO-SELECT LOGIC: 
+      // If exactly one task exists, auto-select it.
+      // If multiple tasks exist, leave activeSpec null so the user sees the new selection screen.
+      if (c.taskStatuses && c.taskStatuses.length > 0) {
+        const validTasks = c.taskStatuses.filter((ts: any) => {
+          const it = (allInspectionTypes || []).find(
+            (type: any) => type.code === ts.code || type.name === ts.code
+          );
+          if (!it) return true;
+          const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+          const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+          
+          if (inspMethod === "DIVING" && !isDiving) return false;
+          if (inspMethod === "ROV" && !isRov) return false;
+          return true;
+        });
+
+        if (validTasks.length === 1) {
+          console.log(`[Workspace] Auto-selecting only valid task: ${validTasks[0].code}`);
+          setActiveSpec(validTasks[0].code);
+        } else if (validTasks.length > 1) {
+          console.log(`[Workspace] Multiple tasks found (${validTasks.length}). Showing selection screen.`);
+          setActiveSpec(null);
+        }
+      }
     }
   };
 
@@ -2244,15 +2346,63 @@ function V10PreviewLayout() {
       return;
     }
 
-    const orphaned = diffSpecifications(selectedComp, newTask);
     setPendingReclass({
       type: "TASK",
       newComponent: selectedComp,
       newTask: newTask,
       componentTaskStatuses: selectedComp.taskStatuses || [],
-      orphanedFields: orphaned,
+      orphanedFields: [],
     });
     setShowTaskSelector(false);
+  };
+
+  const handleDeleteTaskFromScope = async (taskCode: string, compId: number) => {
+    if (!confirm(`Are you sure you want to remove ${taskCode} from the SOW for this component?`)) {
+      return;
+    }
+
+    // 1. Safety Check: Check if there is any inspection data in insp_records
+    const { data: existingRecords, error: checkError } = await supabase
+      .from("insp_records")
+      .select("id")
+      .eq("component_id", compId)
+      .eq("inspection_type_code", taskCode)
+      .limit(1);
+
+    if (checkError) {
+      toast.error("Error checking for existing records");
+      return;
+    }
+
+    if (existingRecords && existingRecords.length > 0) {
+      toast.error("Cannot delete inspection type. Existing inspection records found for this component.", {
+        description: "Please delete the inspection records first if you wish to remove this task from the scope."
+      });
+      return;
+    }
+
+    // 2. Perform deletion from u_sow_items
+    let deleteQuery = supabase
+      .from("u_sow_items")
+      .delete()
+      .eq("sow_id", sowId)
+      .eq("component_id", compId)
+      .eq("inspection_code", taskCode);
+
+    if (targetReportNumber) {
+      deleteQuery = deleteQuery.eq("report_number", targetReportNumber);
+    }
+
+    const { error: deleteErr } = await deleteQuery;
+
+    if (deleteErr) {
+      toast.error("Failed to remove inspection type from SOW");
+      console.error(deleteErr);
+      return;
+    }
+
+    toast.success("Inspection type removed from scope");
+    queryClient.invalidateQueries({ queryKey: ["sow-data"] });
   };
 
   const {
@@ -2715,25 +2865,39 @@ function V10PreviewLayout() {
       const movTable = inspMethod === "DIVING" ? "insp_dive_movements" : "insp_rov_movements";
       const movCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
 
-      // 1 & 2. Fetch Movements and Tapes in parallel
-      const [movsRes, tapesRes] = await Promise.all([
-        supabase
+      // 1. Fetch Movements (with fallback for column names)
+      let movsRes = await supabase
+        .from(movTable)
+        .select("*")
+        .eq(movCol, depId)
+        .order(inspMethod === "DIVING" ? "timestamp" : "movement_time", { ascending: true });
+
+      // Fallback for Diving if 'timestamp' column is missing (migration inconsistency)
+      if (movsRes.error && movsRes.error.code === "42703" && inspMethod === "DIVING") {
+        console.warn("[Sync] 'timestamp' column missing on insp_dive_movements, trying 'movement_time'");
+        movsRes = await supabase
           .from(movTable)
           .select("*")
           .eq(movCol, depId)
-          .order(inspMethod === "DIVING" ? "timestamp" : "movement_time", { ascending: true }),
-        supabase
-          .from("insp_video_tapes")
-          .select("*")
-          .eq(movCol, depId)
-          .order("tape_id", { ascending: false }),
-      ]);
+          .order("movement_time", { ascending: true });
+      }
+
+      // 2. Fetch Tapes
+      const tapesRes = await supabase
+        .from("insp_video_tapes")
+        .select("*")
+        .eq(movCol, depId)
+        .order("tape_id", { ascending: false });
 
       const movs = movsRes.data;
       let tapes = tapesRes.data;
 
-      if (movsRes.error) console.error("[Sync] Movement fetch error:", movsRes.error);
-      if (tapesRes.error) console.error("[Sync] Tape fetch error:", tapesRes.error);
+      if (movsRes.error) {
+        console.error("[Sync] Movement fetch error:", movsRes.error.message, movsRes.error.details, movsRes.error.hint);
+      }
+      if (tapesRes.error) {
+        console.error("[Sync] Tape fetch error:", tapesRes.error.message, tapesRes.error.details, tapesRes.error.hint);
+      }
 
       if (movs && movs.length > 0) {
         const last = movs[movs.length - 1];
@@ -5044,11 +5208,16 @@ function V10PreviewLayout() {
           const seq = vMaxSeq + 1;
           finalSeq = seq;
 
-          const baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, "0")}`;
-          if (anomalyData.rectify) {
-            autoRefNo = baseRef + "R";
+          // If user manually edited the reference, use it. Otherwise generate default.
+          if (anomalyData.referenceNo) {
+            autoRefNo = anomalyData.referenceNo;
           } else {
-            autoRefNo = baseRef;
+            const baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, "0")}`;
+            if (anomalyData.rectify) {
+              autoRefNo = baseRef + "R";
+            } else {
+              autoRefNo = baseRef;
+            }
           }
         } else {
           // Postfix logic for amendment/rectification
@@ -6031,6 +6200,10 @@ function V10PreviewLayout() {
             handleDeleteRecord={handleDeleteRecord}
             currentRecords={currentRecords}
             handlePrintAnomaly={handlePrintAnomaly}
+            handleTaskChange={handleTaskChange}
+            handleDeleteTaskFromScope={handleDeleteTaskFromScope}
+            validateAnomalyRef={validateAnomalyRef}
+            setPrevRefNo={setPrevRefNo}
           />
         );
       case "events":
@@ -6080,6 +6253,8 @@ function V10PreviewLayout() {
             structureType={headerData.structureType === "pipeline" ? "pipeline" : "platform"}
             unitSystem={unitSystem}
             handleEditRecord={handleEditRecord}
+            handleTaskChange={handleTaskChange}
+            setShowTaskSelector={setShowTaskSelector}
           />
         );
       case "history":

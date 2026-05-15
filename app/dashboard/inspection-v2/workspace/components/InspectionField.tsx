@@ -345,13 +345,13 @@ const InspectionField = ({
     if (p.type === 'repeater') {
         const rows = Array.isArray(currentValue) ? currentValue : [];
         return (
-            <div className="space-y-3">
+            <div className="space-y-3 w-full block">
                 {rows.map((row: any, idx: number) => (
-                    <div key={idx} className="p-3 border-2 border-slate-100 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-sm space-y-3 relative group-row transition-all hover:border-slate-200 dark:hover:border-slate-700">
+                    <div key={idx} className="p-4 border-2 border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50/80 dark:bg-slate-900/90 shadow-sm space-y-3 relative group-row transition-all hover:border-blue-400 dark:hover:border-blue-600 max-w-[55%] min-w-[400px] block mb-2">
                         <Button
                             variant="secondary"
                             size="icon"
-                            className="absolute -right-2 -top-2 h-7 w-7 rounded-full text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 border border-slate-200 dark:border-slate-700 shadow-sm z-10"
+                            className="absolute -right-3 -top-3 h-8 w-8 rounded-full text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 border border-slate-200 dark:border-slate-700 shadow-md z-10"
                             onClick={() => {
                                 const hasData = Object.values(row).some(v => v !== undefined && v !== null && v !== "");
                                 if (hasData) {
@@ -365,9 +365,9 @@ const InspectionField = ({
                                 }
                             }}
                         >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                         </Button>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 gap-3 w-full">
                             {(p.subFields || []).map((sf: any) => {
                                 const sfCategoryUnits = sf.unitCategory ? (unitsData as any)[sf.unitCategory] : null;
                                 const sfUnitFieldName = `${sf.name}_unit`;
@@ -381,9 +381,9 @@ const InspectionField = ({
                                     : [];
 
                                 return (
-                                    <div key={sf.name} className="space-y-1">
-                                        <label className="text-[10px] uppercase text-slate-800 dark:text-slate-200 font-black tracking-wider">{sf.label}</label>
-                                        <div className="flex items-center gap-1">
+                                    <div key={sf.name} className="flex items-center gap-4 col-span-1 w-full">
+                                        <label className="text-[10px] uppercase text-slate-800 dark:text-slate-200 font-black tracking-widest whitespace-nowrap min-w-[100px]">{sf.label}</label>
+                                        <div className="flex items-center gap-2 flex-1 min-w-0">
                                             <Input
                                                 type={sf.type === 'number' ? 'number' : 'text'}
                                                 step={sf.step}
@@ -404,12 +404,12 @@ const InspectionField = ({
                                                         setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: newRows }));
                                                     }
                                                 }}
-                                                className="h-8 text-sm font-medium border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus-visible:ring-slate-400 flex-1 dark:text-slate-200"
+                                                className="h-8 text-xs font-bold border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus-visible:ring-blue-500 flex-1 dark:text-slate-200"
                                             />
                                             {sfCategoryUnits && (
-                                                <div className="relative flex items-center h-8 px-2 border border-slate-200 dark:border-slate-800 rounded-md bg-slate-50 dark:bg-slate-950 min-w-[60px] hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
+                                                <div className="relative flex items-center h-8 px-2 border border-slate-300 dark:border-slate-700 rounded-md bg-slate-100 dark:bg-slate-950 min-w-[60px] hover:border-blue-400 dark:hover:border-blue-600 transition-colors shrink-0 shadow-inner">
                                                     <select
-                                                        className="w-full bg-transparent border-none text-[10px] font-bold text-slate-500 focus:ring-0 cursor-pointer appearance-none pr-4"
+                                                        className="w-full bg-transparent border-none text-[10px] font-black text-slate-700 dark:text-slate-300 focus:ring-0 cursor-pointer appearance-none pr-6"
                                                         value={sfCurrentUnit}
                                                         onChange={(e) => {
                                                             const newRows = [...rows];
@@ -424,7 +424,7 @@ const InspectionField = ({
                                                             <option key={unit} value={unit}>{unit}</option>
                                                         ))}
                                                     </select>
-                                                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 pointer-events-none" />
+                                                    <ChevronDown className="w-3 h-3 text-slate-500 absolute right-1 pointer-events-none" />
                                                 </div>
                                             )}
                                         </div>

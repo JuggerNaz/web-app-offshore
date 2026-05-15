@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Card } from "@/components/ui/card";
-import { Box, AlertTriangle, Plus, X } from "lucide-react";
+import { Box, AlertTriangle, Plus, X, ChevronRight, CheckCircle2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InspectionForm } from "../../components/InspectionForm";
@@ -53,12 +53,16 @@ interface InspectionFormPanelProps {
   currentMovement: string;
   tapeId: number | null;
   vidState: string;
+  handleTaskChange: (code: string) => void;
   setShowTaskSelector: (val: boolean) => void;
   setShowCompSelector: (val: boolean) => void;
   libOptionsMap: any;
   handleDeleteRecord: (id: number) => void;
+  handleDeleteTaskFromScope: (code: string, compId: number) => void;
   currentRecords: any[];
   handlePrintAnomaly: (rec: any) => void;
+  validateAnomalyRef: (ref: string) => Promise<boolean>;
+  setPrevRefNo: (val: string) => void;
 }
 
 export function InspectionFormPanel({
@@ -107,25 +111,27 @@ export function InspectionFormPanel({
   currentMovement,
   tapeId,
   vidState,
+  handleTaskChange,
+  handleDeleteTaskFromScope,
   setShowTaskSelector,
   setShowCompSelector,
   libOptionsMap,
   handleDeleteRecord,
   currentRecords,
   handlePrintAnomaly,
+  validateAnomalyRef,
+  setPrevRefNo,
 }: InspectionFormPanelProps) {
   return (
-    <Card className="flex flex-col h-full border-none shadow-none rounded-none bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden relative">
+    <Card className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 border-none rounded-none shadow-none overflow-hidden">
       {!selectedComp ? (
-        <div className="flex-1 flex items-center justify-center flex-col text-slate-400 p-10 text-center animate-in fade-in zoom-in duration-500">
-          <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4 shadow-inner">
-            <Box className="w-8 h-8 opacity-20" />
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
+          <div className="w-16 h-16 rounded-3xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-6 shadow-sm border border-blue-100 dark:border-blue-800/50">
+            <Box className="w-8 h-8 text-blue-600 dark:text-blue-400" />
           </div>
-          <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1">
-            No Component Targeted
-          </h3>
-          <p className="text-[10px] font-bold text-slate-400/60 uppercase tracking-tighter max-w-[200px]">
-            Please select a component from the inventory on the right to start inspection
+          <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-slate-200 mb-2">No Component Selected</h3>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter max-w-[240px] leading-relaxed">
+            Select a structural component from the list or 3D model to begin or review an inspection.
           </p>
         </div>
       ) : (
@@ -149,23 +155,68 @@ export function InspectionFormPanel({
 
           <div id={FORM_AREA_ID} className="flex-1 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-950 p-3 @container">
             {!activeSpec ? (
-              <div className="flex flex-col items-center justify-center h-full gap-4 py-12">
-                <div className="flex flex-col items-center text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center mb-3">
-                    <AlertTriangle className="w-6 h-6 text-amber-500" />
-                  </div>
-                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-1">
-                    Undefined Task
-                  </h4>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter max-w-[220px]">
-                    This component has no assigned inspection types in the current scope
-                  </p>
+              <div className="flex flex-col items-center py-10 px-4 animate-in fade-in slide-in-from-bottom-4 duration-500 h-full">
+                <div className="text-center mb-8">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 dark:text-slate-500 mb-1">
+                    Select Scope to Inspect ({selectedComp.name})
+                  </h2>
                 </div>
 
-                <div className="flex flex-col gap-2 w-full max-w-[280px]">
-                  <Button variant="outline" size="sm" onClick={() => setIsAddInspOpen(true)} className="w-full text-[10px] font-black uppercase tracking-widest h-9 bg-white dark:bg-slate-900 border-2 hover:bg-slate-50 transition-all">
-                    <Plus className="w-3.5 h-3.5 mr-2" /> Add Manual Inspection
-                  </Button>
+                <div className="w-full max-w-lg space-y-3">
+                  {(selectedComp.taskStatuses || []).map((ts: any) => {
+                    const isCompleted = ts.status === 'completed';
+                    const specName = allInspectionTypes?.find(t => t.code === ts.code)?.name || ts.code;
+
+                    return (
+                      <div key={ts.code} className="flex items-center gap-3 group">
+                        <button 
+                          onClick={() => handleTaskChange(ts.code)}
+                          className={`flex-1 flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                            isCompleted 
+                            ? 'bg-emerald-50/30 dark:bg-emerald-950/10 border-emerald-100 dark:border-emerald-900/30 hover:border-emerald-200 dark:hover:border-emerald-800/50' 
+                            : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-800 hover:shadow-md'
+                          }`}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isCompleted ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                              {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <div className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-600" />}
+                            </div>
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-2">
+                                <span className={`font-black text-xs uppercase tracking-tight ${isCompleted ? 'text-emerald-700 dark:text-emerald-400' : 'text-blue-700 dark:text-blue-400'}`}>
+                                  {specName}
+                                </span>
+                                <Badge variant="outline" className="text-[9px] font-black bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:bg-blue-300 border-blue-200 dark:border-blue-800/50 px-1.5 h-4">
+                                  {ts.code}
+                                </Badge>
+                              </div>
+                              <span className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${isCompleted ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                {ts.status || 'PENDING'}
+                              </span>
+                            </div>
+                          </div>
+                          <ChevronRight className={`w-5 h-5 transition-transform group-hover:translate-x-1 ${isCompleted ? 'text-emerald-400' : 'text-slate-300'}`} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteTaskFromScope(ts.code, selectedComp.id)}
+                          className="p-3 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-slate-300 hover:text-red-500 hover:border-red-200 hover:bg-red-50/50 transition-all"
+                          title="Remove from component scope"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  <div className="pt-6">
+                    <button 
+                      onClick={() => setShowTaskSelector(true)}
+                      className="w-full py-5 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center gap-3 text-slate-400 dark:text-slate-500 hover:border-blue-300 hover:bg-blue-50/30 hover:text-blue-600 transition-all group"
+                    >
+                      <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs font-black uppercase tracking-widest">Add Additional Inspection Type</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -222,6 +273,8 @@ export function InspectionFormPanel({
                   const r = currentRecords.find((rec: any) => rec.insp_id === editingRecordId);
                   if (r) handlePrintAnomaly(r);
                 }}
+                validateAnomalyRef={validateAnomalyRef}
+                setPrevRefNo={setPrevRefNo}
               />
             )}
           </div>

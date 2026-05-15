@@ -37,7 +37,8 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
   const { data: allFields } = await supabase
     .from("u_lib_list")
     .select("lib_id, lib_desc")
-    .eq("lib_code", "OILFIELD");
+    .eq("lib_code", "OILFIELD")
+    .or("lib_delete.is.null,lib_delete.neq.1");
 
   const fieldMap = new Map((allFields || []).map(f => [f.lib_id.toString(), f.lib_desc]));
 

@@ -98,6 +98,8 @@ interface WorkspaceMainProps {
   handleSort: (key: string) => void;
   handleEditRecord: (record: any) => void;
   handleDeleteRecord: (id: number) => void;
+  validateAnomalyRef: (ref: string) => Promise<boolean>;
+  setPrevRefNo: (val: string) => void;
   setViewingRecordAttachments: (atts: any[]) => void;
   handlePrintAnomaly: (record: any) => void;
   allComps: any[];
@@ -172,6 +174,8 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
     handleSort,
     handleEditRecord,
     handleDeleteRecord,
+    validateAnomalyRef,
+    setPrevRefNo,
     setViewingRecordAttachments,
     handlePrintAnomaly,
     allComps,
@@ -705,6 +709,8 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                 setEditingAttachment={setEditingAttachment}
                 deletedAttachmentIds={deletedAttachmentIds}
                 setDeletedAttachmentIds={setDeletedAttachmentIds}
+                validateAnomalyRef={validateAnomalyRef}
+                setPrevRefNo={setPrevRefNo}
               />
             )}
           </div>

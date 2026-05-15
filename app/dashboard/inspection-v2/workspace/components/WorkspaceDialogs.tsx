@@ -1538,7 +1538,7 @@ export function WorkspaceDialogs({
                             <div className="space-y-1">
                                 {allInspectionTypes
                                     .filter(it => {
-                                        const isInSow = selectedComp?.tasks?.includes(it.code);
+                                        const isInSow = (selectedComp?.taskStatuses || []).some((ts: any) => ts.code === it.code);
                                         if (isInSow) return false;
                                         const matchesSearch = it.name.toLowerCase().includes(addTaskSearch.toLowerCase()) || 
                                                             it.code.toLowerCase().includes(addTaskSearch.toLowerCase());

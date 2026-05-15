@@ -137,7 +137,9 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
                             }
                         }}>
                             <SelectTrigger className="h-9 text-[11px] font-bold bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 focus:ring-blue-500/20 w-full min-w-0 dark:text-slate-200">
-                                <SelectValue placeholder="Select Tape" />
+                                <SelectValue>
+                                    {jobTapes.find(t => String(t.tape_id) === String(tapeId))?.tape_no || "Select Tape"}
+                                </SelectValue>
                             </SelectTrigger>
                             <SelectContent className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 shadow-xl">
                                 {jobTapes.map((t: any) => (

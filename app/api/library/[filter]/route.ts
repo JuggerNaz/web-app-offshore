@@ -14,7 +14,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data, error } = await supabase
       .from("u_lib_list" as any)
       .select()
-      .in("lib_code", codes);
+      .in("lib_code", codes)
+      .or("lib_delete.is.null,lib_delete.neq.1");
 
     if (error) {
       if (error.code === "PGRST116") {
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .from("u_lib_list" as any)
     .select("*")
     .eq("lib_code", decodedFilter)
+    .or("lib_delete.is.null,lib_delete.neq.1")
     .order("lib_desc", { ascending: true });
 
   if (error) {

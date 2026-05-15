@@ -26,6 +26,8 @@ interface ComponentListPanelProps {
   structureType: "pipeline" | "platform";
   unitSystem: "METRIC" | "IMPERIAL";
   handleEditRecord: (rec: any) => void;
+  handleTaskChange: (code: string) => void;
+  setShowTaskSelector: (val: boolean) => void;
 }
 
 export function ComponentListPanel({
@@ -50,6 +52,8 @@ export function ComponentListPanel({
   structureType,
   unitSystem,
   handleEditRecord,
+  handleTaskChange,
+  setShowTaskSelector,
 }: ComponentListPanelProps) {
   return (
     <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
@@ -62,6 +66,8 @@ export function ComponentListPanel({
         componentsNonSow={componentsNonSow}
         selectedComp={selectedComp}
         handleComponentSelection={handleComponentSelection}
+        handleTaskChange={handleTaskChange}
+        setShowTaskSelector={setShowTaskSelector}
         setCompSpecDialogOpen={setCompSpecDialogOpen}
         currentRecords={currentRecords}
         currentCompRecords={currentCompRecords}

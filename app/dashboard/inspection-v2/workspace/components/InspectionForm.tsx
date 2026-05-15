@@ -80,6 +80,8 @@ interface InspectionFormProps {
     libOptionsMap?: Record<string, any[]>;
     onDeleteRecord?: () => void;
     onPrintReport?: () => void;
+    validateAnomalyRef: (ref: string) => Promise<boolean>;
+    setPrevRefNo: (val: string) => void;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -132,8 +134,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     supabase,
     libOptionsMap,
     onDeleteRecord,
-    onPrintReport
+    onPrintReport,
+    validateAnomalyRef,
+    setPrevRefNo
 }) => {
+    const refInputRef = React.useRef<HTMLInputElement>(null);
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
     const categoryLabel = isAnomaly ? 'Anomaly' : 'Finding';
@@ -1424,11 +1429,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Reference No</label>
                                         <div className="relative">
                                             <input
+                                                ref={refInputRef}
                                                 type="text"
-                                                readOnly
                                                 value={anomalyData.referenceNo}
-                                                placeholder="Auto-generated on Save..."
-                                                className={`flex h-9 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 px-2.5 text-xs font-mono font-bold text-slate-500 dark:text-slate-400 cursor-not-allowed`}
+                                                onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, referenceNo: e.target.value }))}
+                                                onFocus={() => setPrevRefNo(anomalyData.referenceNo)}
+                                                onBlur={async (e) => {
+                                                    const isValid = await validateAnomalyRef(e.target.value);
+                                                    if (!isValid) {
+                                                        setTimeout(() => refInputRef.current?.focus(), 10);
+                                                    }
+                                                }}
+                                                placeholder="Enter reference no..."
+                                                className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-mono font-bold dark:text-slate-200 focus:outline-none focus:ring-2 ${ringClass}`}
                                             />
                                         </div>
                                     </div>
