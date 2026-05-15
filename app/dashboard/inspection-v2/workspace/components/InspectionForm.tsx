@@ -457,131 +457,153 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white dark:bg-slate-950 z-10 border-none rounded-none shadow-none text-slate-800 dark:text-slate-200">
-            <div className="p-3 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800">
-                <span className="font-black tracking-wide text-sm flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-blue-200" />
-                    <span className="text-blue-100 opacity-90 font-bold">{selectedComp.name}</span>
+            <div className="px-3 py-1.5 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800">
+                <span className="font-black tracking-tight text-xs flex items-center gap-1.5 overflow-hidden">
+                    <FileText className="w-3.5 h-3.5 text-blue-200 shrink-0" />
+                    <span className="text-blue-50 opacity-90 font-bold truncate">{selectedComp.name}</span>
                     {onChangeComponentClick && (
-                        <button onClick={onChangeComponentClick} className="ml-1.5 px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/10">
+                        <button onClick={onChangeComponentClick} className="px-1.5 py-0.5 text-[8px] uppercase tracking-tighter font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/5 whitespace-nowrap">
                             Change
                         </button>
                     )}
-                    <span className="text-blue-100/40 mx-1.5">/</span> Spec: {(() => {
-                        const specObj = allInspectionTypes.find(t => (t.code || '').trim() === (activeSpec || '').trim()) || 
-                                       allInspectionTypes.find(t => (t.name || '').trim() === (activeSpec || '').trim());
-                        return specObj ? specObj.name : activeSpec;
-                    })()}
+                    <span className="text-blue-100/40 shrink-0">/</span>
+                    <span className="truncate max-w-[150px] opacity-90">
+                        {(() => {
+                            const specObj = allInspectionTypes.find(t => (t.code || '').trim() === (activeSpec || '').trim()) || 
+                                           allInspectionTypes.find(t => (t.name || '').trim() === (activeSpec || '').trim());
+                            return specObj ? specObj.name : activeSpec;
+                        })()}
+                    </span>
                     {onChangeTaskClick && (
-                        <button onClick={onChangeTaskClick} className="ml-1.5 px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/10">
+                        <button onClick={onChangeTaskClick} className="px-1.5 py-0.5 text-[8px] uppercase tracking-tighter font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/5 whitespace-nowrap">
                             Change
                         </button>
                     )}
                 </span>
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 bg-black/20 px-2 py-1 rounded border border-white/10">
-                        <Video className="w-3.5 h-3.5 text-blue-200" />
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-black/20 px-1.5 py-0.5 rounded border border-white/10 shrink-0">
+                        <Video className="w-3 h-3 text-blue-200" />
                         <div className="flex flex-col">
-                            <span className="text-[7px] font-black uppercase text-blue-200/50 leading-none">Timer</span>
-                            <span className="font-mono text-xs font-bold leading-none mt-0.5">{formatTime(currentDisplayCount)}</span>
+                            <span className="text-[6px] font-black uppercase text-blue-200/50 leading-none">Timer</span>
+                            <span className="font-mono text-[10px] font-bold leading-none mt-0.5">{formatTime(currentDisplayCount)}</span>
                         </div>
                     </div>
                     
-                    {onPrintReport && (findingType === 'Anomaly' || findingType === 'Finding') && (
-                        <button 
-                            onClick={onPrintReport} 
-                            className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" 
-                            title="Print Report"
-                        >
-                            <Printer className="w-4 h-4" />
-                        </button>
-                    )}
+                    <div className="flex items-center gap-1">
+                        {onPrintReport && (findingType === 'Anomaly' || findingType === 'Finding') && (
+                            <button 
+                                onClick={onPrintReport} 
+                                className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" 
+                                title="Print Report"
+                            >
+                                <Printer className="w-3.5 h-3.5" />
+                            </button>
+                        )}
 
-                    {isEditing && onDeleteRecord && (
-                        <button 
-                            onClick={onDeleteRecord} 
-                            className="p-1.5 hover:bg-red-500/20 bg-black/10 rounded transition text-red-200 hover:text-red-100" 
-                            title="Delete Record"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                        </button>
-                    )}
+                        {isEditing && onDeleteRecord && (
+                            <button 
+                                onClick={onDeleteRecord} 
+                                className="p-1 hover:bg-red-500/20 bg-black/10 rounded transition text-red-200 hover:text-red-100" 
+                                title="Delete Record"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                        )}
 
-                    <button onClick={() => setCompSpecDialogOpen(true)} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications">
-                        <Info className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => resetForm()} className="p-1.5 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Cancel/Close"><X className="w-4 h-4" /></button>
+                        <button onClick={() => setCompSpecDialogOpen(true)} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications">
+                            <Info className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => resetForm()} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Cancel/Close"><X className="w-3.5 h-3.5" /></button>
+                    </div>
                 </div>
             </div>
 
             <ScrollArea className="flex-1">
-                <div className="p-3">
-                <div className="space-y-3">
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-1"><MapPinIcon className="w-3 h-3 text-slate-400 dark:text-slate-500" /> Verification Depth / Elevation</label>
-                            <div className="flex items-center gap-1">
-                                <Input 
-                                    type="text"
-                                    value={dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : (selectedComp.endElev && selectedComp.endElev !== '-' ? selectedComp.endElev : (selectedComp.depth ? selectedComp.depth.replace(/[^\d.-]/g, '') : '')))} 
-                                    onChange={(e) => {
-                                        handleDynamicPropChange?.('verification_depth', e.target.value);
-                                    }}
-                                    placeholder="Enter depth"
-                                    className="h-10 text-sm font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 flex-1 dark:text-slate-200" 
-                                />
-                                <select
-                                    className="h-10 px-2 text-xs font-bold border border-slate-200 dark:border-slate-800 rounded-md bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[55px]"
-                                    value={dynamicProps?.verification_depth_unit || 'm'}
-                                    onChange={(e) => handleDynamicPropChange?.('verification_depth_unit', e.target.value)}
-                                >
-                                    <option value="mm">mm</option>
-                                    <option value="cm">cm</option>
-                                    <option value="m">m</option>
-                                    <option value="ft">ft</option>
-                                    <option value="in">in</option>
-                                </select>
-                            </div>
-                        </div>
-                        {(selectedComp.startElev !== '-' || selectedComp.endElev !== '-') && (
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-1">Elevation Range</label>
-                                <div className="h-10 px-3 flex items-center text-sm font-bold bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-600 dark:text-slate-400">
-                                    {selectedComp.startElev} → {selectedComp.endElev} {dynamicProps?.verification_depth_unit || 'm'}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
+                <div className="p-2">
+                <div className="space-y-2">
                     <AnimatePresence mode="wait">
                         <motion.div 
                             key={activeSpec}
-                            initial={{ opacity: 0, y: 10 }}
+                            initial={{ opacity: 0, y: 5 }}
                             animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.3 }}
-                            className="p-2 border-2 border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 rounded-lg space-y-2"
+                            exit={{ opacity: 0, y: -5 }}
+                            transition={{ duration: 0.2 }}
+                            className="p-1.5 border border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/30 rounded-lg space-y-1.5"
                         >
-                            <div className="border-b border-slate-200 dark:border-slate-800 pb-2 space-y-3">
-                                <div className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-400 tracking-widest">Inspection Specification</div>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="space-y-1">
-                                        <span className="text-[9px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Date</span>
+                            <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5 space-y-1">
+                                <div className="text-[9px] font-black uppercase text-slate-800 dark:text-slate-400 tracking-widest opacity-70">Inspection Metadata & Coordinates</div>
+                                <div className="flex flex-wrap gap-x-2 gap-y-1.5 items-end">
+                                    <div className="space-y-0.5 flex-grow min-w-[120px] max-w-[180px]">
+                                        <label className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-1"><MapPinIcon className="w-2.5 h-2.5 text-slate-400 dark:text-slate-500" /> Verification Depth / Elevation</label>
+                                        <div className="flex items-center gap-1">
+                                            <Input 
+                                                type="text"
+                                                value={dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : (selectedComp.endElev && selectedComp.endElev !== '-' ? selectedComp.endElev : (selectedComp.depth ? selectedComp.depth.replace(/[^\d.-]/g, '') : '')))} 
+                                                onChange={(e) => {
+                                                    handleDynamicPropChange?.('verification_depth', e.target.value);
+                                                }}
+                                                placeholder="Enter depth"
+                                                className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 flex-1 dark:text-slate-200" 
+                                            />
+                                            <select
+                                                className="h-8 px-1 text-[10px] font-bold border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[45px]"
+                                                value={dynamicProps?.verification_depth_unit || 'm'}
+                                                onChange={(e) => handleDynamicPropChange?.('verification_depth_unit', e.target.value)}
+                                            >
+                                                <option value="mm">mm</option>
+                                                <option value="cm">cm</option>
+                                                <option value="m">m</option>
+                                                <option value="ft">ft</option>
+                                                <option value="in">in</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    
+                                    {(selectedComp.startElev !== '-' || selectedComp.endElev !== '-') && (
+                                        <div className="space-y-0.5 flex-grow min-w-[80px] max-w-[120px]">
+                                            <label className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Range</label>
+                                            <div className="h-8 px-1.5 flex items-center text-[10px] font-bold bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50 rounded-md text-slate-500 dark:text-slate-400 truncate">
+                                                {selectedComp.startElev}→{selectedComp.endElev}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[130px]">
+                                        <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Date</span>
                                         {renderInspectionField({ 
                                             name: 'inspection_date', 
                                             label: 'Date', 
                                             type: 'date'
                                         }, 'primary')}
                                     </div>
-                                    <div className="space-y-1">
-                                        <span className="text-[9px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Time</span>
+                                    <div className="space-y-0.5 flex-grow min-w-[80px] max-w-[110px]">
+                                        <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Time</span>
                                         {renderInspectionField({ 
                                             name: 'inspection_time', 
                                             label: 'Time', 
                                             type: 'text'
                                         }, 'primary')}
                                     </div>
-                                    <div className="space-y-1">
-                                        <span className="text-[9px] font-black text-slate-800 dark:text-slate-400 uppercase">Counter Override</span>
+                                    {(() => {
+                                        const northingField = activeFormProps?.find((p: any) => p.name === 'northing');
+                                        return northingField ? (
+                                            <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
+                                                <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Northing</span>
+                                                {renderInspectionField(northingField, 'primary')}
+                                            </div>
+                                        ) : null;
+                                    })()}
+                                    {(() => {
+                                        const eastingField = activeFormProps?.find((p: any) => p.name === 'easting');
+                                        return eastingField ? (
+                                            <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
+                                                <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Easting</span>
+                                                {renderInspectionField(eastingField, 'primary')}
+                                            </div>
+                                        ) : null;
+                                    })()}
+                                    <div className="space-y-0.5 flex-grow min-w-[80px] max-w-[110px]">
+                                        <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Counter</span>
                                         {renderInspectionField({ 
                                             name: 'tape_count_no', 
                                             label: `Live: ${formatTime(vidTimer)}`, 
@@ -715,7 +737,16 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             {(() => {
                                 const mgiFields = activeFormProps.filter((p: any) => p.group === 'mgi_thickness');
                                 const utFields = activeFormProps.filter((p: any) => p.group === 'ut_thickness');
-                                const otherFields = activeFormProps.filter((p: any) => p.group !== 'mgi_thickness' && p.group !== 'ut_thickness');
+                                const otherFields = activeFormProps.filter((p: any) => 
+                                    p.group !== 'mgi_thickness' && 
+                                    p.group !== 'ut_thickness' &&
+                                    p.name !== 'verification_depth' &&
+                                    p.name !== 'inspection_date' &&
+                                    p.name !== 'inspection_time' &&
+                                    p.name !== 'tape_count_no' &&
+                                    p.name !== 'northing' &&
+                                    p.name !== 'easting'
+                                );
                                 
                                 const hardFields = mgiFields.filter((p: any) => p.groupRow === 'hard');
                                 const softFields = mgiFields.filter((p: any) => p.groupRow === 'soft');
@@ -736,7 +767,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <motion.div
                                                 initial={{ opacity: 0, y: 5 }}
                                                 animate={{ opacity: 1, y: 0 }}
-                                                className="col-span-2 border-2 border-teal-200/50 dark:border-teal-800/60 bg-teal-50/30 dark:bg-teal-900/10 rounded-xl p-2 space-y-2 shadow-sm"
+                                                className="col-span-2 border border-teal-200/50 dark:border-teal-800/60 bg-teal-50/20 dark:bg-teal-900/10 rounded-lg p-1.5 space-y-1.5 shadow-sm"
                                             >
                                                 {/* Group Header */}
                                                 <div className="flex items-center justify-between border-b border-teal-200 dark:border-teal-800 pb-1.5">
@@ -777,19 +808,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 )}
 
                                                 {/* Clock Position Headers */}
-                                                <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-end">
+                                                <div className="grid grid-cols-[70px_1fr_1fr_1fr_1fr] gap-1.5 items-end">
                                                     <div></div>
                                                     {['12 o\'clk', '3 o\'clk', '6 o\'clk', '9 o\'clk'].map(pos => (
                                                         <div key={pos} className="text-center">
-                                                            <span className="text-[9px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{pos}</span>
+                                                            <span className="text-[8px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{pos}</span>
                                                         </div>
                                                     ))}
                                                 </div>
 
                                                 {/* Hard Thickness Row */}
                                                 {hardFields.length > 0 && (
-                                                    <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center">
-                                                        <span className="text-[10px] font-black text-rose-700 dark:text-rose-400 uppercase tracking-wider bg-rose-50/50 dark:bg-rose-900/30 border border-rose-200/50 dark:border-rose-800/40 rounded-md px-2 py-1.5 text-center">Hard</span>
+                                                    <div className="grid grid-cols-[70px_1fr_1fr_1fr_1fr] gap-1.5 items-center">
+                                                        <span className="text-[9px] font-black text-rose-700 dark:text-rose-400 uppercase tracking-wider bg-rose-50/50 dark:bg-rose-900/30 border border-rose-200/50 dark:border-rose-800/40 rounded-md px-1.5 py-1 text-center">Hard</span>
                                                         {hardFields.map((p: any) => (
                                                             <div key={p.name}>
                                                                 {renderInspectionField(p, 'primary')}
@@ -821,18 +852,18 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <motion.div
                                                 initial={{ opacity: 0, y: 5 }}
                                                 animate={{ opacity: 1, y: 0 }}
-                                                className="col-span-2 border-2 border-blue-200/50 dark:border-blue-800/60 bg-blue-50/30 dark:bg-blue-900/10 rounded-xl p-2 space-y-2 shadow-sm mb-2"
+                                                className="col-span-2 border border-blue-200/50 dark:border-blue-800/60 bg-blue-50/20 dark:bg-blue-900/10 rounded-lg p-1.5 space-y-1.5 shadow-sm mb-2"
                                             >
-                                                <div className="flex items-center gap-2 border-b border-blue-200 dark:border-blue-800 pb-1.5">
+                                                <div className="flex items-center gap-2 border-b border-blue-200 dark:border-blue-800 pb-1">
                                                      <div className="w-6 h-6 bg-blue-600 dark:bg-blue-700 rounded-lg flex items-center justify-center">
                                                          <Search className="w-3.5 h-3.5 text-white" />
                                                      </div>
-                                                     <span className="text-[11px] font-black text-blue-800 dark:text-blue-300 uppercase tracking-widest leading-none">UT Thickness Readings</span>
+                                                     <span className="text-[10px] font-black text-blue-800 dark:text-blue-300 uppercase tracking-widest leading-none">UT Thickness Readings</span>
                                                 </div>
 
-                                                <div className="grid grid-cols-4 gap-3">
+                                                <div className="flex flex-wrap gap-2">
                                                     {utFields.filter((f: any) => f.name !== 'nominal_thickness').map((p: any) => (
-                                                        <div key={p.name} className="space-y-1">
+                                                        <div key={p.name} className="space-y-0.5 flex-grow min-w-[100px] max-w-[150px]">
                                                             <label className="text-[9px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider text-center block w-full">{p.label}</label>
                                                             {renderInspectionField(p, 'primary')}
                                                         </div>
@@ -840,9 +871,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 </div>
 
                                                 {utFields.find((f: any) => f.name === 'nominal_thickness') && (
-                                                    <div className="pt-2 border-t border-blue-100/50 dark:border-blue-900/30">
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <div className="space-y-1">
+                                                    <div className="pt-1.5 border-t border-blue-100/50 dark:border-blue-900/30">
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div className="space-y-0.5">
                                                                 <label className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-wider">Nominal Thickness</label>
                                                                 {renderInspectionField(utFields.find((f: any) => f.name === 'nominal_thickness'), 'primary')}
                                                             </div>
@@ -867,19 +898,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             return (
                                                 <div className="space-y-4">
                                                     {circFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-3 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                                                        <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-1.5 space-y-1 shadow-sm">
+                                                            <label className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">
                                                                 Circumference
                                                             </label>
-                                                            <div className="grid grid-cols-3 gap-3">
+                                                            <div className="flex flex-wrap gap-2">
                                                                 {['circumferential_measurement_5m_above', 'circumferential_measurement_0m', 'circumferential_measurement_5m_below'].map((name) => {
                                                                     const p = circFields.find(f => f.name === name);
                                                                     if (!p) return null;
                                                                     const customLabel = name === 'circumferential_measurement_5m_above' ? '-5m' : 
                                                                                         name === 'circumferential_measurement_0m' ? '0m' : '+5m';
                                                                     return (
-                                                        <div key={name} className="space-y-1">
-                                                                            <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block text-center">
+                                                                        <div key={name} className="space-y-1 flex-grow min-w-[80px] max-w-[120px]">
+                                                                            <label className="text-[9px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block text-center">
                                                                                 {customLabel}
                                                                             </label>
                                                                             {renderInspectionField({...p, label: customLabel}, 'primary')}
@@ -891,15 +922,20 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {restFields.length > 0 && (
-                                                        <div className="grid grid-cols-3 gap-x-4 gap-y-2">
-                                                            {restFields.map((p: any) => (
-                                                                <div key={p.name} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-3' : 'space-y-1'}>
-                                                                    <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase truncate block">
-                                                                        {p.label || p.name}
-                                                                    </label>
-                                                                    {renderInspectionField(p, 'primary')}
-                                                                </div>
-                                                            ))}
+                                                        <div className="flex flex-wrap gap-x-3 gap-y-2">
+                                                            {restFields.map((p: any) => {
+                                                                const isFullWidth = p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea';
+                                                                const isNumber = p.type === 'number' || p.name?.toLowerCase().includes('rdg') || p.name?.toLowerCase().includes('value');
+                                                                
+                                                                return (
+                                                                    <div key={p.name} className={`space-y-0.5 flex-grow ${isFullWidth ? 'min-w-full' : (isNumber ? 'min-w-[90px] max-w-[140px]' : 'min-w-[130px] max-w-[200px]')}`}>
+                                                                        <label className="text-[9px] font-black text-slate-800 dark:text-slate-200 uppercase truncate block">
+                                                                            {p.label || p.name}
+                                                                        </label>
+                                                                        {renderInspectionField(p, 'primary')}
+                                                                    </div>
+                                                                );
+                                                            })}
                                                         </div>
                                                     )}
 
@@ -965,32 +1001,35 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             return (
                                                 <div className="space-y-4">
                                                     {mpiSetupFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                                                        <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-1.5 space-y-1.5 shadow-sm">
+                                                            <label className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">
                                                                 MPI Equipment & Setup
                                                             </label>
-                                                            <div className="grid grid-cols-3 gap-2">
-                                                                {mpiSetupFields.map((p: any, idx: number) => (
-                                                                    <div key={p.name || `setup-${idx}`} className="space-y-1">
-                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
-                                                                            {p.label || p.name}
-                                                                        </label>
-                                                                        {renderInspectionField(p, 'primary')}
-                                                                    </div>
-                                                                ))}
+                                                            <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                                                                {mpiSetupFields.map((p: any, idx: number) => {
+                                                                    const isNumber = p.type === 'number' || p.name?.toLowerCase().includes('spacing') || p.name?.toLowerCase().includes('power');
+                                                                    return (
+                                                                        <div key={p.name || `setup-${idx}`} className={`space-y-0.5 flex-grow ${isNumber ? 'min-w-[90px] max-w-[140px]' : 'min-w-[130px] max-w-[200px]'}`}>
+                                                                            <label className="text-[9px] font-black text-slate-800 dark:text-slate-200 uppercase truncate block">
+                                                                                {p.label || p.name}
+                                                                            </label>
+                                                                            {renderInspectionField(p, 'primary')}
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </div>
                                                     )}
 
                                                     {thicknessFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                                                        <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-1.5 space-y-1.5 shadow-sm">
+                                                            <label className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">
                                                                 Thickness Readings (Brace & Chord)
                                                             </label>
-                                                            <div className="grid grid-cols-4 gap-2">
+                                                            <div className="flex flex-wrap gap-2">
                                                                 {thicknessFields.map((p: any, idx: number) => (
-                                                                    <div key={p.name || `thick-${idx}`} className={p.name === 'nominal_thickness' ? 'col-span-4 mb-1.5 border-b border-slate-100 dark:border-slate-800 pb-1.5' : 'space-y-1'}>
-                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                    <div key={p.name || `thick-${idx}`} className={`space-y-0.5 flex-grow ${p.name === 'nominal_thickness' ? 'min-w-full mb-1 border-b border-slate-100 dark:border-slate-800 pb-1' : 'min-w-[100px] max-w-[150px]'}`}>
+                                                                        <label className="text-[9px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block text-center">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -1001,14 +1040,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {cpFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                                                        <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-1.5 space-y-1.5 shadow-sm">
+                                                            <label className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">
                                                                 CP Readings
                                                             </label>
-                                                            <div className="grid grid-cols-4 gap-2">
+                                                            <div className="flex flex-wrap gap-2">
                                                                 {cpFields.map((p: any, idx: number) => (
-                                                                    <div key={p.name || `cp-${idx}`} className="space-y-1">
-                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                    <div key={p.name || `cp-${idx}`} className="space-y-0.5 flex-grow min-w-[90px] max-w-[140px]">
+                                                                        <label className="text-[9px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block text-center">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -1019,14 +1058,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {locationFields.length > 0 && (
-                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                            <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                                                        <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-1.5 space-y-1.5 shadow-sm">
+                                                            <label className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">
                                                                 Toe & Weld Descriptions
                                                             </label>
-                                                            <div className="grid grid-cols-4 gap-2">
+                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                                                 {locationFields.map((p: any, idx: number) => (
-                                                                    <div key={p.name || `loc-${idx}`} className="space-y-1">
-                                                                        <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                                                    <div key={p.name || `loc-${idx}`} className="space-y-0.5">
+                                                                        <label className="text-[9px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block text-center">
                                                                             {p.label || p.name}
                                                                         </label>
                                                                         {renderInspectionField(p, 'primary')}
@@ -1037,15 +1076,18 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     )}
 
                                                     {restFields.length > 0 && (
-                                                        <div className="grid grid-cols-3 gap-x-4 gap-y-2">
-                                                            {restFields.map((p: any, idx: number) => (
-                                                                <div key={p.name || `rest-${idx}`} className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-3' : 'space-y-1'}>
-                                                                    <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase truncate block">
-                                                                        {p.label || p.name}
-                                                                    </label>
-                                                                    {renderInspectionField(p, 'primary')}
-                                                                </div>
-                                                            ))}
+                                                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-x-3 gap-y-1.5">
+                                                            {restFields.map((p: any, idx: number) => {
+                                                                const isFullWidth = p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea';
+                                                                return (
+                                                                    <div key={p.name || `rest-${idx}`} className={`${isFullWidth ? 'col-span-full' : 'col-span-2'} space-y-0.5`}>
+                                                                        <label className="text-[9px] font-bold text-slate-800 dark:text-slate-200 uppercase truncate block">
+                                                                            {p.label || p.name}
+                                                                        </label>
+                                                                        {renderInspectionField(p, 'primary')}
+                                                                    </div>
+                                                                );
+                                                            })}
                                                         </div>
                                                     )}
                                                 </div>
@@ -1226,22 +1268,25 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 </div>
                                             );
                                         })() : (
-                                            <div className="grid grid-cols-3 gap-x-4 gap-y-2.5">
+                                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-x-3 gap-y-2">
                                                 {otherFields.map((p: any, idx: number) => {
                                                     if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
                                                     if (!shouldShowField(p)) return null;
+
+                                                    const isFullWidth = p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea';
+                                                    const isNumber = p.type === 'number' || p.name?.toLowerCase().includes('rdg') || p.name?.toLowerCase().includes('value');
 
                                                     return (
                                                         <motion.div 
                                                             layout
                                                             key={`${p.name || p.label}-${idx}`} 
-                                                            className={p.name === 'cp_readings' || p.type === 'repeater' || p.type === 'textarea' ? 'col-span-3' : ''}
+                                                            className={`flex-grow ${isFullWidth ? 'min-w-full' : (isNumber ? 'min-w-[90px] max-w-[140px]' : 'min-w-[130px] max-w-[200px]')} space-y-0.5`}
                                                             initial={{ opacity: 0 }}
                                                             animate={{ opacity: 1 }}
-                                                            transition={{ delay: idx * 0.05 }}
+                                                            transition={{ delay: idx * 0.03 }}
                                                         >
-                                                            <div className="space-y-1">
-                                                                <label className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase truncate block">
+                                                            <div className="space-y-0.5">
+                                                                <label className="text-[9px] font-black text-slate-800 dark:text-slate-200 uppercase truncate block">
                                                                     {p.label || p.name}
                                                                     {p.isLegacy && <span className="ml-1 text-amber-500 dark:text-amber-400 lowercase">(L)</span>}
                                                                 </label>
@@ -1263,9 +1308,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         </motion.div>
                     </AnimatePresence>
 
-                    <div className="space-y-2 p-3 border-2 border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950 shadow-sm animate-in fade-in slide-in-from-top-2">
-                        <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">Inspection Result</label>
-                        <div className="grid grid-cols-4 gap-2">
+                    <div className="space-y-1.5 p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950 shadow-sm animate-in fade-in slide-in-from-top-1">
+                        <label className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">Inspection Result</label>
+                        <div className="grid grid-cols-4 gap-1.5">
                             <Button
                                 variant={findingType === 'Complete' ? 'default' : 'outline'}
                                 onClick={() => {
@@ -1280,7 +1325,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     }
                                     setFindingType('Complete');
                                 }}
-                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Complete' ? 'bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-green-50 dark:hover:bg-green-900/20'}`}
+                                className={`h-8 text-[10px] font-bold transition-all ${findingType === 'Complete' ? 'bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-green-50 dark:hover:bg-green-900/20'}`}
                             >
                                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Complete
                             </Button>
@@ -1291,7 +1336,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     setFindingType('Finding');
                                     setIsManualOverride(true);
                                 }}
-                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Finding' ? 'bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
+                                className={`h-8 text-[10px] font-bold transition-all ${findingType === 'Finding' ? 'bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
                             >
                                 <FileText className="w-3.5 h-3.5 mr-1" /> Finding
                             </Button>
@@ -1302,7 +1347,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     setFindingType('Anomaly');
                                     setIsManualOverride(true);
                                 }}
-                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Anomaly' ? 'bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20'}`}
+                                className={`h-8 text-[10px] font-bold transition-all ${findingType === 'Anomaly' ? 'bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20'}`}
                             >
                                 <AlertCircle className="w-3.5 h-3.5 mr-1" /> Anomaly
                             </Button>
@@ -1319,7 +1364,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     setFindingType('Incomplete');
                                     setIsManualOverride(true);
                                 }}
-                                className={`h-9 text-xs font-bold transition-all ${findingType === 'Incomplete' ? 'bg-amber-500 dark:bg-amber-600 hover:bg-amber-600 dark:hover:bg-amber-700 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-900/20'}`}
+                                className={`h-8 text-[10px] font-bold transition-all ${findingType === 'Incomplete' ? 'bg-amber-500 dark:bg-amber-600 hover:bg-amber-600 dark:hover:bg-amber-700 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-900/20'}`}
                             >
                                 <Clock className="w-3.5 h-3.5 mr-1" /> Incomplete
                             </Button>
@@ -1335,8 +1380,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                 <div className={`text-[10px] font-black uppercase tracking-widest border-b pb-2 ${isAnomaly ? 'text-red-700 dark:text-red-400 border-red-200 dark:border-red-800' : 'text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'}`}>
                                     {isAnomaly ? '⚠ Anomaly / Defect Details' : '📋 Finding Details'}
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
+                                <div className="flex flex-wrap gap-3">
+                                    <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
                                         <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">{isAnomaly ? 'Defect Code' : 'Finding Code'} *</label>
                                         <select
                                             value={anomalyData.defectCode}
@@ -1349,7 +1394,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="space-y-1.5">
+                                    <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
                                         <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">{isAnomaly ? 'Defect Type' : 'Finding Type'}</label>
                                         <select
                                             value={anomalyData.defectType}
@@ -1362,7 +1407,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="space-y-1.5">
+                                    <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
                                         <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Priority *</label>
                                         <select
                                             value={anomalyData.priority}
@@ -1375,7 +1420,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="space-y-1.5">
+                                    <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
                                         <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Reference No</label>
                                         <div className="relative">
                                             <input
@@ -1387,7 +1432,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             />
                                         </div>
                                     </div>
-                                    <div className="space-y-1.5 col-span-2">
+                                    <div className="space-y-1.5 flex-grow min-w-full">
                                         <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Recommendation</label>
                                         <textarea
                                             value={anomalyData.recommendedAction}
@@ -1600,7 +1645,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             </div>
         </ScrollArea>
 
-            <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0">
+            <div className="p-2 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0">
                 {(() => {
                     const isDepActive = !!activeDep && activeDep.raw?.status !== 'COMPLETED';
                     const isAtWorksite = ["Arrived Bottom", "Diver at Worksite", "Bell at Working Depth", "Diver Locked Out", "AT_WORKSITE", "At Worksite", "Rov at the Worksite"].some(ws => currentMovement?.toUpperCase().includes(ws.toUpperCase()));
@@ -1628,8 +1673,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     </div>
                                 </div>
                             )}
-                            <Button disabled={isCommitting || !canCommit} onClick={handleCommitRecord} className={`w-full h-11 font-black shadow-lg text-white text-sm tracking-wide rounded-lg transition-all ${canCommit ? 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98]' : 'bg-slate-300 cursor-not-allowed'}`}>
-                                {isCommitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 
+                            <Button disabled={isCommitting || !canCommit} onClick={handleCommitRecord} className={`w-full h-9 font-black shadow-lg text-white text-xs tracking-wide rounded-lg transition-all ${canCommit ? 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98]' : 'bg-slate-300 cursor-not-allowed'}`}>
+                                {isCommitting ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-2" />} 
                                 {isCommitting ? "Committing..." : (isEditing ? "Update Record" : "Commit Record & Reset")}
                             </Button>
                         </div>

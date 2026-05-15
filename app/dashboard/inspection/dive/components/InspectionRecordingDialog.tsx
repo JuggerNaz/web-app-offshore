@@ -719,16 +719,26 @@ export default function InspectionRecordingDialog({
             // Try to find AT_WORKSITE and LEAVING_WORKSITE movements
             const { data: movements } = await supabase
                 .from('insp_dive_movements')
-                .select('movement_type, movement_time')
+                .select('activity, timestamp')
                 .eq('dive_job_id', diveJob.dive_job_id);
 
             if (movements && movements.length > 0) {
-                const atWorksite = movements.find(m => m.movement_type === 'AT_WORKSITE');
-                const leavingWorksite = movements.find(m => m.movement_type === 'LEAVING_WORKSITE');
+                // Find worksite entry/exit. Handle both internal values and human-readable labels.
+                const atWorksite = movements.find(m => 
+                    m.activity === 'AT_WORKSITE' || 
+                    m.activity === 'Arrived Bottom' || 
+                    m.activity === 'Diver at Worksite' || 
+                    m.activity === 'Bell at Working Depth'
+                );
+                const leavingWorksite = movements.find(m => 
+                    m.activity === 'LEAVING_WORKSITE' || 
+                    m.activity === 'Diver Left Worksite' || 
+                    m.activity === 'Left Bottom'
+                );
 
-                if (atWorksite && atWorksite.movement_time) {
-                    const startLimit = new Date(atWorksite.movement_time).getTime();
-                    let endLimit = leavingWorksite?.movement_time ? new Date(leavingWorksite.movement_time).getTime() : new Date().getTime(); // up to current time if not left yet
+                if (atWorksite && atWorksite.timestamp) {
+                    const startLimit = new Date(atWorksite.timestamp).getTime();
+                    let endLimit = leavingWorksite?.timestamp ? new Date(leavingWorksite.timestamp).getTime() : new Date().getTime(); // up to current time if not left yet
 
                     if (inspDate < startLimit || (leavingWorksite && inspDate > endLimit)) {
                         const confirmed = window.confirm(

@@ -67,6 +67,7 @@ interface InspectionHeaderProps {
     jobPackId?: string | null;
     structureId?: string | null;
     onSummaryOpen?: () => void;
+    onResetLayout?: () => void;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
@@ -109,7 +110,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateFullInspectionReport,
     jobPackId,
     structureId,
-    onSummaryOpen
+    onSummaryOpen,
+    onResetLayout
 }) => {
     return (
         <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0">
@@ -399,19 +401,31 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                 </DropdownMenu>
  
                 {jobPackId && structureId ? (
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="bg-blue-600 border-blue-700 text-white hover:bg-blue-700 hover:text-white h-8"
-                        onClick={() => {
-                            const structType = headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM';
-                            const currentUrl = window.location.href;
-                            const returnTo = encodeURIComponent(currentUrl);
-                            router.push(`/dashboard/jobpack/${jobPackId}?tab=sow&structure=${structType}-${structureId}&returnTo=${returnTo}`);
-                        }}
-                    >
-                        <Grid3X3 className="w-4 h-4 mr-2" /> Workspace
-                    </Button>
+                    <div className="flex bg-slate-800 rounded p-0.5 border border-slate-700">
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-slate-400 hover:text-white h-7 px-2 text-[10px] font-black uppercase tracking-tighter"
+                            onClick={onResetLayout}
+                            title="Reset panels to default positions"
+                        >
+                            Reset UI
+                        </Button>
+                        <div className="w-px h-4 bg-slate-700 my-auto mx-0.5" />
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="bg-blue-600/90 text-white hover:bg-blue-600 h-7 px-3 text-[10px] font-black uppercase tracking-widest"
+                            onClick={() => {
+                                const structType = headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM';
+                                const currentUrl = window.location.href;
+                                const returnTo = encodeURIComponent(currentUrl);
+                                router.push(`/dashboard/jobpack/${jobPackId}?tab=sow&structure=${structType}-${structureId}&returnTo=${returnTo}`);
+                            }}
+                        >
+                            <Grid3X3 className="w-3.5 h-3.5 mr-1.5" /> Workspace
+                        </Button>
+                    </div>
                 ) : (
                     <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-400 h-8 cursor-not-allowed opacity-50" disabled>
                         <Grid3X3 className="w-4 h-4 mr-2" /> Workspace

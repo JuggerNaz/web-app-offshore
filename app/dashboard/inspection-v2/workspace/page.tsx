@@ -41,7 +41,6 @@ import {
   History,
   Info,
   Layers,
-  Layout,
   LayoutDashboard,
   LineChart,
   List,
@@ -79,6 +78,17 @@ import {
   Settings2,
   GripVertical,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+
+function formatCounter(seconds: number | string): string {
+  const totalSeconds = typeof seconds === "string" ? parseFloat(seconds) : seconds;
+  if (isNaN(totalSeconds)) return "00:00:00";
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = Math.floor(totalSeconds % 60);
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -124,7 +134,6 @@ import ROVMovementLog from "../../inspection/rov/components/ROVMovementLog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -182,6 +191,15 @@ import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { WorkspaceResources } from "./components/WorkspaceResources";
 import { useROVConnection } from "@/components/rov-connection-provider";
+import { Layout, Model, TabNode, IJsonModel } from "flexlayout-react";
+import "flexlayout-react/style/dark.css";
+import { DiverLogPanel } from "./_components/panels/DiverLogPanel";
+import { VideoLogPanel } from "./_components/panels/VideoLogPanel";
+import { InspectionFormPanel } from "./_components/panels/InspectionFormPanel";
+import { EventsTablePanel } from "./_components/panels/EventsTablePanel";
+import { ComponentListPanel } from "./_components/panels/ComponentListPanel";
+import { HistoryDataPanel } from "./_components/panels/HistoryDataPanel";
+
 
 export default function WorkspaceV2Page() {
   return (
@@ -197,11 +215,11 @@ export default function WorkspaceV2Page() {
   );
 }
 
+const supabase = createClient();
+
 function V10PreviewLayout() {
-  console.log("[DEBUG] V10PreviewLayout Reached - Route is active");
   const searchParams = useSearchParams();
   const router = useRouter();
-  const supabase = createClient();
   const queryClient = useQueryClient();
 
   const jobPackId = searchParams.get("jobpack");
@@ -222,12 +240,12 @@ function V10PreviewLayout() {
     }
   }, [structureId, setGlobalUrlId, setGlobalUrlType]);
 
-  // Force-refresh SOW and Component lists upon entering/returning to this screen
-  useEffect(() => {
-    if (queryClient && (structureId || sowIdFull)) {
-      queryClient.invalidateQueries({ queryKey: ["sow-data"] });
-    }
-  }, [queryClient, structureId, sowIdFull]);
+  // // Force-refresh SOW and Component lists upon entering/returning to this screen
+  // useEffect(() => {
+  //   if (queryClient && (structureId || sowIdFull)) {
+  //     queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+  //   }
+  // }, [queryClient, structureId, sowIdFull]);
 
   const compIdParam = searchParams.get("compId");
   const recordIdParam = searchParams.get("recordId");
@@ -315,6 +333,126 @@ function V10PreviewLayout() {
       ...columnSettings.filter((c) => c.visible),
     ];
   }, [columnSettings]);
+
+  // --- DOCKABLE LAYOUT STATE ---
+  const [layoutModel, setLayoutModel] = useState<Model | null>(null);
+  const [videoLogExpanded, setVideoLogExpanded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const savedLayout = localStorage.getItem("inspection-workspace-layout-v2");
+    if (savedLayout && savedLayout !== "[object Object]" && savedLayout.startsWith("{")) {
+      try {
+        let parsed = JSON.parse(savedLayout);
+        if (typeof parsed === 'string') {
+          parsed = JSON.parse(parsed);
+        }
+        if (parsed && parsed.layout && parsed.layout.children && parsed.layout.children.length > 0) {
+          console.log("[DEBUG] Restoring layout from storage", parsed);
+          setLayoutModel(Model.fromJson(parsed));
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to restore layout from storage", e);
+      }
+    }
+
+    console.log("[DEBUG] Using default layout model");
+    const defaultModel: IJsonModel = {
+      global: { 
+        tabEnableClose: false, 
+        tabSetEnableMaximize: true,
+      },
+      layout: {
+        type: "row",
+        weight: 100,
+        children: [
+          {
+            type: "row",
+            weight: 20,
+            children: [
+              {
+                type: "tabset",
+                weight: 35,
+                children: [
+                  { type: "tab", name: "Diver Log", component: "opsLog" },
+                ],
+              },
+              {
+                type: "tabset",
+                weight: 35,
+                children: [
+                  { type: "tab", name: "Video Log", component: "videoLog" },
+                ],
+              },
+              {
+                type: "tabset",
+                weight: 30,
+                children: [
+                  { type: "tab", name: "Live Preview", component: "videoPreview" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "row",
+            weight: 55,
+            children: [
+              {
+                type: "tabset",
+                weight: 65,
+                children: [
+                  { type: "tab", name: "Inspection Form", component: "form" },
+                ],
+              },
+              {
+                type: "tabset",
+                weight: 35,
+                children: [
+                  { type: "tab", name: "Captured Events", component: "events" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "row",
+            weight: 25,
+            children: [
+              {
+                type: "tabset",
+                weight: 55,
+                children: [
+                  { type: "tab", name: "Component List", component: "components" },
+                ],
+              },
+              {
+                type: "tabset",
+                weight: 45,
+                children: [
+                  { type: "tab", name: "History Data", component: "history" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    setLayoutModel(Model.fromJson(defaultModel));
+  }, []);
+
+  const onLayoutChange = useCallback((model: Model) => {
+    localStorage.setItem("inspection-workspace-layout-v2", JSON.stringify(model.toJson()));
+    setLayoutModel(model);
+  }, []);
+
+  const handleResetLayout = useCallback(() => {
+    if (confirm("Are you sure you want to reset the cockpit layout to default? All panel positions will be restored.")) {
+      localStorage.removeItem("inspection-workspace-layout-v2");
+      window.location.reload();
+    }
+  }, []);
+
 
   // Fetch Global Unit Preference
   useEffect(() => {
@@ -725,6 +863,14 @@ function V10PreviewLayout() {
     "Complete"
   );
   const [isUserInteraction, setIsUserInteraction] = useState(false);
+
+  useEffect(() => {
+    if (isUserInteraction) {
+      console.log("[SYNC] User interaction detected, invalidating queries...");
+      queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+      setIsUserInteraction(false);
+    }
+  }, [isUserInteraction, queryClient]);
   const [anomalyData, setAnomalyData] = useState<{
     defectCode: string;
     priority: string;
@@ -1511,173 +1657,201 @@ function V10PreviewLayout() {
     async function fetchHeaderInfo() {
       if (!jobPackId || !structureId) return;
 
+      const currentParams = new URLSearchParams(window.location.search);
       let jobpackName = jpParam || `JP-${jobPackId}`;
       let platformName = strParam || "Unknown Structure";
       let sowReportNo = sowParam || "Unknown Report";
       let waterDepth = 0;
 
-      // Fetch Jobpack Name
-      if (!jpParam) {
-        const { data: jpData } = await supabase
+      try {
+        // Fetch Jobpack Name
+        if (!jpParam) {
+          const { data: jpData } = await supabase
+            .from("jobpack")
+            .select("name")
+            .eq("id", Number(jobPackId))
+            .single();
+          if (jpData?.name) {
+            jobpackName = jpData.name;
+            if (!currentParams.get("jpName")) {
+              currentParams.set("jpName", jpData.name);
+              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+            }
+          }
+        }
+
+        // Fetch Structure Type for data acquisition
+        let detectedStructureType: "platform" | "pipeline" = "platform";
+        const { data: strTypeData } = await supabase
+          .from("structure")
+          .select("str_type")
+          .eq("str_id", Number(structureId))
+          .single();
+        if (strTypeData?.str_type) {
+          detectedStructureType = strTypeData.str_type.toLowerCase().includes("pipeline")
+            ? "pipeline"
+            : "platform";
+        }
+
+        // Always fetch from platform table — it has 'title' (name) and 'depth' (water depth)
+        if (detectedStructureType === "platform") {
+          const { data: platData } = (await supabase
+            .from("platform" as any)
+            .select("title, depth")
+            .eq("plat_id", Number(structureId))
+            .maybeSingle()) as any;
+
+          if (platData) {
+            setHeaderData((prev) => ({
+              ...prev,
+              platformName: platData.title || prev.platformName,
+              waterDepth: platData.depth || prev.waterDepth,
+              structureType: "platform",
+            }));
+            if (!strParam && platData.title && !currentParams.get("structName")) {
+              currentParams.set("structName", platData.title);
+              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+            }
+            if (!strParam && platData.title) platformName = platData.title;
+            if (platData.depth) waterDepth = Number(platData.depth);
+          }
+        } else {
+          // Fetch from pipeline
+          const { data: pipeData } = (await supabase
+            .from("u_pipeline" as any)
+            .select("pipeline_name, water_depth")
+            .eq("pipe_id", Number(structureId))
+            .maybeSingle()) as any;
+
+          if (pipeData) {
+            setHeaderData((prev) => ({
+              ...prev,
+              platformName: pipeData.pipeline_name || prev.platformName,
+              structureType: "pipeline",
+            }));
+            if (!strParam && pipeData.pipeline_name && !currentParams.get("structName")) {
+              currentParams.set("structName", pipeData.pipeline_name);
+              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+            }
+            if (!strParam && pipeData.pipeline_name) platformName = pipeData.pipeline_name;
+            if (pipeData.water_depth) waterDepth = Number(pipeData.water_depth);
+          }
+        }
+
+        // Resolve SOW ID and Report Number
+        if (!sowId) {
+          // Try to resolve SOW by (Jobpack + Structure) AND Report Number (if available)
+          let sowQuery = supabase
+            .from("u_sow")
+            .select("id, report_number")
+            .eq("jobpack_id", Number(jobPackId))
+            .eq("structure_id", Number(structureId));
+
+          if (sowParam) {
+            sowQuery = sowQuery.eq("report_number", sowParam);
+          }
+
+          const { data: resolvedSow } = await sowQuery
+            .order("id", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (resolvedSow) {
+            if (resolvedSow.report_number) sowReportNo = resolvedSow.report_number;
+            // Patch the URL so the workspace knows the sow going forward
+            if (!currentParams.get("sow")) {
+              currentParams.set("sow", String(resolvedSow.id));
+              router.replace(`${window.location.pathname}?${currentParams.toString()}`, {
+                scroll: false,
+              });
+            }
+          } else if (sowParam) {
+            // Create it if sowParam is provided but no record exists yet
+            const userRes = await supabase.auth.getUser();
+            const userId = userRes.data.user?.id || "system";
+            const { data: newSow } = await supabase
+              .from("u_sow")
+              .insert({
+                jobpack_id: Number(jobPackId),
+                structure_id: Number(structureId),
+                structure_type: detectedStructureType === "pipeline" ? "PIPELINE" : "PLATFORM",
+                structure_title: platformName,
+                report_number: sowParam,
+                total_items: 0,
+                completed_items: 0,
+                incomplete_items: 0,
+                pending_items: 0,
+                status: "pending",
+                created_by: userId,
+              })
+              .select("id")
+              .single();
+
+            if (newSow) {
+              currentParams.set("sow", String(newSow.id));
+              router.replace(`${window.location.pathname}?${currentParams.toString()}`, {
+                scroll: false,
+              });
+            }
+          }
+        } else if (!sowParam && sowId) {
+          const { data: sowItemData } = await supabase
+            .from("u_sow_items")
+            .select("report_number")
+            .eq("sow_id", sowId)
+            .not("report_number", "is", null)
+            .limit(1);
+
+          if (sowItemData && sowItemData.length > 0) {
+            sowReportNo = sowItemData[0].report_number;
+          } else if (sowIdFull && sowIdFull.includes("-")) {
+            sowReportNo = sowIdFull.split("-").slice(1).join("-");
+          } else {
+            sowReportNo = sowIdFull || `SOW-${sowId}`;
+          }
+
+          // Sanitize if it's a filter string from a malformed link
+          if (sowReportNo && sowReportNo.includes("=")) {
+            sowReportNo = sowReportNo.split("=").pop() || sowReportNo;
+          }
+        }
+
+        // Fetch Vessel from Jobpack
+        let vessel = "N/A";
+        const { data: jpMetadata } = await supabase
           .from("jobpack")
-          .select("name")
+          .select("metadata")
           .eq("id", Number(jobPackId))
           .single();
-        if (jpData?.name) jobpackName = jpData.name;
-      }
-
-      // Fetch Structure Type for data acquisition
-      let detectedStructureType: "platform" | "pipeline" = "platform";
-      const { data: strTypeData } = await supabase
-        .from("structure")
-        .select("str_type")
-        .eq("str_id", Number(structureId))
-        .single();
-      if (strTypeData?.str_type) {
-        detectedStructureType = strTypeData.str_type.toLowerCase().includes("pipeline")
-          ? "pipeline"
-          : "platform";
-      }
-
-      // Always fetch from platform table — it has 'title' (name) and 'depth' (water depth)
-      if (detectedStructureType === "platform") {
-        const { data: platData } = (await supabase
-          .from("platform" as any)
-          .select("title, depth")
-          .eq("plat_id", Number(structureId))
-          .maybeSingle()) as any;
-
-        if (platData) {
-          if (!strParam && platData.title) platformName = platData.title;
-          if (platData.depth) waterDepth = Number(platData.depth);
-        }
-      } else {
-        // Fetch from pipeline
-        const { data: pipeData } = (await supabase
-          .from("u_pipeline" as any)
-          .select("pipeline_name, water_depth")
-          .eq("pipe_id", Number(structureId))
-          .maybeSingle()) as any;
-
-        if (pipeData) {
-          if (!strParam && pipeData.pipeline_name) platformName = pipeData.pipeline_name;
-          if (pipeData.water_depth) waterDepth = Number(pipeData.water_depth);
-        }
-      }
-
-      // Resolve SOW ID and Report Number
-      if (!sowId) {
-        // Try to resolve SOW by (Jobpack + Structure) AND Report Number (if available)
-        let sowQuery = supabase
-          .from("u_sow")
-          .select("id, report_number")
-          .eq("jobpack_id", Number(jobPackId))
-          .eq("structure_id", Number(structureId));
-
-        if (sowParam) {
-          sowQuery = sowQuery.eq("report_number", sowParam);
-        }
-
-        const { data: resolvedSow } = await sowQuery
-          .order("id", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (resolvedSow) {
-          if (resolvedSow.report_number) sowReportNo = resolvedSow.report_number;
-          // Patch the URL so the workspace knows the sow going forward
-          const newParams = new URLSearchParams(window.location.search);
-          if (!newParams.get("sow")) {
-            newParams.set("sow", String(resolvedSow.id));
-            router.replace(`${window.location.pathname}?${newParams.toString()}`, {
-              scroll: false,
-            });
-          }
-        } else if (sowParam) {
-          // Create it if sowParam is provided but no record exists yet
-          const userRes = await supabase.auth.getUser();
-          const userId = userRes.data.user?.id || "system";
-          const { data: newSow } = await supabase
-            .from("u_sow")
-            .insert({
-              jobpack_id: Number(jobPackId),
-              structure_id: Number(structureId),
-              structure_type: detectedStructureType === "pipeline" ? "PIPELINE" : "PLATFORM",
-              structure_title: platformName,
-              report_number: sowParam,
-              total_items: 0,
-              completed_items: 0,
-              incomplete_items: 0,
-              pending_items: 0,
-              status: "pending",
-              created_by: userId,
-            })
-            .select("id")
-            .single();
-
-          if (newSow) {
-            const newParams = new URLSearchParams(window.location.search);
-            newParams.set("sow", String(newSow.id));
-            router.replace(`${window.location.pathname}?${newParams.toString()}`, {
-              scroll: false,
-            });
+        if (jpMetadata?.metadata) {
+          const meta = jpMetadata.metadata as any;
+          if (
+            meta.vessel_history &&
+            Array.isArray(meta.vessel_history) &&
+            meta.vessel_history.length > 0
+          ) {
+            vessel = meta.vessel_history.map((v: any) => v.name || v).join(", ");
+          } else if (meta.vessel) {
+            vessel = meta.vessel;
           }
         }
-      } else if (!sowParam && sowId) {
-        const { data: sowItemData } = await supabase
-          .from("u_sow_items")
-          .select("report_number")
-          .eq("sow_id", sowId)
-          .not("report_number", "is", null)
-          .limit(1);
 
-        if (sowItemData && sowItemData.length > 0) {
-          sowReportNo = sowItemData[0].report_number;
-        } else if (sowIdFull && sowIdFull.includes("-")) {
-          sowReportNo = sowIdFull.split("-").slice(1).join("-");
-        } else {
-          sowReportNo = sowIdFull || `SOW-${sowId}`;
-        }
-
-        // Sanitize if it's a filter string from a malformed link
-        if (sowReportNo && sowReportNo.includes("=")) {
-          sowReportNo = sowReportNo.split("=").pop() || sowReportNo;
-        }
+        setHeaderData({
+          jobpackName,
+          platformName,
+          sowReportNo,
+          jobType: jtParam || "",
+          structureType: detectedStructureType,
+          waterDepth,
+          vessel,
+        });
+        setGlobalUrlType(detectedStructureType);
+      } catch (err) {
+        console.error("fetchHeaderInfo error", err);
       }
-
-      // Fetch Vessel from Jobpack
-      let vessel = "N/A";
-      const { data: jpMetadata } = await supabase
-        .from("jobpack")
-        .select("metadata")
-        .eq("id", Number(jobPackId))
-        .single();
-      if (jpMetadata?.metadata) {
-        const meta = jpMetadata.metadata as any;
-        if (
-          meta.vessel_history &&
-          Array.isArray(meta.vessel_history) &&
-          meta.vessel_history.length > 0
-        ) {
-          vessel = meta.vessel_history.map((v: any) => v.name || v).join(", ");
-        } else if (meta.vessel) {
-          vessel = meta.vessel;
-        }
-      }
-
-      setHeaderData({
-        jobpackName,
-        platformName,
-        sowReportNo,
-        jobType: jtParam || "",
-        structureType: detectedStructureType,
-        waterDepth,
-        vessel,
-      });
-      setGlobalUrlType(detectedStructureType);
     }
     fetchHeaderInfo();
-  }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam]);
+  }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam, router]);
 
   useEffect(() => {
     if ((findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo) {
@@ -2547,7 +2721,7 @@ function V10PreviewLayout() {
           .from(movTable)
           .select("*")
           .eq(movCol, depId)
-          .order("movement_time", { ascending: true }),
+          .order(inspMethod === "DIVING" ? "timestamp" : "movement_time", { ascending: true }),
         supabase
           .from("insp_video_tapes")
           .select("*")
@@ -2563,23 +2737,38 @@ function V10PreviewLayout() {
 
       if (movs && movs.length > 0) {
         const last = movs[movs.length - 1];
-        let mvtLabel = last.movement_type || "Awaiting Deployment";
+        let mvtLabel = "Awaiting Deployment";
+        
         if (inspMethod === "DIVING") {
+          mvtLabel = last.activity || "Awaiting Deployment";
           const mappedItem = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(
             (a) => a.value === mvtLabel || a.label === mvtLabel
           );
           if (mappedItem) mvtLabel = mappedItem.label;
+          setDiveStartTime(last.timestamp || last.event_time);
+        } else {
+          mvtLabel = last.movement_type || "Awaiting Deployment";
+          setDiveStartTime(last.movement_time || last.event_time);
         }
+        
         setCurrentMovement(mvtLabel);
-        setDiveStartTime(movs[0].movement_time || movs[0].event_time);
 
-        const recoveryEvent = movs.find(
-          (m) =>
-            m.movement_type?.toLowerCase().includes("arrived surface") ||
-            m.movement_type?.toLowerCase().includes("recovered") ||
-            m.movement_type === "BACK_TO_SURFACE"
-        );
-        setDiveEndTime(recoveryEvent?.movement_time || recoveryEvent?.event_time || null);
+        const recoveryEvent = movs.find((m) => {
+          const type = (m.activity || m.movement_type || "").toLowerCase();
+          return (
+            type.includes("arrived surface") ||
+            type.includes("recovered") ||
+            type.includes("back to surface") ||
+            type === "back_to_surface" ||
+            type === "rov recovered"
+          );
+        });
+        
+        const endTime = inspMethod === "DIVING" 
+          ? (recoveryEvent?.timestamp || recoveryEvent?.event_time) 
+          : (recoveryEvent?.movement_time || recoveryEvent?.event_time);
+          
+        setDiveEndTime(endTime || null);
       } else {
         setCurrentMovement("Awaiting Deployment");
         setDiveStartTime(null);
@@ -4217,6 +4406,26 @@ function V10PreviewLayout() {
     }
   };
 
+  const handlePrevDep = () => {
+    if (!activeDep || deployments.length <= 1) return;
+    const idx = deployments.findIndex(d => String(d.id) === String(activeDep.id));
+    if (idx > 0) {
+      setActiveDep(deployments[idx - 1]);
+    } else {
+        toast.info("This is the first dive");
+    }
+  };
+
+  const handleNextDep = () => {
+    if (!activeDep || deployments.length <= 1) return;
+    const idx = deployments.findIndex(d => String(d.id) === String(activeDep.id));
+    if (idx !== -1 && idx < deployments.length - 1) {
+      setActiveDep(deployments[idx + 1]);
+    } else {
+        toast.info("This is the latest dive");
+    }
+  };
+
   const getReportHeaderData = async () => {
     // Try to fetch from standard API first
     try {
@@ -5678,76 +5887,339 @@ function V10PreviewLayout() {
     }
   };
 
-  const renderStreamUI = () => (
-    <VideoInterface
-      onPopOut={handlePopOutStream}
-      onStopStream={() => setStreamActive(false)}
-      pipActive={!!pipWindow}
-      onCapturePhoto={handleGrabPhoto}
-      onStartRecording={handleStartStreamRecording}
-      vidState={vidState}
-      vidTimer={vidTimer}
-      tapeNo={tapeNo}
-      videoVisible={videoVisible}
-      setVideoVisible={setVideoVisible}
-      streamActive={streamActive}
-      setStreamActive={setStreamActive}
-      isStreamRecording={isStreamRecording}
-      isStreamPaused={isStreamPaused}
-      previewStream={previewStream}
-      videoRef={videoRef}
-      canvasRef={canvasRef}
-      onPauseRecording={handlePauseStreamRecording}
-      onResumeRecording={handleResumeStreamRecording}
-      onStopRecording={handleStopStreamRecording}
-      onToggleRecording={handleToggleStreamRecording}
-      formatTime={formatTime}
-      showDrawingTools={showDrawingTools}
-      setShowDrawingTools={setShowDrawingTools}
-    />
+
+  const layoutFactory = useCallback((node: TabNode) => {
+    const component = node.getComponent();
+    const name = node.getName();
+    console.log("[DEBUG] layoutFactory rendering component:", component, "with name:", name);
+
+    switch (component) {
+      case "opsLog":
+        return (
+          <DiverLogPanel
+            inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
+            activeDep={activeDep}
+            timeInWater={timeInWater}
+            currentMovement={currentMovement}
+            diveStartTime={diveStartTime}
+            diveEndTime={diveEndTime}
+            setIsDiveSetupForNew={setIsDiveSetupForNew}
+            setIsDiveSetupOpen={setIsDiveSetupOpen}
+            setIsMovementLogOpen={setIsMovementLogOpen}
+            handleMovementPrev={handleMovementPrev}
+            handleMovementNext={handleMovementNext}
+            handleMovementLog={handleMovementLog}
+            handlePrevDep={handlePrevDep}
+            handleNextDep={handleNextDep}
+            diveActionsList={diveActionsList}
+            ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+          />
+        );
+       case "videoLog":
+        return (
+          <div className="flex flex-col h-full bg-[#0f172a] overflow-hidden">
+            <div className="p-2 shrink-0">
+               <TapeManagementCard
+                vidState={vidState}
+                vidTimer={vidTimer}
+                tapeId={tapeId}
+                tapeNo={tapeNo}
+                activeChapter={activeChapter}
+                jobTapes={jobTapes}
+                handleLogEvent={handleLogEvent}
+                setTapeId={setTapeId}
+                setTapeNo={setTapeNo}
+                setActiveChapter={setActiveChapter}
+                setIsNewTapeOpen={setIsNewTapeOpen}
+                handleOpenEditTape={handleOpenEditTape}
+                formatTime={formatTime}
+                onOpenHistory={() => setVideoLogExpanded(true)}
+              />
+            </div>
+            <div className="flex-1 min-h-0 border-t border-slate-800 overflow-hidden bg-slate-900/50">
+               <TapeLogEvents
+                videoEvents={videoEvents}
+                handleDeleteEvent={handleDeleteEvent}
+                onEditEvent={(ev) => setEditingEvent(ev)}
+                expanded={videoLogExpanded}
+                setExpanded={setVideoLogExpanded}
+                inline={true}
+              />
+            </div>
+          </div>
+        );
+      case "videoPreview":
+        return (
+          <VideoInterface
+            videoRef={videoRef}
+            canvasRef={canvasRef}
+            vidState={vidState}
+            streamActive={streamActive}
+            setStreamActive={setStreamActive}
+            vidTimer={vidTimer}
+            tapeNo={tapeNo}
+            videoVisible={videoVisible}
+            setVideoVisible={setVideoVisible}
+            isStreamRecording={isStreamRecording}
+            isStreamPaused={isStreamPaused}
+            previewStream={previewStream}
+            onStartRecording={handleStartStreamRecording}
+            onPauseRecording={handlePauseStreamRecording}
+            onResumeRecording={handleResumeStreamRecording}
+            onStopRecording={handleStopStreamRecording}
+            onCapturePhoto={handleGrabPhoto}
+            onToggleRecording={handleToggleStreamRecording}
+            onPopOut={handlePopOutStream}
+            onStopStream={() => setStreamActive(false)}
+            pipActive={!!pipWindow}
+            formatTime={formatTime}
+            showDrawingTools={showDrawingTools}
+            setShowDrawingTools={setShowDrawingTools}
+          />
+        );
+      case "form":
+        return (
+          <InspectionFormPanel
+            selectedComp={selectedComp}
+            editingRecordId={editingRecordId}
+            activeSpec={activeSpec}
+            resetForm={resetForm}
+            FORM_AREA_ID={FORM_AREA_ID}
+            setIsAddInspOpen={setIsAddInspOpen}
+            activeMGIProfile={activeMGIProfile}
+            allInspectionTypes={allInspectionTypes}
+            activeFormProps={activeFormProps}
+            findingType={findingType}
+            setFindingType={setFindingType}
+            renderInspectionField={renderInspectionField}
+            dynamicProps={dynamicProps}
+            handleDynamicPropChange={handleDynamicPropChange}
+            anomalyData={anomalyData}
+            setAnomalyData={setAnomalyData}
+            defectCodes={defectCodes}
+            allDefectTypes={allDefectTypes}
+            availableDefectTypes={availableDefectTypes}
+            priorities={priorities}
+            headerData={headerData}
+            manualOverride={manualOverride}
+            setManualOverride={setManualOverride}
+            setLastAutoMatchedRuleId={setLastAutoMatchedRuleId}
+            handleCommitRecord={handleCommitRecord}
+            handleGrabPhoto={handleGrabPhoto}
+            isCommitting={isCommitting}
+            vidTimer={vidTimer}
+            formatTime={formatTime}
+            setCompSpecDialogOpen={setCompSpecDialogOpen}
+            incompleteReason={incompleteReason}
+            setIncompleteReason={setIncompleteReason}
+            recordNotes={recordNotes}
+            setRecordNotes={setRecordNotes}
+            pendingAttachments={pendingAttachments}
+            setPendingAttachments={setPendingAttachments}
+            deletedAttachmentIds={deletedAttachmentIds}
+            setDeletedAttachmentIds={setDeletedAttachmentIds}
+            setEditingAttachment={setEditingAttachment}
+            setIsAttachmentManagerOpen={setIsAttachmentManagerOpen}
+            recordedFiles={recordedFiles}
+            activeDep={activeDep}
+            currentMovement={currentMovement}
+            tapeId={tapeId}
+            vidState={vidState}
+            setShowTaskSelector={setShowTaskSelector}
+            setShowCompSelector={setShowCompSelector}
+            libOptionsMap={libOptionsMap}
+            handleDeleteRecord={handleDeleteRecord}
+            currentRecords={currentRecords}
+            handlePrintAnomaly={handlePrintAnomaly}
+          />
+        );
+      case "events":
+        return (
+          <EventsTablePanel
+            syncLoading={syncLoading}
+            recordSearchQuery={recordSearchQuery}
+            setRecordSearchQuery={setRecordSearchQuery}
+            displayRecords={displayRecords}
+            sortedRecords={sortedRecords}
+            capturedEventsPipWindow={capturedEventsPipWindow}
+            handlePopoutCapturedEvents={handlePopoutCapturedEvents}
+            activeTableColumns={activeTableColumns}
+            columnSettings={columnSettings}
+            handleMoveColumn={handleMoveColumn}
+            toggleColumnVisibility={toggleColumnVisibility}
+            handleSort={handleSort}
+            sortConfig={sortConfig}
+            handleEditRecord={handleEditRecord}
+            handlePrintAnomaly={handlePrintAnomaly}
+            handleDeleteRecord={handleDeleteRecord}
+            setViewingRecordAttachments={setViewingRecordAttachments}
+            supabase={supabase}
+          />
+        );
+      case "components":
+        return (
+          <ComponentListPanel
+            compView={compView}
+            setCompView={setCompView}
+            compSearchTerm={compSearchTerm}
+            setCompSearchTerm={setCompSearchTerm}
+            componentsSow={componentsSow}
+            componentsNonSow={componentsNonSow}
+            selectedComp={selectedComp}
+            handleComponentSelection={handleComponentSelection}
+            setCompSpecDialogOpen={setCompSpecDialogOpen}
+            currentRecords={currentRecords}
+            currentCompRecords={currentCompRecords}
+            historicalRecords={historicalRecords}
+            historyLoading={historyLoading}
+            inspMethod={inspMethod}
+            supabase={supabase}
+            structureId={structureId ? Number(structureId) : 0}
+            onRefreshComponents={() => { queryClient.invalidateQueries({ queryKey: ["sow-data"] }); }}
+            allInspectionTypes={allInspectionTypes}
+            structureType={headerData.structureType === "pipeline" ? "pipeline" : "platform"}
+            unitSystem={unitSystem}
+            handleEditRecord={handleEditRecord}
+          />
+        );
+      case "history":
+        return (
+          <HistoryDataPanel
+            historicalRecords={historicalRecords}
+            historyLoading={historyLoading}
+            handleEditRecord={handleEditRecord}
+          />
+        );
+      default:
+        return <div className="p-4 text-slate-500">Panel {name} under construction</div>;
+    }
+  }, [
+    activeDep,
+    inspMethod,
+    vidState,
+    tapeId,
+    selectedComp,
+    currentRecords,
+    displayRecords,
+    dynamicProps,
+    findingType,
+    compView,
+    compSearchTerm,
+    componentsSow,
+    componentsNonSow,
+    currentCompRecords,
+    historicalRecords,
+    historyLoading,
+    timeInWater,
+    currentMovement,
+    diveStartTime,
+    diveEndTime,
+    setIsDiveSetupForNew,
+    setIsDiveSetupOpen,
+    setIsMovementLogOpen,
+    videoRef,
+    canvasRef,
+    streamActive,
+    setStreamActive,
+    vidTimer,
+    tapeNo,
+    videoVisible,
+    setVideoVisible,
+    isStreamRecording,
+    isStreamPaused,
+    previewStream,
+    handleStartStreamRecording,
+    handlePauseStreamRecording,
+    handleResumeStreamRecording,
+    handleStopStreamRecording,
+    handleGrabPhoto,
+    handleToggleStreamRecording,
+    handlePopOutStream,
+    pipWindow,
+    formatTime,
+    showDrawingTools,
+    setShowDrawingTools,
+    videoEvents,
+    supabase,
+    setVideoEvents,
+    setEditingEvent,
+    handleDeleteEvent,
+    activeSpec,
+    setFindingType,
+    editingRecordId,
+    resetForm,
+    FORM_AREA_ID,
+    setIsAddInspOpen,
+    allInspectionTypes,
+    activeFormProps,
+    renderInspectionField,
+    handleDynamicPropChange,
+    anomalyData,
+    setAnomalyData,
+    defectCodes,
+    allDefectTypes,
+    availableDefectTypes,
+    priorities,
+    headerData,
+    manualOverride,
+    setManualOverride,
+    setLastAutoMatchedRuleId,
+    handleCommitRecord,
+    isCommitting,
+    setCompSpecDialogOpen,
+    incompleteReason,
+    setIncompleteReason,
+    recordNotes,
+    setRecordNotes,
+    pendingAttachments,
+    setPendingAttachments,
+    deletedAttachmentIds,
+    setDeletedAttachmentIds,
+    setEditingAttachment,
+    setIsAttachmentManagerOpen,
+    recordedFiles,
+    setShowTaskSelector,
+    setShowCompSelector,
+    libOptionsMap,
+    handleDeleteRecord,
+    handlePrintAnomaly,
+    syncLoading,
+    recordSearchQuery,
+    setRecordSearchQuery,
+    sortedRecords,
+    capturedEventsPipWindow,
+    handlePopoutCapturedEvents,
+    activeTableColumns,
+    columnSettings,
+    handleMoveColumn,
+    toggleColumnVisibility,
+    handleSort,
+    sortConfig,
+    handleEditRecord,
+    setViewingRecordAttachments,
+    handleComponentSelection,
+    structureId,
+    unitSystem,
+  ]);
+
+  const flexLayoutStyles = (
+    <style dangerouslySetInnerHTML={{ __html: `
+      .flexlayout__layout { background-color: #0f172a !important; }
+      .flexlayout__tabset { background-color: #0f172a !important; }
+      .flexlayout__tabset_header { background-color: #1e293b !important; color: #94a3b8 !important; }
+      .flexlayout__tab_button { background-color: transparent !important; color: #94a3b8 !important; }
+      .flexlayout__tab_button--selected { background-color: #334155 !important; color: #fff !important; }
+      .flexlayout__splitter { background-color: #334155 !important; }
+      .flexlayout__tab { background-color: #0f172a !important; overflow: hidden; border: 1px solid #334155 !important; }
+      .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+    `}} />
   );
 
-  // Handle arrival from Component Details Modal (Auto-select component)
-  useEffect(() => {
-    if (!compIdParam || !allComps || allComps.length === 0 || selectedComp) return;
-
-    const targetComp = allComps.find((c) => String(c.id) === String(compIdParam));
-    if (targetComp) {
-      console.log("[Redirect] Auto-selecting component:", targetComp.name);
-      setSelectedComp(targetComp);
-    }
-  }, [compIdParam, allComps, selectedComp]);
-
-  // Handle arrival from Component Details Modal (Auto-edit record)
-  useEffect(() => {
-    if (!recordIdParam || !selectedComp) return;
-
-    async function loadAndEditRecord() {
-      // Check if record is in current list
-      const localRecord = currentRecords.find((r) => String(r.insp_id) === String(recordIdParam));
-      if (localRecord) {
-        console.log("[Redirect] Editing local record:", localRecord.insp_id);
-        handleEditRecord(localRecord);
-        return;
-      }
-
-      // If not in current list (maybe historical), fetch it explicitly
-      console.log("[Redirect] Fetching record for edit:", recordIdParam);
-      const { data: record } = await supabase
-        .from("insp_records")
-        .select("*, inspection_type:inspection_type_id(*), insp_anomalies(*)")
-        .eq("insp_id", Number(recordIdParam))
-        .maybeSingle();
-
-      if (record) {
-        handleEditRecord(record);
-      }
-    }
-
-    loadAndEditRecord();
-  }, [recordIdParam, selectedComp, currentRecords, supabase]);
-
   return (
+
     <div className="flex flex-col h-[calc(100vh)] bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 overflow-hidden">
       <InspectionHeader
         headerData={headerData}
@@ -5789,6 +6261,7 @@ function V10PreviewLayout() {
         jobPackId={jobPackId}
         structureId={structureId}
         onSummaryOpen={() => setIsSummaryOpen(true)}
+        onResetLayout={handleResetLayout}
       />
 
       {/* ── INSPECTION SUMMARY PANEL ───────────────────────────────────────── */}
@@ -6118,10 +6591,10 @@ function V10PreviewLayout() {
                   className="flex items-center gap-1.5 bg-slate-700/80 dark:bg-slate-700/80 px-3 py-1 rounded-md border border-slate-600 dark:border-slate-500 shrink-0 min-w-[80px]"
                 >
                   <span className="text-[9px] font-black uppercase text-amber-300 dark:text-amber-300 tracking-wide">
-                    {field.targetField.replace(/_/g, " ")}
+                    {field.targetField?.replace(/_/g, " ") || "Field"}
                   </span>
                   <span className="text-[12px] font-mono font-black text-white dark:text-white">
-                    {field.value}
+                    {field.value ?? "0"}
                   </span>
                 </div>
               ))
@@ -6208,1921 +6681,25 @@ function V10PreviewLayout() {
         </div>
       )}
 
-      {/* MAIN 3-COLUMN LAYOUT */}
-      <div className="flex-1 flex min-h-0 p-3 gap-3 overflow-hidden">
-        {/* ======== COL 1: OPERATIONS (Diver/ROV + Video) ======== */}
-        <div className="w-[320px] flex flex-col gap-3 shrink-0 overflow-hidden">
-          {/* 1. Diver / ROV Log */}
-          <Card className="flex flex-col border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md shrink-0 mb-2 bg-white dark:bg-slate-900/60 backdrop-blur-md">
-            <div className="bg-[#1f2937] text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md">
-              <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DIVE LOG"}</span>
-              <div className="flex items-center gap-2 text-slate-300">
-                <button
-                  onClick={() => {
-                    setIsDiveSetupForNew(true);
-                    setIsDiveSetupOpen(true);
-                  }}
-                  className="flex items-center gap-1 p-1 hover:text-white transition"
-                  title="New Dive"
-                >
-                  <Plus className="w-4 h-4" />{" "}
-                  <span className="text-[10px] hidden lg:inline">New Dive</span>
-                </button>
-                <button
-                  onClick={() => setIsMovementLogOpen(true)}
-                  className="p-1 hover:text-white transition"
-                  title="Edit Events"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => {
-                    setIsDiveSetupForNew(false);
-                    setIsDiveSetupOpen(true);
-                  }}
-                  className="p-1 hover:text-white transition"
-                  title="Settings"
-                >
-                  <Settings className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div className="p-2.5 bg-white dark:bg-slate-900 space-y-2 rounded-b-md">
-              <div className="flex justify-between text-xs px-1">
-                <div>
-                  <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold block uppercase tracking-wider mb-0.5">
-                    Active Selection
-                  </span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
-                    {activeDep?.jobNo || "None"}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold block uppercase tracking-wider mb-0.5">
-                    Time In Water
-                  </span>
-                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
-                    {timeInWater}
-                  </span>
-                </div>
-              </div>
-
-              {/* Movement Control */}
-              <div className="bg-slate-50 dark:bg-slate-950/80 border border-slate-100/60 dark:border-slate-700 rounded px-2 py-1.5 text-center relative ring-1 ring-white/5">
-                <span className="text-[9px] font-black text-slate-400 dark:text-slate-300 uppercase tracking-widest block mb-0.5">
-                  Current Movement
-                </span>
-                <span className="font-black text-slate-900 dark:text-white text-[14px] leading-tight flex items-center justify-center drop-shadow-sm">
-                  {currentMovement || "Awaiting Deployment"}
-                </span>
-              </div>
-
-              <div className="flex gap-1.5">
-                <Button
-                  onClick={handleMovementPrev}
-                  disabled={
-                    currentMovement === "Awaiting Deployment" ||
-                    (inspMethod === "DIVING" && currentMovement === diveActionsList[0].label)
-                  }
-                  variant="outline"
-                  className="flex-1 h-7 text-[11px] font-bold text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-700 dark:hover:text-slate-200 bg-white dark:bg-slate-900 shadow-sm"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Rollback
-                </Button>
-
-                {inspMethod === "DIVING" ? (
-                  <Button
-                    onClick={handleMovementNext}
-                    disabled={currentMovement === diveActionsList[diveActionsList.length - 1].label}
-                    className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm"
-                  >
-                    {currentMovement === "Awaiting Deployment"
-                      ? "Next"
-                      : diveActionsList.findIndex((a) => a.label === currentMovement) <
-                          diveActionsList.length - 1
-                        ? "Next"
-                        : "Completed"}{" "}
-                    <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                  </Button>
-                ) : (
-                  (() => {
-                    const options =
-                      ROV_MOVEMENT_BRANCHES[currentMovement || "Awaiting Deployment"] || [];
-                    const isCompleted = options.length === 0;
-
-                    if (isCompleted) {
-                      return (
-                        <Button
-                          disabled
-                          className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm"
-                        >
-                          Completed <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                        </Button>
-                      );
-                    }
-
-                    if (options.length === 1) {
-                      return (
-                        <Button
-                          onClick={() => handleMovementLog(options[0])}
-                          className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm truncate"
-                        >
-                          Next: {options[0]} <ArrowRight className="w-3.5 h-3.5 ml-1 shrink-0" />
-                        </Button>
-                      );
-                    }
-
-                    return (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm">
-                            Next Action... <ChevronDown className="w-3.5 h-3.5 ml-1 shrink-0" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          {options.map((opt) => (
-                            <DropdownMenuItem
-                              key={opt}
-                              onClick={() => handleMovementLog(opt)}
-                              className="text-xs font-bold cursor-pointer"
-                            >
-                              Select: {opt}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    );
-                  })()
-                )}
-              </div>
-            </div>
-          </Card>
-
-          {/* 2. Video Tape Management (MODULAR) */}
-          <TapeManagementCard
-            vidState={vidState}
-            vidTimer={vidTimer}
-            tapeId={tapeId}
-            tapeNo={tapeNo}
-            activeChapter={activeChapter}
-            jobTapes={jobTapes}
-            handleLogEvent={handleLogEvent}
-            setTapeId={setTapeId}
-            setTapeNo={setTapeNo}
-            setActiveChapter={setActiveChapter}
-            setIsNewTapeOpen={setIsNewTapeOpen}
-            handleOpenEditTape={handleOpenEditTape}
-            formatTime={formatTime}
-            handleDeleteTape={handleDeleteTape}
-            canDelete={
-              tapeId ? !videoEvents.some((evt) => String(evt.tape_id) === String(tapeId)) : false
-            }
-          >
-            {/* Tape Log Events (MODULAR) */}
-            <TapeLogEvents
-              videoEvents={videoEvents.filter((evt) => String(evt.tape_id) === String(tapeId))}
-              handleDeleteEvent={handleDeleteEvent}
-              onEditEvent={setEditingEvent}
-              expanded={tapeLogExpanded}
-              setExpanded={setTapeLogExpanded}
-              isFloating={!!pipWindow}
-            />
-          </TapeManagementCard>
-
-          {/* 6. Video Interface (Reduced Size) */}
-          {!pipWindow && (
-            <div className="flex-1 min-h-[180px] bg-black rounded-lg overflow-hidden border border-slate-800 shadow-xl relative">
-              {renderStreamUI()}
-            </div>
-          )}
-
-          {/* PiP Portal */}
-          {pipWindow &&
-            createPortal(
-              <div className="h-full w-full bg-black flex flex-col overflow-hidden select-none">
-                <div className="bg-slate-900 p-2.5 flex justify-between items-center border-b border-white/10 z-50 shrink-0">
-                  <span className="text-[11px] text-white font-black uppercase tracking-widest flex items-center gap-2">
-                    <Video className="w-3.5 h-3.5 text-red-500 animate-pulse" /> LIVE STREAMING
-                    CONTROL
-                  </span>
-                  <button
-                    onClick={() => pipWindow.close()}
-                    className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                  {renderStreamUI()}
-                </div>
-              </div>,
-              pipWindow.document.body
-            )}
-        </div>
-
-        {/* ======== COL 2: INSPECTION WORKSPACE (CENTRE) ======== */}
-        <div className="flex-1 flex flex-col gap-3 min-w-[500px] overflow-hidden">
-          {/* 5. Inspection Task Form Handling */}
-          <Card className="flex flex-col flex-1 border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden relative">
-            {!selectedComp ? (
-              <div className="flex-1 flex items-center justify-center flex-col text-slate-400 p-10 text-center">
-                <Activity className="w-12 h-12 mb-4 opacity-30 text-blue-500" />
-                <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">
-                  Awaiting Target Selection
-                </h2>
-                <p className="text-xs max-w-[280px]">
-                  Please select a component from the right column (List or 3D view) to review
-                  history and begin logging inspection scopes.
-                </p>
-              </div>
-            ) : (
-              <div
-                id={FORM_AREA_ID}
-                className="flex flex-col flex-1 min-h-0 overflow-hidden relative"
-              >
-                {!activeSpec ? (
-                  <div className="p-5 flex flex-col items-center justify-center text-center h-full">
-                    <div className="w-full max-w-2xl flex flex-col items-center">
-                      <div className="text-[11px] font-bold uppercase text-slate-400 dark:text-slate-500 tracking-widest mb-4">
-                        Select Scope to Inspect ({selectedComp.name})
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
-                        {selectedComp.tasks &&
-                          selectedComp.tasks
-                            .filter((t: string) => {
-                              const it = (allInspectionTypes || []).find(
-                                (type: any) => type.code === t || type.name === t
-                              );
-                              const localIt = (inspectionRegistry as any).inspectionTypes?.find(
-                                (type: any) => type.code === t || type.name === t
-                              );
-
-                              const methods =
-                                it?.default_properties?.methods ||
-                                it?.methods ||
-                                localIt?.methods ||
-                                [];
-                              const isRov =
-                                methods.includes("ROV") ||
-                                it?.metadata?.rov === 1 ||
-                                it?.metadata?.rov === "1" ||
-                                it?.metadata?.rov === true ||
-                                (it?.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                              const isDiving =
-                                methods.includes("DIVING") ||
-                                it?.metadata?.diving === 1 ||
-                                it?.metadata?.diving === "1" ||
-                                it?.metadata?.diving === true ||
-                                (it?.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-
-                              if (!it && !localIt) {
-                                const isCodeRov =
-                                  String(t).startsWith("R") ||
-                                  String(t).startsWith("ROV") ||
-                                  String(t).toLowerCase().includes("rov");
-                                if (inspMethod === "DIVING" && isCodeRov) return false;
-                                if (inspMethod === "ROV" && !isCodeRov) return false;
-                                return true;
-                              }
-
-                              if (inspMethod === "DIVING" && !isDiving) return false;
-                              if (inspMethod === "ROV" && !isRov) return false;
-                              return true;
-                            })
-                            .map((t: string) => {
-                              const taskStatus = selectedComp.taskStatuses?.find(
-                                (ts: any) => ts.code === t
-                              );
-                              const status = taskStatus?.status || "pending";
-                              const isCompleted = status === "completed";
-                              const isIncomplete = status === "incomplete";
-
-                              // Records for this specific task
-                              const taskRecords = currentRecords.filter(
-                                (r: any) =>
-                                  (r.inspection_type?.code === t || r.inspection_type_code === t) &&
-                                  r.component_id === selectedComp.id
-                              );
-
-                              const hasAnomaly = taskRecords.some(
-                                (r: any) =>
-                                  r.has_anomaly && r.inspection_data?._meta_status !== "Finding"
-                              );
-                              const hasFinding = taskRecords.some(
-                                (r: any) =>
-                                  r.has_anomaly && r.inspection_data?._meta_status === "Finding"
-                              );
-
-                              const isRectified = taskRecords.some(
-                                (r: any) =>
-                                  r.has_anomaly && r.insp_anomalies?.[0]?.status === "CLOSED"
-                              );
-                              const it = allInspectionTypes.find(
-                                (type) => type.code === t || type.name === t
-                              );
-
-                              // Determine color based on priority: Anomaly (Red) > Finding (Orange) > Complete (Green)
-                              const statusColor =
-                                hasAnomaly && !isRectified
-                                  ? "red"
-                                  : hasFinding
-                                    ? "orange"
-                                    : isRectified
-                                      ? "teal"
-                                      : isCompleted
-                                        ? "green"
-                                        : isIncomplete
-                                          ? "amber"
-                                          : "blue";
-
-                              const statusLabel =
-                                hasAnomaly && !isRectified
-                                  ? "Anomaly Registered"
-                                  : hasFinding
-                                    ? "Finding Registered"
-                                    : isRectified
-                                      ? "Rectified"
-                                      : isCompleted
-                                        ? "Completed"
-                                        : isIncomplete
-                                          ? "Incomplete"
-                                          : "Pending";
-
-                              return (
-                                <div
-                                  key={t}
-                                  className="flex gap-2 items-center w-full relative group/item"
-                                >
-                                  <Button
-                                    onClick={() => {
-                                      setActiveSpec(t);
-                                      const now = new Date();
-                                      const newProps: Record<string, any> = {
-                                        inspection_date: format(now, "yyyy-MM-dd"),
-                                        inspection_time: format(now, "HH:mm:ss"),
-                                      };
-
-                                      // 2. Resolve field definitions (from registry or DB)
-                                      const specProps = it?.default_properties || [];
-                                      let propsList: any[] = [];
-                                      if (typeof specProps === "string") {
-                                        try {
-                                          const parsed = JSON.parse(specProps);
-                                          propsList =
-                                            parsed.fields ||
-                                            parsed.properties ||
-                                            (Array.isArray(parsed) ? parsed : []);
-                                        } catch (e) {}
-                                      } else {
-                                        const parsed = specProps as any;
-                                        propsList =
-                                          parsed.fields ||
-                                          parsed.properties ||
-                                          (Array.isArray(parsed) ? parsed : []);
-                                      }
-
-                                      // 3. Apply JSON Defaults
-                                      propsList.forEach((p: any) => {
-                                        if (p.default !== undefined) {
-                                          newProps[p.name || p.label] = p.default;
-                                        }
-                                      });
-
-                                      // 4. Auto-insert current tape counter for LIVE entry mode
-                                      if (!manualOverride) {
-                                        newProps.tape_count_no = formatTime(vidTimer);
-                                      }
-
-                                      // 5. Auto-fill Nominal Thickness from Component Data
-                                      const compNT =
-                                        selectedComp.nominalThk && selectedComp.nominalThk !== "-"
-                                          ? selectedComp.nominalThk
-                                          : selectedComp.wallThickness &&
-                                              selectedComp.wallThickness !== "-"
-                                            ? selectedComp.wallThickness
-                                            : null;
-                                      if (compNT) {
-                                        const ntField = propsList.find((p: any) => {
-                                          const label = String(p.label || "").toLowerCase();
-                                          const name = String(p.name || "").toLowerCase();
-                                          return (
-                                            label === "nominal" ||
-                                            label.includes("nominal thickness") ||
-                                            name === "nt" ||
-                                            name === "nominal_thickness" ||
-                                            label.includes("wall thickness") ||
-                                            name === "wt" ||
-                                            name === "wall_thk"
-                                          );
-                                        });
-
-                                        if (ntField) {
-                                          const fieldKey = ntField.name || ntField.label;
-                                          newProps[fieldKey] = compNT;
-
-                                          // Also auto-fill unit
-                                          const unitFieldKey = `${fieldKey}_unit`;
-                                          const defaultUnit =
-                                            (unitSystem === "IMPERIAL"
-                                              ? ntField.defaultImperial
-                                              : ntField.defaultMetric) || ntField.defaultUnit;
-                                          if (defaultUnit) {
-                                            newProps[unitFieldKey] = defaultUnit;
-                                          }
-
-                                          console.log(
-                                            `[Auto-fill] Populating ${fieldKey} with ${compNT} and unit from component data.`
-                                          );
-                                        }
-                                      }
-
-                                      // 6. Populate from ROV Data Acquisition if connected
-                                      if (inspMethod === "ROV" && dataAcqConnected) {
-                                        dataAcqFields.forEach((f) => {
-                                          if (f.value && f.value !== "--" && f.targetField) {
-                                            newProps[f.targetField] = f.value;
-                                          }
-                                        });
-                                      }
-
-                                      // 7. Default elevation for underwater types to negative
-                                      if (inspMethod === "ROV" || inspMethod === "DIVING") {
-                                        const depthVal =
-                                          selectedComp.depth ||
-                                          (selectedComp.lowestElev !== "-"
-                                            ? selectedComp.lowestElev
-                                            : null);
-                                        if (depthVal) {
-                                          const numericDepth = parseFloat(
-                                            String(depthVal).replace(/[^\d.-]/g, "")
-                                          );
-                                          if (!isNaN(numericDepth)) {
-                                            newProps.verification_depth = -Math.abs(numericDepth);
-                                          }
-                                        }
-                                      }
-
-                                      setDynamicProps(newProps);
-                                      setFindingType("Complete");
-                                      setRecordNotes("");
-                                      setAnomalyData({
-                                        defectCode: "",
-                                        priority: "",
-                                        defectType: "",
-                                        description: "",
-                                        recommendedAction: "",
-                                        rectify: false,
-                                        rectifiedDate: "",
-                                        rectifiedRemarks: "",
-                                        severity: "Minor",
-                                        referenceNo: "",
-                                      });
-                                      setIsManualOverride(false);
-                                      setIsUserInteraction(false);
-                                    }}
-                                    className={`flex-1 h-14 bg-white dark:bg-slate-900 border font-bold shadow-sm flex justify-between items-center group transition-all ${
-                                      statusColor === "green"
-                                        ? "border-green-200 dark:border-green-900 hover:bg-green-50/50 dark:hover:bg-green-900/30"
-                                        : statusColor === "red"
-                                          ? "border-red-200 dark:border-red-900 hover:bg-red-50/30 dark:hover:bg-red-900/20"
-                                          : statusColor === "orange"
-                                            ? "border-orange-200 dark:border-orange-900 hover:bg-orange-50/30 dark:hover:bg-orange-900/20"
-                                            : statusColor === "teal"
-                                              ? "border-teal-200 dark:border-teal-900 hover:bg-teal-50/30 dark:hover:bg-teal-900/20"
-                                              : statusColor === "amber"
-                                                ? "border-amber-200 dark:border-amber-900 hover:bg-amber-50/30 dark:hover:bg-amber-900/20"
-                                                : "border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-900/40"
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2.5">
-                                      {/* Status indicator dot */}
-                                      <div
-                                        className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${
-                                          statusColor === "green"
-                                            ? "bg-green-500"
-                                            : statusColor === "red"
-                                              ? "bg-red-500 animate-pulse"
-                                              : statusColor === "orange"
-                                                ? "bg-orange-500"
-                                                : statusColor === "teal"
-                                                  ? "bg-teal-500"
-                                                  : statusColor === "amber"
-                                                    ? "bg-amber-500"
-                                                    : "bg-slate-300"
-                                        }`}
-                                      >
-                                        {statusColor === "green" && (
-                                          <Check className="w-2 h-2 text-white" />
-                                        )}
-                                        {(statusColor === "red" || statusColor === "orange") && (
-                                          <AlertTriangle className="w-2 h-2 text-white" />
-                                        )}
-                                      </div>
-                                      <div className="flex flex-col items-start overflow-hidden flex-1 max-w-[170px]">
-                                        <div className="flex items-baseline gap-1.5 w-full text-left truncate">
-                                          <span
-                                            className={`text-sm font-bold truncate ${
-                                              statusColor === "green"
-                                                ? "text-green-700"
-                                                : statusColor === "red"
-                                                  ? "text-red-700"
-                                                  : statusColor === "orange"
-                                                    ? "text-orange-700"
-                                                    : statusColor === "teal"
-                                                      ? "text-teal-700"
-                                                      : statusColor === "amber"
-                                                        ? "text-amber-700"
-                                                        : "text-blue-700"
-                                            }`}
-                                            title={it?.name || t}
-                                          >
-                                            {it?.name || t}
-                                          </span>
-                                          <span
-                                            className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${
-                                              statusColor === "green"
-                                                ? "bg-green-50 border-green-200 text-green-700"
-                                                : statusColor === "red"
-                                                  ? "bg-red-50 border-red-200 text-red-700"
-                                                  : statusColor === "orange"
-                                                    ? "bg-orange-50 border-orange-200 text-orange-700"
-                                                    : statusColor === "teal"
-                                                      ? "bg-teal-50 border-teal-200 text-teal-700"
-                                                      : statusColor === "amber"
-                                                        ? "bg-amber-50 border-amber-200 text-amber-700"
-                                                        : "bg-blue-50 border-blue-200 text-blue-700"
-                                            }`}
-                                          >
-                                            {it?.code || t}
-                                          </span>
-                                        </div>
-                                        <span
-                                          className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${
-                                            statusColor === "green"
-                                              ? "text-green-500"
-                                              : statusColor === "red"
-                                                ? "text-red-500"
-                                                : statusColor === "orange"
-                                                  ? "text-orange-500"
-                                                  : statusColor === "teal"
-                                                    ? "text-teal-500"
-                                                    : statusColor === "amber"
-                                                      ? "text-amber-500"
-                                                      : "text-slate-400"
-                                          }`}
-                                        >
-                                          {statusLabel}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <ArrowRight
-                                      className={`w-4 h-4 ${
-                                        statusColor === "green"
-                                          ? "text-green-300"
-                                          : statusColor === "red"
-                                            ? "text-red-300"
-                                            : statusColor === "orange"
-                                              ? "text-orange-300"
-                                              : statusColor === "amber"
-                                                ? "text-amber-300"
-                                                : "text-blue-300"
-                                      }`}
-                                    />
-                                  </Button>
-
-                                  {taskRecords.length === 0 && (
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      className="h-14 w-10 shrink-0 text-slate-400 border-dashed hover:text-red-600 hover:border-red-200 hover:bg-red-50/50"
-                                      title={`Remove ${t}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        handleDeleteInspectionSpec(t);
-                                      }}
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  )}
-                                </div>
-                              );
-                            })}
-                      </div>
-                      <div className="w-full max-w-[350px] space-y-3 mt-4">
-                        <div className="py-2">
-                          <Separator />
-                        </div>
-
-                        <Popover open={isAddInspOpen} onOpenChange={setIsAddInspOpen}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="w-full h-12 border-dashed border-2 text-slate-500 font-bold hover:border-blue-400 hover:bg-blue-50/30 flex items-center justify-center gap-2"
-                            >
-                              <Plus className="w-4 h-4" /> Add Additional Inspection Type
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-[350px] p-0 shadow-2xl border-slate-200"
-                            align="center"
-                            side="top"
-                          >
-                            <div className="flex flex-col">
-                              <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex gap-2 items-center">
-                                <div className="relative flex-1">
-                                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                                  <Input
-                                    placeholder="Search type name or code..."
-                                    className="pl-9 h-9 text-xs bg-white border-slate-200 focus-visible:ring-blue-500"
-                                    value={inspectionTypeSearch}
-                                    onChange={(e) => setInspectionTypeSearch(e.target.value)}
-                                    autoFocus
-                                  />
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setIsAddInspOpen(false)}
-                                  className="h-9 px-2 text-xs font-bold text-slate-500 hover:text-slate-700 shrink-0"
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                              <ScrollArea className="h-[300px]">
-                                <div className="p-1.5 space-y-1">
-                                  {allInspectionTypes
-                                    .filter((it) => {
-                                      // Filter by mode
-                                      const methods =
-                                        it.default_properties?.methods || it.methods || [];
-                                      const isRov =
-                                        methods.includes("ROV") ||
-                                        it.metadata?.rov === 1 ||
-                                        it.metadata?.rov === "1" ||
-                                        it.metadata?.rov === true ||
-                                        it.metadata?.job_type?.includes("ROV");
-                                      const isDiving =
-                                        methods.includes("DIVING") ||
-                                        it.metadata?.diving === 1 ||
-                                        it.metadata?.diving === "1" ||
-                                        it.metadata?.diving === true ||
-                                        it.metadata?.job_type?.includes("DIVING");
-                                      if (inspMethod === "DIVING" && !isDiving) return false;
-                                      if (inspMethod === "ROV" && !isRov) return false;
-
-                                      // Filter by search query
-                                      if (inspectionTypeSearch) {
-                                        const q = inspectionTypeSearch.toLowerCase();
-                                        return (
-                                          (it.name || "").toLowerCase().includes(q) ||
-                                          (it.code || "").toLowerCase().includes(q)
-                                        );
-                                      }
-                                      return true;
-                                    })
-                                    .map((it) => (
-                                      <button
-                                        key={it.id}
-                                        onClick={async () => {
-                                          await handleAddNewInspectionSpec(it.id.toString());
-                                          setIsAddInspOpen(false);
-                                          setInspectionTypeSearch("");
-                                        }}
-                                        className="w-full text-left px-3 py-2.5 rounded-md hover:bg-blue-50 transition-colors group"
-                                      >
-                                        <div className="flex flex-col">
-                                          <span className="text-xs font-bold text-slate-700 group-hover:text-blue-700">
-                                            {it.name}
-                                          </span>
-                                          <span className="text-[10px] font-mono font-medium text-slate-400 group-hover:text-blue-500">
-                                            {it.code}
-                                          </span>
-                                        </div>
-                                      </button>
-                                    ))}
-                                  {allInspectionTypes.filter((it) => {
-                                    const isRov =
-                                      it.metadata?.rov === 1 ||
-                                      it.metadata?.rov === "1" ||
-                                      it.metadata?.rov === true ||
-                                      it.metadata?.job_type?.includes("ROV");
-                                    const isDiving =
-                                      it.metadata?.diving === 1 ||
-                                      it.metadata?.diving === "1" ||
-                                      it.metadata?.diving === true ||
-                                      it.metadata?.job_type?.includes("DIVING");
-                                    if (inspMethod === "DIVING" && !isDiving) return false;
-                                    if (inspMethod === "ROV" && !isRov) return false;
-                                    if (inspectionTypeSearch) {
-                                      const q = inspectionTypeSearch.toLowerCase();
-                                      return (
-                                        (it.name || "").toLowerCase().includes(q) ||
-                                        (it.code || "").toLowerCase().includes(q)
-                                      );
-                                    }
-                                    return true;
-                                  }).length === 0 && (
-                                    <div className="py-10 text-center">
-                                      <p className="text-xs text-slate-400 italic">
-                                        No matching inspection types found
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              </ScrollArea>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <InspectionForm
-                    activeMGIProfile={activeMGIProfile}
-                    selectedComp={selectedComp}
-                    activeSpec={activeSpec}
-                    allInspectionTypes={allInspectionTypes}
-                    activeFormProps={activeFormProps}
-                    findingType={findingType}
-                    setFindingType={setFindingType}
-                    renderInspectionField={renderInspectionField}
-                    dynamicProps={dynamicProps}
-                    handleDynamicPropChange={handleDynamicPropChange}
-                    isEditing={!!editingRecordId}
-                    anomalyData={anomalyData}
-                    setAnomalyData={setAnomalyData}
-                    defectCodes={defectCodes}
-                    allDefectTypes={allDefectTypes}
-                    availableDefectTypes={availableDefectTypes}
-                    priorities={priorities}
-                    headerData={headerData}
-                    isManualOverride={manualOverride}
-                    setIsManualOverride={setManualOverride}
-                    setLastAutoMatchedRuleId={setLastAutoMatchedRuleId}
-                    handleCommitRecord={handleCommitRecord}
-                    onClose={resetForm}
-                    onCapturePhoto={handleGrabPhoto}
-                    isCommitting={isCommitting}
-                    vidTimer={vidTimer}
-                    formatTime={formatTime}
-                    setCompSpecDialogOpen={setCompSpecDialogOpen}
-                    resetForm={resetForm}
-                    incompleteReason={incompleteReason}
-                    setIncompleteReason={setIncompleteReason}
-                    recordNotes={recordNotes}
-                    setRecordNotes={setRecordNotes}
-                    pendingAttachments={pendingAttachments}
-                    setPendingAttachments={setPendingAttachments}
-                    deletedAttachmentIds={deletedAttachmentIds}
-                    setDeletedAttachmentIds={setDeletedAttachmentIds}
-                    setEditingAttachment={setEditingAttachment}
-                    setIsAttachmentManagerOpen={setIsAttachmentManagerOpen}
-                    recordedFiles={recordedFiles}
-                    activeDep={activeDep}
-                    currentMovement={currentMovement}
-                    tapeId={tapeId}
-                    vidState={vidState}
-                    onChangeTaskClick={() => setShowTaskSelector(true)}
-                    onChangeComponentClick={() => setShowCompSelector(true)}
-                    libOptionsMap={libOptionsMap}
-                    onDeleteRecord={() => editingRecordId && handleDeleteRecord(editingRecordId)}
-                    onPrintReport={() => {
-                      const r = currentRecords.find((rec: any) => rec.insp_id === editingRecordId);
-                      if (r) handlePrintAnomaly(r);
-                    }}
-                  />
-                )}
-              </div>
-            )}
-          </Card>
-          <Card
-            className={`flex flex-col ${capturedEventsPipWindow ? "h-[40px]" : "h-[280px]"} border-2 border-slate-200 dark:border-slate-500 shadow-2xl rounded-md bg-white dark:bg-slate-900/60 overflow-hidden shrink-0 transition-all duration-500 ease-in-out`}
-          >
-            <div className="bg-slate-800 dark:bg-slate-900/80 text-white px-3 py-2 text-[11px] font-black uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0 border-b dark:border-slate-700 backdrop-blur-sm">
-              <div className="flex items-center gap-2">
-                <span>CAPTURED EVENTS</span>
-                <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                  {recordSearchQuery
-                    ? `${displayRecords.length} / ${sortedRecords.length}`
-                    : sortedRecords.length}{" "}
-                  Captured
-                </Badge>
-              </div>
-
-              <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                <Input
-                  placeholder="Smart Filter (Record, Component, Type, Status)..."
-                  className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
-                  value={recordSearchQuery}
-                  onChange={(e) => setRecordSearchQuery(e.target.value)}
-                />
-                {recordSearchQuery && (
-                  <button
-                    onClick={() => setRecordSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
-                  >
-                    <X className="w-2.5 h-2.5 text-slate-500" />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
-                    >
-                      <Settings2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-64 p-0 shadow-2xl border-slate-700 bg-slate-900 text-slate-200"
-                    align="end"
-                  >
-                    <div className="p-3 border-b border-slate-800 bg-slate-950/50">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          Table Configuration
-                        </h3>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-[9px] uppercase font-bold text-blue-400 hover:text-blue-300 p-0"
-                          onClick={() => {
-                            const defaultCols = [
-                              { id: "cr_date", label: "Date", visible: true },
-                              { id: "type", label: "Type", visible: true },
-                              { id: "component", label: "Component", visible: true },
-                              { id: "elev", label: "Elev/KP", visible: true },
-                              { id: "anomaly_ref", label: "Anom. Ref", visible: true },
-                              { id: "cp_reading", label: "CP (mV)", visible: true },
-                              { id: "dive_no", label: "Dive No", visible: true },
-                              { id: "tape_no", label: "Tape No", visible: true },
-                            ];
-                            setColumnSettings(defaultCols);
-                          }}
-                        >
-                          Reset
-                        </Button>
-                      </div>
-                    </div>
-                    <ScrollArea className="h-72">
-                      <div className="p-1.5 space-y-0.5">
-                        {columnSettings.map((col, idx) => (
-                          <div
-                            key={col.id}
-                            className="flex items-center gap-2 p-1.5 rounded hover:bg-slate-800 group"
-                          >
-                            <GripVertical className="w-3 h-3 text-slate-600 shrink-0" />
-                            <button
-                              onClick={() => toggleColumnVisibility(col.id)}
-                              className={`flex-1 flex items-center gap-2 text-left transition-opacity ${col.visible ? "opacity-100" : "opacity-40"}`}
-                            >
-                              {col.visible ? (
-                                <Eye className="w-3.5 h-3.5 text-blue-400" />
-                              ) : (
-                                <EyeOff className="w-3.5 h-3.5 text-slate-500" />
-                              )}
-                              <span className="text-[11px] font-bold tracking-tight">
-                                {col.label}
-                              </span>
-                            </button>
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 hover:bg-slate-700"
-                                disabled={idx === 0}
-                                onClick={() => handleMoveColumn(idx, "up")}
-                              >
-                                <ChevronUp className="w-3 h-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 hover:bg-slate-700"
-                                disabled={idx === columnSettings.length - 1}
-                                onClick={() => handleMoveColumn(idx, "down")}
-                              >
-                                <ChevronDown className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                    <div className="p-2 border-t border-slate-800 bg-slate-950/30">
-                      <p className="text-[9px] text-slate-500 italic text-center">
-                        Actions & Status columns are fixed at start.
-                      </p>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-[10px] text-slate-300 hover:text-white hover:bg-slate-700"
-                  onClick={handlePopoutCapturedEvents}
-                  title={capturedEventsPipWindow ? "Close Floating Window" : "Float as Window"}
-                >
-                  {capturedEventsPipWindow ? (
-                    <X className="w-3.5 h-3.5 mr-1" />
-                  ) : (
-                    <Maximize2 className="w-3.5 h-3.5 mr-1" />
-                  )}
-                  {capturedEventsPipWindow ? "Dock" : "Float"}
-                </Button>
-              </div>
-            </div>
-
-            {!capturedEventsPipWindow && (
-              <ScrollArea className="flex-1 w-full relative">
-                <div className="min-w-full inline-block align-middle overflow-x-auto">
-                  <table className="w-full text-left text-xs whitespace-nowrap table-auto bg-white dark:bg-slate-950">
-                    <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 border-b border-slate-200 dark:border-slate-600 font-black text-slate-500 dark:text-white uppercase tracking-wider z-20">
-                      <tr>
-                        {activeTableColumns.map((col) => (
-                          <th
-                            key={col.id}
-                            className={`px-3 py-3 transition-colors group ${
-                              col.id !== "actions" && col.id !== "status"
-                                ? "cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                                : ""
-                            } ${col.id === "cr_date" ? "w-20" : ""} ${
-                              ["elev", "cp_reading", "status"].includes(col.id) ? "text-center" : ""
-                            }`}
-                            onClick={() =>
-                              col.id !== "actions" && col.id !== "status" && handleSort(col.id)
-                            }
-                          >
-                            <div
-                              className={`flex items-center gap-1.5 ${["elev", "cp_reading", "status"].includes(col.id) ? "justify-center" : ""}`}
-                            >
-                              {col.label}
-                              {sortConfig.key === col.id ? (
-                                sortConfig.direction === "asc" ? (
-                                  <ChevronUp className="w-3 h-3 text-blue-600" />
-                                ) : (
-                                  <ChevronDown className="w-3 h-3 text-blue-600" />
-                                )
-                              ) : (
-                                col.id !== "actions" &&
-                                col.id !== "status" && (
-                                  <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
-                                )
-                              )}
-                            </div>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {displayRecords.map((r: any) => {
-                        const formatCounter = (val: any) => {
-                          if (!val) return null;
-                          if (typeof val === "string" && val.includes(":")) return val;
-                          const sec = Number(val);
-                          if (!isNaN(sec)) {
-                            const h = Math.floor(sec / 3600)
-                              .toString()
-                              .padStart(2, "0");
-                            const m = Math.floor((sec % 3600) / 60)
-                              .toString()
-                              .padStart(2, "0");
-                            const s = Math.floor(sec % 60)
-                              .toString()
-                              .padStart(2, "0");
-                            return `${h}:${m}:${s}`;
-                          }
-                          return val;
-                        };
-
-                        return (
-                          <tr
-                            key={r.insp_id}
-                            className="hover:bg-slate-50 dark:hover:bg-slate-900 group cursor-pointer border-b border-slate-100 dark:border-slate-800/50 last:border-0"
-                            onDoubleClick={() => handleEditRecord(r)}
-                          >
-                            {activeTableColumns.map((col) => {
-                              switch (col.id) {
-                                case "actions":
-                                  return (
-                                    <td key={col.id} className="px-3 py-3 text-right align-top">
-                                      <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <button
-                                              className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600"
-                                              title="Report Options"
-                                            >
-                                              <FileText className="w-3.5 h-3.5" /> Actions
-                                            </button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="start" className="w-48">
-                                            {r.has_anomaly && (
-                                              <>
-                                                <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">
-                                                  Reports
-                                                </div>
-                                                {r.inspection_data?._meta_status === "Finding" ? (
-                                                  <DropdownMenuItem
-                                                    onClick={() => handlePrintAnomaly(r)}
-                                                    className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700"
-                                                  >
-                                                    <ClipboardCheck className="w-3.5 h-3.5 mr-2" />{" "}
-                                                    Print Finding Report
-                                                  </DropdownMenuItem>
-                                                ) : (
-                                                  <DropdownMenuItem
-                                                    onClick={() => handlePrintAnomaly(r)}
-                                                    className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700"
-                                                  >
-                                                    <AlertTriangle className="w-3.5 h-3.5 mr-2" />{" "}
-                                                    Print{" "}
-                                                    {r.inspection_data?._meta_status || "Defect"}{" "}
-                                                    Report
-                                                  </DropdownMenuItem>
-                                                )}
-                                                <div className="border-t border-slate-50 my-1"></div>
-                                              </>
-                                            )}
-                                            <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                              Details
-                                            </div>
-                                            <DropdownMenuItem
-                                              onClick={() => {
-                                                const comp = (allComps || []).find(
-                                                  (c: any) => c.id === r.component_id
-                                                );
-                                                if (comp) {
-                                                  setSelectedComp(comp);
-                                                  setCompSpecDialogOpen(true);
-                                                }
-                                              }}
-                                              className="text-xs py-2 cursor-pointer"
-                                            >
-                                              <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" />{" "}
-                                              View Component Spec
-                                            </DropdownMenuItem>
-                                            <div className="border-t border-slate-50 my-1"></div>
-                                            <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                              Modify
-                                            </div>
-                                            <DropdownMenuItem
-                                              onClick={() => handleEditRecord(r)}
-                                              className="text-xs py-2 cursor-pointer"
-                                            >
-                                              <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" />{" "}
-                                              Edit Record
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
-                                              onClick={() => handleDeleteRecord(r.insp_id)}
-                                              className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700"
-                                            >
-                                              <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
-                                            </DropdownMenuItem>
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
-                                      </div>
-                                    </td>
-                                  );
-                                case "status":
-                                  return (
-                                    <td key={col.id} className="px-3 py-3 align-top text-center">
-                                      <div className="flex flex-col items-center gap-1.5 mt-0.5">
-                                        {r.has_anomaly ? (
-                                          <div
-                                            title="Anomaly/Finding Found"
-                                            className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100"
-                                          >
-                                            <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                                          </div>
-                                        ) : r.status === "COMPLETED" ? (
-                                          <div
-                                            title="Completed Inspection"
-                                            className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100"
-                                          >
-                                            <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                                          </div>
-                                        ) : (
-                                          <div
-                                            title="Incomplete / Draft"
-                                            className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100"
-                                          >
-                                            <FileClock className="w-3.5 h-3.5 text-amber-600" />
-                                          </div>
-                                        )}
-                                        {(r.attachment_count > 0 ||
-                                          (r.insp_media && r.insp_media[0]?.count > 0)) && (
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
-                                            onClick={async () => {
-                                              const { data } = await supabase
-                                                .from("attachment")
-                                                .select("*")
-                                                .eq("source_id", r.insp_id)
-                                                .eq("source_type", "INSPECTION");
-                                              if (data) setViewingRecordAttachments(data);
-                                            }}
-                                          >
-                                            <Paperclip className="w-3 h-3" />
-                                          </Button>
-                                        )}
-                                      </div>
-                                    </td>
-                                  );
-                                case "cr_date":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 text-slate-600 dark:text-white align-top"
-                                    >
-                                      <div className="text-sm font-medium">
-                                        {r.cr_date ? format(new Date(r.cr_date), "dd MMM") : "-"}
-                                      </div>
-                                      <div className="text-[10px] opacity-70 mt-0.5">
-                                        {r.cr_date ? format(new Date(r.cr_date), "HH:mm") : "-"}
-                                      </div>
-                                    </td>
-                                  );
-                                case "type":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 font-bold text-slate-800 dark:text-white align-top"
-                                    >
-                                      <div
-                                        className="truncate max-w-[200px] text-sm"
-                                        title={r.inspection_type?.name}
-                                      >
-                                        {r.inspection_type?.name || "UNK"}
-                                      </div>
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1"
-                                      >
-                                        {r.inspection_type_code || r.inspection_type?.code || "UNK"}
-                                      </Badge>
-                                    </td>
-                                  );
-                                case "component":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 align-top text-slate-700 dark:text-white"
-                                    >
-                                      <div className="font-bold text-sm">
-                                        {r.structure_components?.q_id || "-"}
-                                      </div>
-                                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
-                                        {r.component_type || r.structure_components?.code || "-"}
-                                      </div>
-                                    </td>
-                                  );
-                                case "elev":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-white align-top"
-                                    >
-                                      {r.elevation ? `${r.elevation}m` : r.fp_kp || "-"}
-                                    </td>
-                                  );
-                                case "anomaly_ref":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 align-top text-slate-700 dark:text-white"
-                                    >
-                                      {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
-                                        <div className="flex flex-col gap-1">
-                                          <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">
-                                            {r.insp_anomalies[0].anomaly_ref_no}
-                                          </span>
-                                          {r.insp_anomalies[0].priority_code && (
-                                            <span
-                                              className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded shadow-sm w-fit uppercase tracking-wider ${
-                                                r.insp_anomalies[0].priority_code.includes("1")
-                                                  ? "bg-red-600"
-                                                  : r.insp_anomalies[0].priority_code.includes("2")
-                                                    ? "bg-orange-500"
-                                                    : r.insp_anomalies[0].priority_code.includes(
-                                                          "3"
-                                                        )
-                                                      ? "bg-yellow-500 text-black"
-                                                      : r.insp_anomalies[0].priority_code.includes(
-                                                            "4"
-                                                          )
-                                                        ? "bg-blue-500"
-                                                        : r.insp_anomalies[0].priority_code.includes(
-                                                              "5"
-                                                            )
-                                                          ? "bg-slate-500"
-                                                          : "bg-slate-900"
-                                              }`}
-                                            >
-                                              {r.insp_anomalies[0].priority_code}
-                                            </span>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <span className="text-slate-300">-</span>
-                                      )}
-                                    </td>
-                                  );
-                                case "cp_reading":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-white align-top"
-                                    >
-                                      {(() => {
-                                        const cp =
-                                          r.inspection_data?.cp_rdg ??
-                                          r.inspection_data?.cp_reading_mv ??
-                                          r.inspection_data?.cp;
-                                        return cp ? (
-                                          <span className="font-mono text-xs">{cp}</span>
-                                        ) : (
-                                          <span className="text-slate-300">-</span>
-                                        );
-                                      })()}
-                                    </td>
-                                  );
-                                case "dive_no":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 align-top text-slate-700 dark:text-white"
-                                    >
-                                      <span className="text-xs font-medium">
-                                        {r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || (
-                                          <span className="text-slate-300">-</span>
-                                        )}
-                                      </span>
-                                    </td>
-                                  );
-                                case "tape_no":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 align-top text-slate-700 dark:text-white"
-                                    >
-                                      <span className="text-xs font-medium">
-                                        {r.insp_video_tapes?.tape_no || (
-                                          <span className="text-slate-300">-</span>
-                                        )}
-                                      </span>
-                                      {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                        <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
-                                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                          {formatCounter(
-                                            r.inspection_data?._meta_timecode || r.tape_count_no
-                                          )}
-                                        </div>
-                                      )}
-                                    </td>
-                                  );
-                                default:
-                                  return null;
-                              }
-                            })}
-                          </tr>
-                        );
-                      })}
-
-                      {displayRecords.length === 0 && (
-                        <tr>
-                          <td colSpan={10} className="px-3 py-12 text-center bg-white/50">
-                            {syncLoading ? (
-                              <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
-                                <div className="relative">
-                                  <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
-                                  <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                    Synchronizing
-                                  </span>
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                    Fetching live workspace data...
-                                  </span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center gap-2 text-slate-300">
-                                <Search className="w-8 h-8 opacity-20" />
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                    Inventory Empty
-                                  </span>
-                                  <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">
-                                    No events match your current filter or session
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <ScrollBar orientation="horizontal" />
-              </ScrollArea>
-            )}
-          </Card>
-        </div>
-
-        <WorkspaceResources
-          compView={compView}
-          setCompView={setCompView}
-          compSearchTerm={compSearchTerm}
-          setCompSearchTerm={setCompSearchTerm}
-          componentsSow={componentsSow}
-          componentsNonSow={componentsNonSow}
-          selectedComp={selectedComp}
-          handleComponentSelection={handleComponentSelection}
-          setCompSpecDialogOpen={setCompSpecDialogOpen}
-          currentRecords={currentRecords}
-          currentCompRecords={currentCompRecords}
-          historicalRecords={historicalRecords}
-          historyLoading={historyLoading}
-          inspMethod={inspMethod}
-          supabase={supabase}
-          structureId={structureId || 0}
-          onRefreshComponents={() => {
-            queryClient.invalidateQueries({ queryKey: ["sow-data"] });
-          }}
-          allInspectionTypes={allInspectionTypes}
-          structureType={headerData.structureType === "pipeline" ? "pipeline" : "platform"}
-          unitSystem={unitSystem}
-        />
-      </div>
-
-      {capturedEventsPipWindow &&
-        createPortal(
-          <div className="h-screen w-screen flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
-            <div className="bg-slate-800 dark:bg-slate-950 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0 border-b dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <span>CAPTURED EVENTS (FLOATING)</span>
-                <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                  {recordSearchQuery
-                    ? `${displayRecords.length} / ${sortedRecords.length}`
-                    : sortedRecords.length}{" "}
-                  Captured
-                </Badge>
-              </div>
-
-              <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                <Input
-                  placeholder="Smart Filter..."
-                  className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
-                  value={recordSearchQuery}
-                  onChange={(e) => setRecordSearchQuery(e.target.value)}
-                />
-                {recordSearchQuery && (
-                  <button
-                    onClick={() => setRecordSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
-                  >
-                    <X className="w-2.5 h-2.5 text-slate-500" />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
-                    >
-                      <Settings2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-64 p-0 shadow-2xl border-slate-700 bg-slate-900 text-slate-200"
-                    align="end"
-                    container={capturedEventsPipWindow?.document.body}
-                  >
-                    <div className="p-3 border-b border-slate-800 bg-slate-950/50">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          Table Configuration
-                        </h3>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-[9px] uppercase font-bold text-blue-400 hover:text-blue-300 p-0"
-                          onClick={() => {
-                            const defaultCols = [
-                              { id: "cr_date", label: "Date", visible: true },
-                              { id: "type", label: "Type", visible: true },
-                              { id: "component", label: "Component", visible: true },
-                              { id: "elev", label: "Elev/KP", visible: true },
-                              { id: "anomaly_ref", label: "Anom. Ref", visible: true },
-                              { id: "cp_reading", label: "CP (mV)", visible: true },
-                              { id: "dive_no", label: "Dive No", visible: true },
-                              { id: "tape_no", label: "Tape No", visible: true },
-                            ];
-                            setColumnSettings(defaultCols);
-                          }}
-                        >
-                          Reset
-                        </Button>
-                      </div>
-                    </div>
-                    <ScrollArea className="h-72">
-                      <div className="p-1.5 space-y-0.5">
-                        {columnSettings.map((col, idx) => (
-                          <div
-                            key={col.id}
-                            className="flex items-center gap-2 p-1.5 rounded hover:bg-slate-800 group"
-                          >
-                            <GripVertical className="w-3 h-3 text-slate-600 shrink-0" />
-                            <button
-                              onClick={() => toggleColumnVisibility(col.id)}
-                              className={`flex-1 flex items-center gap-2 text-left transition-opacity ${col.visible ? "opacity-100" : "opacity-40"}`}
-                            >
-                              {col.visible ? (
-                                <Eye className="w-3.5 h-3.5 text-blue-400" />
-                              ) : (
-                                <EyeOff className="w-3.5 h-3.5 text-slate-500" />
-                              )}
-                              <span className="text-[11px] font-bold tracking-tight">
-                                {col.label}
-                              </span>
-                            </button>
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 hover:bg-slate-700"
-                                disabled={idx === 0}
-                                onClick={() => handleMoveColumn(idx, "up")}
-                              >
-                                <ChevronUp className="w-3 h-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 hover:bg-slate-700"
-                                disabled={idx === columnSettings.length - 1}
-                                onClick={() => handleMoveColumn(idx, "down")}
-                              >
-                                <ChevronDown className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                    <div className="p-2 border-t border-slate-800 bg-slate-950/30">
-                      <p className="text-[9px] text-slate-500 italic text-center">
-                        Actions & Status columns are fixed at start.
-                      </p>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                <button
-                  onClick={() => {
-                    if (capturedEventsPipWindow) {
-                      const s = capturedEventsPipWindow.screen;
-                      capturedEventsPipWindow.moveTo(s.availLeft || 0, s.availTop || 0);
-                      capturedEventsPipWindow.resizeTo(s.availWidth, s.availHeight);
-                    }
-                  }}
-                  className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"
-                  title="Maximize"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => {
-                    if (capturedEventsPipWindow) {
-                      const s = capturedEventsPipWindow.screen;
-                      capturedEventsPipWindow.resizeTo(1000, 600);
-                      capturedEventsPipWindow.moveTo(
-                        (s.availLeft || 0) + (s.availWidth - 1000) / 2,
-                        (s.availTop || 0) + (s.availHeight - 600) / 2
-                      );
-                    }
-                  }}
-                  className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"
-                  title="Restore Size"
-                >
-                  <Minimize2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => capturedEventsPipWindow.close()}
-                  className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"
-                  title="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <ScrollArea className="flex-1 w-full relative">
-              <div className="min-w-full inline-block align-middle overflow-x-auto">
-                <table className="w-full text-left text-xs whitespace-nowrap table-auto bg-white dark:bg-slate-900">
-                  <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 border-b border-slate-200 dark:border-slate-500 font-black text-slate-500 dark:text-white uppercase tracking-wider z-20">
-                    <tr>
-                      {activeTableColumns.map((col) => (
-                        <th
-                          key={col.id}
-                          className={`px-3 py-3 transition-colors group ${
-                            col.id !== "actions" && col.id !== "status"
-                              ? "cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                              : ""
-                          } ${col.id === "cr_date" ? "w-20" : ""} ${
-                            ["elev", "cp_reading", "status"].includes(col.id) ? "text-center" : ""
-                          }`}
-                          onClick={() =>
-                            col.id !== "actions" && col.id !== "status" && handleSort(col.id)
-                          }
-                        >
-                          <div
-                            className={`flex items-center gap-1.5 ${["elev", "cp_reading", "status"].includes(col.id) ? "justify-center" : ""}`}
-                          >
-                            {col.label}
-                            {sortConfig.key === col.id ? (
-                              sortConfig.direction === "asc" ? (
-                                <ChevronUp className="w-3 h-3 text-blue-600" />
-                              ) : (
-                                <ChevronDown className="w-3 h-3 text-blue-600" />
-                              )
-                            ) : (
-                              col.id !== "actions" &&
-                              col.id !== "status" && (
-                                <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
-                              )
-                            )}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {displayRecords.map((r: any) => {
-                      const formatCounter = (val: any) => {
-                        if (!val) return null;
-                        if (typeof val === "string" && val.includes(":")) return val;
-                        const sec = Number(val);
-                        if (!isNaN(sec)) {
-                          const h = Math.floor(sec / 3600)
-                            .toString()
-                            .padStart(2, "0");
-                          const m = Math.floor((sec % 3600) / 60)
-                            .toString()
-                            .padStart(2, "0");
-                          const s = Math.floor(sec % 60)
-                            .toString()
-                            .padStart(2, "0");
-                          return `${h}:${m}:${s}`;
-                        }
-                        return val;
-                      };
-
-                      return (
-                        <tr
-                          key={r.insp_id}
-                          className="hover:bg-slate-50 dark:hover:bg-slate-900/50 group cursor-pointer border-b border-slate-100 dark:border-slate-700/50 last:border-0"
-                          onDoubleClick={() => handleEditRecord(r)}
-                        >
-                          {activeTableColumns.map((col) => {
-                            switch (col.id) {
-                              case "actions":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 text-right align-top">
-                                    <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <button
-                                            className="p-1.5 px-2 bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300"
-                                            title="Report Options"
-                                          >
-                                            <FileText className="w-3.5 h-3.5" /> Actions
-                                          </button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent
-                                          align="start"
-                                          className="w-48"
-                                          container={capturedEventsPipWindow?.document.body}
-                                        >
-                                          {r.has_anomaly && (
-                                            <>
-                                              <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">
-                                                Reports
-                                              </div>
-                                              {r.inspection_data?._meta_status === "Finding" ? (
-                                                <DropdownMenuItem
-                                                  onClick={() => handlePrintAnomaly(r)}
-                                                  className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700"
-                                                >
-                                                  <ClipboardCheck className="w-3.5 h-3.5 mr-2" />{" "}
-                                                  Print Finding Report
-                                                </DropdownMenuItem>
-                                              ) : (
-                                                <DropdownMenuItem
-                                                  onClick={() => handlePrintAnomaly(r)}
-                                                  className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700"
-                                                >
-                                                  <AlertTriangle className="w-3.5 h-3.5 mr-2" />{" "}
-                                                  Print{" "}
-                                                  {r.inspection_data?._meta_status || "Defect"}{" "}
-                                                  Report
-                                                </DropdownMenuItem>
-                                              )}
-                                              <div className="border-t border-slate-50 my-1"></div>
-                                            </>
-                                          )}
-                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                            Details
-                                          </div>
-                                          <DropdownMenuItem
-                                            onClick={() => {
-                                              const comp = (allComps || []).find(
-                                                (c: any) => c.id === r.component_id
-                                              );
-                                              if (comp) {
-                                                setSelectedComp(comp);
-                                                setCompSpecDialogOpen(true);
-                                              }
-                                            }}
-                                            className="text-xs py-2 cursor-pointer"
-                                          >
-                                            <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" />{" "}
-                                            View Component Spec
-                                          </DropdownMenuItem>
-                                          <div className="border-t border-slate-50 my-1"></div>
-                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                            Modify
-                                          </div>
-                                          <DropdownMenuItem
-                                            onClick={() => handleEditRecord(r)}
-                                            className="text-xs py-2 cursor-pointer"
-                                          >
-                                            <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" /> Edit
-                                            Record
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            onClick={() => handleDeleteRecord(r.insp_id)}
-                                            className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                  </td>
-                                );
-                              case "status":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-center">
-                                    <div className="flex flex-col items-center gap-1.5 mt-0.5">
-                                      {r.has_anomaly ? (
-                                        <div
-                                          title="Anomaly/Finding Found"
-                                          className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100"
-                                        >
-                                          <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                                        </div>
-                                      ) : r.status === "COMPLETED" ? (
-                                        <div
-                                          title="Completed Inspection"
-                                          className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100"
-                                        >
-                                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                                        </div>
-                                      ) : (
-                                        <div
-                                          title="Incomplete / Draft"
-                                          className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100"
-                                        >
-                                          <FileClock className="w-3.5 h-3.5 text-amber-600" />
-                                        </div>
-                                      )}
-                                      {(r.attachment_count > 0 ||
-                                        (r.insp_media && r.insp_media[0]?.count > 0)) && (
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
-                                          onClick={async () => {
-                                            const { data } = await supabase
-                                              .from("attachment")
-                                              .select("*")
-                                              .eq("source_id", r.insp_id)
-                                              .eq("source_type", "INSPECTION");
-                                            if (data) setViewingRecordAttachments(data);
-                                          }}
-                                        >
-                                          <Paperclip className="w-3 h-3" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </td>
-                                );
-                              case "cr_date":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 text-slate-600 align-top">
-                                    <div className="text-sm font-medium">
-                                      {r.cr_date ? format(new Date(r.cr_date), "dd MMM") : "-"}
-                                    </div>
-                                    <div className="text-[10px] opacity-70 mt-0.5">
-                                      {r.cr_date ? format(new Date(r.cr_date), "HH:mm") : "-"}
-                                    </div>
-                                  </td>
-                                );
-                              case "type":
-                                return (
-                                  <td
-                                    key={col.id}
-                                    className="px-3 py-3 font-bold text-slate-800 align-top"
-                                  >
-                                    <div
-                                      className="truncate max-w-[200px] text-sm"
-                                      title={r.inspection_type?.name}
-                                    >
-                                      {r.inspection_type?.name || "UNK"}
-                                    </div>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1"
-                                    >
-                                      {r.inspection_type_code || r.inspection_type?.code || "UNK"}
-                                    </Badge>
-                                  </td>
-                                );
-                              case "component":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    <div className="font-bold text-sm">
-                                      {r.structure_components?.q_id || "-"}
-                                    </div>
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
-                                      {r.component_type || r.structure_components?.code || "-"}
-                                    </div>
-                                  </td>
-                                );
-                              case "elev":
-                                return (
-                                  <td
-                                    key={col.id}
-                                    className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top"
-                                  >
-                                    {r.elevation ? `${r.elevation}m` : r.fp_kp || "-"}
-                                  </td>
-                                );
-                              case "anomaly_ref":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
-                                      <div className="flex flex-col gap-1">
-                                        <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">
-                                          {r.insp_anomalies[0].anomaly_ref_no}
-                                        </span>
-                                        {r.insp_anomalies[0].priority_code && (
-                                          <span
-                                            className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded shadow-sm w-fit uppercase tracking-wider ${
-                                              r.insp_anomalies[0].priority_code.includes("1")
-                                                ? "bg-red-600"
-                                                : r.insp_anomalies[0].priority_code.includes("2")
-                                                  ? "bg-orange-500"
-                                                  : r.insp_anomalies[0].priority_code.includes("3")
-                                                    ? "bg-yellow-500 text-black"
-                                                    : r.insp_anomalies[0].priority_code.includes(
-                                                          "4"
-                                                        )
-                                                      ? "bg-blue-500"
-                                                      : r.insp_anomalies[0].priority_code.includes(
-                                                            "5"
-                                                          )
-                                                        ? "bg-slate-500"
-                                                        : "bg-slate-900"
-                                            }`}
-                                          >
-                                            {r.insp_anomalies[0].priority_code}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <span className="text-slate-300">-</span>
-                                    )}
-                                  </td>
-                                );
-                              case "cp_reading":
-                                return (
-                                  <td
-                                    key={col.id}
-                                    className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top"
-                                  >
-                                    {(() => {
-                                      const cp =
-                                        r.inspection_data?.cp_rdg ??
-                                        r.inspection_data?.cp_reading_mv ??
-                                        r.inspection_data?.cp;
-                                      return cp ? (
-                                        <span className="font-mono text-xs">{cp}</span>
-                                      ) : (
-                                        <span className="text-slate-300">-</span>
-                                      );
-                                    })()}
-                                  </td>
-                                );
-                              case "dive_no":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    <span className="text-xs font-medium">
-                                      {r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || (
-                                        <span className="text-slate-300">-</span>
-                                      )}
-                                    </span>
-                                  </td>
-                                );
-                              case "tape_no":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    <span className="text-xs font-medium">
-                                      {r.insp_video_tapes?.tape_no || (
-                                        <span className="text-slate-300">-</span>
-                                      )}
-                                    </span>
-                                    {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                      <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                        {formatCounter(
-                                          r.inspection_data?._meta_timecode || r.tape_count_no
-                                        )}
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              default:
-                                return null;
-                            }
-                          })}
-                        </tr>
-                      );
-                    })}
-
-                    {displayRecords.length === 0 && (
-                      <tr>
-                        <td colSpan={10} className="px-3 py-12 text-center bg-white/50">
-                          {syncLoading ? (
-                            <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
-                              <div className="relative">
-                                <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
-                                <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                  Synchronizing
-                                </span>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                  Fetching live workspace data...
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-center gap-2 text-slate-300">
-                              <Search className="w-8 h-8 opacity-20" />
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                  Inventory Empty
-                                </span>
-                                <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">
-                                  No events match your current filter or session
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
-          </div>,
-          capturedEventsPipWindow.document.body
+      {/* MAIN DOCKABLE LAYOUT */}
+      {flexLayoutStyles}
+      <div className="flex-1 relative bg-[#0f172a] min-h-0 w-full h-full text-xs overflow-hidden">
+        {!isReadyForComps ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm z-50">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <div className="text-blue-400 font-black uppercase tracking-[0.3em] text-sm animate-pulse">Initializing Workspace</div>
+            <div className="text-slate-500 text-[10px] font-bold uppercase mt-2 tracking-widest">Restoring Dockable Environment</div>
+          </div>
+        ) : null}
+        
+        {layoutModel && (
+          <Layout 
+            model={layoutModel} 
+            factory={layoutFactory} 
+            onModelChange={onLayoutChange} 
+          />
         )}
-
+      </div>
       <WorkspaceDialogs
         supabase={supabase}
         jobPackId={jobPackId}

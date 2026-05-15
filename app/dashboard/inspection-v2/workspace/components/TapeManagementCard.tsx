@@ -11,7 +11,7 @@ import {
     SelectValue 
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Video, Play, Pause, Square, Plus, Edit, Trash2 } from "lucide-react";
+import { Video, Play, Pause, Square, Plus, Edit, Trash2, Maximize2, History } from "lucide-react";
 
 interface TapeManagementCardProps {
     vidState: "IDLE" | "RECORDING" | "PAUSED";
@@ -30,6 +30,7 @@ interface TapeManagementCardProps {
     handleDeleteTape?: (id: number) => void;
     canDelete?: boolean;
     onChapterChange?: (ch: number) => void;
+    onOpenHistory?: () => void;
     children?: React.ReactNode;
 }
 
@@ -50,6 +51,7 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
     handleDeleteTape,
     canDelete,
     onChapterChange,
+    onOpenHistory,
     children
 }) => {
     return (
@@ -58,9 +60,18 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
                 <h3 className="text-[11px] font-black uppercase text-white tracking-widest flex items-center gap-2 min-w-0 truncate">
                     <Video className="w-4 h-4 text-blue-400 shrink-0" /> VIDEO LOG
                 </h3>
-                <div className="flex items-center gap-1.5 shrink-0">
-                    <div className={`h-2 w-2 rounded-full shrink-0 ${vidState === 'RECORDING' ? 'bg-red-500 animate-pulse' : (vidState === 'PAUSED' ? 'bg-amber-500' : 'bg-slate-500')}`} />
-                    <span className="text-[10px] font-black text-white/70 uppercase tracking-wider">{vidState}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                    <button 
+                        onClick={onOpenHistory}
+                        className="p-1 text-white/50 hover:text-blue-400 hover:bg-white/10 rounded transition-all"
+                        title="View Full History"
+                    >
+                        <History className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="flex items-center gap-1.5 ml-1">
+                        <div className={`h-2 w-2 rounded-full shrink-0 ${vidState === 'RECORDING' ? 'bg-red-500 animate-pulse' : (vidState === 'PAUSED' ? 'bg-amber-500' : 'bg-slate-500')}`} />
+                        <span className="text-[10px] font-black text-white/70 uppercase tracking-wider">{vidState}</span>
+                    </div>
                 </div>
             </div>
 

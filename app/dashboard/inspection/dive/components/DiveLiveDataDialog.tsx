@@ -47,11 +47,12 @@ interface DiveLiveDataDialogProps {
 }
 
 interface DiveLog {
-    movement_id: number;
-    movement_time: string;
-    movement_type: string;
-    remarks?: string;
+    id: number;
+    timestamp: string;
+    activity: string;
+    notes?: string;
     depth_meters?: number;
+    location?: string;
 }
 
 const AIR_DIVE_ACTIONS = [
@@ -92,7 +93,7 @@ export default function DiveLiveDataDialog({
 
     // Editing state
     const [editingId, setEditingId] = useState<number | null>(null);
-    const [editForm, setEditForm] = useState({ movement_type: "", time: "" });
+    const [editForm, setEditForm] = useState({ activity: "", time: "" });
 
     // Helper to get location from action label
     const getLocation = (label: string) => {
@@ -118,19 +119,19 @@ export default function DiveLiveDataDialog({
     // Timer Logic
     useEffect(() => {
         const interval = setInterval(() => {
-            const startLog = logs.find(l => l.movement_type === "Left Surface");
-            const endLog = logs.find(l => l.movement_type === "Arrived Surface");
+            const startLog = logs.find(l => l.activity === "Left Surface");
+            const endLog = logs.find(l => l.activity === "Arrived Surface");
 
             if (startLog) {
                 // Ensure Start time is UTC
-                let tStart = startLog.movement_time;
+                let tStart = startLog.timestamp;
                 if (!tStart.includes("Z") && !tStart.includes("+")) tStart += "Z";
                 const start = new Date(tStart).getTime();
 
                 let now;
                 if (endLog) {
                     // Ensure End time is UTC
-                    let tEnd = endLog.movement_time;
+                    let tEnd = endLog.timestamp;
                     if (!tEnd.includes("Z") && !tEnd.includes("+")) tEnd += "Z";
                     now = new Date(tEnd).getTime();
                 } else {
@@ -164,7 +165,7 @@ export default function DiveLiveDataDialog({
             .from("insp_dive_movements")
             .select("*")
             .eq("dive_job_id", diveJob.dive_job_id)
-            .order("movement_time", { ascending: true });
+            .order("timestamp", { ascending: true });
 
         if (error) {
             console.error("Error fetching logs:", error);
@@ -186,8 +187,9 @@ export default function DiveLiveDataDialog({
             .from("insp_dive_movements")
             .insert({
                 dive_job_id: diveJob.dive_job_id,
-                movement_type: action.label,
-                movement_time: now,
+                activity: action.label,
+                timestamp: now,
+                location: action.location || "Worksite",
                 depth_meters: diveData.current_depth,
                 cr_user: user?.id || 'system',
                 workunit: '000'
@@ -221,24 +223,24 @@ export default function DiveLiveDataDialog({
         const { error } = await supabase
             .from("insp_dive_movements")
             .delete()
-            .eq("movement_id", id);
+            .eq("id", id);
 
         if (error) {
             toast.error("Failed to delete log");
         } else {
-            setLogs(prev => prev.filter(l => l.movement_id !== id));
+            setLogs(prev => prev.filter(l => l.id !== id));
             toast.success("Log entry deleted");
         }
     }
 
     async function handleUpdateLog(id: number) {
-        const originalLog = logs.find(l => l.movement_id === id);
+        const originalLog = logs.find(l => l.id === id);
         if (!originalLog) return;
 
-        let newTimestamp = originalLog.movement_time;
+        let newTimestamp = originalLog.timestamp;
         if (editForm.time) {
             try {
-                const datePart = originalLog.movement_time.split('T')[0];
+                const datePart = originalLog.timestamp.split('T')[0];
                 newTimestamp = `${datePart}T${editForm.time}`;
                 const d = new Date(newTimestamp);
                 if (isNaN(d.getTime())) throw new Error("Invalid time");
@@ -251,31 +253,32 @@ export default function DiveLiveDataDialog({
         const { error } = await supabase
             .from("insp_dive_movements")
             .update({
-                movement_type: editForm.movement_type,
-                movement_time: newTimestamp
+                activity: editForm.activity,
+                timestamp: newTimestamp,
+                location: getLocation(editForm.activity)
             })
-            .eq("movement_id", id);
+            .eq("id", id);
 
         if (error) {
             toast.error("Failed to update log");
         } else {
-            setLogs(prev => prev.map(l => l.movement_id === id ? { ...l, movement_type: editForm.movement_type, movement_time: newTimestamp } : l));
+            setLogs(prev => prev.map(l => l.id === id ? { ...l, activity: editForm.activity, timestamp: newTimestamp, location: getLocation(editForm.activity) } : l));
             setEditingId(null);
             toast.success("Log updated");
         }
     }
 
     function startEditing(log: DiveLog) {
-        const timeStr = new Date(log.movement_time).toLocaleTimeString('en-GB', { hour12: false });
-        setEditForm({ movement_type: log.movement_type, time: timeStr });
-        setEditingId(log.movement_id);
+        const timeStr = new Date(log.timestamp).toLocaleTimeString('en-GB', { hour12: false });
+        setEditForm({ activity: log.activity, time: timeStr });
+        setEditingId(log.id);
     }
 
     // Determine Next Logical Action
     const suggestNextAction = () => {
         if (logs.length === 0) return actionsList[0];
 
-        const lastActivity = logs[logs.length - 1].movement_type;
+        const lastActivity = logs[logs.length - 1].activity;
         const index = actionsList.findIndex(a => a.label === lastActivity);
 
         if (index !== -1 && index < actionsList.length - 1) {
@@ -323,11 +326,11 @@ export default function DiveLiveDataDialog({
                             <h3 className="text-sm font-medium text-slate-500 mb-2">Current Status</h3>
                             <div className="flex items-center justify-between">
                                 <div className="text-2xl font-bold text-blue-600">
-                                    {lastLog ? lastLog.movement_type : "Ready to Dive"}
+                                    {lastLog ? lastLog.activity : "Ready to Dive"}
                                 </div>
                                 {lastLog && (
                                     <Badge variant="outline" className="text-xs">
-                                        Last Update: {new Date(lastLog.movement_time).toLocaleTimeString()}
+                                        Last Update: {new Date(lastLog.timestamp).toLocaleTimeString()}
                                     </Badge>
                                 )}
                             </div>
@@ -395,14 +398,14 @@ export default function DiveLiveDataDialog({
                                     </div>
                                 ) : (
                                     [...logs].reverse().map((log) => (
-                                        <div key={log.movement_id} className="relative pl-6 pb-6 border-l-2 border-slate-200 dark:border-slate-800 last:pb-0 last:border-0">
+                                        <div key={log.id} className="relative pl-6 pb-6 border-l-2 border-slate-200 dark:border-slate-800 last:pb-0 last:border-0">
                                             <div className="absolute top-0 left-[-5px] h-2.5 w-2.5 rounded-full bg-blue-600 border-2 border-white dark:border-slate-900"></div>
 
-                                            {editingId === log.movement_id ? (
+                                            {editingId === log.id ? (
                                                 <div className="space-y-2 bg-white dark:bg-slate-900 p-3 rounded-lg border border-blue-200 shadow-sm">
                                                     <Input
-                                                        value={editForm.movement_type}
-                                                        onChange={e => setEditForm({ ...editForm, movement_type: e.target.value })}
+                                                        value={editForm.activity}
+                                                        onChange={e => setEditForm({ ...editForm, activity: e.target.value })}
                                                         placeholder="Action"
                                                     />
                                                     <Input
@@ -413,14 +416,14 @@ export default function DiveLiveDataDialog({
                                                     />
                                                     <div className="flex gap-2 justify-end mt-2">
                                                         <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
-                                                        <Button size="sm" onClick={() => handleUpdateLog(log.movement_id)}>Save</Button>
+                                                        <Button size="sm" onClick={() => handleUpdateLog(log.id)}>Save</Button>
                                                     </div>
                                                 </div>
                                             ) : (
                                                 <div className="group">
                                                     <div className="flex items-baseline justify-between">
                                                         <span className="text-sm font-mono text-muted-foreground">
-                                                            {new Date(log.movement_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                                         </span>
                                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <Button
@@ -435,17 +438,17 @@ export default function DiveLiveDataDialog({
                                                                 size="icon"
                                                                 variant="ghost"
                                                                 className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50"
-                                                                onClick={() => handleDeleteLog(log.movement_id)}
+                                                                onClick={() => handleDeleteLog(log.id)}
                                                             >
                                                                 <Trash2 className="h-3 w-3" />
                                                             </Button>
                                                         </div>
                                                     </div>
                                                     <div className="font-medium text-slate-900 dark:text-slate-100">
-                                                        {log.movement_type}
+                                                        {log.activity}
                                                     </div>
                                                     <div className="text-xs text-muted-foreground mt-0.5">
-                                                        {getLocation(log.movement_type)}
+                                                        {getLocation(log.activity)}
                                                     </div>
                                                 </div>
                                             )}

@@ -68,10 +68,11 @@ export default function ROVMovementLog({ diveJob }: ROVMovementLogProps) {
         if (!diveJob) return;
 
         try {
+            const depId = Number(diveJob.id || diveJob.rov_job_id);
             const { data, error } = await supabase
                 .from("insp_rov_movements")
                 .select("*")
-                .eq("rov_job_id", diveJob.rov_job_id)
+                .eq("rov_job_id", depId)
                 .order("movement_time", { ascending: false });
 
             if (error) throw error;
@@ -95,10 +96,11 @@ export default function ROVMovementLog({ diveJob }: ROVMovementLogProps) {
         setLoading(true);
 
         try {
+            const depId = Number(diveJob.id || diveJob.rov_job_id);
             const finalTime = newMovement.movement_time ? new Date(newMovement.movement_time).toISOString() : new Date().toISOString();
 
             const { error } = await supabase.from("insp_rov_movements").insert({
-                rov_job_id: diveJob.rov_job_id,
+                rov_job_id: depId,
                 movement_time: finalTime,
                 movement_type: newMovement.movement_type,
                 remarks: newMovement.remarks,
@@ -167,12 +169,12 @@ export default function ROVMovementLog({ diveJob }: ROVMovementLogProps) {
     }
 
     return (
-        <div className="grid md:grid-cols-2 gap-6 min-h-[500px]">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Left: Add New Movement */}
-            <Card className="p-6 shadow-lg h-fit border-cyan-100 dark:border-cyan-900/40">
-                <div className="flex items-center gap-2 mb-6">
-                    <Plus className="h-5 w-5 text-cyan-600" />
-                    <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">Log ROV Movement</h3>
+            <Card className="p-4 shadow-md h-fit border-cyan-100 dark:border-cyan-900/40">
+                <div className="flex items-center gap-2 mb-4">
+                    <Plus className="h-4 w-4 text-cyan-600" />
+                    <h3 className="font-bold text-base text-slate-800 dark:text-slate-200">Log ROV Movement</h3>
                 </div>
 
                 <div className="space-y-4">
@@ -232,13 +234,13 @@ export default function ROVMovementLog({ diveJob }: ROVMovementLogProps) {
             </Card>
 
             {/* Right: Movement History */}
-            <Card className="p-6 shadow-lg h-[calc(100vh-200px)] min-h-[500px] flex flex-col border-cyan-100 dark:border-cyan-900/40 bg-slate-50 dark:bg-slate-900/50">
-                <div className="flex items-center justify-between mb-6 shrink-0">
+            <Card className="p-4 shadow-md h-[400px] xl:h-[calc(100vh-250px)] min-h-[350px] flex flex-col border-cyan-100 dark:border-cyan-900/40 bg-slate-50 dark:bg-slate-900/50">
+                <div className="flex items-center justify-between mb-4 shrink-0">
                     <div className="flex items-center gap-2">
-                        <ListChecks className="h-5 w-5 text-cyan-600" />
-                        <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">Execution Timeline</h3>
+                        <ListChecks className="h-4 w-4 text-cyan-600" />
+                        <h3 className="font-bold text-base text-slate-800 dark:text-slate-200">Execution Timeline</h3>
                     </div>
-                    <Badge variant="secondary" className="bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-300">{movements.length} logged</Badge>
+                    <Badge variant="secondary" className="bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-300 text-[10px] px-1.5 h-5">{movements.length} logged</Badge>
                 </div>
 
                 <div className="space-y-3 overflow-y-auto pr-2 flex-grow scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 scrollbar-track-transparent">

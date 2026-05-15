@@ -37,10 +37,11 @@ interface DiveMovementLogProps {
 }
 
 interface Movement {
-    movement_id?: number;
-    movement_time: string;
-    movement_type: string;
-    remarks: string;
+    id?: number;
+    timestamp: string;
+    activity: string;
+    notes: string;
+    location?: string;
 }
 
 export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
@@ -60,9 +61,9 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
 
     const [movements, setMovements] = useState<Movement[]>([]);
     const [newMovement, setNewMovement] = useState({
-        movement_type: "",
-        remarks: "",
-        movement_time: getLocalDatetimeString(),
+        activity: "",
+        notes: "",
+        timestamp: getLocalDatetimeString(),
     });
     const [loading, setLoading] = useState(false);
 
@@ -80,11 +81,12 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
         if (!diveJob) return;
 
         try {
+            const depId = Number(diveJob.id || diveJob.dive_job_id);
             const { data, error } = await supabase
                 .from("insp_dive_movements")
                 .select("*")
-                .eq("dive_job_id", diveJob.dive_job_id)
-                .order("movement_time", { ascending: false });
+                .eq("dive_job_id", depId)
+                .order("timestamp", { ascending: false });
 
             if (error) throw error;
 
@@ -100,7 +102,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
             return;
         }
 
-        if (!newMovement.movement_type) {
+        if (!newMovement.activity) {
             toast.error("Action is required");
             return;
         }
@@ -108,19 +110,22 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
         setLoading(true);
 
         try {
-            const finalTime = newMovement.movement_time ? new Date(newMovement.movement_time).toISOString() : new Date().toISOString();
+            const depId = Number(diveJob.id || diveJob.dive_job_id);
+            const finalTime = newMovement.timestamp ? new Date(newMovement.timestamp).toISOString() : new Date().toISOString();
+            const selectedAction = diveActionsList.find(a => a.label === newMovement.activity);
 
             const { error } = await supabase.from("insp_dive_movements").insert({
-                dive_job_id: diveJob.dive_job_id,
-                movement_time: finalTime,
-                movement_type: newMovement.movement_type,
-                remarks: newMovement.remarks,
+                dive_job_id: depId,
+                timestamp: finalTime,
+                activity: newMovement.activity,
+                notes: newMovement.notes,
+                location: selectedAction?.location || "N/A"
             });
 
             if (error) throw error;
 
             toast.success("Movement logged");
-            setNewMovement({ movement_type: "", remarks: "", movement_time: getLocalDatetimeString() });
+            setNewMovement({ activity: "", notes: "", timestamp: getLocalDatetimeString() });
             loadMovements();
         } catch (error: any) {
             console.error("Error adding movement:", error);
@@ -133,7 +138,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
     async function handleDeleteMovement(id: number) {
         if (!confirm("Are you sure you want to delete this log?")) return;
         try {
-            const { error } = await supabase.from("insp_dive_movements").delete().eq("movement_id", id);
+            const { error } = await supabase.from("insp_dive_movements").delete().eq("id", id);
             if (error) throw error;
             toast.success("Movement deleted");
             loadMovements();
@@ -144,13 +149,15 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
     }
 
     async function handleUpdateMovement() {
-        if (!editForm || !editForm.movement_id) return;
+        if (!editForm || !editForm.id) return;
         try {
+            const selectedAction = diveActionsList.find(a => a.label === editForm.activity);
             const { error } = await supabase.from("insp_dive_movements").update({
-                movement_time: new Date(editForm.movement_time).toISOString(),
-                movement_type: editForm.movement_type,
-                remarks: editForm.remarks
-            }).eq("movement_id", editForm.movement_id);
+                timestamp: new Date(editForm.timestamp).toISOString(),
+                activity: editForm.activity,
+                notes: editForm.notes,
+                location: selectedAction?.location || editForm.location || "N/A"
+            }).eq("id", editForm.id);
             if (error) throw error;
             toast.success("Movement updated");
             setEditingId(null);
@@ -180,12 +187,12 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
     }
 
     return (
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Left: Add New Movement */}
-            <Card className="p-6 shadow-lg h-fit">
-                <div className="flex items-center gap-2 mb-6">
-                    <Plus className="h-5 w-5 text-blue-600" />
-                    <h3 className="font-bold text-lg">Log Movement</h3>
+            <Card className="p-4 shadow-md h-fit border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-4">
+                    <Plus className="h-4 w-4 text-blue-600" />
+                    <h3 className="font-bold text-base">Log Movement</h3>
                 </div>
 
                 <div className="space-y-4">
@@ -194,9 +201,9 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                         <Input
                             id="movement_time"
                             type="datetime-local"
-                            value={newMovement.movement_time}
+                            value={newMovement.timestamp}
                             onChange={(e) =>
-                                setNewMovement({ ...newMovement, movement_time: e.target.value })
+                                setNewMovement({ ...newMovement, timestamp: e.target.value })
                             }
                             className="bg-white"
                         />
@@ -205,8 +212,8 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                     <div className="space-y-2">
                         <Label htmlFor="activity">Action *</Label>
                         <Select
-                            value={newMovement.movement_type}
-                            onValueChange={(val) => setNewMovement({ ...newMovement, movement_type: val })}
+                            value={newMovement.activity}
+                            onValueChange={(val) => setNewMovement({ ...newMovement, activity: val })}
                         >
                             <SelectTrigger id="activity" className="bg-white">
                                 <SelectValue placeholder="Select an action..." />
@@ -223,9 +230,9 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                         <Label htmlFor="notes">Notes/Remarks</Label>
                         <Textarea
                             id="notes"
-                            value={newMovement.remarks}
+                            value={newMovement.notes}
                             onChange={(e) =>
-                                setNewMovement({ ...newMovement, remarks: e.target.value })
+                                setNewMovement({ ...newMovement, notes: e.target.value })
                             }
                             placeholder="Additional details..."
                             rows={3}
@@ -244,13 +251,13 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
             </Card>
 
             {/* Right: Movement History */}
-            <Card className="p-6 shadow-lg h-[calc(100vh-200px)] min-h-[500px] flex flex-col">
-                <div className="flex items-center justify-between mb-6 shrink-0">
+            <Card className="p-4 shadow-md h-[400px] xl:h-[calc(100vh-250px)] min-h-[350px] flex flex-col border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between mb-4 shrink-0">
                     <div className="flex items-center gap-2">
-                        <ListChecks className="h-5 w-5 text-blue-600" />
-                        <h3 className="font-bold text-lg">Movement History</h3>
+                        <ListChecks className="h-4 w-4 text-blue-600" />
+                        <h3 className="font-bold text-base">Movement History</h3>
                     </div>
-                    <Badge variant="secondary">{movements.length} entries</Badge>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 h-5">{movements.length} entries</Badge>
                 </div>
 
                 <div className="space-y-3 overflow-y-auto pr-2 flex-grow scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 scrollbar-track-transparent">
@@ -265,8 +272,8 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                         movements.map((movement, index) => {
                             // Calculate elapsed using oldest array movement as baseline
                             const oldestMovement = movements[movements.length - 1];
-                            const baselineMs = oldestMovement ? parseDbDate(oldestMovement.movement_time).getTime() : 0;
-                            const currentMs = parseDbDate(movement.movement_time).getTime();
+                            const baselineMs = oldestMovement ? parseDbDate(oldestMovement.timestamp).getTime() : 0;
+                            const currentMs = parseDbDate(movement.timestamp).getTime();
                             const diffMs = currentMs - baselineMs;
 
                             const hrs = Math.floor(Math.max(0, diffMs) / (1000 * 60 * 60));
@@ -276,7 +283,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
 
                             return (
                                 <div
-                                    key={movement.movement_id || index}
+                                    key={movement.id || index}
                                     className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors"
                                 >
                                     <div className="flex items-start justify-between mb-2">
@@ -284,30 +291,30 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                                             <Clock className="h-4 w-4 text-blue-600" />
                                             <div className="flex flex-col">
                                                 <span className="font-mono text-sm font-semibold text-blue-600 leading-none">
-                                                    {formatTime(movement.movement_time || new Date().toISOString())}
+                                                    {formatTime(movement.timestamp || new Date().toISOString())}
                                                 </span>
                                                 <span className="text-[10px] text-slate-400 font-mono mt-0.5">Elapsed: {elapsedStr}</span>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs text-muted-foreground mr-1">
-                                                {formatDate(movement.movement_time || new Date().toISOString())}
+                                                {formatDate(movement.timestamp || new Date().toISOString())}
                                             </span>
-                                            {editingId !== movement.movement_id && (
+                                            {editingId !== movement.id && (
                                                 <>
-                                                    <button onClick={() => { setEditingId(movement.movement_id as number); setEditForm(movement); }} className="p-1 hover:bg-white rounded text-slate-500 hover:text-blue-600 transition" title="Modify Event"><Edit className="w-3.5 h-3.5" /></button>
-                                                    <button onClick={() => handleDeleteMovement(movement.movement_id as number)} className="p-1 hover:bg-red-50 rounded text-red-500 transition" title="Delete Event"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                    <button onClick={() => { setEditingId(movement.id as number); setEditForm(movement); }} className="p-1 hover:bg-white rounded text-slate-500 hover:text-blue-600 transition" title="Modify Event"><Edit className="w-3.5 h-3.5" /></button>
+                                                    <button onClick={() => handleDeleteMovement(movement.id as number)} className="p-1 hover:bg-red-50 rounded text-red-500 transition" title="Delete Event"><Trash2 className="w-3.5 h-3.5" /></button>
                                                 </>
                                             )}
                                         </div>
                                     </div>
 
-                                    {editingId === movement.movement_id ? (
+                                    {editingId === movement.id ? (
                                         <div className="space-y-2 mt-2 pb-2">
-                                            <Input type="datetime-local" value={editForm?.movement_time ? new Date(parseDbDate(editForm.movement_time).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEditForm({ ...editForm!, movement_time: new Date(e.target.value).toISOString() })} className="h-8 text-sm bg-white" />
+                                            <Input type="datetime-local" value={editForm?.timestamp ? new Date(parseDbDate(editForm.timestamp).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEditForm({ ...editForm!, timestamp: new Date(e.target.value).toISOString() })} className="h-8 text-sm bg-white" />
                                             <Select
-                                                value={diveActionsList.find(a => a.value === editForm?.movement_type || a.label === editForm?.movement_type)?.label || editForm?.movement_type || ""}
-                                                onValueChange={(val) => setEditForm(editForm ? { ...editForm, movement_type: val } : null)}
+                                                value={diveActionsList.find(a => a.value === editForm?.activity || a.label === editForm?.activity)?.label || editForm?.activity || ""}
+                                                onValueChange={(val) => setEditForm(editForm ? { ...editForm, activity: val } : null)}
                                             >
                                                 <SelectTrigger className="h-8 text-sm bg-white">
                                                     <SelectValue placeholder="Action..." />
@@ -318,7 +325,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                                                     ))}
                                                 </SelectContent>
                                             </Select>
-                                            <Textarea value={editForm?.remarks || ""} onChange={(e) => setEditForm({ ...editForm!, remarks: e.target.value })} className="min-h-[60px] text-sm bg-white" placeholder="Notes..." />
+                                            <Textarea value={editForm?.notes || ""} onChange={(e) => setEditForm({ ...editForm!, notes: e.target.value })} className="min-h-[60px] text-sm bg-white" placeholder="Notes..." />
                                             <div className="flex justify-end gap-2 pt-1">
                                                 <Button variant="ghost" size="sm" onClick={() => setEditingId(null)} className="h-7 text-xs px-2"><X className="w-3 h-3 mr-1" /> Cancel</Button>
                                                 <Button variant="default" size="sm" onClick={handleUpdateMovement} className="h-7 text-xs px-2 bg-blue-600"><Save className="w-3 h-3 mr-1" /> Save</Button>
@@ -331,17 +338,26 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                                                     Action:
                                                 </span>
                                                 <span className="text-sm font-semibold text-slate-900 dark:text-white">
-                                                    {diveActionsList.find(a => a.value === movement.movement_type || a.label === movement.movement_type)?.label || movement.movement_type}
+                                                    {diveActionsList.find(a => a.value === movement.activity || a.label === movement.activity)?.label || movement.activity}
+                                                </span>
+                                            </div>
+                                            
+                                            <div className="flex items-start gap-2">
+                                                <span className="text-xs font-medium text-slate-500 min-w-[70px]">
+                                                    Location:
+                                                </span>
+                                                <span className="text-xs text-slate-600 dark:text-slate-400">
+                                                    {movement.location || "N/A"}
                                                 </span>
                                             </div>
 
-                                            {movement.remarks && (
+                                            {movement.notes && (
                                                 <div className="flex items-start gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                                                     <span className="text-xs font-medium text-slate-500 min-w-[70px]">
                                                         Notes:
                                                     </span>
                                                     <span className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                                                        {movement.remarks}
+                                                        {movement.notes}
                                                     </span>
                                                 </div>
                                             )}
