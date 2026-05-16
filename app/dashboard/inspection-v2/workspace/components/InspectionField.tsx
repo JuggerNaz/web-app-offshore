@@ -347,7 +347,7 @@ const InspectionField = ({
         return (
             <div className="space-y-3 w-full block">
                 {rows.map((row: any, idx: number) => (
-                    <div key={idx} className="p-4 border-2 border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50/80 dark:bg-slate-900/90 shadow-sm space-y-3 relative group-row transition-all hover:border-blue-400 dark:hover:border-blue-600 max-w-[55%] min-w-[400px] block mb-2">
+                    <div key={idx} className="p-4 border-2 border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50/80 dark:bg-slate-900/90 shadow-sm space-y-3 relative group-row transition-all hover:border-blue-400 dark:hover:border-blue-600 w-full max-w-4xl block mb-2">
                         <Button
                             variant="secondary"
                             size="icon"
@@ -496,6 +496,24 @@ const InspectionField = ({
         }
     };
 
+    if (p.type === 'textarea') {
+        return (
+            <textarea
+                value={currentValue || ""}
+                onChange={(e) => !readOnly && handler(p.name || p.label, e.target.value)}
+                onBlur={(e) => {
+                    if (readOnly) return;
+                    if (type === 'primary') {
+                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: e.target.value }));
+                    }
+                }}
+                readOnly={readOnly}
+                placeholder={`Enter ${p.label || p.name}`}
+                className={`w-full min-h-[60px] rounded-md border ${borderClass} bg-white dark:bg-slate-900 p-2 text-xs font-semibold ${ringClass} dark:text-slate-200 resize-none shadow-inner`}
+            />
+        );
+    }
+
     return (
         <div className="relative flex items-center gap-1">
             <Input
@@ -518,7 +536,6 @@ const InspectionField = ({
                     }
                 }}
                 readOnly={readOnly}
-
                 placeholder={isTimeField ? "HH:MM:SS" : `Enter ${p.label || p.name}`}
                 maxLength={isTimeField ? 8 : undefined}
                 className={`h-8 text-xs font-semibold bg-white dark:bg-slate-900 ${borderClass} ${ringClass} flex-1 dark:text-slate-200`}

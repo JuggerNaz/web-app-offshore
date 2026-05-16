@@ -108,13 +108,13 @@ export function ROVDataStringBanner({ structureType }: ROVDataStringBannerProps)
     useEffect(() => {
         return () => {
             console.log("[ROV Banner] Unmounting, terminating ROV connection...");
-            disconnect(); 
+            disconnect(true); 
         };
     }, [disconnect]);
 
     const handleConnectToggle = async () => {
         if (isConnected) {
-            await disconnect();
+            await disconnect(true);
         } else {
             await connect(structureType);
         }

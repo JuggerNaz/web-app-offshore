@@ -658,7 +658,47 @@ export default function InspectionLanding() {
                             </Popover>
                         </div>
 
-                        {/* Start Button */}
+                    {/* Inspection Method Selection */}
+                    <div className={`space-y-3 transition-opacity duration-300 ${!selectedSOW ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+                        <Label className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            4. Select Inspection Method
+                        </Label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div
+                                onClick={() => setSelectedMode("DIVING")}
+                                className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${selectedMode === "DIVING" 
+                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md ring-1 ring-blue-200" 
+                                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 hover:border-blue-300 dark:hover:border-blue-700"}`}
+                            >
+                                <div className={`p-3 rounded-lg ${selectedMode === "DIVING" ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-900 text-slate-500"}`}>
+                                    <LifeBuoy className="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <p className={`font-bold text-base ${selectedMode === "DIVING" ? "text-blue-900 dark:text-blue-100" : "text-slate-900 dark:text-slate-100"}`}>Diving</p>
+                                    <p className="text-xs text-slate-500 font-medium">Standard diving inspection</p>
+                                </div>
+                                {selectedMode === "DIVING" && <Check className="ml-auto h-5 w-5 text-blue-600" />}
+                            </div>
+
+                            <div
+                                onClick={() => setSelectedMode("ROV")}
+                                className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${selectedMode === "ROV" 
+                                    ? "border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20 shadow-md ring-1 ring-cyan-200" 
+                                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 hover:border-cyan-300 dark:hover:border-cyan-700"}`}
+                            >
+                                <div className={`p-3 rounded-lg ${selectedMode === "ROV" ? "bg-cyan-500 text-white" : "bg-slate-100 dark:bg-slate-900 text-slate-500"}`}>
+                                    <Bot className="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <p className={`font-bold text-base ${selectedMode === "ROV" ? "text-cyan-900 dark:text-cyan-100" : "text-slate-900 dark:text-slate-100"}`}>ROV</p>
+                                    <p className="text-xs text-slate-500 font-medium">Remote operated vehicle</p>
+                                </div>
+                                {selectedMode === "ROV" && <Check className="ml-auto h-5 w-5 text-cyan-600" />}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Start Button */}
                         <div className="pt-6 border-t border-slate-100 dark:border-slate-800 mt-6">
                             {selectedStructure && sowReports.length === 0 && (
                                 <div className="mb-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex gap-3 text-amber-800 dark:text-amber-200">
@@ -672,15 +712,15 @@ export default function InspectionLanding() {
 
                             {(!selectedStructure || sowReports.length > 0) ? (
                                 <Link 
-                                    href={selectedJobPack && selectedStructure && selectedSOW ? `/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.sow_id}&mode=DIVING&jpName=${encodeURIComponent(jobPacks.find(j => j.id.toString() === selectedJobPack)?.jobpack_no || '')}&structName=${encodeURIComponent(structures.find(s => s.id.toString() === selectedStructure)?.name || '')}&sowReport=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.report_number || '')}&jobType=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.job_type || '')}` : "#"}
+                                    href={selectedJobPack && selectedStructure && selectedSOW && selectedMode ? `/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.sow_id}&mode=${selectedMode}&jpName=${encodeURIComponent(jobPacks.find(j => j.id.toString() === selectedJobPack)?.jobpack_no || '')}&structName=${encodeURIComponent(structures.find(s => s.id.toString() === selectedStructure)?.name || '')}&sowReport=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.report_number || '')}&jobType=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.job_type || '')}` : "#"}
                                     onClick={(e) => {
-                                        if (!selectedJobPack || !selectedStructure || !selectedSOW) e.preventDefault();
+                                        if (!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode) e.preventDefault();
                                     }}
-                                    className={`w-full block ${(!selectedJobPack || !selectedStructure || !selectedSOW) ? "pointer-events-none" : ""}`}
+                                    className={`w-full block ${(!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode) ? "pointer-events-none" : ""}`}
                                 >
                                     <Button
-                                        disabled={!selectedJobPack || !selectedStructure || !selectedSOW}
-                                        className={`w-full h-16 text-lg font-black transition-all duration-300 ${(!selectedJobPack || !selectedStructure || !selectedSOW)
+                                        disabled={!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode}
+                                        className={`w-full h-16 text-lg font-black transition-all duration-300 ${(!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode)
                                             ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
                                             : "bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-0.5"}`}
                                     >

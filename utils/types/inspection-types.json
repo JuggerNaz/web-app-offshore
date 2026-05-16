@@ -2145,8 +2145,60 @@
                     }
                 },
                 {
-                    "name": "size_dimensions",
-                    "label": "Size / Dimensions",
+                    "name": "size_length",
+                    "label": "Size Length",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "item_details",
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
+                },
+                {
+                    "name": "size_width",
+                    "label": "Size Width",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "item_details",
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
+                },
+                {
+                    "name": "size_height",
+                    "label": "Size Height",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "item_details",
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
+                },
+                {
+                    "name": "size_diameter",
+                    "label": "Size Diameter",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "item_details",
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
+                },
+                {
+                    "name": "debris_desc",
+                    "label": "Debris Description",
                     "type": "text",
                     "group": "item_details",
                     "condition": {

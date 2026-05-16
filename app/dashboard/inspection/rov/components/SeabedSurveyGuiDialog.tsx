@@ -45,7 +45,15 @@ export function SeabedSurveyGuiInline({
         category: 'Debris',
         description: '',
         material: 'Non-Metallic',
-        size: '',
+        length: '',
+        lengthUnit: 'm',
+        width: '',
+        widthUnit: 'm',
+        height: '',
+        heightUnit: 'm',
+        diameter: '',
+        diameterUnit: 'm',
+        debrisDesc: '',
         intensity: 'Moderate',
         craterDiameter: '',
         craterDiameterUnit: 'm',
@@ -227,7 +235,16 @@ export function SeabedSurveyGuiInline({
                         isMetallic: idraw.material === 'Metallic' || idraw.debris_material === 'Metallic',
                         description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || '',
                         material: idraw.material || idraw.debris_material || 'Unknown',
-                        size: idraw.size_dimensions || idraw.dimension_1 || 'N/A',
+                        size: idraw.size_dimensions || idraw.dimension_1 || `${idraw.size_length || ''}${idraw.size_length_unit || ''} x ${idraw.size_width || ''}${idraw.size_width_unit || ''}`,
+                        length: idraw.size_length || '',
+                        lengthUnit: idraw.size_length_unit || 'm',
+                        width: idraw.size_width || '',
+                        widthUnit: idraw.size_width_unit || 'm',
+                        height: idraw.size_height || '',
+                        heightUnit: idraw.size_height_unit || 'm',
+                        diameter: idraw.size_diameter || '',
+                        diameterUnit: idraw.size_diameter_unit || 'm',
+                        debrisDesc: idraw.debris_desc || '',
                         intensity: idraw.seepage_intensity || 'Moderate',
                         craterDiameter: idraw.crater_diameter || '',
                         craterDepth: idraw.crater_depth || '',
@@ -291,7 +308,16 @@ export function SeabedSurveyGuiInline({
                 distance: idraw.distance_from_leg || idraw.distance || 0,
                 type: cat,
                 description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || '',
-                size: idraw.size_dimensions || idraw.dimension_1 || '',
+                size: idraw.size_dimensions || idraw.dimension_1 || `${idraw.size_length || ''}${idraw.size_length_unit || ''} x ${idraw.size_width || ''}${idraw.size_width_unit || ''}`,
+                length: idraw.size_length || '',
+                lengthUnit: idraw.size_length_unit || 'm',
+                width: idraw.size_width || '',
+                widthUnit: idraw.size_width_unit || 'm',
+                height: idraw.size_height || '',
+                heightUnit: idraw.size_height_unit || 'm',
+                diameter: idraw.size_diameter || '',
+                diameterUnit: idraw.size_diameter_unit || 'm',
+                debrisDesc: idraw.debris_desc || '',
                 material: idraw.material || idraw.debris_material || 'Unknown',
                 intensity: idraw.seepage_intensity || 'Moderate',
                 craterDiameter: idraw.crater_diameter || '',
@@ -322,7 +348,15 @@ export function SeabedSurveyGuiInline({
                     category: liveItem.type,
                     description: liveItem.description,
                     material: liveItem.material,
-                    size: liveItem.size,
+                    length: liveItem.length,
+                    lengthUnit: liveItem.lengthUnit,
+                    width: liveItem.width,
+                    widthUnit: liveItem.widthUnit,
+                    height: liveItem.height,
+                    heightUnit: liveItem.heightUnit,
+                    diameter: liveItem.diameter,
+                    diameterUnit: liveItem.diameterUnit,
+                    debrisDesc: liveItem.debrisDesc,
                     intensity: liveItem.intensity,
                     craterDiameter: liveItem.craterDiameter,
                     craterDiameterUnit: liveItem.craterDiameterUnit,
@@ -361,7 +395,15 @@ export function SeabedSurveyGuiInline({
             category: 'Debris', 
             description: '', 
             material: 'Non-Metallic', 
-            size: '',
+            length: '',
+            lengthUnit: 'm',
+            width: '',
+            widthUnit: 'm',
+            height: '',
+            heightUnit: 'm',
+            diameter: '',
+            diameterUnit: 'm',
+            debrisDesc: '',
             intensity: 'Moderate',
             craterDiameter: '',
             craterDiameterUnit: 'm',
@@ -577,7 +619,15 @@ export function SeabedSurveyGuiInline({
                 y: newPoint.y.toFixed(2),
                 category: formData.category,
                 material: formData.material,
-                size_dimensions: formData.size,
+                size_length: formData.length,
+                size_length_unit: formData.lengthUnit,
+                size_width: formData.width,
+                size_width_unit: formData.widthUnit,
+                size_height: formData.height,
+                size_height_unit: formData.heightUnit,
+                size_diameter: formData.diameter,
+                size_diameter_unit: formData.diameterUnit,
+                debris_desc: formData.debrisDesc,
                 seepage_intensity: formData.intensity,
                 crater_diameter: formData.craterDiameter,
                 crater_diameter_unit: formData.craterDiameterUnit,
@@ -585,7 +635,7 @@ export function SeabedSurveyGuiInline({
                 crater_depth_unit: formData.craterDepthUnit,
                 type: formData.category, // preserve for old code
                 debris_material: formData.material, // preserve for old code
-                dimension_1: formData.size, // preserve for old code
+                dimension_1: formData.length && formData.width ? `${formData.length}x${formData.width}` : '', // preserve for old code
                 finding_type: "Complete",
             };
 
@@ -603,7 +653,7 @@ export function SeabedSurveyGuiInline({
                 inspection_type_code: 'RSEAB',
                 inspection_type_id: inspTypeId,
                 sow_report_no: sowReportNo || rovJob?.raw?.sow_report_no || 'Unknown',
-                description: formData.description ? `${formData.category}: ${formData.description}` : formData.category,
+                description: formData.category === 'Debris' ? formData.category : (formData.description ? `${formData.category}: ${formData.description}` : formData.category),
                 inspection_data: inspectionData,
                 status: 'COMPLETED',
                 tape_id: typeof tapeId === 'string' && tapeId !== 'undefined' ? (parseInt(tapeId, 10) || null) : (typeof tapeId === 'number' ? tapeId : null),
@@ -906,7 +956,15 @@ export function SeabedSurveyGuiInline({
                 ...(record?.inspection_data || {}),
                 category: editFormData.category,
                 material: editFormData.material,
-                size_dimensions: editFormData.size,
+                size_length: editFormData.length,
+                size_length_unit: editFormData.lengthUnit,
+                size_width: editFormData.width,
+                size_width_unit: editFormData.widthUnit,
+                size_height: editFormData.height,
+                size_height_unit: editFormData.heightUnit,
+                size_diameter: editFormData.diameter,
+                size_diameter_unit: editFormData.diameterUnit,
+                debris_desc: editFormData.debrisDesc,
                 seepage_intensity: editFormData.intensity,
                 crater_diameter: editFormData.craterDiameter,
                 crater_diameter_unit: editFormData.craterDiameterUnit,
@@ -919,7 +977,7 @@ export function SeabedSurveyGuiInline({
                 dist_to_nearest_leg: editFormData.distToNearestLeg,
                 type: editFormData.category, 
                 debris_material: editFormData.material,
-                dimension_1: editFormData.size,
+                dimension_1: editFormData.length && editFormData.width ? `${editFormData.length}x${editFormData.width}` : '',
             };
 
             const { data: authData } = await supabase.auth.getUser();
@@ -927,7 +985,7 @@ export function SeabedSurveyGuiInline({
                 .update({ 
                     inspection_data: newData,
                     component_id: componentId,
-                    description: editFormData.description ? `${editFormData.category}: ${editFormData.description}` : editFormData.category,
+                    description: editFormData.category === 'Debris' ? editFormData.category : (editFormData.description ? `${editFormData.category}: ${editFormData.description}` : editFormData.category),
                     md_user: authData?.user?.id || null,
                     md_date: new Date().toISOString()
                 })
@@ -1259,13 +1317,55 @@ export function SeabedSurveyGuiInline({
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs">Size / Dimensions</Label>
+                                        <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                                            <div className="space-y-1">
+                                                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Length</Label>
+                                                <div className="flex gap-1">
+                                                    <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={formData.length} onChange={e => setFormData(p => ({...p, length: e.target.value}))} />
+                                                    <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={formData.lengthUnit} onChange={e => setFormData(p => ({...p, lengthUnit: e.target.value}))}>
+                                                        <option value="m">m</option>
+                                                        <option value="mm">mm</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Width</Label>
+                                                <div className="flex gap-1">
+                                                    <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={formData.width} onChange={e => setFormData(p => ({...p, width: e.target.value}))} />
+                                                    <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={formData.widthUnit} onChange={e => setFormData(p => ({...p, widthUnit: e.target.value}))}>
+                                                        <option value="m">m</option>
+                                                        <option value="mm">mm</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Height</Label>
+                                                <div className="flex gap-1">
+                                                    <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={formData.height} onChange={e => setFormData(p => ({...p, height: e.target.value}))} />
+                                                    <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={formData.heightUnit} onChange={e => setFormData(p => ({...p, heightUnit: e.target.value}))}>
+                                                        <option value="m">m</option>
+                                                        <option value="mm">mm</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Diameter</Label>
+                                                <div className="flex gap-1">
+                                                    <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={formData.diameter} onChange={e => setFormData(p => ({...p, diameter: e.target.value}))} />
+                                                    <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={formData.diameterUnit} onChange={e => setFormData(p => ({...p, diameterUnit: e.target.value}))}>
+                                                        <option value="m">m</option>
+                                                        <option value="mm">mm</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Debris Description</Label>
                                             <Input 
-                                                className="h-8 text-xs"
-                                                placeholder="e.g. 2m x 0.5m" 
-                                                value={formData.size}
-                                                onChange={e => setFormData(p => ({...p, size: e.target.value}))}
+                                                className="h-7 text-xs dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                                placeholder="Specific debris details..." 
+                                                value={formData.debrisDesc}
+                                                onChange={e => setFormData(p => ({...p, debrisDesc: e.target.value}))}
                                             />
                                         </div>
                                     </>
@@ -1329,15 +1429,17 @@ export function SeabedSurveyGuiInline({
                                         </div>
                                     </div>
                                 )}
-                                <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                                    <Label className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase">General Description</Label>
-                                    <Input 
-                                        className="dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                        placeholder="e.g. Scaffolding pipe" 
-                                        value={formData.description}
-                                        onChange={e => setFormData(p => ({...p, description: e.target.value}))}
-                                    />
-                                </div>
+                                {formData.category !== 'Debris' && (
+                                    <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        <Label className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase">General Description</Label>
+                                        <Input 
+                                            className="dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                            placeholder="e.g. Scaffolding pipe" 
+                                            value={formData.description}
+                                            onChange={e => setFormData(p => ({...p, description: e.target.value}))}
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex gap-2 pt-4">
@@ -1378,9 +1480,15 @@ export function SeabedSurveyGuiInline({
                                                  <Label className="text-[10px] font-bold text-slate-400 uppercase">Material</Label>
                                                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400">{selectedReference.material || 'N/A'}</p>
                                              </div>
-                                             <div className="space-y-1">
-                                                 <Label className="text-[10px] font-bold text-slate-400 uppercase">Dimensions</Label>
-                                                 <p className="text-xs font-bold text-slate-600 dark:text-slate-400">{selectedReference.size || 'N/A'}</p>
+                                             <div className="space-y-1 col-span-2">
+                                                 <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Dimensions</Label>
+                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1 bg-white/50 dark:bg-slate-900/50 p-2 rounded border border-amber-100/50 dark:border-amber-900/30">
+                                                     {selectedReference.length && <div className="flex justify-between items-center text-[10px] font-bold text-slate-600 dark:text-slate-400"><span>Length:</span> <span>{selectedReference.length}{selectedReference.lengthUnit}</span></div>}
+                                                     {selectedReference.width && <div className="flex justify-between items-center text-[10px] font-bold text-slate-600 dark:text-slate-400"><span>Width:</span> <span>{selectedReference.width}{selectedReference.widthUnit}</span></div>}
+                                                     {selectedReference.height && <div className="flex justify-between items-center text-[10px] font-bold text-slate-600 dark:text-slate-400"><span>Height:</span> <span>{selectedReference.height}{selectedReference.heightUnit}</span></div>}
+                                                     {selectedReference.diameter && <div className="flex justify-between items-center text-[10px] font-bold text-slate-600 dark:text-slate-400"><span>Diameter:</span> <span>{selectedReference.diameter}{selectedReference.diameterUnit}</span></div>}
+                                                     {!selectedReference.length && !selectedReference.width && !selectedReference.height && !selectedReference.diameter && <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400">{selectedReference.size || 'N/A'}</p>}
+                                                 </div>
                                              </div>
                                          </div>
                                      </div>
@@ -1492,14 +1600,16 @@ export function SeabedSurveyGuiInline({
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-xs">Description</Label>
-                                        <Input 
-                                            className="h-8 text-xs dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                            value={editFormData.description}
-                                            onChange={e => setEditFormData((p: any) => ({...p, description: e.target.value}))}
-                                        />
-                                    </div>
+                                    {editFormData.category !== 'Debris' && (
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Description</Label>
+                                            <Input 
+                                                className="h-8 text-xs dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                                value={editFormData.description}
+                                                onChange={e => setEditFormData((p: any) => ({...p, description: e.target.value}))}
+                                            />
+                                        </div>
+                                    )}
 
                                     {editFormData.category === 'Debris' && (
                                         <>
@@ -1514,12 +1624,54 @@ export function SeabedSurveyGuiInline({
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label className="text-xs">Size / Dimensions</Label>
+                                            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Length</Label>
+                                                    <div className="flex gap-1">
+                                                        <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={editFormData.length} onChange={e => setEditFormData((p: any) => ({...p, length: e.target.value}))} />
+                                                        <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={editFormData.lengthUnit} onChange={e => setEditFormData((p: any) => ({...p, lengthUnit: e.target.value}))}>
+                                                            <option value="m">m</option>
+                                                            <option value="mm">mm</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Width</Label>
+                                                    <div className="flex gap-1">
+                                                        <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={editFormData.width} onChange={e => setEditFormData((p: any) => ({...p, width: e.target.value}))} />
+                                                        <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={editFormData.widthUnit} onChange={e => setEditFormData((p: any) => ({...p, widthUnit: e.target.value}))}>
+                                                            <option value="m">m</option>
+                                                            <option value="mm">mm</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Height</Label>
+                                                    <div className="flex gap-1">
+                                                        <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={editFormData.height} onChange={e => setEditFormData((p: any) => ({...p, height: e.target.value}))} />
+                                                        <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={editFormData.heightUnit} onChange={e => setEditFormData((p: any) => ({...p, heightUnit: e.target.value}))}>
+                                                            <option value="m">m</option>
+                                                            <option value="mm">mm</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Diameter</Label>
+                                                    <div className="flex gap-1">
+                                                        <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={editFormData.diameter} onChange={e => setEditFormData((p: any) => ({...p, diameter: e.target.value}))} />
+                                                        <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={editFormData.diameterUnit} onChange={e => setEditFormData((p: any) => ({...p, diameterUnit: e.target.value}))}>
+                                                            <option value="m">m</option>
+                                                            <option value="mm">mm</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Debris Description</Label>
                                                 <Input 
-                                                    className="h-8 text-xs"
-                                                    value={editFormData.size}
-                                                    onChange={e => setEditFormData((p: any) => ({...p, size: e.target.value}))}
+                                                    className="h-7 text-xs dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                                    value={editFormData.debrisDesc}
+                                                    onChange={e => setEditFormData((p: any) => ({...p, debrisDesc: e.target.value}))}
                                                 />
                                             </div>
                                         </>

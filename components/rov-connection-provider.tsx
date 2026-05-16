@@ -51,7 +51,7 @@ interface ROVConnectionContextType {
     fields: Array<{ label: string, targetField: string, value: string }>;
     rawBuffer: string;
     connect: (structureType: 'platform' | 'pipeline', customSettings?: any) => Promise<void>;
-    disconnect: () => Promise<void>;
+    disconnect: (silent?: boolean) => Promise<void>;
 }
 
 const ROVConnectionContext = createContext<ROVConnectionContextType | undefined>(undefined);

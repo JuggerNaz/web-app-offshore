@@ -228,6 +228,7 @@ function V10PreviewLayout() {
   const sowId = sowIdFull?.split("-")[0];
   const targetReportNumber = searchParams.get("sowReport");
   const initialMode = searchParams.get("mode") as "DIVING" | "ROV" | null;
+  const hasAutoDisconnectedRef = useRef(false);
 
   // Jotai State Sync for Dialog
   const [, setGlobalUrlId] = useAtom(urlId);
@@ -328,7 +329,6 @@ function V10PreviewLayout() {
 
   const activeTableColumns = useMemo(() => {
     return [
-      { id: "actions", label: "Actions", fixed: true },
       { id: "status", label: "Status", fixed: true },
       ...columnSettings.filter((c) => c.visible),
     ];
@@ -569,57 +569,99 @@ function V10PreviewLayout() {
   }, [currentRecords, sortConfig]);
 
   const displayRecords = useMemo(() => {
-    if (!recordSearchQuery) return sortedRecords;
-    const q = recordSearchQuery.toLowerCase();
-    return sortedRecords.filter((r) => {
-      const typeName = (r.inspection_type?.name || "").toLowerCase();
-      const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toLowerCase();
-      const componentId = (r.structure_components?.q_id || "").toLowerCase();
-      const elev = (r.elevation || "").toString().toLowerCase();
-      const status = r.has_anomaly
-        ? "anomaly"
-        : r.status === "COMPLETED"
-          ? "complete"
-          : "incomplete";
-      const remarks = (
-        r.inspection_data?.observation ||
-        r.inspection_data?.findings ||
-        ""
-      ).toLowerCase();
-      const refNo = (r.insp_anomalies?.[0]?.anomaly_ref_no || "").toLowerCase();
-      const cpReading = (
-        r.inspection_data?.cp_rdg ??
-        r.inspection_data?.cp_reading_mv ??
-        r.inspection_data?.cp ??
-        ""
-      )
-        .toString()
-        .toLowerCase();
-      const diveNo = (r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "").toLowerCase();
-      const tapeNo = (r.insp_video_tapes?.tape_no || "").toLowerCase();
+    const query = recordSearchQuery.toLowerCase().trim();
+    if (!query) return sortedRecords;
 
-      // Add date and timecode for completeness
-      const crDateStr = r.cr_date
-        ? new Date(r.cr_date).toLocaleDateString() + " " + new Date(r.cr_date).toLocaleTimeString()
-        : "";
-      const timecode = (r.inspection_data?._meta_timecode || r.tape_count_no || "")
-        .toString()
-        .toLowerCase();
+    const terms = query.split(/\s+/).filter(t => t.length > 0);
+    if (terms.length === 0) return sortedRecords;
 
-      return (
-        typeName.includes(q) ||
-        typeCode.includes(q) ||
-        componentId.includes(q) ||
-        elev.includes(q) ||
-        status.includes(q) ||
-        remarks.includes(q) ||
-        refNo.includes(q) ||
-        cpReading.includes(q) ||
-        diveNo.includes(q) ||
-        tapeNo.includes(q) ||
-        crDateStr.toLowerCase().includes(q) ||
-        timecode.includes(q)
-      );
+    // Helper to extract all searchable data from a record
+    const getSearchableText = (r: any) => {
+      const texts: string[] = [];
+      
+      // 1. Basic Info
+      texts.push(r.inspection_type?.name || "");
+      texts.push(r.inspection_type_code || r.inspection_type?.code || "");
+      texts.push(r.structure_components?.q_id || r.component_name || "");
+      texts.push((r.elevation ?? "").toString());
+      texts.push((r.kp ?? "").toString());
+      texts.push(r.has_anomaly ? "anomaly" : r.status === "COMPLETED" ? "complete" : "incomplete");
+      texts.push(r.description || "");
+      texts.push(r.observation || "");
+      
+      // 2. Anomaly Info
+      if (r.insp_anomalies && r.insp_anomalies.length > 0) {
+        r.insp_anomalies.forEach((anom: any) => {
+          texts.push(anom.anomaly_ref_no || "");
+          texts.push(anom.defect_description || "");
+          texts.push(anom.defect_code || "");
+          texts.push(anom.priority || "");
+          texts.push(anom.priority_code || "");
+          texts.push(anom.priority_name || "");
+          if (anom.priority_code) texts.push(`priority ${anom.priority_code}`);
+        });
+      }
+
+      // 3. Dive & Tape Info
+      texts.push(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "");
+      texts.push(r.insp_video_tapes?.tape_no || "");
+      texts.push((r.tape_count_no ?? "").toString());
+
+      // 4. Date Info
+      if (r.cr_date) {
+        const d = new Date(r.cr_date);
+        texts.push(d.toLocaleDateString(), d.toLocaleTimeString(), d.toISOString());
+      }
+      if (r.inspection_date) texts.push(r.inspection_date);
+
+      // 5. Deep Inspection Data Scan (Values only)
+      if (r.inspection_data && typeof r.inspection_data === 'object') {
+        const extractValues = (obj: any) => {
+          Object.values(obj).forEach(val => {
+            if (val === null || val === undefined) return;
+            if (typeof val === 'object') extractValues(val);
+            else texts.push(val.toString());
+          });
+        };
+        extractValues(r.inspection_data);
+      }
+
+      return texts.map(t => String(t).toLowerCase()).join(" ");
+    };
+
+    // Helper for boundary-aware matching
+    const matchesWord = (text: string, pattern: string) => {
+      try {
+        const hasWildcard = pattern.includes('*') || pattern.includes('?');
+        const escaped = pattern
+          .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+          .replace(/\\\*/g, '.*')
+          .replace(/\\\?/g, '.');
+        
+        if (hasWildcard) {
+          // For wildcards, we allow partial matches without strict word boundaries
+          return new RegExp(escaped, 'i').test(text);
+        }
+
+        // For regular terms, use strict boundary-aware regex
+        const regex = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
+        return regex.test(text);
+      } catch (e) {
+        return text.includes(pattern);
+      }
+    };
+
+    // PHASE 1: Try to find any record that matches the ENTIRE phrase exactly (with boundaries)
+    const exactMatches = sortedRecords.filter(r => matchesWord(getSearchableText(r), query));
+    
+    if (exactMatches.length > 0) {
+      return exactMatches;
+    }
+
+    // PHASE 2: Fallback - only if no exact matches found, break up and search terms
+    return sortedRecords.filter(r => {
+      const fullText = getSearchableText(r);
+      return terms.every(term => matchesWord(fullText, term));
     });
   }, [sortedRecords, recordSearchQuery]);
   const [isFetchingDeps, setIsFetchingDeps] = useState(true);
@@ -827,6 +869,7 @@ function V10PreviewLayout() {
   const [photoLinked, setPhotoLinked] = useState(false);
   const [recordNotes, setRecordNotes] = useState("");
 
+
   // Reclassification States
   const [pendingReclass, setPendingReclass] = useState<{
     type: "COMPONENT" | "TASK";
@@ -858,6 +901,7 @@ function V10PreviewLayout() {
 
   // Dynamic Form States
   const [dynamicProps, setDynamicProps] = useState<Record<string, any>>({});
+
   const [debouncedProps, setDebouncedProps] = useState<Record<string, any>>({});
   const [requiredSpec, setRequiredSpec] = useState<any>(null);
   const [requiredProps, setRequiredProps] = useState<Record<string, any>>({});
@@ -1034,27 +1078,29 @@ function V10PreviewLayout() {
     setDynamicProps((prev) => {
       const updated = { ...prev, [name]: value };
 
-      if (activeSpec?.toUpperCase() === "RSEAB" && (name === "northing" || name === "easting")) {
-        const n = parseFloat(name === "northing" ? value : updated.northing) || 0;
-        const e = parseFloat(name === "easting" ? value : updated.easting) || 0;
+      if (activeSpec?.toUpperCase() === "RSEAB") {
+        if (name === "northing" || name === "easting") {
+          const n = parseFloat(name === "northing" ? value : updated.northing) || 0;
+          const e = parseFloat(name === "easting" ? value : updated.easting) || 0;
 
-        if (n !== 0 && e !== 0 && libOptionsMap.legs && libOptionsMap.legs.length > 0) {
-          let nearest: any = null;
-          let minDistance = Infinity;
+          if (n !== 0 && e !== 0 && libOptionsMap.legs && libOptionsMap.legs.length > 0) {
+            let nearest: any = null;
+            let minDistance = Infinity;
 
-          for (const leg of libOptionsMap.legs) {
-            const dx = leg.easting - e;
-            const dy = leg.northing - n;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < minDistance) {
-              minDistance = dist;
-              nearest = leg;
+            for (const leg of libOptionsMap.legs) {
+              const dx = leg.easting - e;
+              const dy = leg.northing - n;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < minDistance) {
+                minDistance = dist;
+                nearest = leg;
+              }
             }
-          }
 
-          if (nearest) {
-            updated.nearest_leg = nearest.name;
-            updated.distance_from_leg = parseFloat(minDistance.toFixed(2));
+            if (nearest) {
+              updated.nearest_leg = nearest.name;
+              updated.distance_from_leg = parseFloat(minDistance.toFixed(2));
+            }
           }
         }
       }
@@ -2421,16 +2467,30 @@ function V10PreviewLayout() {
 
   // Data Acquisition Disconnect Wrapper
   const handleDataAcqDisconnect = async () => {
-    await dataAcqDisconnect();
+    await dataAcqDisconnect(true);
   };
 
   // Explicitly disconnect when navigating away from the workspace
   useEffect(() => {
     return () => {
       console.log("[Workspace] Navigating away, terminating ROV connection...");
-      dataAcqDisconnect();
+      dataAcqDisconnect(true);
     };
   }, [dataAcqDisconnect]);
+
+  // Implement User Request: Disconnect ROV port if open when entering ROV mode
+  useEffect(() => {
+    if (inspMethod === "ROV" && dataAcqConnected && !hasAutoDisconnectedRef.current) {
+      console.log("[Workspace] ROV Mode detected with active connection. Closing port as per safety requirement.");
+      dataAcqDisconnect(true); // Silent disconnect from provider to use custom message
+      toast.info("Active ROV connection detected and closed for new session.");
+      hasAutoDisconnectedRef.current = true;
+    }
+    // Reset the ref if we switch away from ROV, so it can trigger again if they come back
+    if (inspMethod !== "ROV") {
+      hasAutoDisconnectedRef.current = false;
+    }
+  }, [inspMethod, dataAcqConnected, dataAcqDisconnect]);
 
   // Load Settings on Mount
   useEffect(() => {
@@ -5524,6 +5584,14 @@ function V10PreviewLayout() {
     }
     if (fullRecord.inspection_date) initialProps.inspection_date = fullRecord.inspection_date;
     if (fullRecord.inspection_time) initialProps.inspection_time = fullRecord.inspection_time;
+
+    // Sync debris_desc from description on load if it's a Debris record
+    if (activeSpec === 'RSEAB' && initialProps.category === 'Debris') {
+       if (!initialProps.debris_desc || initialProps.debris_desc === '') {
+          initialProps.debris_desc = fullRecord.description || fullRecord.observation || "";
+       }
+    }
+
     setDynamicProps(initialProps);
     // Save Context for Re-classification feature
     setOriginalRecordContext({

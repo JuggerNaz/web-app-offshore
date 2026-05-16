@@ -179,17 +179,7 @@ export function EventsTablePanel({
                   >
                     {activeTableColumns.map((col) => {
                       switch (col.id) {
-                        case "actions":
-                          return (
-                            <td key={col.id} className="px-3 py-3 text-right align-top">
-                              <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild><button className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"><MoreVertical className="w-3.5 h-3.5 text-slate-400" /></button></DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-48 p-1 shadow-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"><DropdownMenuItem onClick={() => handleEditRecord(r)} className="flex items-center gap-2 text-xs font-medium cursor-pointer"><Edit2 className="w-3.5 h-3.5" /> Edit Record</DropdownMenuItem><DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="flex items-center gap-2 text-xs font-medium cursor-pointer"><Printer className="w-3.5 h-3.5" /> Generate Report</DropdownMenuItem><div className="h-px bg-slate-100 dark:bg-slate-800 my-1" /><DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="flex items-center gap-2 text-xs font-bold text-red-600 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30"><Trash2 className="w-3.5 h-3.5" /> Delete Record</DropdownMenuItem></DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                            </td>
-                          );
+
                         case "status":
                           return (
                             <td key={col.id} className="px-3 py-3 align-top text-center">
