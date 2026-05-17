@@ -614,188 +614,213 @@
             "fields": [
                 {
                     "name": "no_bolts_pres_memb",
-                    "label": "No of Bolts Present at Member",
+                    "label": "Bolts Present",
                     "type": "number",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "no_bolts_loose_memb",
-                    "label": "No of Bolts Loose at Member",
+                    "label": "Bolts Loose",
                     "type": "number",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "no_bolts_miss_memb",
-                    "label": "No of Bolts Missing at Member",
+                    "label": "Bolts Missing",
                     "type": "number",
-                    "required": true
-                },
-                {
-                    "name": "no_bolts_pres_brace",
-                    "label": "No of Bolts Present at Brace",
-                    "type": "number",
-                    "required": true
-                },
-                {
-                    "name": "no_bolts_loose_brace",
-                    "label": "No of Bolts Loose at Brace",
-                    "type": "number",
-                    "required": true
-                },
-                {
-                    "name": "no_bolts_miss_brace",
-                    "label": "No of Bolts Missing at Brace",
-                    "type": "number",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "max_gap_top_member",
-                    "label": "Max Gap Top Member",
+                    "label": "Max Gap Top",
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultMetric": "mm",
                     "defaultImperial": "in",
-                    "required": true
-                },
-                {
-                    "name": "max_gap_top_brace",
-                    "label": "Max Gap Top Brace",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
-                    "defaultMetric": "mm",
-                    "defaultImperial": "in",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "max_gap_bottom_member",
-                    "label": "Max Gap Bottom Member",
+                    "label": "Max Gap Bottom",
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultMetric": "mm",
                     "defaultImperial": "in",
-                    "required": true
-                },
-                {
-                    "name": "max_gap_bottom_brace",
-                    "label": "Max Gap Bottom Brace",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
-                    "defaultMetric": "mm",
-                    "defaultImperial": "in",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "max_flange_misalign_member",
-                    "label": "Max Flange Misalign - Member",
+                    "label": "Max Flange Misalign",
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultMetric": "mm",
                     "defaultImperial": "in",
-                    "required": true
-                },
-                {
-                    "name": "max_flange_misalign_brace",
-                    "label": "Max Flange Misalign - Brace",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
-                    "defaultMetric": "mm",
-                    "defaultImperial": "in",
-                    "required": true
-                },
-                {
-                    "name": "appurtenance_clamp_type",
-                    "label": "Appurtenance Clamp Type",
-                    "type": "text",
-                    "required": true
-                },
-                {
-                    "name": "appurtenance_cp",
-                    "label": "Appurtenance CP Reading",
-                    "type": "number",
-                    "unitCategory": "VOLTAGE",
-                    "defaultMetric": "mV",
-                    "defaultImperial": "mV",
-                    "required": true
-                },
-                {
-                    "name": "appurtenance_clamp_cp",
-                    "label": "Appurtenance CP Reading",
-                    "type": "number",
-                    "unitCategory": "VOLTAGE",
-                    "defaultMetric": "mV",
-                    "defaultImperial": "mV",
-                    "required": true
-                },
-                {
-                    "name": "stub_cp",
-                    "label": "Appurtenance CP Reading",
-                    "type": "number",
-                    "unitCategory": "VOLTAGE",
-                    "defaultMetric": "mV",
-                    "defaultImperial": "mV",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "member_clamp_cp",
-                    "label": "Member Clamp CP Reading",
+                    "label": "Clamp CP",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
                     "defaultMetric": "mV",
                     "defaultImperial": "mV",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "member_cp",
-                    "label": "Member CP Reading",
+                    "label": "CP 1",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
                     "defaultMetric": "mV",
                     "defaultImperial": "mV",
+                    "group": "Member",
                     "required": true
                 },
                 {
-                    "name": "member_cp",
-                    "label": "Member CP Reading",
+                    "name": "member_cp_2",
+                    "label": "CP 2",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
                     "defaultMetric": "mV",
                     "defaultImperial": "mV",
+                    "group": "Member",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_pres_brace",
+                    "label": "Bolts Present",
+                    "type": "number",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_loose_brace",
+                    "label": "Bolts Loose",
+                    "type": "number",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_miss_brace",
+                    "label": "Bolts Missing",
+                    "type": "number",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "max_gap_top_brace",
+                    "label": "Max Gap Top",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "max_gap_bottom_brace",
+                    "label": "Max Gap Bottom",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "max_flange_misalign_brace",
+                    "label": "Max Flange Misalign",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "appurtenance_clamp_type",
+                    "label": "Clamp Type",
+                    "type": "text",
+                    "group": "Appurtenance",
+                    "required": true
+                },
+                {
+                    "name": "appurtenance_cp",
+                    "label": "Appurtenance CP",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "group": "Appurtenance",
+                    "required": true
+                },
+                {
+                    "name": "appurtenance_clamp_cp",
+                    "label": "Clamp CP",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "group": "Appurtenance",
+                    "required": true
+                },
+                {
+                    "name": "stub_cp",
+                    "label": "Stub CP",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "group": "Appurtenance",
                     "required": true
                 },
                 {
                     "name": "clamp_coating_satisfactory",
-                    "label": "Clamp Coating Satisfactory",
+                    "label": "Coating Satisfactory",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "all_bolts_double_nutted",
-                    "label": "All Bolts Double Nutted",
+                    "label": "Double Nutted",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "liner_present_member_end",
-                    "label": "Liner Present @ Member End",
+                    "label": "Liner @ Member",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "earthing_wire_or_bolt_present",
-                    "label": "Earthing Wire or Bolt Present",
+                    "label": "Earthing Wire/Bolt",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "liner_present_component_end",
-                    "label": "Liner Present @ Component End",
+                    "label": "Liner @ Component",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "washers_present_all_bolts",
-                    "label": "Washers Present @ All Bolts",
+                    "label": "Washers Present",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 }
             ]
@@ -883,8 +908,17 @@
                     "required": true
                 },
                 {
-                    "name": "nominal_thickness",
-                    "label": "Nominal Thickness",
+                    "name": "brace_nominal_thickness",
+                    "label": "Brace Nominal Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_nominal_thickness",
+                    "label": "Chord Nominal Thickness",
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultMetric": "mm",

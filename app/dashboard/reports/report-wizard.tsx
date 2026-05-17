@@ -136,6 +136,8 @@ export const REPORT_TEMPLATES = {
         { id: "rov-photo-report", name: "ROV Photography Report", icon: Eye, description: "Portrait report displaying all photos attached to inspections in a 2x3 grid with descriptions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-photo-log-report", name: "ROV Photography Log Report", icon: Eye, description: "Portrait report displaying a tabular log of all photos attached to inspections", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-gvins-report", name: "Diving GVI Report (GVINS)", icon: FileBarChart, description: "Portrait Diving General Visual Inspection report — marine growth, condition, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-bsins-report", name: "Diving Bolted Support Inspection", icon: FileBarChart, description: "Detailed bolted support inspection (BSINS) report with Member, Brace, and Appurtenance specifics.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-mpins-report", name: "Diving Magnetic Particle Inspection", icon: FileBarChart, description: "Detailed magnetic particle inspection (MPINS) report with clock readings and segmentation.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-szone-report", name: "Diving Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with grouped clock positions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-cpclb-report", name: "Diving CP Calibration Report", icon: FileBarChart, description: "CP calibration in water survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-utclb-report", name: "Diving UT Calibration Report", icon: FileBarChart, description: "UT calibration survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
@@ -158,6 +160,8 @@ const TOC_SECTIONS = [
   { id: 2, name: "General Visual Inspection", templates: [
       { id: "rov-rgvi-report", name: "ROV GVI Report (RGVI)", mode: "ROV" },
       { id: "diving-gvins-report", name: "Diving GVI Report (GVINS)", mode: "Diving" },
+      { id: "diving-bsins-report", name: "Diving Bolted Support Inspection (BSINS)", mode: "Diving" },
+      { id: "diving-mpins-report", name: "Diving Magnetic Particle Inspection (MPINS)", mode: "Diving" },
       { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
   ]},
 
@@ -1295,6 +1299,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVCaissonGuardReport } = await import("@/utils/report-generators/rov-caisson-guard-report");
             const { generateROVConductorGuardReport } = await import("@/utils/report-generators/rov-conductor-guard-report");
             const { generateDivingGVINSReport } = await import("@/utils/report-generators/diving-gvins-report");
+            const { generateDivingBSINSReport } = await import("@/utils/report-generators/diving-bsins-report");
+            const { generateDivingMPINSReport } = await import("@/utils/report-generators/diving-mpins-report");
 
 
             // Fetch real company settings from API
@@ -2282,6 +2288,144 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("GVINS Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Bolted Support Inspection Report (BSINS)
+        if (currentTemplateId === "diving-bsins-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const bsinsRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isBSINS = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'BSINS';
+                return sowMatches && jobPackMatches && isBSINS;
+            });
+
+            if (!bsinsRecords || bsinsRecords.length === 0) {
+                alert(`No Diving BSINS records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingBSINSReport(
+                    bsinsRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("BSINS Generator Error:", error);
+                throw error;
+            }
+        }
+        
+        // Diving Magnetic Particle Inspection Report (MPINS)
+        if (currentTemplateId === "diving-mpins-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const mpinsRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isMPINS = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'MPINS';
+                return sowMatches && jobPackMatches && isMPINS;
+            });
+
+            if (!mpinsRecords || mpinsRecords.length === 0) {
+                alert(`No Diving MPINS records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingMPINSReport(
+                    mpinsRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("MPINS Generator Error:", error);
                 throw error;
             }
         }

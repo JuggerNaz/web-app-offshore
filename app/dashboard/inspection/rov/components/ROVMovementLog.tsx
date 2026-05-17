@@ -68,17 +68,28 @@ export default function ROVMovementLog({ diveJob }: ROVMovementLogProps) {
         if (!diveJob) return;
 
         try {
-            const depId = Number(diveJob.id || diveJob.rov_job_id);
+            // Support both mapped object {id, raw} and raw object {rov_job_id}
+            const rawId = diveJob.rov_job_id || diveJob.id;
+            const depId = Number(rawId);
+            
+            if (isNaN(depId)) {
+                console.warn("[ROVMovementLog] Invalid ROV Job ID:", rawId, diveJob);
+                return;
+            }
+
             const { data, error } = await supabase
                 .from("insp_rov_movements")
                 .select("*")
                 .eq("rov_job_id", depId)
                 .order("movement_time", { ascending: false });
 
-            if (error) throw error;
+            if (error) {
+                console.error("[ROVMovementLog] Supabase error loading movements:", error.message, error.details);
+                throw error;
+            }
             setMovements(data || []);
-        } catch (error) {
-            console.error("Error loading movements:", error);
+        } catch (error: any) {
+            console.error("Error loading movements:", error?.message || error);
         }
     }
 

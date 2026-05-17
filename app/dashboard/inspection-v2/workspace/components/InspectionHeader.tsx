@@ -64,6 +64,7 @@ interface InspectionHeaderProps {
     generatePhotographyReport: () => void;
     generatePhotographyLogReport: () => void;
     generateFullInspectionReport: () => void;
+    setIsReportWizardOpen: (val: boolean) => void;
     jobPackId?: string | null;
     structureId?: string | null;
     onSummaryOpen?: () => void;
@@ -108,6 +109,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generatePhotographyReport,
     generatePhotographyLogReport,
     generateFullInspectionReport,
+    setIsReportWizardOpen,
     jobPackId,
     structureId,
     onSummaryOpen,
@@ -186,219 +188,14 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                     <BarChart3 className="w-4 h-4 mr-2" /> Inspection Summary
                 </Button>
 
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><Printer className="w-4 h-4 mr-2" /> Reports</Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56 p-1 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 shadow-2xl">
-                        {/* Grouped Reports */}
-                        <div className="px-2 py-1.5 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b border-slate-200 dark:border-slate-800 mb-1">
-                            {inspMethod} Report Templates
-                        </div>
-                        
-                        {/* 1. General & Photography */}
-                        <DropdownMenuSub>
-                            <DropdownMenuSubTrigger className="text-xs py-2 cursor-pointer flex items-center dark:text-slate-200">
-                                <Activity className="w-3.5 h-3.5 mr-2 text-emerald-600 dark:text-emerald-500" />
-                                <span>General & Photo</span>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="w-56 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800">
-                                {inspMethod === 'ROV' && currentRecords.some(r => {
-                                    const code = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase();
-                                    return code === 'RGVI';
-                                }) && (
-                                    <DropdownMenuItem onClick={() => generateRGVIReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        ROV General Visual (GVI)
-                                    </DropdownMenuItem>
-                                )}
-                                {inspMethod === 'DIVING' && currentRecords.some(r => {
-                                    const code = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase();
-                                    return code === 'DGVI';
-                                }) && (
-                                    <DropdownMenuItem onClick={() => generateRGVIReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        Diving General Visual (GVI)
-                                    </DropdownMenuItem>
-                                )}
-                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'GVINS') && (
-                                    <DropdownMenuItem onClick={() => generateGVINSReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        Diving General Visual (GVINS)
-                                    </DropdownMenuItem>
-                                )}
-                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'SZONE') && (
-                                    <DropdownMenuItem onClick={() => generateSZONEReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        Diving Splashzone (SZONE)
-                                    </DropdownMenuItem>
-                                )}
- 
-                                {currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) && (
-                                    <DropdownMenuItem onClick={() => generateCPReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        {inspMethod} CP Survey
-                                    </DropdownMenuItem>
-                                )}
-                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'CPCLB') && (
-                                    <DropdownMenuItem onClick={() => generateCPCLBReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        Diving CP Calibration (CPCLB)
-                                    </DropdownMenuItem>
-                                )}
-                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'UTCLB') && (
-                                    <DropdownMenuItem onClick={() => generateUTCLBReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        Diving UT Calibration (UTCLB)
-                                    </DropdownMenuItem>
-                                )}
-                                {inspMethod === 'ROV' && currentRecords.some(r => (r.structure_components?.code || '').toUpperCase() === 'AN' || (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE') && (
-                                    <DropdownMenuItem onClick={() => generateAnodeReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        ROV Anode Survey
-                                    </DropdownMenuItem>
-                                )}
-                                {inspMethod === 'DIVING' && currentRecords.some(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'PL_AN') && (
-                                    <DropdownMenuItem onClick={() => generateDivingAnodeReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        Diving Selected Anode Report
-                                    </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem onClick={() => generatePhotographyReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                    {inspMethod} Photography Report
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => generatePhotographyLogReport()} className="text-xs py-2 cursor-pointer border-t border-slate-200 dark:border-slate-800 mt-1 dark:text-slate-200">
-                                    {inspMethod} Photo Log
-                                </DropdownMenuItem>
-                            </DropdownMenuSubContent>
-                        </DropdownMenuSub>
- 
-                        {/* 2. Advanced NDT & Survey */}
-                        <DropdownMenuSub>
-                            <DropdownMenuSubTrigger className="text-xs py-2 cursor-pointer flex items-center dark:text-slate-200">
-                                <Activity className="w-3.5 h-3.5 mr-2 text-indigo-600 dark:text-indigo-400" />
-                                <span>NDT & Survey</span>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="w-56 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800">
-                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RFMD' : 'DFMD')) && (
-                                    <DropdownMenuItem onClick={() => generateFMDReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} FMD Survey</DropdownMenuItem>
-                                )}
-                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RUTWT' : 'DUTWT')) && (
-                                    <DropdownMenuItem onClick={() => generateUTWTReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} UTWT Survey</DropdownMenuItem>
-                                )}
-                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RMGI' : 'DMGI')) && (
-                                    <DropdownMenuItem onClick={() => generateMGIReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} MGI Survey</DropdownMenuItem>
-                                )}
-                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RSZCI' : 'DSZCI')) && (
-                                    <DropdownMenuItem onClick={() => generateSZCIReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} SZCI Survey</DropdownMenuItem>
-                                )}
-                                {currentRecords.some(r => r.inspection_type_code === (inspMethod === 'ROV' ? 'RSCOR' : 'DSCOR')) && (
-                                    <DropdownMenuItem onClick={() => generateRSCORReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} Scour Survey</DropdownMenuItem>
-                                )}
-                            </DropdownMenuSubContent>
-                        </DropdownMenuSub>
- 
-                        {/* 3. Component Specific */}
-                        <DropdownMenuSub>
-                            <DropdownMenuSubTrigger className="text-xs py-2 cursor-pointer flex items-center dark:text-slate-200">
-                                <Activity className="w-3.5 h-3.5 mr-2 text-blue-600 dark:text-blue-400" />
-                                <span>Structural Components</span>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="w-56 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800">
-                                {currentRecords.some(r => [inspMethod === 'ROV' ? 'RRISI' : 'DRISI', 'JTISI', 'ITISI'].includes(r.inspection_type_code)) && (
-                                    <>
-                                        <DropdownMenuItem onClick={() => generateRRISIReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} Riser Survey</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => generateJTISIReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} J-Tube Inspection</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => generateITISIReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} I-Tube Inspection</DropdownMenuItem>
-                                    </>
-                                )}
-                                {currentRecords.some(r => (r.inspection_type_code || '').includes('CASN')) && (
-                                    <>
-                                        <DropdownMenuItem onClick={() => generateRCASNReport()} className="text-xs py-2 cursor-pointer border-t border-slate-200 dark:border-slate-800 mt-1 dark:text-slate-200">{inspMethod} Caisson Survey</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => generateRCASNSketchReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} Caisson (Sketch)</DropdownMenuItem>
-                                    </>
-                                )}
-                                {currentRecords.some(r => (r.inspection_type_code || '').includes('COND')) && (
-                                    <>
-                                        <DropdownMenuItem onClick={() => generateRCONDReport()} className="text-xs py-2 cursor-pointer border-t border-slate-200 dark:border-slate-800 mt-1 dark:text-slate-200">{inspMethod} Conductor Survey</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => generateRCONDSketchReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} Conductor (Sketch)</DropdownMenuItem>
-                                    </>
-                                )}
-                            </DropdownMenuSubContent>
-                        </DropdownMenuSub>
- 
-                        {/* 4. Guards & Boatlanding */}
-                        <DropdownMenuSub>
-                            <DropdownMenuSubTrigger className="text-xs py-2 cursor-pointer flex items-center dark:text-slate-200">
-                                <Activity className="w-3.5 h-3.5 mr-2 text-slate-600 dark:text-slate-400" />
-                                <span>Guards & Boatlanding</span>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="w-56 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800">
-                                {currentRecords.some(r => (r.structure_components?.code || '') === 'BL') && (
-                                    <DropdownMenuItem onClick={() => generateBLReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} Boatlanding Survey</DropdownMenuItem>
-                                )}
-                                {currentRecords.some(r => ['RG', 'RISERGUARD'].includes(r.inspection_type_code) || (r.structure_components?.code || '') === 'RG') && (
-                                    <DropdownMenuItem onClick={() => generateRGReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} Riser Guard</DropdownMenuItem>
-                                )}
-                                {currentRecords.some(r => ['SG', 'CAISSONGUARD'].includes(r.inspection_type_code) || (r.structure_components?.code || '') === 'SG') && (
-                                    <DropdownMenuItem onClick={() => generateSGReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} Caisson Guard</DropdownMenuItem>
-                                )}
-                                {currentRecords.some(r => ['CU', 'CONDUCTORGUARD'].includes(r.inspection_type_code) || (r.structure_components?.code || '') === 'CU') && (
-                                    <DropdownMenuItem onClick={() => generateCUReport()} className="text-xs py-2 cursor-pointer dark:text-slate-200">{inspMethod} Conductor Guard</DropdownMenuItem>
-                                )}
-                            </DropdownMenuSubContent>
-                        </DropdownMenuSub>
- 
-                        {/* Seabed Survey (ROV ONLY) */}
-                        {inspMethod === "ROV" && currentRecords.some(r => r.inspection_type_code === 'RSEAB') && (
-                            <DropdownMenuSub>
-                                <DropdownMenuSubTrigger className="text-xs py-2 cursor-pointer flex items-center dark:text-slate-200">
-                                    <Grid3X3 className="w-3.5 h-3.5 mr-2 text-cyan-600 dark:text-cyan-400" />
-                                    <span>ROV Seabed Survey</span>
-                                </DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent className="w-56 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800">
-                                    <DropdownMenuItem onClick={() => generateSeabedReport('seabed-survey-debris')} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        Debris Survey
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => generateSeabedReport('seabed-survey-gas')} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        Gas Seepage
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => generateSeabedReport('seabed-survey-crater')} className="text-xs py-2 cursor-pointer dark:text-slate-200">
-                                        Crater Survey
-                                    </DropdownMenuItem>
-                                </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                        )}
- 
-                        <div className="border-t border-slate-200 dark:border-slate-800 my-1"></div>
- 
-                        {/* Dynamic Inspection Reports (Filtered) */}
-                        {(() => {
-                            const filteredReports = allInspectionTypes.filter(t => 
-                                !['RGVI', 'DGVI', 'GVINS', 'SZONE', 'RSEAB', 'RMGI', 'DMGI', 'RFMD', 'DFMD', 'RSZCI', 'DSZCI', 'RUTWT', 'DUTWT', 'RSCOR', 'DSCOR', 'RRISI', 'DRISI', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RG', 'SG', 'CU', 'BL', 'RISERGUARD', 'CAISSONGUARD', 'CONDUCTORGUARD'].includes(t.code) &&
-                                currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))
-                            ).filter(t => {
-                                if (inspMethod === 'DIVING' && t.code.startsWith('R') && t.code.length > 2) return false;
-                                if (inspMethod === 'ROV' && t.code.startsWith('D') && t.code.length > 2) return false;
-                                return true;
-                            });
- 
-                            if (filteredReports.length === 0) return null;
- 
-                            return (
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger className="text-xs py-2 cursor-pointer flex items-center dark:text-slate-200">
-                                        <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-blue-500 dark:text-blue-400" />
-                                        <span>Other {inspMethod} Reports</span>
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent className="w-56 max-h-48 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800">
-                                        {filteredReports.map(t => (
-                                            <DropdownMenuItem key={t.id} onClick={() => generateInspectionReportByType(t.id)} className="text-xs py-2 cursor-pointer flex items-center justify-between dark:text-slate-200">
-                                                <span className="truncate max-w-[140px]">{t.name}</span>
-                                                <Badge variant="outline" className="text-[8px] h-3.5 px-1 font-black bg-slate-100 dark:bg-slate-900 text-slate-400 dark:text-slate-500 border-slate-300 dark:border-slate-800">{t.code}</Badge>
-                                            </DropdownMenuItem>
-                                        ))}
-                                    </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-                            );
-                        })()}
- 
-                        <DropdownMenuItem onClick={() => generateFullInspectionReport()} className="text-xs py-2 cursor-pointer font-bold text-blue-600 dark:text-blue-400 border-t border-slate-200 dark:border-slate-800 mt-1">
-                            <Layout className="w-3.5 h-3.5 mr-2" /> All Captured Records ({inspMethod})
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"
+                    onClick={() => setIsReportWizardOpen(true)}
+                >
+                    <Printer className="w-4 h-4 mr-2" /> Reports
+                </Button>
  
                 {jobPackId && structureId ? (
                     <div className="flex bg-slate-800 rounded p-0.5 border border-slate-700">

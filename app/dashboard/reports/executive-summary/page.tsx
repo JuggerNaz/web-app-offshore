@@ -19,8 +19,10 @@ import {
     PanelRightOpen,
     ArrowRight,
     Settings,
-    FileCheck
+    FileCheck,
+    BookOpen
 } from "lucide-react";
+import { SummaryTemplatesDialog } from "./SummaryTemplatesDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -52,6 +54,7 @@ export default function ExecutiveSummaryPage() {
     const [reportType, setReportType] = useState("final");
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
 
     // Fetch context data
     const { data: jobpacksData } = useSWR("/api/jobpack?has_inspection=true", fetcher);
@@ -525,6 +528,10 @@ export default function ExecutiveSummaryPage() {
                                     <p className="text-xs text-slate-500">Section Summary and Findings</p>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => setIsTemplatesOpen(true)} className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50">
+                                        <BookOpen className="h-3.5 w-3.5" />
+                                        Templates
+                                    </Button>
                                     <Button variant="outline" size="sm" onClick={handleAutoPopulate} className="gap-2 border-dashed">
                                         <RefreshCw className="h-3.5 w-3.5" />
                                         Auto-populate
@@ -671,6 +678,21 @@ export default function ExecutiveSummaryPage() {
             <ReportSettingsDialog 
                 open={isSettingsOpen} 
                 onOpenChange={setIsSettingsOpen} 
+            />
+
+            <SummaryTemplatesDialog 
+                open={isTemplatesOpen}
+                onOpenChange={setIsTemplatesOpen}
+                sectionId={activeSectionId}
+                sectionTitle={activeSection?.title || ""}
+                currentContent={sectionsData[activeSectionId] || ""}
+                onSelect={(content) => setSectionsData(prev => ({ ...prev, [activeSectionId]: content }))}
+                projectContext={{
+                    platform: filteredStructures.find(s => s.id.toString() === selections.structureId)?.name,
+                    jobpack: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.name,
+                    reportNo: selections.sowReportNo,
+                    client: companySettings?.data?.company_name
+                }}
             />
         </div>
     );

@@ -411,6 +411,27 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         }
     }, [activeSpec, selectedComp, isEditing, dynamicProps]);
 
+    React.useEffect(() => {
+        if (!isEditing && handleDynamicPropChange) {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            const formattedDate = `${yyyy}-${mm}-${dd}`;
+            const formattedTime = today.toTimeString().split(' ')[0];
+            
+            if (!dynamicProps?.inspection_date) {
+                handleDynamicPropChange('inspection_date', formattedDate);
+            }
+            if (!dynamicProps?.inspection_time) {
+                handleDynamicPropChange('inspection_time', formattedTime);
+            }
+            if ((dynamicProps?.tape_count_no === undefined || dynamicProps?.tape_count_no === '') && tapeId) {
+                handleDynamicPropChange('tape_count_no', formatTime(vidTimer));
+            }
+        }
+    }, [isEditing, activeSpec, selectedComp, tapeId]);
+
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white dark:bg-slate-950 z-10 border-none rounded-none shadow-none text-slate-800 dark:text-slate-200">
             <div className="px-3 py-1.5 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800">
@@ -737,13 +758,164 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2">{rst.map((p: any) => (<div key={p.name} className="space-y-1"><label className="text-[10px] font-black uppercase block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}</div>
                                                         </div>
                                                     );
-                                                } else {
+                                                } else if (type === 'MPINS' || type === 'DMPI' || type === 'RMPI') {
+                                                    const validFields = otherFields.filter((f: any) => f && f.name);
+                                                    
+                                                    // Helper to find and render a specific field, hiding its default label to save space
+                                                    const renderCell = (name: string, label?: string) => {
+                                                        const p = validFields.find((f: any) => f.name === name);
+                                                        if (!p) return null;
+                                                        return (
+                                                            <div className="w-full min-w-0">
+                                                                {label && <label className="text-[9px] font-black uppercase text-slate-500 mb-0.5 block truncate" title={label}>{label}</label>}
+                                                                {renderInspectionField({ ...p, label: p.label }, 'primary')}
+                                                            </div>
+                                                        );
+                                                    };
+
                                                     return (
-                                                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-x-3 gap-y-2">
-                                                            {otherFields.map((p: any) => {
-                                                                if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
-                                                                if (!shouldShowField(p)) return null;
-                                                                return (<motion.div layout key={p.name} className={`flex-grow ${p.type === 'repeater' || p.type === 'textarea' ? 'col-span-full' : 'col-span-2'} space-y-0.5`}><label className="text-[9px] font-black uppercase truncate block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</motion.div>);
+                                                        <div className="space-y-4">
+                                                            {/* Group 1: General Meta Params */}
+                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm">
+                                                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                                                    {renderCell('magnetic_ink', 'Magnetic Ink')}
+                                                                    {renderCell('surface_condition', 'Surface Cond.')}
+                                                                    {renderCell('cleaning_method', 'Cleaning Mthd.')}
+                                                                    {renderCell('background_condition', 'BackGrd. Cond.')}
+                                                                    
+                                                                    {renderCell('magnetic_method', 'Magn. Method')}
+                                                                    {renderCell('lighting_method', 'Lighting Method')}
+                                                                    {renderCell('calib_block', 'Calibration Blk.')}
+                                                                    {renderCell('magnetic_lifting_power', 'Magn. Lifting Power (tonne)')}
+
+
+                                                                    {renderCell('orientation', 'Orientation')}
+                                                                    {renderCell('indication', 'Indication')}
+                                                                    {renderCell('probe', 'Probe')}
+                                                                    
+                                                                    {renderCell('burmah_c_strip', 'Burmah C. Strip')}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Group 2: Clock Readings */}
+                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 rounded-xl p-2.5 shadow-sm space-y-1">
+                                                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr_1fr] gap-2 items-end mb-1">
+                                                                    <div></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">3 O'Clk</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">6 O'Clk</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">9 O'Clk</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">12 O'Clk</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">Nominal</span></div>
+                                                                </div>
+                                                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr_1fr] gap-2 items-center">
+                                                                    <div className="text-right pr-2"><span className="text-[10px] font-black uppercase text-slate-500">Brace (mm)</span></div>
+                                                                    {renderCell('brace_thick_3clk')}{renderCell('brace_thick_6clk')}{renderCell('brace_thick_9clk')}{renderCell('brace_thick_12clk')}{renderCell('brace_nominal_thickness')}
+                                                                </div>
+                                                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr_1fr] gap-2 items-center mt-1">
+                                                                    <div className="text-right pr-2"><span className="text-[10px] font-black uppercase text-slate-500">Chord (mm)</span></div>
+                                                                    {renderCell('chord_thick_3clk')}{renderCell('chord_thick_6clk')}{renderCell('chord_thick_9clk')}{renderCell('chord_thick_12clk')}{renderCell('chord_nominal_thickness')}
+                                                                </div>
+                                                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr_1fr] gap-2 items-center mt-1">
+                                                                    <div className="text-right pr-2"><span className="text-[10px] font-black uppercase text-slate-500">CP (mV)</span></div>
+                                                                    {renderCell('cp_at_3clk')}{renderCell('cp_at_6clk')}{renderCell('cp_at_9clk')}{renderCell('cp_at_12clk')}<div></div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Group 3: Parameters */}
+                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm">
+                                                                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                                                                    {renderCell('current_in_coil_magnet', 'Curr. in Coil/Magr (Amps)')}
+                                                                    {renderCell('voltage_in_coil_magnet', 'Volt. in Coil/Magr (Volts)')}
+                                                                    {renderCell('current_pole_spacing', 'Curr. Pole Spacing (mm)')}
+                                                                    {renderCell('dist_from_datum', 'Dist. from Datum (m)')}
+                                                                    {renderCell('probe_size', 'Size')}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Group 4: Segment Readings */}
+                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 rounded-xl p-2.5 shadow-sm space-y-1">
+                                                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-end mb-1">
+                                                                    <div></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">6 - 9</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">9 - 12</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">12 - 3</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">3 - 6</span></div>
+                                                                </div>
+                                                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center">
+                                                                    <div className="text-right pr-2"><span className="text-[9px] font-black uppercase text-slate-500 leading-tight block">Toe<br/>Chord</span></div>
+                                                                    {renderCell('toe_chord_6_9')}{renderCell('toe_chord_9_12')}{renderCell('toe_chord_12_3')}{renderCell('toe_chord_3_6')}
+                                                                </div>
+                                                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center mt-1">
+                                                                    <div className="text-right pr-2"><span className="text-[9px] font-black uppercase text-slate-500 leading-tight block">Weld</span></div>
+                                                                    {renderCell('weld_6_9')}{renderCell('weld_9_12')}{renderCell('weld_12_3')}{renderCell('weld_3_6')}
+                                                                </div>
+                                                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center mt-1">
+                                                                    <div className="text-right pr-2"><span className="text-[9px] font-black uppercase text-slate-500 leading-tight block">Toe<br/>Brace</span></div>
+                                                                    {renderCell('toe_brace_6_9')}{renderCell('toe_brace_9_12')}{renderCell('toe_brace_12_3')}{renderCell('toe_brace_3_6')}
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Catch-all for Demagnetised or Any other fields not explicitly placed */}
+                                                            {(() => {
+                                                                const processedFields = [
+                                                                    'magnetic_ink', 'surface_condition', 'cleaning_method', 'background_condition', 'magnetic_method', 'lighting_method', 'calib_block', 'magnetic_lifting_power', 'orientation', 'indication', 'probe', 'burmah_c_strip',
+                                                                    'brace_thick_3clk', 'brace_thick_6clk', 'brace_thick_9clk', 'brace_thick_12clk', 'brace_nominal_thickness',
+                                                                    'chord_thick_3clk', 'chord_thick_6clk', 'chord_thick_9clk', 'chord_thick_12clk', 'chord_nominal_thickness',
+                                                                    'cp_at_3clk', 'cp_at_6clk', 'cp_at_9clk', 'cp_at_12clk',
+                                                                    'current_in_coil_magnet', 'voltage_in_coil_magnet', 'current_pole_spacing', 'dist_from_datum', 'probe_size',
+                                                                    'toe_chord_6_9', 'toe_chord_9_12', 'toe_chord_12_3', 'toe_chord_3_6',
+                                                                    'weld_6_9', 'weld_9_12', 'weld_12_3', 'weld_3_6',
+                                                                    'toe_brace_6_9', 'toe_brace_9_12', 'toe_brace_12_3', 'toe_brace_3_6'
+                                                                ];
+                                                                const remainingFields = validFields.filter((f: any) => !processedFields.includes(f.name));
+                                                                
+                                                                if (remainingFields.length > 0) {
+                                                                    return (
+                                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm">
+                                                                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                                                                {remainingFields.map((p: any) => (<div key={p.name} className="space-y-1"><label className="text-[10px] font-black uppercase block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            })()}
+                                                        </div>
+                                                    );
+                                                } else {
+                                                    const validOtherFields = otherFields.filter((f: any) => f && f.name);
+                                                    const groupedRest = validOtherFields.reduce((acc: any, p: any) => {
+                                                        const g = p.group || 'ungrouped';
+                                                        if (!acc[g]) acc[g] = [];
+                                                        acc[g].push(p);
+                                                        return acc;
+                                                    }, {});
+
+                                                    return (
+                                                        <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
+                                                            {Object.keys(groupedRest).map(groupName => {
+                                                                const isUngrouped = groupName === 'ungrouped';
+                                                                const fields = groupedRest[groupName];
+                                                                
+                                                                return (
+                                                                    <div key={groupName} className={!isUngrouped ? "border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm" : "col-span-full"}>
+                                                                        {!isUngrouped && (
+                                                                            <label className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">{groupName}</label>
+                                                                        )}
+                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-2 gap-x-3 gap-y-2">
+                                                                            {fields.map((p: any) => {
+                                                                                if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
+                                                                                if (!shouldShowField(p)) return null;
+                                                                                return (
+                                                                                    <motion.div layout key={p.name} className={`flex-grow ${p.type === 'repeater' || p.type === 'textarea' ? 'col-span-full' : 'col-span-1'} space-y-0.5`}>
+                                                                                        <label className="text-[9px] font-black uppercase truncate block" title={p.label || p.name}>{p.label || p.name}</label>
+                                                                                        {renderInspectionField(p, 'primary')}
+                                                                                    </motion.div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                );
                                                             })}
                                                         </div>
                                                     );

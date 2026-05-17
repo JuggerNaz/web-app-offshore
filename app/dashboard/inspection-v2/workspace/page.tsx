@@ -258,6 +258,7 @@ function V10PreviewLayout() {
   );
   const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+  const [isReportWizardOpen, setIsReportWizardOpen] = useState(false);
 
   const [deployments, setDeployments] = useState<any[]>([]);
   const [activeDep, setActiveDep] = useState<{
@@ -280,6 +281,9 @@ function V10PreviewLayout() {
 
   const [unitSystem, setUnitSystem] = useState<"METRIC" | "IMPERIAL">("METRIC");
   const [recordSearchQuery, setRecordSearchQuery] = useState("");
+  const [recordsOffset, setRecordsOffset] = useState(0);
+  const [recordsLimit, setRecordsLimit] = useState(25);
+  const [totalRecords, setTotalRecords] = useState(0);
 
   // Column Settings for Captured Events
   const [columnSettings, setColumnSettings] = useState(() => {
@@ -1404,6 +1408,10 @@ function V10PreviewLayout() {
     setPhotographyLogPreviewOpen,
     gvinsPreviewOpen,
     setGvinsPreviewOpen,
+    bsinsPreviewOpen,
+    setBsinsPreviewOpen,
+    mpinsPreviewOpen,
+    setMpinsPreviewOpen,
     szonePreviewOpen,
     setSzonePreviewOpen,
     cpclbPreviewOpen,
@@ -1464,6 +1472,10 @@ function V10PreviewLayout() {
     generatePhotographyLogReportBlob,
     generateGVINSReport,
     generateGVINSReportBlob,
+    generateBSINSReport,
+    generateBSINSReportBlob,
+    generateMPINSReport,
+    generateMPINSReportBlob,
     generateSZONEReport,
     generateSZONEReportBlob,
     generateCPCLBReport,
@@ -2964,12 +2976,12 @@ function V10PreviewLayout() {
         let mvtLabel = "Awaiting Deployment";
         
         if (inspMethod === "DIVING") {
-          mvtLabel = last.activity || "Awaiting Deployment";
+          mvtLabel = last.activity || last.movement_type || "Awaiting Deployment";
           const mappedItem = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(
             (a) => a.value === mvtLabel || a.label === mvtLabel
           );
           if (mappedItem) mvtLabel = mappedItem.label;
-          setDiveStartTime(last.timestamp || last.event_time);
+          setDiveStartTime(last.timestamp || last.event_time || last.movement_time);
         } else {
           mvtLabel = last.movement_type || "Awaiting Deployment";
           setDiveStartTime(last.movement_time || last.event_time);
@@ -3102,9 +3114,21 @@ function V10PreviewLayout() {
                 insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
                 insp_video_tapes:tape_id!left(tape_no),
                 insp_anomalies(*)
-            `
+            `,
+          { count: "exact" }
         )
-        .eq(inspCol, depId);
+        .eq("jobpack_id", parseInt(jobPackId || "0"))
+        .order("inspection_date", { ascending: false })
+        .order("inspection_time", { ascending: false });
+
+      if (recordSearchQuery) {
+        // When searching, we bypass pagination to allow the client-side Smart Filter 
+        // to scan a much larger set of records (up to 3000) globally.
+        inspsQuery = inspsQuery.limit(3000);
+      } else {
+        // Standard browsing uses pagination for performance
+        inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
+      }
 
       if (structureId && !isNaN(Number(structureId))) {
         inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
@@ -3131,6 +3155,9 @@ function V10PreviewLayout() {
 
       const logs = logsRes.data;
       const insps = inspsRes.data;
+      const count = inspsRes.count;
+
+      if (count !== null) setTotalRecords(count);
 
       if (logs) {
         allEv.push(
@@ -3228,7 +3255,18 @@ function V10PreviewLayout() {
       setSyncLoading(false);
       setIsReadyForComps(true);
     }
-  }, [activeDep, inspMethod, supabase, parseDbDate, structureId, headerData.sowReportNo]);
+  }, [
+    activeDep,
+    inspMethod,
+    supabase,
+    parseDbDate,
+    structureId,
+    headerData.sowReportNo,
+    recordSearchQuery,
+    recordsOffset,
+    recordsLimit,
+    jobPackId,
+  ]);
 
   // Active deployment effect: sync tape, movements, records
   useEffect(() => {
@@ -4552,35 +4590,42 @@ function V10PreviewLayout() {
     if (!activeDep?.id) return;
 
     // Find the database record value for the label
-    // We save the exact label to avoid ambiguity when reading since multiple actions map to the same value in constants
     const dbValue = actionLabel;
-
     const mvtTable = inspMethod === "DIVING" ? "insp_dive_movements" : "insp_rov_movements";
     const mvtCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
     const jobTable = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
 
-    const payload: any = {
-      [mvtCol]: activeDep.id,
-      movement_time: new Date().toISOString(),
-      movement_type: dbValue,
-      remarks: "",
-    };
+    const payload: any = {};
+    if (inspMethod === "DIVING") {
+      const mappedAction = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.label === dbValue);
+      payload.dive_job_id = activeDep.id;
+      payload.timestamp = new Date().toISOString();
+      payload.activity = dbValue;
+      payload.notes = "";
+      payload.location = mappedAction?.location || "N/A";
+    } else {
+      payload.rov_job_id = activeDep.id;
+      payload.movement_time = new Date().toISOString();
+      payload.movement_type = dbValue;
+      payload.remarks = "";
+    }
 
     const { error } = await supabase.from(mvtTable).insert(payload);
     if (!error) {
       setCurrentMovement(actionLabel);
+      const mvtTime = payload.timestamp || payload.movement_time;
       if (
         actionLabel.toLowerCase().includes("left surface") ||
         actionLabel.toLowerCase().includes("deployed") ||
         actionLabel.toLowerCase().includes("launched")
       )
-        setDiveStartTime(payload.movement_time);
+        setDiveStartTime(mvtTime);
       if (
         actionLabel.toLowerCase().includes("arrived surface") ||
         actionLabel.toLowerCase().includes("recovered") ||
         actionLabel.toLowerCase().includes("off hire")
       )
-        setDiveEndTime(payload.movement_time);
+        setDiveEndTime(mvtTime);
 
       // Auto-complete deployment if final action
       if (
@@ -5142,10 +5187,10 @@ function V10PreviewLayout() {
       if (editingRecordId) {
         payload.insp_id = editingRecordId;
         payload.md_user = user?.id || "system";
-        // payload.md_date is auto-set by DB trigger
+        payload.md_date = new Date().toISOString();
       } else {
         payload.cr_user = user?.id || "system";
-        // payload.cr_date is auto-set by DB default
+        payload.cr_date = new Date().toISOString();
       }
 
       // Commit Calibration/Required Record if needed
@@ -5180,9 +5225,11 @@ function V10PreviewLayout() {
 
         if (requiredRecordId) {
           reqPayload.md_user = user?.id || "system";
+          reqPayload.md_date = new Date().toISOString();
           await supabase.from("insp_records").update(reqPayload).eq("insp_id", requiredRecordId);
         } else {
           reqPayload.cr_user = user?.id || "system";
+          reqPayload.cr_date = new Date().toISOString();
           const { data: newReqData } = await supabase
             .from("insp_records")
             .insert(reqPayload)
@@ -6295,6 +6342,11 @@ function V10PreviewLayout() {
             handleDeleteRecord={handleDeleteRecord}
             setViewingRecordAttachments={setViewingRecordAttachments}
             supabase={supabase}
+            recordsOffset={recordsOffset}
+            setRecordsOffset={setRecordsOffset}
+            recordsLimit={recordsLimit}
+            setRecordsLimit={setRecordsLimit}
+            totalRecords={totalRecords}
           />
         );
       case "components":
@@ -6504,6 +6556,7 @@ function V10PreviewLayout() {
         jobPackId={jobPackId}
         structureId={structureId}
         onSummaryOpen={() => setIsSummaryOpen(true)}
+        setIsReportWizardOpen={setIsReportWizardOpen}
         onResetLayout={handleResetLayout}
       />
 
@@ -7029,11 +7082,14 @@ function V10PreviewLayout() {
           jtisiPreviewOpen,
           itisiPreviewOpen,
           gvinsPreviewOpen,
+          bsinsPreviewOpen,
+          mpinsPreviewOpen,
           szonePreviewOpen,
           cpclbPreviewOpen,
           utclbPreviewOpen,
           divingAnodePreviewOpen,
           divingMgiPreviewOpen,
+          isReportWizardOpen,
         }}
         setters={{
           setIsDiveSetupOpen,
@@ -7089,11 +7145,14 @@ function V10PreviewLayout() {
           setJtisiPreviewOpen,
           setItisiPreviewOpen,
           setGvinsPreviewOpen,
+          setBsinsPreviewOpen,
+          setMpinsPreviewOpen,
           setSzonePreviewOpen,
           setCpclbPreviewOpen,
           setUtclbPreviewOpen,
           setDivingAnodePreviewOpen,
           setDivingMgiPreviewOpen,
+          setIsReportWizardOpen,
         }}
         handlers={{
           handleEditEventSave,
@@ -7132,6 +7191,10 @@ function V10PreviewLayout() {
           generatePhotographyLogReportBlob,
           generateGVINSReport,
           generateGVINSReportBlob,
+          generateBSINSReport,
+          generateBSINSReportBlob,
+          generateMPINSReport,
+          generateMPINSReportBlob,
           generateSZONEReportBlob,
           generateCPCLBReportBlob,
           generateUTCLBReportBlob,

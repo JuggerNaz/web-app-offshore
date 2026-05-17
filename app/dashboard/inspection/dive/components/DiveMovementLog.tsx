@@ -81,18 +81,29 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
         if (!diveJob) return;
 
         try {
-            const depId = Number(diveJob.id || diveJob.dive_job_id);
+            // Support both mapped object {id, raw} and raw object {dive_job_id}
+            const rawId = diveJob.dive_job_id || diveJob.id;
+            const depId = Number(rawId);
+            
+            if (isNaN(depId)) {
+                console.warn("[DiveMovementLog] Invalid Dive Job ID:", rawId, diveJob);
+                return;
+            }
+
             const { data, error } = await supabase
                 .from("insp_dive_movements")
                 .select("*")
                 .eq("dive_job_id", depId)
                 .order("timestamp", { ascending: false });
 
-            if (error) throw error;
+            if (error) {
+                console.error("[DiveMovementLog] Supabase error loading movements:", error.message, error.details);
+                throw error;
+            }
 
             setMovements(data || []);
-        } catch (error) {
-            console.error("Error loading movements:", error);
+        } catch (error: any) {
+            console.error("Error loading movements:", error?.message || error);
         }
     }
 

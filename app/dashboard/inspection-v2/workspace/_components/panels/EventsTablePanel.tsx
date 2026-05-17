@@ -32,6 +32,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface EventsTablePanelProps {
   syncLoading: boolean;
@@ -52,6 +59,11 @@ interface EventsTablePanelProps {
   handleDeleteRecord: (id: number) => void;
   setViewingRecordAttachments: (val: any) => void;
   supabase: any;
+  recordsOffset: number;
+  setRecordsOffset: (val: number) => void;
+  recordsLimit: number;
+  setRecordsLimit: (val: number) => void;
+  totalRecords: number;
 }
 
 export function EventsTablePanel({
@@ -73,6 +85,11 @@ export function EventsTablePanel({
   handleDeleteRecord,
   setViewingRecordAttachments,
   supabase,
+  recordsOffset,
+  setRecordsOffset,
+  recordsLimit,
+  setRecordsLimit,
+  totalRecords,
 }: EventsTablePanelProps) {
   function formatCounter(seconds: number | string): string {
     const totalSeconds = typeof seconds === "string" ? parseFloat(seconds) : seconds;
@@ -99,7 +116,7 @@ export function EventsTablePanel({
           <span>CAPTURED EVENTS</span>
           <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
             {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-            {recordSearchQuery ? `${displayRecords.length} / ${sortedRecords.length}` : sortedRecords.length} Captured
+            {recordSearchQuery ? `${displayRecords.length} / ${totalRecords || sortedRecords.length}` : (totalRecords || sortedRecords.length)} Total
           </Badge>
         </div>
 
@@ -113,7 +130,54 @@ export function EventsTablePanel({
           />
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+           <Select 
+             value={recordsLimit.toString()} 
+             onValueChange={(val) => {
+               setRecordsLimit(parseInt(val));
+               setRecordsOffset(0);
+             }}
+           >
+             <SelectTrigger className="h-6 w-[60px] text-[9px] bg-slate-900/50 border-slate-700 text-slate-400 font-black uppercase ring-offset-slate-900 focus:ring-slate-700">
+               <SelectValue placeholder={recordsLimit.toString()} />
+             </SelectTrigger>
+             <SelectContent className="bg-slate-900 border-slate-700 text-slate-200 min-w-[60px]">
+               <SelectItem value="25" className="text-[9px] font-bold">25 Rows</SelectItem>
+               <SelectItem value="50" className="text-[9px] font-bold">50 Rows</SelectItem>
+               <SelectItem value="100" className="text-[9px] font-bold">100 Rows</SelectItem>
+             </SelectContent>
+           </Select>
+
+           <div className="flex items-center bg-slate-900/50 border border-slate-700 rounded-md overflow-hidden">
+             <Button 
+               variant="ghost" 
+               size="sm" 
+               className="h-6 px-2 text-[9px] font-black uppercase text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-20 transition-all"
+               onClick={() => setRecordsOffset(Math.max(0, recordsOffset - recordsLimit))}
+               disabled={recordsOffset === 0 || syncLoading}
+             >
+               Prev
+             </Button>
+             <div className="px-2 border-x border-slate-700 h-6 flex items-center bg-slate-950/30">
+               <span className="text-[9px] text-blue-400 font-black tabular-nums">
+                 {totalRecords > 0 ? `${recordsOffset + 1}-${Math.min(recordsOffset + recordsLimit, totalRecords)}` : '0-0'} 
+                 <span className="text-slate-500 mx-1">/</span> 
+                 {totalRecords}
+               </span>
+             </div>
+             <Button 
+               variant="ghost" 
+               size="sm" 
+               className="h-6 px-2 text-[9px] font-black uppercase text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-20 transition-all"
+               onClick={() => setRecordsOffset(recordsOffset + recordsLimit)}
+               disabled={recordsOffset + recordsLimit >= totalRecords || syncLoading}
+             >
+               Next
+             </Button>
+           </div>
+        </div>
+
+        <div className="flex items-center gap-1 ml-1">
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700">

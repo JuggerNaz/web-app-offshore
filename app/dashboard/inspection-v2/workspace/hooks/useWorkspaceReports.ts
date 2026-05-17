@@ -65,6 +65,8 @@ export function useWorkspaceReports(
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
     const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
+    const [bsinsPreviewOpen, setBsinsPreviewOpen] = useState(false);
+    const [mpinsPreviewOpen, setMpinsPreviewOpen] = useState(false);
     const [szonePreviewOpen, setSzonePreviewOpen] = useState(false);
     const [cpclbPreviewOpen, setCpclbPreviewOpen] = useState(false);
     const [utclbPreviewOpen, setUtclbPreviewOpen] = useState(false);
@@ -773,6 +775,60 @@ export function useWorkspaceReports(
         return await generateDivingGVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
+    const generateBSINSReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'BSINS');
+        if (records.length === 0) {
+            toast.error("No BSINS records found to generate report");
+            return;
+        }
+        setBsinsPreviewOpen(true);
+    };
+
+    const generateBSINSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'BSINS');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contractorLogoUrl = contrData?.lib_path || '';
+        }
+        try {
+            const { generateDivingBSINSReport } = await import("@/utils/report-generators/diving-bsins-report");
+            return await generateDivingBSINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        } catch (error) {
+            console.error("BSINS report error:", error);
+        }
+    };
+
+    const generateMPINSReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'MPINS');
+        if (!records.length) {
+            toast.error("No MPINS records found to generate report");
+            return;
+        }
+        setMpinsPreviewOpen(true);
+    };
+
+    const generateMPINSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'MPINS');
+        if (!records.length) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+        try {
+            const { generateDivingMPINSReport } = await import("@/utils/report-generators/diving-mpins-report");
+            return await generateDivingMPINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        } catch (error) {
+            console.error("MPINS report error:", error);
+        }
+    };
+
     const generateSZONEReport = async () => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SZONE');
         if (records.length === 0) {
@@ -1383,6 +1439,8 @@ export function useWorkspaceReports(
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         gvinsPreviewOpen, setGvinsPreviewOpen,
+        bsinsPreviewOpen, setBsinsPreviewOpen,
+        mpinsPreviewOpen, setMpinsPreviewOpen,
         szonePreviewOpen, setSzonePreviewOpen,
         cpclbPreviewOpen, setCpclbPreviewOpen,
         utclbPreviewOpen, setUtclbPreviewOpen,
@@ -1437,6 +1495,10 @@ export function useWorkspaceReports(
         generatePhotographyLogReportBlob,
         generateGVINSReport,
         generateGVINSReportBlob,
+        generateBSINSReport,
+        generateBSINSReportBlob,
+        generateMPINSReport,
+        generateMPINSReportBlob,
         generateSZONEReport,
         generateSZONEReportBlob,
         generateCPCLBReport,

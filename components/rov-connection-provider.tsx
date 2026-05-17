@@ -68,12 +68,13 @@ export function ROVConnectionProvider({ children }: { children: React.ReactNode 
     const [fields, setFields] = useState<Array<{ label: string, targetField: string, value: string }>>([]);
     const [rawBuffer, setRawBuffer] = useState('');
 
+    const websocketRef = useRef<WebSocket | null>(null);
     const serialPortRef = useRef<any>(null);
     const readerRef = useRef<any>(null);
     const streamClosedRef = useRef<any>(null);
+    const parseIntervalRef = useRef<any>(null);
+    const rawBufferIntervalRef = useRef<any>(null);
     const dataBufferRef = useRef<string>('');
-    const parseIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const rawBufferIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const disconnectionInProgressRef = useRef<boolean>(false);
 
     const disconnect = useCallback(async (silent = false) => {
@@ -89,6 +90,13 @@ export function ROVConnectionProvider({ children }: { children: React.ReactNode 
                 clearInterval(rawBufferIntervalRef.current);
                 rawBufferIntervalRef.current = null;
             }
+            
+            // Close WebSocket
+            if (websocketRef.current) {
+                websocketRef.current.close();
+                websocketRef.current = null;
+            }
+
             if (readerRef.current) {
                 try {
                     await readerRef.current.cancel();
@@ -116,7 +124,7 @@ export function ROVConnectionProvider({ children }: { children: React.ReactNode 
             setFields(prev => prev.map(f => ({ ...f, value: '--' })));
             if (!silent) toast.success('ROV Data disconnected.');
         } catch (e: any) {
-            console.error('Error disconnecting ROV serial:', e);
+            console.error('Error disconnecting ROV:', e);
             if (!silent) toast.error('Error disconnecting: ' + (e?.message || 'Unknown error'));
         } finally {
             disconnectionInProgressRef.current = false;
@@ -127,17 +135,8 @@ export function ROVConnectionProvider({ children }: { children: React.ReactNode 
         setError(null);
         setIsConnecting(true);
 
-        // Check for Web Serial support
-        if (typeof window === 'undefined' || !('serial' in navigator)) {
-            const msg = 'Web Serial API not supported in this browser.';
-            setError(msg);
-            setIsConnecting(false);
-            toast.error(msg);
-            return;
-        }
-
         // Close existing connection if any
-        if (serialPortRef.current) {
+        if (serialPortRef.current || websocketRef.current) {
             console.log("[ROV Connection] Closing existing connection before re-connecting...");
             await disconnect(true);
         }
@@ -160,88 +159,9 @@ export function ROVConnectionProvider({ children }: { children: React.ReactNode 
             return;
         }
 
-        if (settings.connection.type !== 'serial') {
-            const msg = 'Only Serial connection is supported in browser.';
-            setError(msg);
-            setIsConnecting(false);
-            toast.error(msg);
-            return;
-        }
-
-        try {
-            let port: any = null;
-
-            // 1. Try to find an ALREADY AUTHORIZED port first (to avoid the browser picker)
-            const authorizedPorts = await (navigator as any).serial.getPorts();
-            if (authorizedPorts.length > 0) {
-                const serialSettings = settings.connection.serial || {};
-                
-                // If we have saved port info (like VID/PID), we could match specifically.
-                // For now, if there's only one authorized port, we use it.
-                // If there are multiple, we pick the first one, or the one matching VID/PID.
-                if (authorizedPorts.length === 1) {
-                    port = authorizedPorts[0];
-                    console.log("[ROV Connection] Using single authorized port:", port);
-                } else {
-                    // Try to match by VID/PID if saved in settings
-                    const targetVid = serialSettings.usbVendorId;
-                    const targetPid = serialSettings.usbProductId;
-                    
-                    if (targetVid && targetPid) {
-                        port = authorizedPorts.find((p: any) => {
-                            const info = p.getInfo();
-                            return info.usbVendorId === targetVid && info.usbProductId === targetPid;
-                        });
-                        if (port) console.log("[ROV Connection] Found matching authorized port:", port);
-                    }
-                }
-            }
-
-            // 2. Fallback to manual picker if no authorized port found or it failed to match
-            if (!port) {
-                console.log("[ROV Connection] No matching authorized port, requesting manual selection...");
-                port = await (navigator as any).serial.requestPort();
-            }
-
-            const serialSettings = settings.connection.serial || {};
-            await port.open({
-                baudRate: Number(serialSettings.baudRate) || 9600,
-                dataBits: Number(serialSettings.dataBits) || 8,
-                parity: (serialSettings.parity as any) || 'none',
-                stopBits: Number(serialSettings.stopBits) || 1,
-            });
-
-            // Save VID/PID to settings for future auto-connect (persistent)
-            const info = port.getInfo();
-            if (info.usbVendorId && !serialSettings.usbVendorId) {
-                // We update the local storage with the fingerprinted info
-                const saved = localStorage.getItem(STORAGE_KEYS[structureType]);
-                if (saved) {
-                    try {
-                        const fullSettings = JSON.parse(saved);
-                        fullSettings.connection.serial.usbVendorId = info.usbVendorId;
-                        fullSettings.connection.serial.usbProductId = info.usbProductId;
-                        localStorage.setItem(STORAGE_KEYS[structureType], JSON.stringify(fullSettings));
-                    } catch (e) { /* ignore */ }
-                }
-            }
-
-            serialPortRef.current = port;
-            dataBufferRef.current = '';
-            setRawBuffer('');
-
-            const textDecoder = new TextDecoderStream();
-            const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-            streamClosedRef.current = readableStreamClosed;
-            const reader = textDecoder.readable.getReader();
-            readerRef.current = reader;
-
-            setIsConnected(true);
-            setIsConnecting(false);
-            toast.success('ROV Data connected!');
-
+        const setupParsingAndLoops = () => {
             // Setup field tracking
-            if (settings.fields && settings.fields.length > 0) {
+            if (settings?.fields && settings.fields.length > 0) {
                 setFields(settings.fields.map(f => ({
                     label: f.label || '?',
                     targetField: f.targetField || f.label || 'field',
@@ -249,34 +169,16 @@ export function ROVConnectionProvider({ children }: { children: React.ReactNode 
                 })));
             }
 
-            // Read loop - only updates the ref buffer (fast, no re-renders)
-            const readLoop = async () => {
-                try {
-                    while (true) {
-                        const { value, done } = await reader.read();
-                        if (done) break;
-                        if (value) {
-                            dataBufferRef.current += value;
-                            if (dataBufferRef.current.length > 10000) {
-                                dataBufferRef.current = dataBufferRef.current.slice(-5000);
-                            }
-                        }
-                    }
-                } catch (e) { /* reader cancelled */ }
-            };
-            readLoop();
-
             // UI Throttled raw buffer update (every 100ms)
-            // This prevents "Maximum update depth exceeded" when data arrives rapidly
             rawBufferIntervalRef.current = setInterval(() => {
                 setRawBuffer(dataBufferRef.current);
             }, 100);
 
             // Parse interval
-            const parseMethod = settings.parsing?.method || 'position';
-            const startChar = settings.parsing?.startCharacter || '$';
-            const strLen = settings.parsing?.stringLength || 100;
-            const fieldsDef = settings.fields || [];
+            const parseMethod = settings?.parsing?.method || 'position';
+            const startChar = settings?.parsing?.startCharacter || '$';
+            const strLen = settings?.parsing?.stringLength || 100;
+            const fieldsDef = settings?.fields || [];
 
             parseIntervalRef.current = setInterval(() => {
                 if (!dataBufferRef.current) return;
@@ -335,6 +237,142 @@ export function ROVConnectionProvider({ children }: { children: React.ReactNode 
                     return { ...f, value: val || '--' };
                 }));
             }, 200);
+        };
+
+        if (settings.connection.type === 'network') {
+            try {
+                const { ipAddress, port } = settings.connection.network;
+                // Use WebSocket bridge (browsers cannot hear UDP/TCP directly)
+                const wsUrl = `ws://${ipAddress}:${port}`;
+                console.log("[ROV Connection] Connecting to Network via WebSocket:", wsUrl);
+                
+                const ws = new WebSocket(wsUrl);
+                websocketRef.current = ws;
+
+                ws.onopen = () => {
+                    dataBufferRef.current = '';
+                    setRawBuffer('');
+                    setIsConnected(true);
+                    setIsConnecting(false);
+                    toast.success('ROV Network connected!');
+                    setupParsingAndLoops();
+                };
+
+                ws.onmessage = (event) => {
+                    if (typeof event.data === 'string') {
+                        dataBufferRef.current += event.data;
+                        if (dataBufferRef.current.length > 10000) {
+                            dataBufferRef.current = dataBufferRef.current.slice(-5000);
+                        }
+                    }
+                };
+
+                ws.onerror = (e) => {
+                    const msg = 'WebSocket connection error. Ensure the Network Bridge is running.';
+                    setError(msg);
+                    setIsConnecting(false);
+                    toast.error(msg);
+                };
+
+                ws.onclose = () => {
+                    setIsConnected(false);
+                    setRawBuffer('');
+                };
+
+                return;
+            } catch (e: any) {
+                const msg = e?.message || 'Failed to initialize network connection.';
+                setError(msg);
+                setIsConnecting(false);
+                toast.error(msg);
+                return;
+            }
+        }
+
+        // Serial Connection Logic (Default)
+        if (typeof window === 'undefined' || !('serial' in navigator)) {
+            const msg = 'Web Serial API not supported in this browser.';
+            setError(msg);
+            setIsConnecting(false);
+            toast.error(msg);
+            return;
+        }
+
+        try {
+            let port: any = null;
+            const authorizedPorts = await (navigator as any).serial.getPorts();
+            if (authorizedPorts.length > 0) {
+                const serialSettings = settings.connection.serial || {};
+                if (authorizedPorts.length === 1) {
+                    port = authorizedPorts[0];
+                } else {
+                    const targetVid = serialSettings.usbVendorId;
+                    const targetPid = serialSettings.usbProductId;
+                    if (targetVid && targetPid) {
+                        port = authorizedPorts.find((p: any) => {
+                            const info = p.getInfo();
+                            return info.usbVendorId === targetVid && info.usbProductId === targetPid;
+                        });
+                    }
+                }
+            }
+
+            if (!port) {
+                port = await (navigator as any).serial.requestPort();
+            }
+
+            const serialSettings = settings.connection.serial || {};
+            await port.open({
+                baudRate: Number(serialSettings.baudRate) || 9600,
+                dataBits: Number(serialSettings.dataBits) || 8,
+                parity: (serialSettings.parity as any) || 'none',
+                stopBits: Number(serialSettings.stopBits) || 1,
+            });
+
+            const info = port.getInfo();
+            if (info.usbVendorId && !serialSettings.usbVendorId) {
+                const saved = localStorage.getItem(STORAGE_KEYS[structureType]);
+                if (saved) {
+                    try {
+                        const fullSettings = JSON.parse(saved);
+                        fullSettings.connection.serial.usbVendorId = info.usbVendorId;
+                        fullSettings.connection.serial.usbProductId = info.usbProductId;
+                        localStorage.setItem(STORAGE_KEYS[structureType], JSON.stringify(fullSettings));
+                    } catch (e) { /* ignore */ }
+                }
+            }
+
+            serialPortRef.current = port;
+            dataBufferRef.current = '';
+            setRawBuffer('');
+
+            const textDecoder = new TextDecoderStream();
+            const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+            streamClosedRef.current = readableStreamClosed;
+            const reader = textDecoder.readable.getReader();
+            readerRef.current = reader;
+
+            setIsConnected(true);
+            setIsConnecting(false);
+            toast.success('ROV Serial connected!');
+
+            setupParsingAndLoops();
+
+            const readLoop = async () => {
+                try {
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        if (value) {
+                            dataBufferRef.current += value;
+                            if (dataBufferRef.current.length > 10000) {
+                                dataBufferRef.current = dataBufferRef.current.slice(-5000);
+                            }
+                        }
+                    }
+                } catch (e) { /* reader cancelled */ }
+            };
+            readLoop();
 
         } catch (error: any) {
             const msg = error?.message || 'Failed to connect to serial port.';
