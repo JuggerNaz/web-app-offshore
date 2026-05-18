@@ -1121,7 +1121,8 @@ function V10PreviewLayout() {
   const renderInspectionField = (p: any, type: "primary" | "secondary") => {
     const handler = type === "primary" ? handleDynamicPropChange : handleRequiredPropChange;
     const currentProps = type === "primary" ? dynamicProps : requiredProps;
-    const currentValue = currentProps[p.name || p.label] || "";
+    const fieldKey = p.name || p.label;
+    const currentValue = currentProps[fieldKey] || "";
 
     // Auto-calculated fields that should be read-only
     let readOnly = false;
@@ -1410,8 +1411,14 @@ function V10PreviewLayout() {
     setGvinsPreviewOpen,
     bsinsPreviewOpen,
     setBsinsPreviewOpen,
+    cvinsPreviewOpen,
+    setCvinsPreviewOpen,
+    cleanPreviewOpen,
+    setCleanPreviewOpen,
     mpinsPreviewOpen,
     setMpinsPreviewOpen,
+    utwtkPreviewOpen,
+    setUtwtkPreviewOpen,
     szonePreviewOpen,
     setSzonePreviewOpen,
     cpclbPreviewOpen,
@@ -1474,8 +1481,14 @@ function V10PreviewLayout() {
     generateGVINSReportBlob,
     generateBSINSReport,
     generateBSINSReportBlob,
+    generateCVINSReport,
+    generateCVINSReportBlob,
+    generateCLEANReport,
+    generateCLEANReportBlob,
     generateMPINSReport,
     generateMPINSReportBlob,
+    generateUTWTKReport,
+    generateUTWTKReportBlob,
     generateSZONEReport,
     generateSZONEReportBlob,
     generateCPCLBReport,
@@ -4402,8 +4415,6 @@ function V10PreviewLayout() {
       if (matchingOverrides.length > 0) {
         const lastMatch = matchingOverrides[matchingOverrides.length - 1];
         if (lastMatch.fields && Array.isArray(lastMatch.fields)) {
-          // Logic: If override provides fields, we use them.
-          // To support "replace/hide", the override fields list is the source.
           props = [...lastMatch.fields];
         } else {
           props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
@@ -4411,6 +4422,15 @@ function V10PreviewLayout() {
       } else {
         props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
       }
+      
+      // Resolve $ref references using sharedFields
+      const shared = (inspectionRegistry as any)?.sharedFields || {};
+      props = props.map((f: any) => {
+          if (f.$ref && shared[f.$ref]) {
+              return { ...shared[f.$ref], ...f, $ref: undefined };
+          }
+          return f;
+      });
     }
 
     // 1. Historical data preservation (Legacy Fields) - THE UNION STRATEGY
@@ -5015,18 +5035,141 @@ function V10PreviewLayout() {
 
       const activeProps = { ...dynamicProps, ...currentDataAcq };
 
+      // Apply synchronous auto-calculations to guarantee computed fields are saved 
+      // even if the user clicks 'Save' before the React useEffect finishes its cycle.
+      const specStr = String(activeSpec || '').toUpperCase();
+      if (['UTWTK', 'RUTWT', 'DUTWT', 'SZONE', 'RSZCI', 'DSZCI'].includes(specStr)) {
+        const readings: number[] = [];
+        const r3 = parseFloat(activeProps.ut_3_o_clock); if (!isNaN(r3)) readings.push(r3);
+        const r6 = parseFloat(activeProps.ut_6_o_clock); if (!isNaN(r6)) readings.push(r6);
+        const r9 = parseFloat(activeProps.ut_9_o_clock); if (!isNaN(r9)) readings.push(r9);
+        const r12 = parseFloat(activeProps.ut_12_o_clock); if (!isNaN(r12)) readings.push(r12);
+        if (Array.isArray(activeProps.ut_readings_additional)) {
+            activeProps.ut_readings_additional.forEach((item: any) => {
+                const addR = parseFloat(item.reading);
+                if (!isNaN(addR)) readings.push(addR);
+            });
+        }
+        
+        let min = 0;
+        if (readings.length > 0) {
+            const sum = readings.reduce((a, b) => a + b, 0);
+            activeProps.avg_reading = parseFloat((sum / readings.length).toFixed(2));
+            min = Math.min(...readings);
+            activeProps.min_reading = parseFloat(min.toFixed(2));
+            activeProps.max_reading = parseFloat(Math.max(...readings).toFixed(2));
+        } else {
+            const minRaw = activeProps.min_reading;
+            min = (minRaw === undefined || minRaw === null || minRaw === "") ? 0 : parseFloat(minRaw);
+            if (isNaN(min)) min = 0;
+        }
+
+        const ntRaw = activeProps.nominal_thickness;
+        const nt = (ntRaw === undefined || ntRaw === null || ntRaw === "") ? 0 : parseFloat(ntRaw);
+        const safeNt = isNaN(nt) ? 0 : nt;
+
+        const loss = safeNt - min;
+        let pctLoss = 0;
+        if (safeNt > 0) {
+            pctLoss = (loss / safeNt) * 100;
+        }
+
+        activeProps.wall_thickness_loss = parseFloat(loss.toFixed(2));
+        activeProps['%_wall_thickness_loss'] = parseFloat(pctLoss.toFixed(2));
+      }
+
+      // Synchronous auto-calculations for Marine Growth
+      const specName = (allInspectionTypes?.find(t => t.code === activeSpec)?.name || '').toUpperCase();
+      const keys = Object.keys(activeProps || {});
+      const isMG = specStr.includes('MGROW') || specStr.includes('RMGI') || specStr.includes('MARINE GROWTH') || specName.includes('MARINE GROWTH') || keys.some(k => k.toLowerCase().includes('circumferential')) || keys.some(k => k.toLowerCase().replace(/[\s_]/g, '') === 'effectivethickness');
+      
+      if (isMG) {
+          const getVal = (baseName: string) => {
+              const target = baseName.toLowerCase().replace(/[\s_]/g, '');
+              const matchingKeys = Object.keys(activeProps).filter(k => k.toLowerCase().replace(/[\s_]/g, '') === target);
+              if (matchingKeys.length === 0) return 0;
+              const preferredKey = matchingKeys.find(k => k !== baseName) || matchingKeys[0];
+              return parseFloat(activeProps[preferredKey]) || 0;
+          };
+          const c1 = getVal('circumferential_measurement_5m_above');
+          const c2 = getVal('circumferential_measurement_0m');
+          const c3 = getVal('circumferential_measurement_5m_below');
+          const nominalDia = getVal('nominal_diameter');
+          const avgC = (c1 + c2 + c3) / 3;
+          const etValue = avgC > 0 ? ((avgC / 3.142) - nominalDia) / 2 : 0;
+          
+          const etKey = Object.keys(activeProps || {}).find(k => k.toLowerCase().replace(/[\s_]/g, '') === 'effectivethickness') || 'effective_thickness';
+          activeProps[etKey] = parseFloat(etValue.toFixed(2));
+      }
+
+      // Synchronous auto-calculation for MGI Profile threshold
+      if (['MGI', 'RMGI'].includes(specStr) && activeMGIProfile && activeMGIProfile.thresholds?.length > 0) {
+          const vDepthRaw = activeProps.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
+          const vDepthUnit = activeProps.verification_depth_unit || 'm';
+          const waterDepth = Math.abs(headerData.waterDepth || 0);
+          
+          let val = parseFloat(vDepthRaw);
+          if (!isNaN(val)) {
+             if (vDepthUnit === 'ft') val = val * 0.3048;
+             const sorted = [...activeMGIProfile.thresholds].sort((a: any, b: any) => a.depth - b.depth);
+             let foundThreshold = null;
+             for (let i = 0; i < sorted.length; i++) {
+                 if (val <= sorted[i].depth) {
+                     foundThreshold = sorted[i].max_thickness;
+                     break;
+                 }
+             }
+             if (foundThreshold === null && sorted.length > 0) {
+                 foundThreshold = sorted[sorted.length - 1].max_thickness;
+             }
+             
+             if (foundThreshold !== null) {
+                 activeProps.mgi_profile = `${foundThreshold.toFixed(1)}mm`;
+             }
+          }
+      }
+
       // Process Archived Data during Re-classification
       const newArchivedData = { ...archivedData };
-      const currentFieldNames = new Set(activeFormProps.map((p: any) => p.name));
+      const currentFieldNames = new Set(activeFormProps.map((p: any) => p.name).filter(Boolean));
+
+      // Also include all resolved field names from the JSON registry as a safety net.
+      // This prevents $ref resolution failures in activeFormProps from stripping valid data.
+      const registryShared = (inspectionRegistry as any)?.sharedFields || {};
+      const registryType = (inspectionRegistry as any)?.inspectionTypes?.find(
+        (t: any) => t.code === (allInspectionTypes.find((it: any) => it.name === activeSpec || it.code === activeSpec)?.code || activeSpec)
+      );
+      if (registryType?.fields) {
+        registryType.fields.forEach((f: any) => {
+          if (f.$ref && registryShared[f.$ref]?.name) {
+            currentFieldNames.add(registryShared[f.$ref].name);
+          }
+          if (f.name) currentFieldNames.add(f.name);
+        });
+        // Also add component_override fields
+        if (registryType.component_overrides) {
+          registryType.component_overrides.forEach((ov: any) => {
+            (ov.fields || []).forEach((f: any) => {
+              if (f.$ref && registryShared[f.$ref]?.name) currentFieldNames.add(registryShared[f.$ref].name);
+              if (f.name) currentFieldNames.add(f.name);
+            });
+          });
+        }
+      }
 
       if (activeFormProps.length > 0) {
         // 1. Move orphaned activeProps to archived pool
-        // NOTE: We whitelist 'verification_depth' and its unit because they are hardcoded in the UI
-        // and should always be preserved in inspection_data even if not in the spec fields list.
-        const whitelist = new Set(["verification_depth", "verification_depth_unit"]);
+        // Whitelist: hardcoded UI fields + any key ending with _unit (auto-set by InspectionField)
+        const whitelist = new Set([
+          "verification_depth", "verification_depth_unit",
+          "inspection_date", "inspection_time", "tape_count_no",
+          "incomplete_reason", "has_anomaly",
+        ]);
 
         Object.keys(activeProps).forEach((key) => {
           if (key.startsWith("_")) return; // Ignore metadata
+          if (/^\d+$/.test(key)) { delete activeProps[key]; return; } // Remove numeric-index garbage keys
+          if (key.endsWith("_unit")) return; // Always keep unit fields
           if (!currentFieldNames.has(key) && !whitelist.has(key)) {
             newArchivedData[key] = activeProps[key];
             delete activeProps[key];
@@ -5625,7 +5768,40 @@ function V10PreviewLayout() {
     setEditingRecordId(fullRecord.insp_id || fullRecord.id);
     setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
 
-    const initialProps = { ...(fullRecord.inspection_data || {}) };
+    let parsedData: Record<string, any> = {};
+    if (fullRecord.inspection_data) {
+        try {
+            let raw = typeof fullRecord.inspection_data === 'string' 
+                ? JSON.parse(fullRecord.inspection_data) 
+                : fullRecord.inspection_data;
+            
+            // Handle case where inspection_data was incorrectly saved as an array
+            // (e.g., field definitions array instead of data object)
+            if (Array.isArray(raw)) {
+                console.warn('[handleEditRecord] inspection_data is an array — extracting data from last element');
+                // The last element might be the actual data object if field defs were saved as array
+                const lastItem = raw[raw.length - 1];
+                if (lastItem && typeof lastItem === 'object' && !Array.isArray(lastItem) && (lastItem.inspno || lastItem.insp_id || lastItem.scan_type || lastItem.ut_3_o_clock)) {
+                    raw = lastItem;
+                } else {
+                    raw = {};
+                }
+            }
+            
+            // Filter out numeric-index garbage keys (from array spread contamination)
+            Object.keys(raw).forEach(key => {
+                if (/^\d+$/.test(key)) {
+                    delete raw[key];
+                }
+            });
+            
+            parsedData = raw;
+        } catch (e) {
+            console.error('[handleEditRecord] Failed to parse inspection_data:', e);
+        }
+    }
+    
+    const initialProps: Record<string, any> = { ...parsedData };
     if (fullRecord.tape_count_no !== undefined && fullRecord.tape_count_no !== null) {
       initialProps.tape_count_no = formatTime(Number(fullRecord.tape_count_no));
     }
@@ -5639,7 +5815,6 @@ function V10PreviewLayout() {
        }
     }
 
-    setDynamicProps(initialProps);
     // Save Context for Re-classification feature
     setOriginalRecordContext({
       component_id: fullRecord.component_id,
@@ -5647,19 +5822,39 @@ function V10PreviewLayout() {
       inspection_type_code: fullRecord.inspection_type?.code || fullRecord.inspection_type_code,
       sow_report_no: fullRecord.sow_report_no,
     });
-    setArchivedData(fullRecord.archived_data || {});
-
+    
+    let parsedArchive: Record<string, any> = {};
+    try {
+        if (fullRecord.archived_data) {
+            parsedArchive = typeof fullRecord.archived_data === 'string'
+                ? JSON.parse(fullRecord.archived_data)
+                : fullRecord.archived_data;
+            // Filter out numeric keys from archive too
+            Object.keys(parsedArchive).forEach(key => {
+                if (/^\d+$/.test(key)) delete parsedArchive[key];
+            });
+        }
+    } catch (e) {
+        console.error('[handleEditRecord] Failed to parse archived_data:', e);
+    }
+    setArchivedData(parsedArchive);
+    
+    // Auto-restore any fields that were accidentally archived (due to earlier $ref unresolved bug)
+    // If they are valid fields now, they will naturally be saved to inspection_data on next commit.
+    const mergedProps: Record<string, any> = { ...parsedArchive, ...initialProps };
+    
     // Explicitly load elevation if missing in inspection_data but present in column
     if (
       fullRecord.elevation !== undefined &&
       fullRecord.elevation !== null &&
-      !initialProps.verification_depth
+      !mergedProps.verification_depth
     ) {
-      initialProps.verification_depth = String(fullRecord.elevation);
+      mergedProps.verification_depth = String(fullRecord.elevation);
     }
 
     // Do not set debounced props immediately to avoid triggering validation without user interaction
-    setDebouncedProps(initialProps);
+    setDynamicProps(mergedProps);
+    setDebouncedProps(mergedProps);
     setIsUserInteraction(false);
     setLastAutoMatchedRuleId(null);
     setPendingRule(null);
@@ -7083,7 +7278,10 @@ function V10PreviewLayout() {
           itisiPreviewOpen,
           gvinsPreviewOpen,
           bsinsPreviewOpen,
+          cvinsPreviewOpen,
+          cleanPreviewOpen,
           mpinsPreviewOpen,
+          utwtkPreviewOpen,
           szonePreviewOpen,
           cpclbPreviewOpen,
           utclbPreviewOpen,
@@ -7146,7 +7344,10 @@ function V10PreviewLayout() {
           setItisiPreviewOpen,
           setGvinsPreviewOpen,
           setBsinsPreviewOpen,
+          setCvinsPreviewOpen,
+          setCleanPreviewOpen,
           setMpinsPreviewOpen,
+          setUtwtkPreviewOpen,
           setSzonePreviewOpen,
           setCpclbPreviewOpen,
           setUtclbPreviewOpen,
@@ -7193,8 +7394,14 @@ function V10PreviewLayout() {
           generateGVINSReportBlob,
           generateBSINSReport,
           generateBSINSReportBlob,
+          generateCVINSReport,
+          generateCVINSReportBlob,
+          generateCLEANReport,
+          generateCLEANReportBlob,
           generateMPINSReport,
           generateMPINSReportBlob,
+          generateUTWTKReport,
+          generateUTWTKReportBlob,
           generateSZONEReportBlob,
           generateCPCLBReportBlob,
           generateUTCLBReportBlob,

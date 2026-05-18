@@ -66,7 +66,10 @@ export function useWorkspaceReports(
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
     const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
     const [bsinsPreviewOpen, setBsinsPreviewOpen] = useState(false);
+    const [cvinsPreviewOpen, setCvinsPreviewOpen] = useState(false);
+    const [cleanPreviewOpen, setCleanPreviewOpen] = useState(false);
     const [mpinsPreviewOpen, setMpinsPreviewOpen] = useState(false);
+    const [utwtkPreviewOpen, setUtwtkPreviewOpen] = useState(false);
     const [szonePreviewOpen, setSzonePreviewOpen] = useState(false);
     const [cpclbPreviewOpen, setCpclbPreviewOpen] = useState(false);
     const [utclbPreviewOpen, setUtclbPreviewOpen] = useState(false);
@@ -802,6 +805,60 @@ export function useWorkspaceReports(
         }
     };
 
+    const generateCVINSReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'CVINS');
+        if (records.length === 0) {
+            toast.error("No CVINS records found to generate report");
+            return;
+        }
+        setCvinsPreviewOpen(true);
+    };
+
+    const generateCVINSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'CVINS');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+        try {
+            const { generateDivingCVINSReport } = await import("@/utils/report-generators/diving-cvins-report");
+            return await generateDivingCVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        } catch (error) {
+            console.error("CVINS report error:", error);
+        }
+    };
+
+    const generateCLEANReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'CLEAN');
+        if (records.length === 0) {
+            toast.error("No CLEAN records found to generate report");
+            return;
+        }
+        setCleanPreviewOpen(true);
+    };
+
+    const generateCLEANReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'CLEAN');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+        try {
+            const { generateDivingCLEANReport } = await import("@/utils/report-generators/diving-clean-report");
+            return await generateDivingCLEANReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        } catch (error) {
+            console.error("CLEAN report error:", error);
+        }
+    };
+
     const generateMPINSReport = async () => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'MPINS');
         if (!records.length) {
@@ -826,6 +883,33 @@ export function useWorkspaceReports(
             return await generateDivingMPINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
         } catch (error) {
             console.error("MPINS report error:", error);
+        }
+    };
+
+    const generateUTWTKReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'UTWTK');
+        if (!records.length) {
+            toast.error("No UTWTK records found to generate report");
+            return;
+        }
+        setUtwtkPreviewOpen(true);
+    };
+
+    const generateUTWTKReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'UTWTK');
+        if (!records.length) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+        try {
+            const { generateDivingUTWTKReport } = await import("@/utils/report-generators/diving-utwtk-report");
+            return await generateDivingUTWTKReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        } catch (error) {
+            console.error("UTWTK report error:", error);
         }
     };
 
@@ -1440,6 +1524,8 @@ export function useWorkspaceReports(
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         gvinsPreviewOpen, setGvinsPreviewOpen,
         bsinsPreviewOpen, setBsinsPreviewOpen,
+        cvinsPreviewOpen, setCvinsPreviewOpen,
+        cleanPreviewOpen, setCleanPreviewOpen,
         mpinsPreviewOpen, setMpinsPreviewOpen,
         szonePreviewOpen, setSzonePreviewOpen,
         cpclbPreviewOpen, setCpclbPreviewOpen,
@@ -1497,8 +1583,15 @@ export function useWorkspaceReports(
         generateGVINSReportBlob,
         generateBSINSReport,
         generateBSINSReportBlob,
+        generateCVINSReport,
+        generateCVINSReportBlob,
+        generateCLEANReport,
+        generateCLEANReportBlob,
         generateMPINSReport,
         generateMPINSReportBlob,
+        generateUTWTKReport,
+        generateUTWTKReportBlob,
+        utwtkPreviewOpen, setUtwtkPreviewOpen,
         generateSZONEReport,
         generateSZONEReportBlob,
         generateCPCLBReport,

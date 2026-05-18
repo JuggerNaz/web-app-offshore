@@ -312,7 +312,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     }, [dynamicProps?.mgi_hard_thickness_at_12, dynamicProps?.mgi_hard_thickness_at_3, dynamicProps?.mgi_hard_thickness_at_6, dynamicProps?.mgi_hard_thickness_at_9, dynamicProps?.verification_depth, dynamicProps?.verification_depth_unit, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev]);
 
     React.useEffect(() => {
-        if (!activeSpec || activeSpec.toUpperCase() !== 'UTWTK') return;
+        if (!activeSpec || (activeSpec.toUpperCase() !== 'UTWTK' && activeSpec.toUpperCase() !== 'RUTWT' && activeSpec.toUpperCase() !== 'DUTWT' && activeSpec.toUpperCase() !== 'SZONE' && activeSpec.toUpperCase() !== 'RSZCI' && activeSpec.toUpperCase() !== 'DSZCI')) return;
+        
         const readings: number[] = [];
         const r3 = parseFloat(dynamicProps?.ut_3_o_clock);
         if (!isNaN(r3)) readings.push(r3);
@@ -328,31 +329,58 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 if (!isNaN(addR)) readings.push(addR);
             });
         }
-        if (readings.length === 0) return;
-        const sum = readings.reduce((a, b) => a + b, 0);
-        const avg = sum / readings.length;
-        const min = Math.min(...readings);
-        const max = Math.max(...readings);
-        const nt = parseFloat(dynamicProps?.nominal_thickness);
-        let loss: number | null = null;
-        let pctLoss: number | null = null;
-        if (!isNaN(nt) && nt > 0) {
-            loss = nt - min;
-            pctLoss = (loss / nt) * 100;
+        
+        let min = 0;
+        let avg = 0;
+        let max = 0;
+        
+        if (readings.length > 0) {
+            const sum = readings.reduce((a, b) => a + b, 0);
+            avg = sum / readings.length;
+            min = Math.min(...readings);
+            max = Math.max(...readings);
+            
+            if (handleDynamicPropChange) {
+                const fmtAvg = parseFloat(avg.toFixed(2));
+                const fmtMin = parseFloat(min.toFixed(2));
+                const fmtMax = parseFloat(max.toFixed(2));
+                if (parseFloat(dynamicProps?.avg_reading) !== fmtAvg) handleDynamicPropChange('avg_reading', fmtAvg);
+                if (parseFloat(dynamicProps?.min_reading) !== fmtMin) handleDynamicPropChange('min_reading', fmtMin);
+                if (parseFloat(dynamicProps?.max_reading) !== fmtMax) handleDynamicPropChange('max_reading', fmtMax);
+            }
+        } else {
+            const minRaw = dynamicProps?.min_reading;
+            min = (minRaw === undefined || minRaw === null || minRaw === "") ? 0 : parseFloat(minRaw);
+            if (isNaN(min)) min = 0;
         }
+
+        const ntRaw = dynamicProps?.nominal_thickness;
+        const nt = (ntRaw === undefined || ntRaw === null || ntRaw === "") ? 0 : parseFloat(ntRaw);
+        const safeNt = isNaN(nt) ? 0 : nt;
+
+        let loss: number = 0;
+        let pctLoss: number = 0;
+
+        loss = safeNt - min;
+        // Don't cap loss at 0, allow negative if min > nt, but if safeNt is 0 and min is 0, loss is 0.
+        if (safeNt > 0) {
+            pctLoss = (loss / safeNt) * 100;
+        } else {
+            pctLoss = 0;
+        }
+
         if (handleDynamicPropChange) {
-            const fmtAvg = parseFloat(avg.toFixed(2));
-            const fmtMin = parseFloat(min.toFixed(2));
-            const fmtMax = parseFloat(max.toFixed(2));
-            const fmtLoss = loss !== null ? parseFloat(loss.toFixed(2)) : null;
-            const fmtPctLoss = pctLoss !== null ? parseFloat(pctLoss.toFixed(2)) : null;
-            if (parseFloat(dynamicProps?.avg_reading) !== fmtAvg) handleDynamicPropChange('avg_reading', fmtAvg);
-            if (parseFloat(dynamicProps?.min_reading) !== fmtMin) handleDynamicPropChange('min_reading', fmtMin);
-            if (parseFloat(dynamicProps?.max_reading) !== fmtMax) handleDynamicPropChange('max_reading', fmtMax);
-            if (fmtLoss !== null && parseFloat(dynamicProps?.wall_thickness_loss) !== fmtLoss) handleDynamicPropChange('wall_thickness_loss', fmtLoss);
-            if (fmtPctLoss !== null && parseFloat(dynamicProps?.['%_wall_thickness_loss']) !== fmtPctLoss) handleDynamicPropChange('%_wall_thickness_loss', fmtPctLoss);
+            const fmtLoss = parseFloat(loss.toFixed(2));
+            const fmtPctLoss = parseFloat(pctLoss.toFixed(2));
+            
+            if (parseFloat(dynamicProps?.wall_thickness_loss || "NaN") !== fmtLoss && (dynamicProps?.wall_thickness_loss !== "" || fmtLoss !== 0)) {
+                 handleDynamicPropChange('wall_thickness_loss', fmtLoss);
+            }
+            if (parseFloat(dynamicProps?.['%_wall_thickness_loss'] || "NaN") !== fmtPctLoss && (dynamicProps?.['%_wall_thickness_loss'] !== "" || fmtPctLoss !== 0)) {
+                 handleDynamicPropChange('%_wall_thickness_loss', fmtPctLoss);
+            }
         }
-    }, [dynamicProps?.ut_3_o_clock, dynamicProps?.ut_6_o_clock, dynamicProps?.ut_9_o_clock, dynamicProps?.ut_12_o_clock, dynamicProps?.nominal_thickness, dynamicProps?.ut_readings_additional, activeSpec]);
+    }, [dynamicProps?.ut_3_o_clock, dynamicProps?.ut_6_o_clock, dynamicProps?.ut_9_o_clock, dynamicProps?.ut_12_o_clock, dynamicProps?.nominal_thickness, dynamicProps?.min_reading, dynamicProps?.ut_readings_additional, activeSpec]);
 
     React.useEffect(() => {
         const specStr = String(activeSpec || '').toUpperCase();

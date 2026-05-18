@@ -137,7 +137,10 @@ export const REPORT_TEMPLATES = {
         { id: "rov-photo-log-report", name: "ROV Photography Log Report", icon: Eye, description: "Portrait report displaying a tabular log of all photos attached to inspections", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-gvins-report", name: "Diving GVI Report (GVINS)", icon: FileBarChart, description: "Portrait Diving General Visual Inspection report — marine growth, condition, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-bsins-report", name: "Diving Bolted Support Inspection", icon: FileBarChart, description: "Detailed bolted support inspection (BSINS) report with Member, Brace, and Appurtenance specifics.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-cvins-report", name: "Diving Close Visual Inspection", icon: FileBarChart, description: "Close visual inspection (CVINS) report with detailed findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-clean-report", name: "Diving Cleaning Inspection", icon: FileBarChart, description: "Cleaning inspection (CLEAN) report with surface condition and methods.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-mpins-report", name: "Diving Magnetic Particle Inspection", icon: FileBarChart, description: "Detailed magnetic particle inspection (MPINS) report with clock readings and segmentation.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-utwtk-report", name: "Diving UT Wall Thickness Inspection", icon: FileBarChart, description: "UT Wall Thickness Inspection (UTWTK) report with clock readings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-szone-report", name: "Diving Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with grouped clock positions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-cpclb-report", name: "Diving CP Calibration Report", icon: FileBarChart, description: "CP calibration in water survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-utclb-report", name: "Diving UT Calibration Report", icon: FileBarChart, description: "UT calibration survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
@@ -161,7 +164,10 @@ const TOC_SECTIONS = [
       { id: "rov-rgvi-report", name: "ROV GVI Report (RGVI)", mode: "ROV" },
       { id: "diving-gvins-report", name: "Diving GVI Report (GVINS)", mode: "Diving" },
       { id: "diving-bsins-report", name: "Diving Bolted Support Inspection (BSINS)", mode: "Diving" },
+      { id: "diving-cvins-report", name: "Diving Close Visual Inspection (CVINS)", mode: "Diving" },
+      { id: "diving-clean-report", name: "Diving Cleaning Inspection (CLEAN)", mode: "Diving" },
       { id: "diving-mpins-report", name: "Diving Magnetic Particle Inspection (MPINS)", mode: "Diving" },
+      { id: "diving-utwtk-report", name: "Diving UT Wall Thickness Inspection (UTWTK)", mode: "Diving" },
       { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
   ]},
 
@@ -1301,6 +1307,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateDivingGVINSReport } = await import("@/utils/report-generators/diving-gvins-report");
             const { generateDivingBSINSReport } = await import("@/utils/report-generators/diving-bsins-report");
             const { generateDivingMPINSReport } = await import("@/utils/report-generators/diving-mpins-report");
+            const { generateDivingCVINSReport } = await import("@/utils/report-generators/diving-cvins-report");
+            const { generateDivingCLEANReport } = await import("@/utils/report-generators/diving-clean-report");
+            const { generateDivingUTWTKReport } = await import("@/utils/report-generators/diving-utwtk-report");
 
 
             // Fetch real company settings from API
@@ -2361,6 +2370,140 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
         
+        // Diving Close Visual Inspection Report (CVINS)
+        if (currentTemplateId === "diving-cvins-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(q_id, code),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                return null;
+            }
+
+            const cvinsRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isCVINS = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'CVINS';
+                return sowMatches && jobPackMatches && isCVINS;
+            });
+
+            if (!cvinsRecords || cvinsRecords.length === 0) {
+                alert(`No Diving CVINS records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingCVINSReport(
+                    cvinsRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("CVINS Generator Error:", error);
+                throw error;
+            }
+        }
+        
+        // Diving Cleaning Inspection Report (CLEAN)
+        if (currentTemplateId === "diving-clean-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(q_id, code),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                return null;
+            }
+
+            const cleanRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isCLEAN = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'CLEAN';
+                return sowMatches && jobPackMatches && isCLEAN;
+            });
+
+            if (!cleanRecords || cleanRecords.length === 0) {
+                alert(`No Diving CLEAN records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingCLEANReport(
+                    cleanRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("CLEAN Generator Error:", error);
+                throw error;
+            }
+        }
+        
         // Diving Magnetic Particle Inspection Report (MPINS)
         if (currentTemplateId === "diving-mpins-report") {
             const structure = await fetchStructureData();
@@ -2426,6 +2569,75 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("MPINS Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving UT Wall Thickness Inspection Report (UTWTK)
+        if (currentTemplateId === "diving-utwtk-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const utwtkRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isUTWTK = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'UTWTK';
+                return sowMatches && jobPackMatches && isUTWTK;
+            });
+
+            if (!utwtkRecords || utwtkRecords.length === 0) {
+                alert(`No Diving UTWTK records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingUTWTKReport(
+                    utwtkRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("UTWTK Generator Error:", error);
                 throw error;
             }
         }

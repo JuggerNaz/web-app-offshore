@@ -170,7 +170,10 @@ export const generateDivingMPINSReport = async (
 
                 for (let rIdx = 0; rIdx < qidRecords.length; rIdx++) {
                     const r = qidRecords[rIdx];
-                    const d = r.inspection_data || {};
+                    let d = r.inspection_data || {};
+                    if (Array.isArray(d)) {
+                        d = d.find((item: any) => item.inspno || item._meta_status !== undefined || item.length_of_weld_inspected !== undefined) || d[d.length - 1] || {};
+                    }
                     const elevation = r.elevation ?? d.elevation ?? "—";
                     const diveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || r.dive_job_id || "—";
                     const inspDate = r.inspection_date ? format(new Date(r.inspection_date), 'dd MMM yyyy') : "—";
@@ -265,12 +268,11 @@ export const generateDivingMPINSReport = async (
                         columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 40 }, 3: { cellWidth: 'auto' } }
                     });
                     currentY = (doc as any).lastAutoTable.finalY + 3;
-
-                    // Clock Readings Table
+            // Clock Readings Table
                     autoTable(doc, {
                         startY: currentY,
                         margin: { left: margin, right: margin },
-                        head: [[{ content: "CLOCK READINGS", colSpan: 6, styles: { halign: "left", fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold" } }]],
+                        head: [[{ content: "CLOCK READINGS", colSpan: 6, styles: { halign: "left", fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255], lineColor: isPF ? colors.border : [255, 255, 255], lineWidth: 0.1, fontSize: 7, fontStyle: "bold" } }]],
                         body: [
                             [
                                 { content: "", styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
@@ -371,7 +373,11 @@ export const generateDivingMPINSReport = async (
                         },
                         didParseCell: (data) => {
                             if (data.section === "body" && parts.length > 0) {
-                                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
+                                let metaData = r.inspection_data || {};
+                            if (Array.isArray(metaData)) {
+                                metaData = metaData.find((item: any) => item.inspno || item._meta_status !== undefined) || metaData[metaData.length - 1] || {};
+                            }
+                            const metaStatus = (metaData._meta_status || "").toLowerCase();
                                 if (metaStatus === "finding") data.cell.styles.textColor = colors.finding;
                                 else if (r.has_anomaly) data.cell.styles.textColor = colors.anomaly;
                                 else if (isRectified) data.cell.styles.textColor = colors.rectified;

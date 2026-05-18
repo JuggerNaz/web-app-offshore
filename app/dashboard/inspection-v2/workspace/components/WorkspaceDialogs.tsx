@@ -144,7 +144,10 @@ interface WorkspaceDialogsProps {
         cuPreviewOpen: boolean;
         gvinsPreviewOpen: boolean;
         bsinsPreviewOpen: boolean;
+        cvinsPreviewOpen: boolean;
+        cleanPreviewOpen: boolean;
         mpinsPreviewOpen: boolean;
+        utwtkPreviewOpen: boolean;
         szonePreviewOpen: boolean;
         cpclbPreviewOpen: boolean;
         utclbPreviewOpen: boolean;
@@ -212,7 +215,10 @@ interface WorkspaceDialogsProps {
         setCuPreviewOpen: (open: boolean) => void;
         setGvinsPreviewOpen: (open: boolean) => void;
         setBsinsPreviewOpen: (open: boolean) => void;
+        setCvinsPreviewOpen: (open: boolean) => void;
+        setCleanPreviewOpen: (open: boolean) => void;
         setMpinsPreviewOpen: (open: boolean) => void;
+        setUtwtkPreviewOpen: (open: boolean) => void;
         setSzonePreviewOpen: (open: boolean) => void;
         setCpclbPreviewOpen: (open: boolean) => void;
         setUtclbPreviewOpen: (open: boolean) => void;
@@ -266,8 +272,14 @@ interface WorkspaceDialogsProps {
         generateGVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateBSINSReport: () => void;
         generateBSINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateCVINSReport: () => void;
+        generateCVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateCLEANReport: () => void;
+        generateCLEANReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateMPINSReport: () => void;
         generateMPINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateUTWTKReport: () => void;
+        generateUTWTKReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -370,7 +382,10 @@ export function WorkspaceDialogs({
         cuPreviewOpen,
         gvinsPreviewOpen,
         bsinsPreviewOpen,
+        cvinsPreviewOpen,
+        cleanPreviewOpen,
         mpinsPreviewOpen,
+        utwtkPreviewOpen,
         szonePreviewOpen,
         cpclbPreviewOpen,
         utclbPreviewOpen,
@@ -432,7 +447,10 @@ export function WorkspaceDialogs({
         setCuPreviewOpen,
         setGvinsPreviewOpen,
         setBsinsPreviewOpen,
+        setCvinsPreviewOpen,
+        setCleanPreviewOpen,
         setMpinsPreviewOpen,
+        setUtwtkPreviewOpen,
         setSzonePreviewOpen,
         setCpclbPreviewOpen,
         setUtclbPreviewOpen,
@@ -480,8 +498,14 @@ export function WorkspaceDialogs({
         generateGVINSReportBlob,
         generateBSINSReport,
         generateBSINSReportBlob,
+        generateCVINSReport,
+        generateCVINSReportBlob,
+        generateCLEANReport,
+        generateCLEANReportBlob,
         generateMPINSReport,
         generateMPINSReportBlob,
+        generateUTWTKReport,
+        generateUTWTKReportBlob,
         generateSZONEReportBlob,
         generateCPCLBReportBlob,
         generateUTCLBReportBlob,
@@ -1925,7 +1949,23 @@ export function WorkspaceDialogs({
                 onOpenChange={setBsinsPreviewOpen} 
                 title="Diving Bolted Support (BSINS) Report Preview" 
                 fileName={`Diving_BSINS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
-                generateReport={generateBSINSReportBlob} 
+                generateReport={handlers.generateBSINSReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={cleanPreviewOpen} 
+                onOpenChange={setCleanPreviewOpen} 
+                title="Diving Cleaning Inspection (CLEAN) Report Preview" 
+                fileName={`Diving_CLEAN_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateCLEANReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={cvinsPreviewOpen} 
+                onOpenChange={setCvinsPreviewOpen} 
+                title="Diving Close Visual Inspection (CVINS) Report Preview" 
+                fileName={`Diving_CVINS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={handlers.generateCVINSReportBlob} 
             />
 
             <ReportPreviewDialog 
@@ -1934,6 +1974,14 @@ export function WorkspaceDialogs({
                 title="Diving Magnetic Particle (MPINS) Report Preview" 
                 fileName={`Diving_MPINS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateMPINSReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={utwtkPreviewOpen} 
+                onOpenChange={setUtwtkPreviewOpen} 
+                title="Diving UT Wall Thickness Inspection (UTWTK) Report Preview" 
+                fileName={`Diving_UTWTK_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateUTWTKReportBlob} 
             />
             
             <ReportPreviewDialog 
@@ -2117,7 +2165,10 @@ export function WorkspaceDialogs({
                     generateRGVIReport: () => setters.setRgviPreviewOpen(true),
                     generateGVINSReport: () => setters.setGvinsPreviewOpen(true),
                     generateBSINSReport: () => setBsinsPreviewOpen(true),
+                    generateCVINSReport: () => setCvinsPreviewOpen(true),
+                    generateCLEANReport: () => handlers.generateCLEANReport(),
                     generateMPINSReport: () => setMpinsPreviewOpen(true),
+                    generateUTWTKReport: () => setUtwtkPreviewOpen(true),
                     generateSZONEReport: () => setSzonePreviewOpen(true),
                     generateCPReport: () => setters.setCpPreviewOpen(true),
                     generateCPCLBReport: () => setters.setCpclbPreviewOpen(true),
@@ -2154,7 +2205,10 @@ export function WorkspaceDialogs({
                             case 'RGVI': setters.setRgviPreviewOpen(true); break;
                             case 'GVINS': setters.setGvinsPreviewOpen(true); break;
                             case 'BSINS': setBsinsPreviewOpen(true); break;
+                            case 'CVINS': setCvinsPreviewOpen(true); break;
+                            case 'CLEAN': handlers.generateCLEANReport(); break;
                             case 'MPINS': setMpinsPreviewOpen(true); break;
+                            case 'UTWTK': setUtwtkPreviewOpen(true); break;
                             case 'SZONE': setSzonePreviewOpen(true); break;
                             case 'CP': setters.setCpPreviewOpen(true); break;
                             case 'CPCLB': setters.setCpclbPreviewOpen(true); break;

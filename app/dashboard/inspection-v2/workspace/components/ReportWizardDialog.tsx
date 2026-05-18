@@ -54,7 +54,10 @@ interface ReportWizardDialogProps {
         generateRGVIReport: () => void;
         generateGVINSReport: () => void;
         generateBSINSReport: () => void;
+        generateCVINSReport: () => void;
+        generateCLEANReport: () => void;
         generateMPINSReport: () => void;
+        generateUTWTKReport: () => void;
         generateSZONEReport: () => void;
         generateCPCLBReport: () => void;
         generateCPReport: () => void;
@@ -212,7 +215,10 @@ export function ReportWizardDialog({
             { id: 'dgvi', code: 'DGVI', name: 'Diver GVI', description: 'Diver visual assessment of structural integrity.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['DGVI']) },
             { id: 'gvins', code: 'GVINS', name: 'Diving GVI (GVINS)', description: 'General visual inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateGVINSReport, available: hasRecords(['GVINS']) },
             { id: 'bsins', code: 'BSINS', name: 'Diving Bolted Support (BSINS)', description: 'Detailed bolted support inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateBSINSReport, available: hasRecords(['BSINS']) },
+            { id: 'cvins', code: 'CVINS', name: 'Diving Close Visual (CVINS)', description: 'Close visual inspection report with findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCVINSReport, available: hasRecords(['CVINS']) },
+            { id: 'clean', code: 'CLEAN', name: 'Diving Cleaning (CLEAN)', description: 'Cleaning inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCLEANReport, available: hasRecords(['CLEAN']) },
             { id: 'mpins', code: 'MPINS', name: 'Diving Magnetic Particle (MPINS)', description: 'Detailed magnetic particle inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateMPINSReport, available: hasRecords(['MPINS']) },
+            { id: 'utwtk', code: 'UTWTK', name: 'Diving UT Wall Thickness (UTWTK)', description: 'UT Wall Thickness Inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateUTWTKReport, available: hasRecords(['UTWTK']) },
             { id: 'szone', code: 'SZONE', name: 'Diving Splash Zone (SZONE)', description: 'Splash zone wall thickness and CP inspection summary with grouped clock positions', mode: 'DIVING', category: 'Inspection', handler: handlers.generateSZONEReport, available: hasRecords(['SZONE']) },
             { id: 'diver_log', code: 'DIVLOG', name: 'Diver Log Report', description: 'Chronological diver activities and findings per dive.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: true },
             { id: 'cp_div', code: 'CP', name: 'Diving CP Survey', description: 'Diver-held CP probe measurements and potential readings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
@@ -237,7 +243,7 @@ export function ReportWizardDialog({
 
         // Add dynamic reports
         const dynamicReports: ReportTemplate[] = allInspectionTypes.filter(t => 
-            !['RGVI', 'DGVI', 'GVINS', 'BSINS', 'SZONE', 'RSEAB', 'RMGI', 'DMGI', 'RFMD', 'DFMD', 'RSZCI', 'DSZCI', 'RUTWT', 'DUTWT', 'RSCOR', 'DSCOR', 'RRISI', 'DRISI', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RG', 'SG', 'CU', 'BL', 'RISERGUARD', 'CAISSONGUARD', 'CONDUCTORGUARD'].includes(t.code) &&
+            !['RGVI', 'DGVI', 'GVINS', 'BSINS', 'CVINS', 'CLEAN', 'SZONE', 'RSEAB', 'RMGI', 'DMGI', 'RFMD', 'DFMD', 'RSZCI', 'DSZCI', 'RUTWT', 'DUTWT', 'RSCOR', 'DSCOR', 'RRISI', 'DRISI', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RG', 'SG', 'CU', 'BL', 'RISERGUARD', 'CAISSONGUARD', 'CONDUCTORGUARD'].includes(t.code) &&
             currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))
         ).map(t => ({
             id: t.id,
