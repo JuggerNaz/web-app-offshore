@@ -696,22 +696,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                          <div className="w-6 h-6 bg-blue-600 dark:bg-blue-700 rounded-lg flex items-center justify-center"><Search className="w-3.5 h-3.5 text-white" /></div>
                                                          <span className="text-[10px] font-black text-blue-800 dark:text-blue-300 uppercase tracking-widest leading-none">UT Thickness Readings</span>
                                                     </div>
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {utFields.filter((f: any) => f.name !== 'nominal_thickness').map((p: any) => (
-                                                            <div key={p.name} className="space-y-0.5 flex-grow min-w-[100px] max-w-[150px]">
-                                                                <label className="text-[9px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider text-center block w-full">{p.label || p.name}</label>
-                                                                {renderInspectionField(p, 'primary')}
-                                                            </div>
-                                                        ))}
+                                                    <div className="flex flex-wrap gap-2 pt-0.5">
+                                                        {(() => {
+                                                            const nominal = utFields.find((f: any) => f.name === 'nominal_thickness');
+                                                            const clocks = utFields.filter((f: any) => f.name !== 'nominal_thickness');
+                                                            const sorted = nominal ? [nominal, ...clocks] : clocks;
+                                                            return sorted.map((p: any) => (
+                                                                <div key={p.name} className={`space-y-0.5 flex-grow ${p.name === 'nominal_thickness' ? 'min-w-[150px] max-w-[200px]' : 'min-w-[80px] max-w-[120px]'}`}>
+                                                                    <label className={`text-[9px] font-black uppercase tracking-wider text-center block w-full ${p.name === 'nominal_thickness' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-800 dark:text-slate-200'}`}>{p.label || p.name}</label>
+                                                                    {renderInspectionField(p, 'primary')}
+                                                                </div>
+                                                            ));
+                                                        })()}
                                                     </div>
-                                                    {utFields.find((f: any) => f.name === 'nominal_thickness') && (
-                                                        <div className="pt-1.5 border-t border-blue-100/50 dark:border-blue-900/30">
-                                                            <div className="space-y-0.5">
-                                                                <label className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-wider">Nominal Thickness</label>
-                                                                {renderInspectionField(utFields.find((f: any) => f.name === 'nominal_thickness'), 'primary')}
-                                                            </div>
-                                                        </div>
-                                                    )}
                                                 </motion.div>
                                             )}
 
@@ -911,7 +908,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                         </div>
                                                     );
                                                 } else {
-                                                    const validOtherFields = otherFields.filter((f: any) => f && f.name);
+                                                    const isUTWTK = type === 'UTWTK';
+                                                    const utwtkResultNames = ['avg_reading', 'min_reading', 'max_reading', 'wall_thickness_loss', '%_wall_thickness_loss'];
+                                                    const utwtkTopNames = ['size_of_area_tested', 'reference_point_position', 'scan_type'];
+                                                    let validOtherFields = otherFields.filter((f: any) => f && f.name);
+                                                    let utwtkResults: any[] = [];
+                                                    let utwtkTopFields: any[] = [];
+                                                    
+                                                    if (isUTWTK) {
+                                                        utwtkResults = validOtherFields.filter((f: any) => utwtkResultNames.includes(f.name));
+                                                        utwtkTopFields = validOtherFields.filter((f: any) => utwtkTopNames.includes(f.name));
+                                                        validOtherFields = validOtherFields.filter((f: any) => !utwtkResultNames.includes(f.name) && !utwtkTopNames.includes(f.name));
+                                                    }
+
                                                     const groupedRest = validOtherFields.reduce((acc: any, p: any) => {
                                                         const g = p.group || 'ungrouped';
                                                         if (!acc[g]) acc[g] = [];
@@ -921,6 +930,38 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                                                     return (
                                                         <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
+                                                            {isUTWTK && utwtkTopFields.length > 0 && (
+                                                                <div className="col-span-full">
+                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-x-3 gap-y-2">
+                                                                        {utwtkTopNames.map(name => {
+                                                                            const p = utwtkTopFields.find((f: any) => f.name === name);
+                                                                            if (!p) return null;
+                                                                            return (
+                                                                                <div key={p.name} className="space-y-0.5">
+                                                                                    <label className="text-[9px] font-black uppercase truncate block" title={p.label || p.name}>{p.label || p.name}</label>
+                                                                                    {renderInspectionField(p, 'primary')}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {isUTWTK && utwtkResults.length > 0 && (
+                                                                <div className="col-span-full border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm space-y-2">
+                                                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-x-3 gap-y-2">
+                                                                        {utwtkResultNames.map(name => {
+                                                                            const p = utwtkResults.find((f: any) => f.name === name);
+                                                                            if (!p) return null;
+                                                                            return (
+                                                                                <div key={p.name} className="space-y-0.5">
+                                                                                    <label className="text-[9px] font-black uppercase truncate block" title={p.label || p.name}>{p.label || p.name}</label>
+                                                                                    {renderInspectionField(p, 'primary')}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                             {Object.keys(groupedRest).map(groupName => {
                                                                 const isUngrouped = groupName === 'ungrouped';
                                                                 const fields = groupedRest[groupName];
