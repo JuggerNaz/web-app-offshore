@@ -227,6 +227,10 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
     associated_comp_id: null as number | null,
     kp: "",
     kp_unit: "",
+    start_kp: "",
+    start_kp_unit: "",
+    end_kp: "",
+    end_kp_unit: "",
     easting: "",
     easting_unit: "",
     northing: "",
@@ -450,6 +454,12 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         const kpUnit =
           getDefaultUnit("DISTANCE", isImp, "kp", component?.code || undefined) ||
           (isImp ? "mile" : "km");
+        const startKpUnit =
+          getDefaultUnit("DISTANCE", isImp, "start_kp", component?.code || undefined) ||
+          (isImp ? "mile" : "km");
+        const endKpUnit =
+          getDefaultUnit("DISTANCE", isImp, "end_kp", component?.code || undefined) ||
+          (isImp ? "mile" : "km");
         const depthUnit =
           getDefaultUnit("LENGTH", isImp, "depth", component?.code || undefined) ||
           (isImp ? "ft" : "m");
@@ -474,6 +484,14 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         }
         if (prev.kp_unit !== kpUnit) {
           updates.kp_unit = kpUnit;
+          changed = true;
+        }
+        if (prev.start_kp_unit !== startKpUnit) {
+          updates.start_kp_unit = startKpUnit;
+          changed = true;
+        }
+        if (prev.end_kp_unit !== endKpUnit) {
+          updates.end_kp_unit = endKpUnit;
           changed = true;
         }
         if (prev.depth_unit !== depthUnit) {
@@ -554,6 +572,10 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
         kp: component.metadata?.kp ?? "",
         kp_unit: component.metadata?.kp_unit ?? "",
+        start_kp: component.metadata?.start_kp ?? "",
+        start_kp_unit: component.metadata?.start_kp_unit ?? "",
+        end_kp: component.metadata?.end_kp ?? "",
+        end_kp_unit: component.metadata?.end_kp_unit ?? "",
         easting: component.metadata?.easting ?? "",
         easting_unit: component.metadata?.easting_unit ?? "",
         northing: component.metadata?.northing ?? "",
@@ -849,6 +871,10 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         associated_comp_id: formData.associated_comp_id,
         kp: formData.kp,
         kp_unit: formData.kp_unit,
+        start_kp: formData.start_kp,
+        start_kp_unit: formData.start_kp_unit,
+        end_kp: formData.end_kp,
+        end_kp_unit: formData.end_kp_unit,
         easting: formData.easting,
         easting_unit: formData.easting_unit,
         northing: formData.northing,
@@ -1596,176 +1622,398 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
 
                 {pageType === "pipeline" && (
                   <>
-                    <div className="col-span-3 space-y-2">
-                      <Label
-                        htmlFor="edit-kp"
-                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
-                      >
-                        KP
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="edit-kp"
-                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                          value={formData.kp}
-                          onChange={(e) => handleChange("kp", e.target.value)}
-                        />
-                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                          <Select
-                            value={
-                              formData.kp_unit ||
-                              getDefaultUnit(
-                                "DISTANCE",
-                                isImperial,
-                                "kp",
-                                component?.code || undefined
-                              ) || ""
-                            }
-                            onValueChange={(val) => handleChange("kp_unit", val)}
+                    {component?.code?.toLowerCase() === "pp" ? (
+                      <div className="col-span-12 grid grid-cols-5 gap-6">
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="edit-start-kp"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
                           >
-                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                              <SelectValue />
-                            </SelectTrigger>
+                            Start KP
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="edit-start-kp"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={formData.start_kp}
+                              onChange={(e) => handleChange("start_kp", e.target.value)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  formData.start_kp_unit ||
+                                  getDefaultUnit(
+                                    "DISTANCE",
+                                    isImperial,
+                                    "start_kp",
+                                    component?.code || undefined
+                                  ) || ""
+                                }
+                                onValueChange={(val) => handleChange("start_kp_unit", val)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
 
-                            <SelectContent className="rounded-xl z-[9999]">
-                              {getUnitOptions("DISTANCE", isImperial).map((u) => (
-                                <SelectItem key={u} value={u} className="lowercase">
-                                  {u}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                <SelectContent className="rounded-xl z-[9999]">
+                                  {getUnitOptions("DISTANCE", isImperial).map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="edit-end-kp"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                          >
+                            End KP
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="edit-end-kp"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={formData.end_kp}
+                              onChange={(e) => handleChange("end_kp", e.target.value)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  formData.end_kp_unit ||
+                                  getDefaultUnit(
+                                    "DISTANCE",
+                                    isImperial,
+                                    "end_kp",
+                                    component?.code || undefined
+                                  ) || ""
+                                }
+                                onValueChange={(val) => handleChange("end_kp_unit", val)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl z-[9999]">
+                                  {getUnitOptions("DISTANCE", isImperial).map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="edit-easting"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                          >
+                            Easting
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="edit-easting"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={formData.easting}
+                              onChange={(e) => handleChange("easting", e.target.value)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  formData.easting_unit ||
+                                  getDefaultUnit(
+                                    "LENGTH",
+                                    isImperial,
+                                    "easting",
+                                    component?.code || undefined
+                                  ) || ""
+                                }
+                                onValueChange={(val) => handleChange("easting_unit", val)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl z-[9999]">
+                                  {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="edit-northing"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                          >
+                            Northing
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="edit-northing"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={formData.northing}
+                              onChange={(e) => handleChange("northing", e.target.value)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  formData.northing_unit ||
+                                  getDefaultUnit(
+                                    "LENGTH",
+                                    isImperial,
+                                    "northing",
+                                    component?.code || undefined
+                                  ) || ""
+                                }
+                                onValueChange={(val) => handleChange("northing_unit", val)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl z-[9999]">
+                                  {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="edit-depth"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                          >
+                            Depth
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="edit-depth"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={formData.depth}
+                              onChange={(e) => handleChange("depth", e.target.value)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  formData.depth_unit ||
+                                  getDefaultUnit(
+                                    "LENGTH",
+                                    isImperial,
+                                    "depth",
+                                    component?.code || undefined
+                                  ) || ""
+                                }
+                                onValueChange={(val) => handleChange("depth_unit", val)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl z-[9999]">
+                                  {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="col-span-3 space-y-2">
-                      <Label
-                        htmlFor="edit-easting"
-                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
-                      >
-                        Easting
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="edit-easting"
-                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                          value={formData.easting}
-                          onChange={(e) => handleChange("easting", e.target.value)}
-                        />
-                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                          <Select
-                            value={
-                              formData.easting_unit ||
-                              getDefaultUnit(
-                                "LENGTH",
-                                isImperial,
-                                "easting",
-                                component?.code || undefined
-                              ) || ""
-                            }
-                            onValueChange={(val) => handleChange("easting_unit", val)}
+                    ) : (
+                      <>
+                        <div className="col-span-3 space-y-2">
+                          <Label
+                            htmlFor="edit-kp"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
                           >
-                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                              <SelectValue />
-                            </SelectTrigger>
+                            KP
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="edit-kp"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={formData.kp}
+                              onChange={(e) => handleChange("kp", e.target.value)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  formData.kp_unit ||
+                                  getDefaultUnit(
+                                    "DISTANCE",
+                                    isImperial,
+                                    "kp",
+                                    component?.code || undefined
+                                  ) || ""
+                                }
+                                onValueChange={(val) => handleChange("kp_unit", val)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
 
-                            <SelectContent className="rounded-xl z-[9999]">
-                              {getUnitOptions("LENGTH", isImperial).map((u) => (
-                                <SelectItem key={u} value={u} className="lowercase">
-                                  {u}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                <SelectContent className="rounded-xl z-[9999]">
+                                  {getUnitOptions("DISTANCE", isImperial).map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
 
-                    <div className="col-span-3 space-y-2">
-                      <Label
-                        htmlFor="edit-northing"
-                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
-                      >
-                        Northing
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="edit-northing"
-                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                          value={formData.northing}
-                          onChange={(e) => handleChange("northing", e.target.value)}
-                        />
-                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                          <Select
-                            value={
-                              formData.northing_unit ||
-                              getDefaultUnit(
-                                "LENGTH",
-                                isImperial,
-                                "northing",
-                                component?.code || undefined
-                              ) || ""
-                            }
-                            onValueChange={(val) => handleChange("northing_unit", val)}
+                        <div className="col-span-3 space-y-2">
+                          <Label
+                            htmlFor="edit-easting"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
                           >
-                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                              <SelectValue />
-                            </SelectTrigger>
+                            Easting
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="edit-easting"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={formData.easting}
+                              onChange={(e) => handleChange("easting", e.target.value)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  formData.easting_unit ||
+                                  getDefaultUnit(
+                                    "LENGTH",
+                                    isImperial,
+                                    "easting",
+                                    component?.code || undefined
+                                  ) || ""
+                                }
+                                onValueChange={(val) => handleChange("easting_unit", val)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
 
-                            <SelectContent className="rounded-xl z-[9999]">
-                              {getUnitOptions("LENGTH", isImperial).map((u) => (
-                                <SelectItem key={u} value={u} className="lowercase">
-                                  {u}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                <SelectContent className="rounded-xl z-[9999]">
+                                  {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    <div className="col-span-3 space-y-2">
-                      <Label
-                        htmlFor="edit-depth"
-                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
-                      >
-                        Depth
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="edit-depth"
-                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                          value={formData.depth}
-                          onChange={(e) => handleChange("depth", e.target.value)}
-                        />
-                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                          <Select
-                            value={
-                              formData.depth_unit ||
-                              getDefaultUnit(
-                                "LENGTH",
-                                isImperial,
-                                "depth",
-                                component?.code || undefined
-                              ) || ""
-                            }
-                            onValueChange={(val) => handleChange("depth_unit", val)}
+
+                        <div className="col-span-3 space-y-2">
+                          <Label
+                            htmlFor="edit-northing"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
                           >
-                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                              <SelectValue />
-                            </SelectTrigger>
+                            Northing
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="edit-northing"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={formData.northing}
+                              onChange={(e) => handleChange("northing", e.target.value)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  formData.northing_unit ||
+                                  getDefaultUnit(
+                                    "LENGTH",
+                                    isImperial,
+                                    "northing",
+                                    component?.code || undefined
+                                  ) || ""
+                                }
+                                onValueChange={(val) => handleChange("northing_unit", val)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
 
-                            <SelectContent className="rounded-xl z-[9999]">
-                              {getUnitOptions("LENGTH", isImperial).map((u) => (
-                                <SelectItem key={u} value={u} className="lowercase">
-                                  {u}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                <SelectContent className="rounded-xl z-[9999]">
+                                  {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+
+                        <div className="col-span-3 space-y-2">
+                          <Label
+                            htmlFor="edit-depth"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                          >
+                            Depth
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="edit-depth"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={formData.depth}
+                              onChange={(e) => handleChange("depth", e.target.value)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  formData.depth_unit ||
+                                  getDefaultUnit(
+                                    "LENGTH",
+                                    isImperial,
+                                    "depth",
+                                    component?.code || undefined
+                                  ) || ""
+                                }
+                                onValueChange={(val) => handleChange("depth_unit", val)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl z-[9999]">
+                                  {getUnitOptions("LENGTH", isImperial).map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
 

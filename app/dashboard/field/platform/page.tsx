@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import Link from "next/link";
 import { Building2, ArrowRight, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown, Layers2, Activity, Plus } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useState, useMemo } from "react";
 import { getStoragePublicUrl } from "@/utils/storage";
@@ -90,6 +90,7 @@ interface FilterState {
 
 export default function PlatformPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const fieldId = searchParams.get("field");
 
   // Fetch platforms first so 'data' is available for following hooks
@@ -605,7 +606,7 @@ export default function PlatformPage() {
                     <TableRow
                       key={`platform-${platform.plat_id}`}
                       className="group cursor-pointer border-b border-slate-50 dark:border-slate-800/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-all duration-300"
-                      onClick={() => window.location.href = `/dashboard/field/platform/${platform.plat_id}?from=list`}
+                      onClick={() => router.push(`/dashboard/field/platform/${platform.plat_id}?from=list`)}
                     >
                       <TableCell className="px-6 py-4">
                         <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 flex items-center justify-center group-hover:scale-105 group-hover:shadow-lg transition-all duration-500 shadow-sm">

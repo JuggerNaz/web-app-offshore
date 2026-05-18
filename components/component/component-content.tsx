@@ -200,8 +200,8 @@ export default function ComponentContent() {
         valB = b.code || '';
         break;
       case 'kp_node':
-        valA = pageType === "pipeline" ? (a.metadata?.kp || 0) : (a.metadata?.s_node || '');
-        valB = pageType === "pipeline" ? (b.metadata?.kp || 0) : (b.metadata?.s_node || '');
+        valA = pageType === "pipeline" ? (a.code?.toLowerCase() === "pp" ? Number(a.metadata?.start_kp || 0) : Number(a.metadata?.kp || 0)) : (a.metadata?.s_node || '');
+        valB = pageType === "pipeline" ? (b.code?.toLowerCase() === "pp" ? Number(b.metadata?.start_kp || 0) : Number(b.metadata?.kp || 0)) : (b.metadata?.s_node || '');
         break;
       case 'depth_leg':
         valA = pageType === "pipeline" ? (a.metadata?.depth || 0) : (a.metadata?.s_leg || '');
@@ -550,7 +550,11 @@ export default function ComponentContent() {
                         {pageType === "pipeline" ? (
                           <div className="flex items-center gap-2">
                              <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded text-[11px] font-bold">
-                               {comp.metadata?.kp || "-"} {comp.metadata?.kp_unit || "km"}
+                               {comp.code?.toLowerCase() === "pp" ? (
+                                 `${comp.metadata?.start_kp ?? 0} - ${comp.metadata?.end_kp ?? 0} ${comp.metadata?.start_kp_unit || comp.metadata?.end_kp_unit || comp.metadata?.kp_unit || "km"}`
+                               ) : (
+                                 `${comp.metadata?.kp || "-"} ${comp.metadata?.kp_unit || "km"}`
+                               )}
                              </span>
                           </div>
                         ) : (

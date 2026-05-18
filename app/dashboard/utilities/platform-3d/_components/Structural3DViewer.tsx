@@ -67,8 +67,16 @@ const ComponentMesh = ({
     const direction = endVec.clone().sub(startVec).normalize();
     
     // Scale thickness based on type
-    const baseThickness = isAnode ? 0.1 : isClamp ? thickness * 1.8 : thickness;
-    const meshLength = isAnode ? Math.max(length, 1.5) : isClamp ? 0.8 : length;
+    let baseThickness = thickness;
+    if (isAnode) baseThickness = 0.15;
+    else if (isClamp) baseThickness = thickness * 1.8;
+    else if (isWeld) {
+        baseThickness = thickness * 1.15;
+        if (baseThickness < 0.25) {
+            baseThickness = component.metadata?.s_leg ? 0.55 : 0.3;
+        }
+    }
+    const meshLength = isAnode ? 0.8 : isClamp ? 0.8 : isWeld ? 1.2 : length;
 
     const quaternion = new THREE.Quaternion();
     if (length > 0.001) {
@@ -79,25 +87,29 @@ const ComponentMesh = ({
     // Zoom-based visibility logic removed as per user request
     // Labels now only show on hover or selection
     const showLabel = hovered || isSelected;
+    
+    // Offset anodes from the center of the member so they sit on the surface
+    const offsetPos = isAnode ? [0.4, 0, 0] : [0, 0, 0];
 
     return (
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
-            {/* Visual Mesh */}
-            <mesh castShadow receiveShadow>
-                {isNode || isWeld || length <= 0.001 ? (
+            <group position={offsetPos as [number, number, number]}>
+                {/* Visual Mesh */}
+                <mesh castShadow receiveShadow>
+                {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
                     <sphereGeometry args={[thickness * 1.5, 16, 16]} />
                 ) : isAnode ? (
-                    <boxGeometry args={[0.2, 0.2, meshLength]} />
+                    <boxGeometry args={[0.2, meshLength, 0.2]} />
                 ) : isClamp ? (
                     <boxGeometry args={[baseThickness, 0.8, baseThickness]} />
                 ) : (
                     <cylinderGeometry args={[baseThickness, baseThickness, meshLength, 12]} />
                 )}
                 <meshStandardMaterial 
-                    color={isSelected ? "#2563eb" : hovered ? "#3b82f6" : isAnode ? "#f97316" : isClamp ? "#b45309" : "#94a3b8"} 
+                    color={isSelected ? "#2563eb" : hovered ? "#3b82f6" : isAnode ? "#f97316" : isWeld ? "#d946ef" : isClamp ? "#b45309" : "#94a3b8"} 
                     metalness={0.7}
                     roughness={0.3}
-                    emissive={isSelected ? "#3b82f6" : isAnode ? "#ea580c" : "#000000"}
+                    emissive={isSelected ? "#3b82f6" : isAnode ? "#ea580c" : isWeld ? "#c026d3" : "#000000"}
                     emissiveIntensity={isSelected ? 0.5 : hovered ? 0.2 : 0}
                 />
                 <Edges 
@@ -118,19 +130,27 @@ const ComponentMesh = ({
                     e.stopPropagation();
                     onClick();
                 }}
-                onPointerOver={() => setHovered(true)}
-                onPointerOut={() => setHovered(false)}
+                onPointerOver={(e) => {
+                    e.stopPropagation();
+                    setHovered(true);
+                }}
+                onPointerOut={(e) => {
+                    e.stopPropagation();
+                    setHovered(false);
+                }}
             >
-                {isNode || isWeld || length <= 0.001 ? (
+                {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
                     <sphereGeometry args={[thickness * 2, 8, 8]} />
+                ) : isAnode ? (
+                    <boxGeometry args={[0.5, meshLength + 0.2, 0.5]} />
                 ) : (
-                    <cylinderGeometry args={[thickness * 2, thickness * 2, length + 0.5, 8]} />
+                    <cylinderGeometry args={[baseThickness + 0.3, baseThickness + 0.3, isWeld ? meshLength + 0.5 : length + 0.5, 8]} />
                 )}
                 <meshBasicMaterial transparent opacity={0} />
             </mesh>
 
             {showLabel && (
-                <Html distanceFactor={15} position={[0, length / 2 + 0.5, 0]} center>
+                <Html distanceFactor={15} position={[0, (isAnode || isWeld ? meshLength : length) / 2 + 0.5, 0]} center>
                     <div 
                         className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${
                             isSelected 
@@ -143,6 +163,7 @@ const ComponentMesh = ({
                 </Html>
             )}
         </group>
+    </group>
     );
 };
 
@@ -363,44 +384,118 @@ export function Structural3DViewer({
         });
 
         // 5. Resolve Structural Layouts for components
-        const componentLayouts = components.map((c, i) => {
+        const intermediateLayouts = new Map<number, { component: any, start: THREE.Vector3, end: THREE.Vector3, thickness: number }>();
+        const pendingAttachments: typeof components = [];
+
+        components.forEach((c, i) => {
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
-            
-            let start = new THREE.Vector3();
-            let end = new THREE.Vector3();
             
             let thickness = 0.15;
             if (code.includes("LG")) thickness = 0.5;
             else if (code.includes("HM") || code.includes("HD")) thickness = 0.25;
             else if (code.includes("VM") || code.includes("VD")) thickness = 0.20;
+            else if (code === "CO" || code === "CA" || code.includes("COND") || code.includes("CAIS")) thickness = 0.35;
 
             const hasStartNode = md.s_node && nodeMap.has(md.s_node);
             const hasEndNode = md.f_node && nodeMap.has(md.f_node);
 
-            if (hasStartNode) start.copy(nodeMap.get(md.s_node)!);
-            if (hasEndNode) end.copy(nodeMap.get(md.f_node)!);
+            let start = new THREE.Vector3();
+            let end = new THREE.Vector3();
+            let resolved = false;
 
-            if (!hasStartNode && !hasEndNode) {
+            if (hasStartNode || hasEndNode) {
+                if (hasStartNode) start.copy(nodeMap.get(md.s_node)!);
+                if (hasEndNode) end.copy(nodeMap.get(md.f_node)!);
+                
+                if (hasStartNode && !hasEndNode) end.copy(start);
+                else if (!hasStartNode && hasEndNode) start.copy(end);
+                
+                resolved = true;
+            } else if (md.associated_comp_id) {
+                pendingAttachments.push(c);
+                return; // Skip to next, resolve in Pass 2
+            } else if (md.s_leg && legMap[md.s_leg.toUpperCase()]) {
+                const legPos = legMap[md.s_leg.toUpperCase()];
+                const y = md.elv_1 ? parseFloat(md.elv_1) : (md.depth ? -parseFloat(md.depth)/10 : 0);
+                start.set(legPos.x, y, legPos.z);
+                end.copy(start);
+                resolved = true;
+            } else if (md.easting || md.northing) {
+                // Vertical drops (conductors, caissons)
+                const x = parseFloat(md.easting || "0") / 100 || 0;
+                const z = parseFloat(md.northing || "0") / 100 || 0;
+                start.set(x, maxElv + 2, z);
+                end.set(x, minElv, z);
+                resolved = true;
+            }
+
+            if (!resolved) {
+                // Fallback circle for components with absolutely no location data
                 const layer = Math.floor(i / 16);
                 const posInLayer = i % 16;
                 const radius = 20 + layer * 2;
                 const angle = (posInLayer / 16) * Math.PI * 2;
                 start.set(Math.cos(angle) * radius, -layer * 4, Math.sin(angle) * radius);
                 end.set(start.x, start.y + 4, start.z);
-            } else if (hasStartNode && !hasEndNode) {
-                end.copy(start);
-            } else if (!hasStartNode && hasEndNode) {
-                start.copy(end);
             }
 
-            return {
-                component: c,
-                start: [start.x, start.y, start.z] as [number, number, number],
-                end: [end.x, end.y, end.z] as [number, number, number],
-                thickness
-            };
+            intermediateLayouts.set(c.id, { component: c, start, end, thickness });
         });
+
+        // Pass 2: Resolve attachments relative to their parents
+        pendingAttachments.forEach((c, index) => {
+            const md = c.metadata || {};
+            const code = (c.code || "").toUpperCase();
+            let thickness = 0.15;
+            
+            const parentId = md.associated_comp_id;
+            const parentLayout = intermediateLayouts.get(parentId);
+            
+            let start = new THREE.Vector3();
+            let end = new THREE.Vector3();
+
+            if (parentLayout) {
+                const { start: pStart, end: pEnd } = parentLayout;
+                thickness = parentLayout.thickness; // Inherit parent thickness for proper relative scaling
+                start.copy(pStart).add(pEnd).multiplyScalar(0.5); // Midpoint default
+                
+                if (md.depth || md.elv_1) {
+                    const targetY = md.elv_1 ? parseFloat(md.elv_1) : (-parseFloat(md.depth) / 10);
+                    if (Math.abs(pEnd.y - pStart.y) > 0.001) {
+                        const t = (targetY - pStart.y) / (pEnd.y - pStart.y);
+                        const clampedT = Math.max(0, Math.min(1, t));
+                        start.copy(pStart).lerp(pEnd, clampedT);
+                    } else {
+                        start.setY(targetY); // Parent is horizontal, just match Y
+                    }
+                }
+                
+                // Preserve parent direction so the attachment aligns parallel to the parent
+                const direction = pEnd.clone().sub(pStart).normalize();
+                if (direction.lengthSq() > 0.1) {
+                    end.copy(start).add(direction.multiplyScalar(0.1));
+                } else {
+                    end.copy(start);
+                }
+            } else {
+                // Parent not found in rendering context, fallback to circle
+                const layer = Math.floor(index / 16);
+                const radius = 25 + layer * 2;
+                const angle = (index / 16) * Math.PI * 2;
+                start.set(Math.cos(angle) * radius, maxElv, Math.sin(angle) * radius);
+                end.copy(start);
+            }
+            
+            intermediateLayouts.set(c.id, { component: c, start, end, thickness });
+        });
+
+        const componentLayouts = Array.from(intermediateLayouts.values()).map(layout => ({
+            component: layout.component,
+            start: [layout.start.x, layout.start.y, layout.start.z] as [number, number, number],
+            end: [layout.end.x, layout.end.y, layout.end.z] as [number, number, number],
+            thickness: layout.thickness
+        }));
 
         return { componentLayouts, foundationMembers, elvMarkers };
     }, [components, platformDetails, elevations, faces]);
