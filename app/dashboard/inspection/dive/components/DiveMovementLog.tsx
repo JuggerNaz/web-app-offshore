@@ -60,6 +60,7 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
     };
 
     const [movements, setMovements] = useState<Movement[]>([]);
+    const [activeSchema, setActiveSchema] = useState<"corrected" | "standard" | null>(null);
     const [newMovement, setNewMovement] = useState({
         activity: "",
         notes: "",
@@ -90,15 +91,45 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
                 return;
             }
 
-            const { data, error } = await supabase
+            let data: any[] | null = null;
+
+            // Try corrected schema (movement_time, movement_type, remarks) first
+            const tryCorrected = await supabase
                 .from("insp_dive_movements")
                 .select("*")
                 .eq("dive_job_id", depId)
-                .order("timestamp", { ascending: false });
+                .order("movement_time", { ascending: false });
 
-            if (error) {
-                console.error("[DiveMovementLog] Supabase error loading movements:", error.message, error.details);
-                throw error;
+            if (!tryCorrected.error) {
+                setActiveSchema("corrected");
+                data = (tryCorrected.data || []).map((row: any) => ({
+                    id: Number(row.movement_id || row.id),
+                    timestamp: row.movement_time || row.timestamp,
+                    activity: row.movement_type || row.activity,
+                    notes: row.remarks || row.notes || "",
+                    location: row.location || "N/A"
+                }));
+            } else {
+                // Fallback to standard schema (timestamp, activity, notes)
+                const tryStandard = await supabase
+                    .from("insp_dive_movements")
+                    .select("*")
+                    .eq("dive_job_id", depId)
+                    .order("timestamp", { ascending: false });
+
+                if (tryStandard.error) {
+                    console.error("[DiveMovementLog] Supabase error loading movements:", tryStandard.error.message, tryStandard.error.details);
+                    throw tryStandard.error;
+                }
+                
+                setActiveSchema("standard");
+                data = (tryStandard.data || []).map((row: any) => ({
+                    id: Number(row.id),
+                    timestamp: row.timestamp,
+                    activity: row.activity,
+                    notes: row.notes || "",
+                    location: row.location || "N/A"
+                }));
             }
 
             setMovements(data || []);
@@ -125,13 +156,22 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
             const finalTime = newMovement.timestamp ? new Date(newMovement.timestamp).toISOString() : new Date().toISOString();
             const selectedAction = diveActionsList.find(a => a.label === newMovement.activity);
 
-            const { error } = await supabase.from("insp_dive_movements").insert({
-                dive_job_id: depId,
-                timestamp: finalTime,
-                activity: newMovement.activity,
-                notes: newMovement.notes,
-                location: selectedAction?.location || "N/A"
-            });
+            let insertPayload: Record<string, any> = {
+                dive_job_id: depId
+            };
+
+            if (activeSchema === "corrected") {
+                insertPayload.movement_time = finalTime;
+                insertPayload.movement_type = newMovement.activity;
+                insertPayload.remarks = newMovement.notes;
+            } else {
+                insertPayload.timestamp = finalTime;
+                insertPayload.activity = newMovement.activity;
+                insertPayload.notes = newMovement.notes;
+                insertPayload.location = selectedAction?.location || "N/A";
+            }
+
+            const { error } = await supabase.from("insp_dive_movements").insert(insertPayload);
 
             if (error) throw error;
 
@@ -149,7 +189,8 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
     async function handleDeleteMovement(id: number) {
         if (!confirm("Are you sure you want to delete this log?")) return;
         try {
-            const { error } = await supabase.from("insp_dive_movements").delete().eq("id", id);
+            const pkField = activeSchema === "corrected" ? "movement_id" : "id";
+            const { error } = await supabase.from("insp_dive_movements").delete().eq(pkField, id);
             if (error) throw error;
             toast.success("Movement deleted");
             loadMovements();
@@ -163,12 +204,26 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
         if (!editForm || !editForm.id) return;
         try {
             const selectedAction = diveActionsList.find(a => a.label === editForm.activity);
-            const { error } = await supabase.from("insp_dive_movements").update({
-                timestamp: new Date(editForm.timestamp).toISOString(),
-                activity: editForm.activity,
-                notes: editForm.notes,
-                location: selectedAction?.location || editForm.location || "N/A"
-            }).eq("id", editForm.id);
+            const pkField = activeSchema === "corrected" ? "movement_id" : "id";
+
+            let updatePayload: Record<string, any> = {};
+
+            if (activeSchema === "corrected") {
+                updatePayload.movement_time = new Date(editForm.timestamp).toISOString();
+                updatePayload.movement_type = editForm.activity;
+                updatePayload.remarks = editForm.notes;
+            } else {
+                updatePayload.timestamp = new Date(editForm.timestamp).toISOString();
+                updatePayload.activity = editForm.activity;
+                updatePayload.notes = editForm.notes;
+                updatePayload.location = selectedAction?.location || editForm.location || "N/A";
+            }
+
+            const { error } = await supabase
+                .from("insp_dive_movements")
+                .update(updatePayload)
+                .eq(pkField, editForm.id);
+
             if (error) throw error;
             toast.success("Movement updated");
             setEditingId(null);

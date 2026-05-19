@@ -150,7 +150,8 @@
                 "flan_avg_thk": "",
                 "depth": "",
                 "web_thk": "",
-                "stem_thk": ""
+                "stem_thk": "",
+                "nominal_diam": ""
             }
         },
         {

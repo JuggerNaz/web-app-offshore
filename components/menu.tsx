@@ -182,6 +182,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             </p>
           )}
           <MenuLink
+            href="/dashboard/utilities/migration"
+            isCollapsed={isCollapsed}
+            label="Oracle Migration"
+            icon={<Database className="h-[18px] w-[18px] text-indigo-500" />}
+            text="Oracle Migration"
+          />
+          <MenuLink
             href="/dashboard/utilities/library"
             isCollapsed={isCollapsed}
             label="Library"
