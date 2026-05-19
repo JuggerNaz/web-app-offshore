@@ -189,6 +189,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             text="Platform 3D"
           />
           <MenuLink
+            href="/dashboard/utilities/3d-designer"
+            isCollapsed={isCollapsed}
+            label="3D Designer"
+            icon={<Layers2 className="h-[18px] w-[18px]" />}
+            text="3D Designer"
+          />
+          <MenuLink
             href="/dashboard/utilities/inspection-type"
             isCollapsed={isCollapsed}
             label="Inspection Type"
