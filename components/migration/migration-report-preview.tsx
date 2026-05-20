@@ -876,12 +876,20 @@ export default function MigrationReportPreview({
               height: auto !important;
               max-height: none !important;
               min-height: 0 !important;
+              width: 100% !important;
+              max-width: none !important;
+              min-width: 0 !important;
               display: block !important;
               padding: 0 !important;
               margin: 0 !important;
               border: none !important;
               box-shadow: none !important;
               background: transparent !important;
+              transform: none !important;
+              left: auto !important;
+              top: auto !important;
+              right: auto !important;
+              bottom: auto !important;
             }
 
             /* 4. Hide screen-only interactive elements inside the dialog (header, sidebar) */
