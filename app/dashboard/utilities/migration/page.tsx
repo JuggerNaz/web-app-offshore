@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Database, Server, RefreshCw, ArrowRight, Play, Settings2, FileText, CheckCircle2, Plus, Trash2, Save, Sparkles, Printer, ChevronUp, ChevronDown } from "lucide-react";
+import { Database, Server, RefreshCw, ArrowRight, Play, Settings2, FileText, CheckCircle2, Plus, Trash2, Save, Sparkles, Printer, ChevronUp, ChevronDown, Eye } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import MigrationReportPreview from "@/components/migration/migration-report-preview";
 
@@ -251,6 +251,7 @@ export default function MigrationDashboard() {
   const [migrationReport, setMigrationReport] = useState<Record<string, { status: "success" | "failed" | "skipped"; oracleRows: number; migratedRows: number; errors: string[] }> | null>(null);
   const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; label: string; percent: number } | null>(null);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [shouldAutoPrintReport, setShouldAutoPrintReport] = useState(false);
 
   const handleExecuteMigration = async () => {
     if (!selectedStructureId) return;
@@ -406,6 +407,7 @@ export default function MigrationDashboard() {
   };
 
   const handlePrintReport = () => {
+    setShouldAutoPrintReport(false);
     setIsReportOpen(true);
   };
 
@@ -775,29 +777,40 @@ export default function MigrationDashboard() {
                               Veracity Audit & Schema Translation Analytics
                             </CardDescription>
                           </div>
-                          <div className="flex items-center gap-2">
+                           <div className="flex items-center gap-2">
                              <Button 
                                variant="outline"
                                size="sm"
                                onClick={handlePrintReport}
                                className="text-indigo-600 border-indigo-200 hover:bg-indigo-50/50 dark:text-indigo-400 dark:border-indigo-900/50 dark:hover:bg-indigo-950/30 h-7 text-[10px] font-extrabold uppercase flex items-center gap-1"
                              >
-                               <Printer className="w-3.5 h-3.5" />
-                               Print Report
+                               <Eye className="w-3.5 h-3.5" />
+                               Print Preview
                              </Button>
-                            <Button 
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setMigrationReport(null);
-                                setMigrationLogs([]);
-                                setMigrationProgress(null);
-                              }}
-                              className="text-slate-500 hover:text-slate-700 h-7 text-[10px] font-bold uppercase"
-                            >
-                              Clear Report
-                            </Button>
-                          </div>
+                             <Button 
+                               size="sm"
+                               onClick={() => {
+                                 setShouldAutoPrintReport(true);
+                                 setIsReportOpen(true);
+                               }}
+                               className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold uppercase tracking-wide h-7 text-[10px] flex items-center gap-1 shadow-sm rounded"
+                             >
+                               <Printer className="w-3.5 h-3.5" />
+                               Print to PDF
+                             </Button>
+                             <Button 
+                               variant="outline"
+                               size="sm"
+                               onClick={() => {
+                                 setMigrationReport(null);
+                                 setMigrationLogs([]);
+                                 setMigrationProgress(null);
+                               }}
+                               className="text-slate-500 hover:text-slate-700 h-7 text-[10px] font-bold uppercase"
+                             >
+                               Clear Report
+                             </Button>
+                           </div>
                         </div>
                       </CardHeader>
                       <CardContent className="p-6 space-y-6">
@@ -1492,6 +1505,7 @@ export default function MigrationDashboard() {
           }}
           migrationReport={migrationReport}
           migrationLogs={migrationLogs}
+          triggerPrintOnOpen={shouldAutoPrintReport}
           unmappedComponents={
             summary
               .filter(item => {

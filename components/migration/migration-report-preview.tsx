@@ -46,9 +46,60 @@ interface MigrationReportPreviewProps {
   }> | null;
   migrationLogs: string[];
   unmappedComponents?: Array<{ code: string; name?: string; rowCount: number }>;
+  triggerPrintOnOpen?: boolean;
 }
 
 type ReportTheme = "modern" | "classic" | "inksaver";
+
+const COMPONENT_FULL_NAMES: Record<string, string> = {
+  // Core System Elements
+  "STRUCTURE": "Structure Master",
+  "STR_ELV": "Structural Elevations",
+  "STR_LEVEL": "Structural Levels",
+  "STR_FACES": "Structural Faces",
+  "ATTACHMENT": "Attachments & Files",
+  "COMMENT": "Comments & Logs",
+  "U_ASSOC": "Hierarchy Mappings (User Associations)",
+  
+  // Offshore Structural Components
+  "BO": "Boat Landing",
+  "BR": "Bracing",
+  "GR": "Guard Rail",
+  "ND": "Node",
+  "PA": "Pad Eye",
+  "PT": "Protection",
+  "RL": "Railing",
+  "VS": "Vent Stack",
+  "WK": "Walkway",
+  "AN": "Anode",
+  "CL": "Clamp",
+  "CS": "Caisson",
+  "FA": "Face",
+  "FD": "Boat Fender",
+  "HD": "Horizontal Diagonal Member",
+  "HM": "Horizontal Member",
+  "IT": "Item",
+  "LA": "Ladder",
+  "LG": "Leg",
+  "PG": "Pile Guide",
+  "PL": "Pile",
+  "RS": "Riser",
+  "RG": "Riser Guard",
+  "SD": "Seabed",
+  "VD": "Vertical Diagonal Member",
+  "VM": "Vertical Member",
+  "WN": "Node Weld",
+  "WP": "Support Weld",
+  "BB": "Bolts / Bolting",
+  "CD": "Conductor",
+  "CF": "Conductor Fender",
+  "CG": "Conductor Guard"
+};
+
+const getComponentFullName = (key: string): string => {
+  const upperKey = key.toUpperCase();
+  return COMPONENT_FULL_NAMES[upperKey] || "";
+};
 
 export default function MigrationReportPreview({
   isOpen,
@@ -58,7 +109,8 @@ export default function MigrationReportPreview({
   oracleConfig,
   migrationReport,
   migrationLogs,
-  unmappedComponents = []
+  unmappedComponents = [],
+  triggerPrintOnOpen = false
 }: MigrationReportPreviewProps) {
   // Customization States
   const [reportTitle, setReportTitle] = useState("Oracle to PostgreSQL Migration Audit Report");
@@ -80,6 +132,26 @@ export default function MigrationReportPreview({
     }));
   }, [isOpen]);
 
+  // Handle Print Action
+  const handlePrint = () => {
+    const prevTitle = document.title;
+    document.title = `${reportTitle.replace(/\s+/g, "_")}_${selectedStructureId}`;
+    window.print();
+    setTimeout(() => {
+      document.title = prevTitle;
+    }, 1000);
+  };
+
+  // Handle auto-print if requested
+  useEffect(() => {
+    if (isOpen && triggerPrintOnOpen && migrationReport) {
+      const timer = setTimeout(() => {
+        handlePrint();
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, triggerPrintOnOpen, migrationReport]);
+
   if (!migrationReport) return null;
 
   // Calculate Metrics
@@ -95,16 +167,6 @@ export default function MigrationReportPreview({
   } else if (totalPgRows === 0 && totalOracleRows > 0) {
     migrationStatus = "FAILED";
   }
-
-  // Handle Print Action
-  const handlePrint = () => {
-    const prevTitle = document.title;
-    document.title = `${reportTitle.replace(/\s+/g, "_")}_${selectedStructureId}`;
-    window.print();
-    setTimeout(() => {
-      document.title = prevTitle;
-    }, 1000);
-  };
 
   // Compile detailed copied manifest items dynamically based on counts
   const renderManifestItems = () => {
@@ -540,7 +602,14 @@ export default function MigrationReportPreview({
                         <tr key={key} className={`hover:bg-slate-50/20 transition-colors ${
                           isError && selectedTheme !== "inksaver" ? "bg-rose-50/20" : ""
                         }`}>
-                          <td className="px-4 py-3 font-mono font-bold text-slate-900">{key}</td>
+                          <td className="px-4 py-3 text-slate-900">
+                            <span className="font-mono font-bold">{key}</span>
+                            {getComponentFullName(key) && (
+                              <span className="text-[10px] text-slate-500 font-bold ml-2 uppercase tracking-wide">
+                                ({getComponentFullName(key)})
+                              </span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-right font-mono text-slate-500">{item.oracleRows}</td>
                           <td className="px-4 py-3 text-right font-mono text-slate-900">{item.migratedRows}</td>
                           <td className="px-4 py-3 text-right font-mono font-bold">
@@ -614,9 +683,9 @@ export default function MigrationReportPreview({
                           <tr key={item.code} className="hover:bg-amber-50/10 transition-colors">
                             <td className="px-4 py-2 text-slate-900">
                               <span className="font-mono font-bold">{item.code}</span>
-                              {item.name && (
+                              {(item.name || getComponentFullName(item.code)) && (
                                 <span className="text-[10px] text-slate-500 font-bold ml-1.5 uppercase">
-                                  ({item.name})
+                                  ({item.name || getComponentFullName(item.code)})
                                 </span>
                               )}
                             </td>
