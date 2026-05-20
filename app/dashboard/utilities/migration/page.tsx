@@ -765,7 +765,7 @@ export default function MigrationDashboard() {
 
                   {/* Premium Migration Detailed Summary Report */}
                   {migrationReport && (
-                    <Card id="migration-printable-report" className="border-emerald-100 dark:border-emerald-950/50 bg-gradient-to-br from-white via-emerald-50/5 to-emerald-50/15 dark:from-slate-900 dark:to-emerald-950/10 shadow-md">
+                    <Card id="migration-dashboard-summary-card" className="border-emerald-100 dark:border-emerald-950/50 bg-gradient-to-br from-white via-emerald-50/5 to-emerald-50/15 dark:from-slate-900 dark:to-emerald-950/10 shadow-md">
                       <CardHeader className="border-b border-emerald-50 dark:border-emerald-950/30 pb-4">
                         <div className="flex items-center justify-between">
                           <div>
@@ -1469,29 +1469,6 @@ export default function MigrationDashboard() {
             </TabsContent>
           </div>
         </Tabs>
-        <style dangerouslySetInnerHTML={{ __html: `
-          @media print {
-            body * {
-              visibility: hidden;
-            }
-            #migration-printable-report, #migration-printable-report * {
-              visibility: visible;
-            }
-            #migration-printable-report {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 100%;
-              background: white !important;
-              color: black !important;
-              box-shadow: none !important;
-              border: none !important;
-            }
-            #migration-printable-report button {
-              display: none !important;
-            }
-          }
-        `}} />
         
         <MigrationReportPreview
           isOpen={isReportOpen}

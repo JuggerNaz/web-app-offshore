@@ -219,7 +219,7 @@ export default function MigrationReportPreview({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[95vw] w-[1300px] h-[90vh] p-0 overflow-hidden flex flex-col bg-slate-900 border-slate-800 text-white rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+      <DialogContent id="migration-dialog-content" className="max-w-[95vw] w-[1300px] h-[90vh] p-0 overflow-hidden flex flex-col bg-slate-900 border-slate-800 text-white rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header Bar */}
         <div className="flex items-center justify-between px-6 py-4 bg-slate-950/80 border-b border-slate-800 shrink-0">
@@ -257,7 +257,7 @@ export default function MigrationReportPreview({
         </div>
 
         {/* Modal Work Area */}
-        <div className="flex-1 flex overflow-hidden">
+        <div id="migration-dialog-work-area" className="flex-1 flex overflow-hidden">
           
           {/* Left Sidebar: Controls & Customizations */}
           <div className="w-[340px] border-r border-slate-800/80 bg-slate-950/40 p-6 flex flex-col justify-between shrink-0 overflow-y-auto">
@@ -393,7 +393,7 @@ export default function MigrationReportPreview({
           </div>
 
           {/* Right Area: Large High-Fidelity Printable Canvas Preview */}
-          <div className="flex-1 bg-slate-950 p-8 overflow-y-auto flex justify-center items-start">
+          <div id="migration-report-canvas-container" className="flex-1 bg-slate-950 p-8 overflow-y-auto flex justify-center items-start">
             <div 
               ref={printAreaRef}
               id="migration-printable-report"
@@ -851,48 +851,79 @@ export default function MigrationReportPreview({
         {/* Global Print Layout CSS Injection */}
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
-            body {
+            /* 1. Reset base html/body elements for natural paper pagination */
+            html, body {
               background: white !important;
               color: black !important;
+              overflow: visible !important;
+              height: auto !important;
             }
-            /* Hide entire page structure except printable element */
+
+            /* 2. Hide everything on the screen by default */
             body * {
               visibility: hidden !important;
             }
-            #migration-printable-report, #migration-printable-report * {
+
+            /* 3. Unconstrain Radix Dialog/Portal overlays and parents of our report */
+            div[data-radix-portal],
+            div[role="dialog"],
+            #migration-dialog-content,
+            #migration-dialog-work-area,
+            #migration-report-canvas-container {
+              visibility: visible !important;
+              overflow: visible !important;
+              position: static !important;
+              height: auto !important;
+              max-height: none !important;
+              min-height: 0 !important;
+              display: block !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              border: none !important;
+              box-shadow: none !important;
+              background: transparent !important;
+            }
+
+            /* 4. Hide screen-only interactive elements inside the dialog (header, sidebar) */
+            #migration-dialog-content > div:first-child,
+            #migration-dialog-work-area > div:first-child {
+              display: none !important;
+            }
+
+            /* 5. Force the printable report to display and flow naturally */
+            #migration-printable-report, 
+            #migration-printable-report * {
               visibility: visible !important;
             }
+
             #migration-printable-report {
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 210mm !important;
+              position: relative !important;
+              display: block !important;
+              width: 100% !important;
+              max-width: 210mm !important;
               min-height: 297mm !important;
-              padding: 20mm !important;
-              margin: 0 !important;
+              padding: 15mm !important;
+              margin: 0 auto !important;
               border: none !important;
               box-shadow: none !important;
               background: white !important;
               color: black !important;
             }
-            /* Reset dark mode components to standard print values */
-            #migration-printable-report select,
-            #migration-printable-report input,
-            #migration-printable-report textarea {
-              color: black !important;
-              background: transparent !important;
-            }
-            /* Avoid breaking metrics or signature blocks between physical pages */
+
+            /* 6. Page-break settings for elegant text flow */
             .page-break-inside-avoid {
               page-break-inside: avoid !important;
             }
             .page-break-before-auto {
               page-break-before: auto !important;
             }
-            /* Hide the browser scrollbars */
-            html, body {
-              overflow: visible !important;
-              height: auto !important;
+            
+            /* Clean up background colors and inputs for physical ink printers */
+            #migration-printable-report select,
+            #migration-printable-report input,
+            #migration-printable-report textarea {
+              color: black !important;
+              background: transparent !important;
             }
           }
         `}} />
