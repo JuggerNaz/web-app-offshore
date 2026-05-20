@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MousePointer2, BoxSelect, Grid3X3, Save, Undo, Redo, Loader2 } from "lucide-react";
+import { MousePointer2, BoxSelect, Grid3X3, Save, Undo, Redo, Loader2, Move, RotateCw, Magnet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "../../store/useEditorStore";
 import { useSceneStore } from "../../store/useSceneStore";
@@ -9,7 +9,15 @@ import { useCommandStore } from "../../store/useCommandStore";
 import { toast } from "sonner";
 
 export function TopToolbar() {
-  const { activeTool, setActiveTool, snapMode, setSnapMode, selectedPlatformId } = useEditorStore();
+  const { 
+    activeTool, 
+    setActiveTool, 
+    snapMode, 
+    setSnapMode, 
+    transformMode, 
+    setTransformMode, 
+    selectedPlatformId 
+  } = useEditorStore();
   const past = useCommandStore((state) => state.past);
   const future = useCommandStore((state) => state.future);
   const undo = useCommandStore((state) => state.undo);
@@ -18,6 +26,7 @@ export function TopToolbar() {
   
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   // Load Scene Data when platform changes
   useEffect(() => {
@@ -77,7 +86,8 @@ export function TopToolbar() {
 
       const result = await res.json();
       if (result.success) {
-        toast.success("Project saved successfully");
+        setSaveStatus("Project saved successfully");
+        setTimeout(() => setSaveStatus(null), 2500);
       } else {
         throw new Error(result.error);
       }
@@ -112,24 +122,86 @@ export function TopToolbar() {
             Place
           </Button>
         </div>
+
+        {activeTool === 'SELECT' && (
+          <>
+            <div className="w-px h-6 bg-border mx-2" />
+            <div className="flex items-center bg-muted p-1 rounded-md">
+              <Button
+                variant={transformMode === 'translate' ? "secondary" : "ghost"}
+                size="sm"
+                className="h-8"
+                onClick={() => setTransformMode('translate')}
+                title="Move shape"
+              >
+                <Move className="w-4 h-4 mr-1.5" />
+                Move
+              </Button>
+              <Button
+                variant={transformMode === 'rotate' ? "secondary" : "ghost"}
+                size="sm"
+                className="h-8"
+                onClick={() => setTransformMode('rotate')}
+                title="Rotate shape"
+              >
+                <RotateCw className="w-4 h-4 mr-1.5" />
+                Rotate
+              </Button>
+            </div>
+          </>
+        )}
         
         <div className="w-px h-6 bg-border mx-2" />
         
         <div className="flex items-center bg-muted p-1 rounded-md">
           <Button 
-            variant={snapMode === 'GRID' ? "secondary" : "ghost"} 
+            variant={snapMode === 'FREE' ? "ghost" : "secondary"} 
             size="sm" 
-            className="h-8"
-            onClick={() => setSnapMode(snapMode === 'GRID' ? 'FREE' : 'GRID')}
+            className="h-8 min-w-[140px] justify-start"
+            onClick={() => {
+              if (snapMode === 'FREE') {
+                setSnapMode('GRID');
+                toast.success("Grid snap mode enabled");
+              } else if (snapMode === 'GRID') {
+                setSnapMode('NODE');
+                toast.success("Component snap mode enabled");
+              } else {
+                setSnapMode('FREE');
+                toast.success("Free movement mode enabled");
+              }
+            }}
           >
-            <Grid3X3 className="w-4 h-4 mr-2" />
-            Grid Snap
+            {snapMode === 'FREE' && (
+              <>
+                <Grid3X3 className="w-4 h-4 mr-2 opacity-40" />
+                Free Mode
+              </>
+            )}
+            {snapMode === 'GRID' && (
+              <>
+                <Grid3X3 className="w-4 h-4 mr-2" />
+                Grid Mode
+              </>
+            )}
+            {snapMode === 'NODE' && (
+              <>
+                <Magnet className="w-4 h-4 mr-2 text-primary" />
+                Component Snap
+              </>
+            )}
           </Button>
         </div>
       </div>
 
       <div className="flex items-center gap-2">
         {isLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mr-2" />}
+        
+        {saveStatus && (
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-md text-xs font-semibold mr-2 animate-in fade-in slide-in-from-top-1 duration-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            {saveStatus}
+          </div>
+        )}
         
         <Button 
           variant="outline" 

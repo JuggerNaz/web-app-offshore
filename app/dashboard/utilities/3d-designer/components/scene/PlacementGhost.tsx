@@ -45,9 +45,27 @@ export function PlacementGhost() {
         let snapped = false;
 
         // Node Snapping Priority
-        if (snapMode === 'NODE' && placementGhost.nodes?.length > 0) {
+        if (snapMode === 'NODE') {
+          const ghostNodes = placementGhost.nodes && placementGhost.nodes.length > 0
+            ? placementGhost.nodes
+            : (placementGhost.shape === 'CYLINDER'
+                ? [
+                    { id: 'top', localPos: [0, (placementGhost.properties?.length || 5) / 2, 0] as [number, number, number] },
+                    { id: 'bottom', localPos: [0, -(placementGhost.properties?.length || 5) / 2, 0] as [number, number, number] }
+                  ]
+                : (placementGhost.shape === 'BOX'
+                    ? [
+                        { id: 'top', localPos: [0, (placementGhost.properties?.height || 1) / 2, 0] as [number, number, number] },
+                        { id: 'bottom', localPos: [0, -(placementGhost.properties?.height || 1) / 2, 0] as [number, number, number] },
+                        { id: 'left', localPos: [-(placementGhost.properties?.width || 1) / 2, 0, 0] as [number, number, number] },
+                        { id: 'right', localPos: [(placementGhost.properties?.width || 1) / 2, 0, 0] as [number, number, number] },
+                        { id: 'front', localPos: [0, 0, (placementGhost.properties?.depth || 1) / 2] as [number, number, number] },
+                        { id: 'back', localPos: [0, 0, -(placementGhost.properties?.depth || 1) / 2] as [number, number, number] }
+                      ]
+                    : [{ id: 'center', localPos: [0, 0, 0] as [number, number, number] }]));
+
           const sceneComponents = useSceneStore.getState().components;
-          const snapOffset = SnapEngine.calculateSnap(point, placementGhost.nodes, sceneComponents, settings.nodeSnapRadius);
+          const snapOffset = SnapEngine.calculateSnap(point, ghostNodes, sceneComponents, settings.nodeSnapRadius || 1.5);
           
           if (snapOffset) {
             point = snapOffset;
@@ -86,8 +104,17 @@ export function PlacementGhost() {
 
       const intersects = raycaster.intersectObject(floor);
       if (intersects.length > 0) {
-        // Generate a random ID for the new component
-        const newId = `comp_${Math.random().toString(36).substr(2, 9)}`;
+        // Determine component ID (use QID if available, fallback to code or random ID, ensuring uniqueness)
+        const qid = placementGhost.sourceData?.q_id || placementGhost.sourceData?.qid || placementGhost.sourceData?.code || placementGhost.sourceData?.component_name;
+        const baseId = qid ? String(qid).trim() : `comp_${Math.random().toString(36).substr(2, 9)}`;
+        
+        let newId = baseId;
+        let counter = 1;
+        const existingComponents = useSceneStore.getState().components;
+        while (existingComponents[newId]) {
+          newId = `${baseId}_${counter}`;
+          counter++;
+        }
         
         const newComponent: ComponentNode = {
           id: newId,
@@ -98,7 +125,8 @@ export function PlacementGhost() {
             position: [meshRef.current.position.x, meshRef.current.position.y, meshRef.current.position.z],
             rotation: [0, 0, 0]
           },
-          nodes: []
+          nodes: placementGhost.nodes ? [...placementGhost.nodes] : [],
+          sourceData: placementGhost.sourceData
         };
         
         addComponent(newComponent);

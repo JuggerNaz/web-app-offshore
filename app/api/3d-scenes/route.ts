@@ -8,6 +8,25 @@ import { withAuth } from "@/utils/with-auth";
  * GET /api/3d-scenes?platform_id=UUID
  * Fetch 3D scene data for a platform
  */
+// Helper function to map integer platform IDs to valid deterministic UUIDs
+function toUuid(id: string | number): string {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const strId = String(id).trim();
+  if (uuidRegex.test(strId)) {
+    return strId;
+  }
+  
+  // Extract digits and convert to hex for standard UUID padding
+  const cleanId = strId.replace(/[^0-9]/g, '');
+  const numericId = parseInt(cleanId || '0', 10);
+  const hexVal = numericId.toString(16).padStart(12, '0').slice(-12);
+  return `00000000-0000-0000-0000-${hexVal}`;
+}
+
+/**
+ * GET /api/3d-scenes?platform_id=UUID
+ * Fetch 3D scene data for a platform
+ */
 export const GET = withAuth(
   async (request: NextRequest, { user }: { user: any }) => {
     const supabase = createClient();
@@ -18,10 +37,12 @@ export const GET = withAuth(
       return new Response(JSON.stringify({ error: "Missing platform_id" }), { status: 400 });
     }
 
+    const uuidPlatformId = toUuid(platform_id);
+
     const { data, error } = await supabase
       .from("platform_3d_scenes")
       .select("*")
-      .eq("platform_id", platform_id)
+      .eq("platform_id", uuidPlatformId)
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
@@ -48,11 +69,13 @@ export const POST = withAuth(
       return new Response(JSON.stringify({ error: "Missing platform_id" }), { status: 400 });
     }
 
+    const uuidPlatformId = toUuid(platform_id);
+
     // Check if one exists
     const { data: existing } = await supabase
       .from("platform_3d_scenes")
       .select("id")
-      .eq("platform_id", platform_id)
+      .eq("platform_id", uuidPlatformId)
       .limit(1)
       .single();
 
@@ -68,7 +91,7 @@ export const POST = withAuth(
       result = await supabase
         .from("platform_3d_scenes")
         .insert({
-          platform_id,
+          platform_id: uuidPlatformId,
           name: name || "Default Scene",
           scene_data,
         })

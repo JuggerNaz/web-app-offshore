@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS public.platform_3d_scenes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    platform_id UUID NOT NULL, 
+    platform_id INTEGER NOT NULL, 
     name TEXT NOT NULL,
     description TEXT,
     scene_data JSONB NOT NULL DEFAULT '{}'::jsonb,

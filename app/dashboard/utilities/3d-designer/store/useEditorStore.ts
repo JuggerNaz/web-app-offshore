@@ -3,12 +3,14 @@ import { EditorSettings } from '../types/3d-designer';
 
 type ToolType = 'SELECT' | 'PLACE' | 'MEASURE';
 type SnapMode = 'NODE' | 'GRID' | 'FREE';
+type TransformMode = 'translate' | 'rotate';
 
 interface EditorState {
   selectedPlatformId: string | null;
   selectedIds: string[];
   activeTool: ToolType;
   snapMode: SnapMode;
+  transformMode: TransformMode;
   placementGhost: any | null;
   settings: EditorSettings;
   
@@ -16,6 +18,7 @@ interface EditorState {
   setSelectedIds: (ids: string[]) => void;
   setActiveTool: (tool: ToolType) => void;
   setSnapMode: (mode: SnapMode) => void;
+  setTransformMode: (mode: TransformMode) => void;
   setPlacementGhost: (ghost: any | null) => void;
   updateSettings: (updates: Partial<EditorSettings>) => void;
 }
@@ -25,16 +28,18 @@ export const useEditorStore = create<EditorState>((set) => ({
   selectedIds: [],
   activeTool: 'SELECT',
   snapMode: 'NODE',
+  transformMode: 'translate',
   placementGhost: null,
   settings: {
     gridSnap: 1.0,
-    nodeSnapRadius: 0.5,
+    nodeSnapRadius: 1.5,
   },
   
   setSelectedPlatformId: (id) => set({ selectedPlatformId: id }),
   setSelectedIds: (ids) => set({ selectedIds: ids }),
   setActiveTool: (tool) => set({ activeTool: tool }),
   setSnapMode: (mode) => set({ snapMode: mode }),
+  setTransformMode: (mode) => set({ transformMode: mode }),
   setPlacementGhost: (ghost) => set({ placementGhost: ghost }),
   updateSettings: (updates) => set((state) => ({
     settings: { ...state.settings, ...updates }

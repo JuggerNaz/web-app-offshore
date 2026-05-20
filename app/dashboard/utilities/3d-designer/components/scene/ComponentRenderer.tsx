@@ -6,6 +6,7 @@ import { TransformControls } from '@react-three/drei';
 import { useSceneStore } from '../../store/useSceneStore';
 import { useEditorStore } from '../../store/useEditorStore';
 import { GeometryFactory } from '../../core/GeometryFactory';
+import { SnapEngine } from '../../core/SnapEngine';
 
 export function ComponentRenderer() {
   const components = useSceneStore((state) => state.components);
@@ -13,6 +14,7 @@ export function ComponentRenderer() {
   const selectedIds = useEditorStore((state) => state.selectedIds);
   const setSelectedIds = useEditorStore((state) => state.setSelectedIds);
   const activeTool = useEditorStore((state) => state.activeTool);
+  const transformMode = useEditorStore((state) => state.transformMode);
   
   const factory = useMemo(() => GeometryFactory.getInstance(), []);
 
@@ -44,7 +46,59 @@ export function ComponentRenderer() {
             {isSelected && activeTool === 'SELECT' && (
               <TransformControls
                 object={meshRefs.current[comp.id]}
-                mode="translate" // Can be switched to 'rotate' via top toolbar later
+                mode={transformMode}
+                onChange={() => {
+                  const mesh = meshRefs.current[comp.id];
+                  if (!mesh) return;
+
+                  // Only snap if we are translating (moving) the component
+                  if (transformMode !== 'translate') return;
+
+                  const snapMode = useEditorStore.getState().snapMode;
+                  const settings = useEditorStore.getState().settings;
+
+                  if (snapMode === 'NODE') {
+                    // Filter out the selected component itself to avoid self-snapping
+                    const otherComponents = { ...components };
+                    delete otherComponents[comp.id];
+
+                    // Resolve or generate ghost nodes for the dragged component
+                    const ghostNodes = comp.nodes && comp.nodes.length > 0
+                      ? comp.nodes
+                      : (comp.shape === 'CYLINDER'
+                          ? [
+                              { id: 'top', localPos: [0, (comp.properties?.length || 5) / 2, 0] as [number, number, number] },
+                              { id: 'bottom', localPos: [0, -(comp.properties?.length || 5) / 2, 0] as [number, number, number] }
+                            ]
+                          : (comp.shape === 'BOX'
+                              ? [
+                                  { id: 'top', localPos: [0, (comp.properties?.height || 1) / 2, 0] as [number, number, number] },
+                                  { id: 'bottom', localPos: [0, -(comp.properties?.height || 1) / 2, 0] as [number, number, number] },
+                                  { id: 'left', localPos: [-(comp.properties?.width || 1) / 2, 0, 0] as [number, number, number] },
+                                  { id: 'right', localPos: [(comp.properties?.width || 1) / 2, 0, 0] as [number, number, number] },
+                                  { id: 'front', localPos: [0, 0, (comp.properties?.depth || 1) / 2] as [number, number, number] },
+                                  { id: 'back', localPos: [0, 0, -(comp.properties?.depth || 1) / 2] as [number, number, number] }
+                                ]
+                              : [{ id: 'center', localPos: [0, 0, 0] as [number, number, number] }]));
+
+                    // Snap calculations (incorporates rotation of the mesh)
+                    const snapPos = SnapEngine.calculateSnap(
+                      mesh.position,
+                      ghostNodes,
+                      otherComponents,
+                      settings.nodeSnapRadius || 1.5,
+                      [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z]
+                    );
+
+                    if (snapPos) {
+                      mesh.position.copy(snapPos);
+                    }
+                  } else if (snapMode === 'GRID') {
+                    const gridSize = settings.gridSnap || 1;
+                    mesh.position.x = Math.round(mesh.position.x / gridSize) * gridSize;
+                    mesh.position.z = Math.round(mesh.position.z / gridSize) * gridSize;
+                  }
+                }}
                 onMouseUp={() => {
                   // When user finishes dragging, save the new position to the store
                   const mesh = meshRefs.current[comp.id];

@@ -10,6 +10,7 @@ export interface ComponentNode {
   };
   properties: Record<string, any>; // Dimensions, etc.
   nodes: SnapNode[]; // Connection points
+  sourceData?: any;
 }
 
 export interface SnapNode {
