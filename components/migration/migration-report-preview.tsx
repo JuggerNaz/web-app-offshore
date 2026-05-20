@@ -866,6 +866,8 @@ export default function MigrationReportPreview({
 
             /* 3. Unconstrain Radix Dialog/Portal overlays and parents of our report */
             div[data-radix-portal],
+            div[data-radix-portal] > div,
+            div[data-radix-portal] > div > div,
             div[role="dialog"],
             #migration-dialog-content,
             #migration-dialog-work-area,
