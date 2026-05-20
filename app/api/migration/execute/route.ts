@@ -186,6 +186,7 @@ export async function POST(request: NextRequest) {
   try {
     const payload: MigrationPayload = await request.json();
     const { config, structureId, mappings } = payload;
+    let resolvedStructureId = Number(structureId);
 
     if (!config || !structureId || !mappings) {
       return NextResponse.json({ error: "Missing required payload parameters" }, { status: 400 });
@@ -301,7 +302,76 @@ export async function POST(request: NextRequest) {
 
             // Ensure structural primary key is present
             if (pgRecord[conflictCol] === undefined) {
-              pgRecord[conflictCol] = Number(structureId);
+              pgRecord[conflictCol] = resolvedStructureId;
+            }
+
+            // --- 3-CASE CONFLICT RESOLUTION ---
+            const titleMapping = strMappings.find(
+              m => m.oracleCol.toUpperCase() === "TITLE" || m.oracleCol.toUpperCase() === "NAME"
+            );
+            const titlePgCol = titleMapping?.pgCol || "title";
+            const incomingTitle = String(oracleData[titleMapping?.oracleCol || "TITLE"] || "").trim();
+
+            logs.push(`Analyzing structure database conflicts in Postgres...`);
+            
+            // Fetch by ID
+            const { data: existingById, error: errById } = await supabase
+              .from(targetTable as any)
+              .select(`${conflictCol}, ${titlePgCol}`)
+              .eq(conflictCol, Number(structureId))
+              .maybeSingle();
+
+            if (errById) {
+              logs.push(`WARNING: Checking structure by ID failed: ${errById.message}`);
+            }
+
+            // Fetch by Title (case-insensitive)
+            const { data: existingByTitle, error: errByTitle } = await supabase
+              .from(targetTable as any)
+              .select(`${conflictCol}, ${titlePgCol}`)
+              .ilike(titlePgCol, incomingTitle)
+              .maybeSingle();
+
+            if (errByTitle) {
+              logs.push(`WARNING: Checking structure by Title failed: ${errByTitle.message}`);
+            }
+
+            if (existingByTitle) {
+              // Case 2: Different ID, Same Title (Alignment / Subsequent migration) -> Reuse the existing Postgres ID
+              resolvedStructureId = Number((existingByTitle as any)[conflictCol]);
+              (pgRecord as any)[conflictCol] = resolvedStructureId;
+              logs.push(`Case 2 Match: Title "${incomingTitle}" already exists in Postgres with ID ${resolvedStructureId}. Reusing this ID for migration.`);
+            } else if (existingById) {
+              const existingTitle = String((existingById as any)[titlePgCol] || "").trim();
+              if (existingTitle.toLowerCase() !== incomingTitle.toLowerCase()) {
+                // Case 1: Same ID, Different Title (Collision) -> Generate a new Postgres ID
+                const { data: maxResult, error: maxErr } = await supabase
+                  .from(targetTable as any)
+                  .select(conflictCol)
+                  .order(conflictCol, { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                if (maxErr) {
+                  logs.push(`WARNING: Fetching max ID failed: ${maxErr.message}`);
+                }
+
+                const maxId = maxResult ? Number((maxResult as any)[conflictCol]) : 0;
+                resolvedStructureId = Math.max(maxId, 10000) + 1;
+                (pgRecord as any)[conflictCol] = resolvedStructureId;
+                
+                logs.push(`Case 1 Match: ID ${structureId} is already occupied by "${existingTitle}". Generated safe new Postgres ID ${resolvedStructureId} for "${incomingTitle}".`);
+              } else {
+                // Same ID, Same Title (Re-migration / Update of same structure) -> Normal flow
+                resolvedStructureId = Number(structureId);
+                (pgRecord as any)[conflictCol] = resolvedStructureId;
+                logs.push(`Case 3 Match: Identical structure "${incomingTitle}" (ID ${structureId}) already exists. Updating in-place.`);
+              }
+            } else {
+              // Case 3: No matching ID and no matching Title -> Normal flow
+              resolvedStructureId = Number(structureId);
+              (pgRecord as any)[conflictCol] = resolvedStructureId;
+              logs.push(`Case 3 Match: No existing ID or Title matches in Postgres. Migrating with original Oracle ID ${resolvedStructureId}.`);
             }
 
             logs.push(`Migrating Structure to Postgres '${targetTable}' table...`);
@@ -380,14 +450,14 @@ export async function POST(request: NextRequest) {
                   });
                   
                   if (pgRecord['plat_id'] === undefined) {
-                    pgRecord['plat_id'] = Number(structureId);
+                    pgRecord['plat_id'] = resolvedStructureId;
                   }
                   
                   return pgRecord;
                 });
 
                 // Clear duplicates
-                await supabase.from(pgTableName as any).delete().eq('plat_id', Number(structureId));
+                await supabase.from(pgTableName as any).delete().eq('plat_id', resolvedStructureId);
                 
                 const { error: insertErr } = await supabase.from(pgTableName as any).insert(pgRecords);
                 
@@ -400,7 +470,7 @@ export async function POST(request: NextRequest) {
                   report[childTable].migratedRows = rows.length;
                 }
               } else {
-                logs.push(`No ${childTable} records found for Structure ID ${structureId}.`);
+                logs.push(`No ${childTable} records found for Structure ID ${resolvedStructureId}.`);
                 report[childTable].status = "success"; // Successfully did nothing
               }
             } catch (err: any) {
@@ -421,7 +491,7 @@ export async function POST(request: NextRequest) {
 
     if (structureSuccess) {
       // Clear existing components for this structure to avoid conflicts/duplicates
-      await supabase.from("structure_components").delete().eq("structure_id", Number(structureId));
+      await supabase.from("structure_components").delete().eq("structure_id", resolvedStructureId);
 
       for (const code of componentCodes) {
         const compMappings = mappings[code] || [];
@@ -473,7 +543,7 @@ export async function POST(request: NextRequest) {
               report[code].oracleRows = rows.length;
               const pgRecords = rows.map(oracleData => {
                 const pgRecord: Record<string, any> = {
-                  structure_id: Number(structureId),
+                  structure_id: resolvedStructureId,
                   code: code,
                   is_deleted: false
                 };
@@ -785,11 +855,11 @@ export async function POST(request: NextRequest) {
                       pgRecord['source_id'] = resolvedPgCompId;
                       pgRecord['source_type'] = 'component';
                     } else {
-                      pgRecord['source_id'] = Number(structureId);
+                      pgRecord['source_id'] = resolvedStructureId;
                       pgRecord['source_type'] = targetTable === 'u_pipeline' ? 'pipeline' : 'platform';
                     }
                   } else if (childTable === "COMMENT") {
-                    pgRecord['structure_id'] = Number(structureId);
+                    pgRecord['structure_id'] = resolvedStructureId;
                     pgRecord['structure_type'] = targetTable || 'platform';
                     if (resolvedPgCompId) {
                       pgRecord['component_id'] = resolvedPgCompId;
@@ -805,14 +875,14 @@ export async function POST(request: NextRequest) {
                   const compDbIds = Array.from(compIdMap.values());
                   await supabase.from("attachment")
                     .delete()
-                    .eq('source_id', Number(structureId))
+                    .eq('source_id', resolvedStructureId)
                     .in('source_type', ['platform', 'PLATFORM', 'pipeline', 'PIPELINE', 'structure', 'STRUCTURE']);
                   
                   if (compDbIds.length > 0) {
                     await supabase.from("attachment").delete().in('source_id', compDbIds).in('source_type', ['component', 'COMPONENT']);
                   }
                 } else if (childTable === "COMMENT") {
-                  await supabase.from("comment").delete().eq('structure_id', Number(structureId));
+                  await supabase.from("comment").delete().eq('structure_id', resolvedStructureId);
                 }
                 
                 const { error: insertErr } = await supabase.from(pgTableName as any).insert(pgRecords);
@@ -826,7 +896,7 @@ export async function POST(request: NextRequest) {
                   report[childTable].migratedRows = pgRecords.length;
                 }
               } else {
-                logs.push(`No ${childTable} records found for Structure ID ${structureId}.`);
+                logs.push(`No ${childTable} records found for Structure ID ${resolvedStructureId}.`);
                 report[childTable].status = "success";
               }
             } catch (err: any) {

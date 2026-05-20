@@ -27,13 +27,27 @@ export const POST = withAuth(
 
       connection = await getOracleConnection(config);
       
-      // Fetch summary from allcompid view grouping by str_id and code
-      const result = await connection.execute(
-        `SELECT STR_ID, CODE, COUNT(*) as ROW_COUNT FROM allcompid WHERE str_id = :strId GROUP BY STR_ID, CODE ORDER BY CODE ASC`,
-        { strId: str_id }
-      );
-      
-      const summary = result.rows || [];
+      // Fetch summary from allcompid view joined with comp_type to get description/full name
+      let summary = [];
+      try {
+        const result = await connection.execute(
+          `SELECT c.STR_ID, c.CODE, t.DESCRIP as NAME, COUNT(*) as ROW_COUNT 
+           FROM allcompid c
+           LEFT JOIN comp_type t ON c.CODE = t.CODE
+           WHERE c.STR_ID = :strId 
+           GROUP BY c.STR_ID, c.CODE, t.DESCRIP 
+           ORDER BY c.CODE ASC`,
+          { strId: str_id }
+        );
+        summary = result.rows || [];
+      } catch (err: any) {
+        console.warn("Joined summary query failed, trying fallback without comp_type join:", err.message);
+        const result = await connection.execute(
+          `SELECT STR_ID, CODE, COUNT(*) as ROW_COUNT FROM allcompid WHERE STR_ID = :strId GROUP BY STR_ID, CODE ORDER BY CODE ASC`,
+          { strId: str_id }
+        );
+        summary = result.rows || [];
+      }
 
       return NextResponse.json({ 
         success: true, 

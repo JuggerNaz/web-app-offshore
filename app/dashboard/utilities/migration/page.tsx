@@ -33,6 +33,8 @@ export default function MigrationDashboard() {
   
   const [summary, setSummary] = useState<any[]>([]);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [jobpacks, setJobpacks] = useState<any[]>([]);
+  const [isLoadingJobpacks, setIsLoadingJobpacks] = useState(false);
 
   const [activeTab, setActiveTab] = useState("connection");
   const [mappingStructureType, setMappingStructureType] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
@@ -420,8 +422,11 @@ export default function MigrationDashboard() {
     setMigrationLogs([]);
     setMigrationReport(null);
     setMigrationProgress(null);
+    setJobpacks([]);
 
     setSelectedStructureId(strId);
+    
+    // Fetch summary
     try {
       setIsLoadingSummary(true);
       const res = await fetch(`/api/migration/summary/${strId}`, {
@@ -449,6 +454,28 @@ export default function MigrationDashboard() {
       );
     } finally {
       setIsLoadingSummary(false);
+    }
+
+    // Fetch jobpacks with inspection data for this structure from Oracle
+    try {
+      setIsLoadingJobpacks(true);
+      const res = await fetch(`/api/migration/jobpacks/${strId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setJobpacks(data.data || []);
+      } else {
+        setJobpacks([]);
+        console.error("Failed to fetch jobpacks:", data.error);
+      }
+    } catch (err) {
+      setJobpacks([]);
+      console.error("Error fetching jobpacks:", err);
+    } finally {
+      setIsLoadingJobpacks(false);
     }
   };
 
@@ -596,26 +623,106 @@ export default function MigrationDashboard() {
                       const structObj = structures.find((s: any) => String(s.STR_ID) === selectedStructureId);
                       const defUnitVal = structObj?.DEF_UNIT || structObj?.def_unit || "METRIC";
                       return (
-                        <div className="mt-6 p-4 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl space-y-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                              <FileText className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 truncate">
-                                {structObj?.TITLE}
+                        <div className="space-y-4 mt-6">
+                          <div className="p-4 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl space-y-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                <FileText className="w-4 h-4" />
                               </div>
-                              <div className="flex items-center justify-between mt-1 text-[10px] font-bold text-slate-500 uppercase">
-                                <span>ID: {selectedStructureId}</span>
-                                <span className={`px-2 py-0.5 text-[9px] font-extrabold tracking-widest rounded-md uppercase border ${
-                                  defUnitVal === "IMPERIAL" 
-                                    ? "bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30" 
-                                    : "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/30"
-                                }`}>
-                                  {defUnitVal}
-                                </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 truncate">
+                                  {structObj?.TITLE}
+                                </div>
+                                <div className="flex items-center justify-between mt-1 text-[10px] font-bold text-slate-500 uppercase">
+                                  <span>ID: {selectedStructureId}</span>
+                                  <span className={`px-2 py-0.5 text-[9px] font-extrabold tracking-widest rounded-md uppercase border ${
+                                    defUnitVal === "IMPERIAL" 
+                                      ? "bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30" 
+                                      : "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/30"
+                                  }`}>
+                                    {defUnitVal}
+                                  </span>
+                                </div>
                               </div>
                             </div>
+                          </div>
+
+                          <div className="p-4 bg-slate-50/50 dark:bg-slate-900/30 border border-slate-200/60 dark:border-slate-800/80 rounded-xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                <Database className="w-3.5 h-3.5 text-indigo-500" />
+                                Active Job Packs
+                              </Label>
+                              <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/30 px-1.5 py-0.5 rounded-md uppercase">
+                                With Inspection Data
+                              </span>
+                            </div>
+
+                            {isLoadingJobpacks ? (
+                              <div className="flex items-center justify-center py-6 gap-2 text-xs font-semibold text-slate-400">
+                                <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                                Loading associated job packs...
+                              </div>
+                            ) : jobpacks.length > 0 ? (
+                              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                {jobpacks.map((jp: any, index: number) => {
+                                  const jobName = jp.JOBNAME || jp.jobname || jp.JOB_NAME || jp.job_name || "Unnamed Job Pack";
+                                  const startDateVal = jp.START_DATE || jp.start_date || jp.ISTART || jp.istart;
+                                  const formattedDate = startDateVal 
+                                    ? new Date(startDateVal).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) 
+                                    : "No Start Date";
+                                  const jobType = jp.JOB_TYPE || jp.job_type || jp.JOBTYPE || jp.jobtype;
+                                  const hasRov = jp.HAS_ROV || jp.has_rov || jp.hasRov || false;
+                                  const hasDiving = jp.HAS_DIVING || jp.has_diving || jp.hasDiving || false;
+                                  
+                                  return (
+                                    <div 
+                                      key={`${jobName}-${index}`} 
+                                      className="flex items-center justify-between gap-2 p-2 bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 dark:hover:border-slate-700/60 rounded-lg transition-all duration-200 shadow-sm group"
+                                    >
+                                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <div className="w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100/50 dark:border-indigo-900/35 flex items-center justify-center text-indigo-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                          <FileText className="w-3 h-3" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                            {jobName}
+                                          </div>
+                                          <div className="text-[9px] font-medium text-slate-400 uppercase flex flex-wrap items-center gap-1.5 mt-0.5">
+                                            <span>Start: {formattedDate}</span>
+                                            {hasRov && (
+                                              <span className="inline-flex items-center px-1 py-0.2 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400 text-[8px] font-extrabold uppercase rounded tracking-wider border border-cyan-200/40 dark:border-cyan-800/20 shrink-0">
+                                                ROV Data
+                                              </span>
+                                            )}
+                                            {hasDiving && (
+                                              <span className="inline-flex items-center px-1 py-0.2 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 text-[8px] font-extrabold uppercase rounded tracking-wider border border-emerald-200/40 dark:border-emerald-800/20 shrink-0">
+                                                Diving Data
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      {jobType && (
+                                        <span className={`text-[8px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${
+                                          jobType.toUpperCase().includes('ROV')
+                                            ? 'text-cyan-600 bg-cyan-50 dark:bg-cyan-950/20 border-cyan-200 dark:border-cyan-900/30'
+                                            : jobType.toUpperCase().includes('DIVING')
+                                            ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900/30'
+                                            : 'text-amber-600 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900/30'
+                                        }`}>
+                                          {jobType}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-center py-6 text-xs font-semibold text-slate-400 bg-white dark:bg-slate-900/20 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
+                                No job packs with inspection data found for this structure.
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -991,10 +1098,15 @@ export default function MigrationDashboard() {
 
                                  return (
                                    <tr key={idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                                     <td className="px-4 py-3">
+                                     <td className="px-4 py-3 flex items-center gap-2">
                                        <span className={`text-xs font-black border px-2.5 py-1 rounded-md uppercase tracking-wider ${codeBadgeClass}`}>
                                          {row.CODE}
                                        </span>
+                                       {row.NAME && (
+                                         <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase truncate" title={row.NAME}>
+                                           ({row.NAME})
+                                         </span>
+                                       )}
                                      </td>
                                      <td className="px-4 py-3">
                                        <span className="text-sm font-black text-slate-800 dark:text-slate-200">{row.ROW_COUNT}</span>
@@ -1170,7 +1282,7 @@ export default function MigrationDashboard() {
                               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === s.CODE ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
                             >
                               <span className="flex flex-col items-start gap-0.5">
-                                <span>{s.CODE} Component</span>
+                                <span className="truncate max-w-[210px] text-left">{s.CODE} {s.NAME ? `- ${s.NAME}` : "Component"}</span>
                                 <span className="text-[8px] opacity-75 font-mono lowercase">
                                   {resolvedCompSpec} → component
                                 </span>
@@ -1380,6 +1492,18 @@ export default function MigrationDashboard() {
           }}
           migrationReport={migrationReport}
           migrationLogs={migrationLogs}
+          unmappedComponents={
+            summary
+              .filter(item => {
+                const hasMapping = mappings[item.CODE] && mappings[item.CODE].length > 0;
+                return !hasMapping && Number(item.ROW_COUNT) > 0;
+              })
+              .map(item => ({
+                code: item.CODE,
+                name: item.NAME,
+                rowCount: Number(item.ROW_COUNT)
+              }))
+          }
         />
       </div>
     </div>

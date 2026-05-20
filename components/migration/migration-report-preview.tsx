@@ -45,6 +45,7 @@ interface MigrationReportPreviewProps {
     errors: string[] 
   }> | null;
   migrationLogs: string[];
+  unmappedComponents?: Array<{ code: string; name?: string; rowCount: number }>;
 }
 
 type ReportTheme = "modern" | "classic" | "inksaver";
@@ -56,7 +57,8 @@ export default function MigrationReportPreview({
   selectedStructure,
   oracleConfig,
   migrationReport,
-  migrationLogs
+  migrationLogs,
+  unmappedComponents = []
 }: MigrationReportPreviewProps) {
   // Customization States
   const [reportTitle, setReportTitle] = useState("Oracle to PostgreSQL Migration Audit Report");
@@ -565,6 +567,76 @@ export default function MigrationReportPreview({
                   </tbody>
                 </table>
               </div>
+
+              {/* --- UNMAPPED COMPONENT TYPES (SKIPPED MIGRATION) --- */}
+              {unmappedComponents && unmappedComponents.length > 0 && (
+                <div className="py-4 space-y-4 page-break-inside-avoid">
+                  <h3 className={`text-xs font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                    selectedTheme === "classic" 
+                      ? "font-serif border-b border-slate-700 pb-1 text-slate-800" 
+                      : selectedTheme === "inksaver"
+                        ? "text-black"
+                        : "text-amber-700"
+                  }`}>
+                    <AlertTriangle className="w-4 h-4" />
+                    Unmapped Component Types (Skipped Migration)
+                  </h3>
+
+                  <div className={`p-4 rounded-xl border text-xs space-y-3 ${
+                    selectedTheme === "inksaver" 
+                      ? "border-2 border-black bg-white text-black" 
+                      : "bg-amber-50/20 border-amber-100/70 text-slate-700"
+                  }`}>
+                    <div className="flex gap-2 items-start leading-relaxed text-[11px]">
+                      <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${
+                        selectedTheme === "inksaver" ? "text-black" : "text-amber-600"
+                      }`} />
+                      <div>
+                        <span className="font-bold text-slate-900">Warning: </span>
+                        The following legacy component types contain active data records in the Oracle source database for this structure, but were skipped during migration because no field mapping settings have been configured. To migrate this data, establish a mapping specification in the Mapping tab.
+                      </div>
+                    </div>
+
+                    <table className={`w-full border-collapse ${selectedTheme === "inksaver" ? "border-2 border-black" : "border border-amber-100/40"}`}>
+                      <thead>
+                        <tr className={`border-b text-[9px] font-extrabold uppercase tracking-wider text-left ${
+                          selectedTheme === "inksaver" 
+                            ? "bg-slate-100 border-b-2 border-black text-black" 
+                            : "bg-amber-50/40 border-amber-100/30 text-amber-800"
+                        }`}>
+                          <th className="px-4 py-2">Component Code</th>
+                          <th className="px-4 py-2 text-right">Oracle Record Count</th>
+                          <th className="px-4 py-2 text-right">Migration Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-amber-100/30 text-xs">
+                        {unmappedComponents.map((item) => (
+                          <tr key={item.code} className="hover:bg-amber-50/10 transition-colors">
+                            <td className="px-4 py-2 text-slate-900">
+                              <span className="font-mono font-bold">{item.code}</span>
+                              {item.name && (
+                                <span className="text-[10px] text-slate-500 font-bold ml-1.5 uppercase">
+                                  ({item.name})
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-right font-mono text-slate-700">{item.rowCount}</td>
+                            <td className="px-4 py-2 text-right font-bold text-[9.5px]">
+                              <span className={`px-2 py-0.5 rounded uppercase ${
+                                selectedTheme === "inksaver"
+                                  ? "border border-black text-black font-black"
+                                  : "bg-amber-50 border border-amber-100 text-amber-700"
+                              }`}>
+                                SKIPPED / UNMAPPED
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {/* --- MANIFEST OF COPIED ITEMS --- */}
               <div className="py-4 space-y-4 page-break-before-auto">
