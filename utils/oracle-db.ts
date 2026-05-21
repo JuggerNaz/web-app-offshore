@@ -1,5 +1,6 @@
 // @ts-ignore
 import oracledb from "oracledb";
+import fs from "fs";
 
 // Ensure thin mode is explicitly enabled
 let isInitialized = false;

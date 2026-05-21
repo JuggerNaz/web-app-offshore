@@ -2,9 +2,6 @@
 // Trigger recompile
 const nextConfig = {
   serverExternalPackages: ['oracledb'],
-  experimental: {
-    serverComponentsExternalPackages: ['oracledb']
-  },
   turbopack: {
     root: __dirname,
   },

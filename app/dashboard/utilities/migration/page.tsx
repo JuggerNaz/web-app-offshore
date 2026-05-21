@@ -35,14 +35,43 @@ export default function MigrationDashboard() {
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [jobpacks, setJobpacks] = useState<any[]>([]);
   const [isLoadingJobpacks, setIsLoadingJobpacks] = useState(false);
+  const [selectedJobpack, setSelectedJobpack] = useState<any | null>(null);
+  const [inspectionSummary, setInspectionSummary] = useState<any | null>(null);
+  const [isLoadingInspectionSummary, setIsLoadingInspectionSummary] = useState(false);
 
   const [activeTab, setActiveTab] = useState("connection");
   const [mappingStructureType, setMappingStructureType] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
   
+  const [oracleColumnsCache, setOracleColumnsCache] = useState<Record<string, string[]>>({});
+  
+  const fetchOracleColumns = async (tableName: string) => {
+    if (oracleColumnsCache[tableName]) return oracleColumnsCache[tableName];
+    
+    try {
+      const res = await fetch("/api/migration/oracle-columns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config, tableName })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setOracleColumnsCache(prev => ({ ...prev, [tableName]: data.data.columns }));
+        return data.data.columns;
+      }
+    } catch (err) {
+      console.error("Failed to fetch oracle columns for", tableName, err);
+    }
+    return [];
+  };
+
   // Mapping State
   const [selectedMappingEntity, setSelectedMappingEntity] = useState<string>("STRUCTURE");
+  const activeMappingKey = selectedMappingEntity === "STRUCTURE" 
+    ? `STRUCTURE_${mappingStructureType}` 
+    : selectedMappingEntity;
+
   const [mappings, setMappings] = useState<Record<string, { oracleCol: string; pgCol: string }[]>>({
-    "STRUCTURE": [
+    "STRUCTURE_PLATFORM": [
       { oracleCol: "PLAT_ID", pgCol: "plat_id" },
       { oracleCol: "TITLE", pgCol: "title" },
       { oracleCol: "PFIELD", pgCol: "pfield" },
@@ -103,6 +132,41 @@ export default function MigrationDashboard() {
       { oracleCol: "NORTH_SIDE", pgCol: "north_side" },
       { oracleCol: "NLEG_T1", pgCol: "nleg_t1" },
       { oracleCol: "NLEG_T2", pgCol: "nleg_t2" }
+    ],
+    "STRUCTURE_PIPELINE": [
+      { oracleCol: "PIPE_ID", pgCol: "pipe_id" },
+      { oracleCol: "TITLE", pgCol: "title" },
+      { oracleCol: "PFIELD", pgCol: "pfield" },
+      { oracleCol: "PDESC", pgCol: "pdesc" },
+      { oracleCol: "PTYPE", pgCol: "ptype" },
+      { oracleCol: "INST_DATE", pgCol: "inst_date" },
+      { oracleCol: "DESG_LIFE", pgCol: "desg_life" },
+      { oracleCol: "ST_NORTH", pgCol: "st_north" },
+      { oracleCol: "ST_EAST", pgCol: "st_east" },
+      { oracleCol: "DEPTH", pgCol: "depth" },
+      { oracleCol: "AN_QTY", pgCol: "an_qty" },
+      { oracleCol: "AN_TYPE", pgCol: "an_type" },
+      { oracleCol: "INST_CTR", pgCol: "inst_ctr" },
+      { oracleCol: "WALL_THK", pgCol: "wall_thk" },
+      { oracleCol: "PROCESS", pgCol: "process" },
+      { oracleCol: "PLEGS", pgCol: "plegs" },
+      { oracleCol: "CR_USER", pgCol: "cr_user" },
+      { oracleCol: "CR_DATE", pgCol: "cr_date" },
+      { oracleCol: "LINE_DIAM", pgCol: "line_diam" },
+      { oracleCol: "PLENGTH", pgCol: "plength" },
+      { oracleCol: "BURIAL", pgCol: "burial" },
+      { oracleCol: "CONC_CTG", pgCol: "conc_ctg" },
+      { oracleCol: "OPER_PRESS", pgCol: "oper_press" }
+    ],
+    "JOBPACK_SOW": [
+      { oracleCol: "INSPNO", pgCol: "jobpack_id" },
+      { oracleCol: "JOBNAME", pgCol: "title" },
+      { oracleCol: "ISTART", pgCol: "start_date" },
+      { oracleCol: "CONTRAC", pgCol: "contractor" },
+      { oracleCol: "JOB_TYPE", pgCol: "job_type" },
+      { oracleCol: "VESSEL_NAME", pgCol: "vessel_name" },
+      { oracleCol: "DATE_START", pgCol: "vessel_date_of_start" },
+      { oracleCol: "REP_PREFIX", pgCol: "sow_report_no" }
     ]
   });
 
@@ -126,6 +190,13 @@ export default function MigrationDashboard() {
       if (savedMappings) {
         const parsed = JSON.parse(savedMappings);
         if (parsed && typeof parsed === "object") {
+          // Backward compatibility: Migration of legacy mappings
+          if (parsed.STRUCTURE && !parsed.STRUCTURE_PLATFORM) {
+            parsed.STRUCTURE_PLATFORM = parsed.STRUCTURE;
+          }
+          if (parsed.STRUCTURE && !parsed.STRUCTURE_PIPELINE) {
+            parsed.STRUCTURE_PIPELINE = parsed.STRUCTURE;
+          }
           setMappings(prev => ({
             ...prev,
             ...parsed
@@ -153,9 +224,34 @@ export default function MigrationDashboard() {
   }, [config]);
 
   // Copy mappings to clipboard and state
+  const handleSelectInspectionMapping = async (type: "ROV" | "DIVING", code: string, tableName: string) => {
+    const key = `INSP_${type}_${code}`;
+    setSelectedMappingEntity(key);
+    
+    // Fetch columns for the table (non-blocking for UI)
+    fetchOracleColumns(tableName);
+
+    setMappings(prev => {
+      if (prev[key] && prev[key].length > 0) return prev;
+      
+      // Auto-populate default shared fields
+      const defaults = [
+        { oracleCol: "INSP_ID", pgCol: "oracle_insp_id" },
+        { oracleCol: "COMP_ID", pgCol: "component_id" },
+        { oracleCol: "INSPNO", pgCol: "jobpack_id" },
+        { oracleCol: "TAPE_NO", pgCol: "tape_id" },
+        { oracleCol: "DIVE_NO", pgCol: type === "ROV" ? "rov_job_id" : "dive_job_id" },
+        { oracleCol: "INSP_DATE", pgCol: "inspection_date" },
+        { oracleCol: "INSP_TIME", pgCol: "inspection_time" }
+      ];
+      
+      return { ...prev, [key]: defaults };
+    });
+  };
+
   const handleCopyMappings = () => {
     try {
-      const activeMappings = mappings[selectedMappingEntity] || [];
+      const activeMappings = mappings[activeMappingKey] || [];
       if (activeMappings.length === 0) {
         toast.error(`No mappings found to copy for target "${selectedMappingEntity}"`);
         return;
@@ -187,7 +283,7 @@ export default function MigrationDashboard() {
       
       setMappings(prev => ({
         ...prev,
-        [selectedMappingEntity]: parsed
+        [activeMappingKey]: parsed
       }));
       toast.success(`Successfully pasted ${parsed.length} field mappings to "${selectedMappingEntity}"! Click "Save Mappings" to persist.`);
     } catch (err: any) {
@@ -206,33 +302,33 @@ export default function MigrationDashboard() {
 
   const handleAddMapping = () => {
     setMappings(prev => {
-      const entityMappings = prev[selectedMappingEntity] || [];
+      const entityMappings = prev[activeMappingKey] || [];
       return {
         ...prev,
-        [selectedMappingEntity]: [...entityMappings, { oracleCol: "", pgCol: "" }]
+        [activeMappingKey]: [...entityMappings, { oracleCol: "", pgCol: "" }]
       };
     });
   };
 
   const handleUpdateMapping = (index: number, field: "oracleCol" | "pgCol", value: string) => {
     setMappings(prev => {
-      const entityMappings = [...(prev[selectedMappingEntity] || [])];
+      const entityMappings = [...(prev[activeMappingKey] || [])];
       entityMappings[index][field] = value;
-      return { ...prev, [selectedMappingEntity]: entityMappings };
+      return { ...prev, [activeMappingKey]: entityMappings };
     });
   };
 
   const handleRemoveMapping = (index: number) => {
     setMappings(prev => {
-      const entityMappings = [...(prev[selectedMappingEntity] || [])];
+      const entityMappings = [...(prev[activeMappingKey] || [])];
       entityMappings.splice(index, 1);
-      return { ...prev, [selectedMappingEntity]: entityMappings };
+      return { ...prev, [activeMappingKey]: entityMappings };
     });
   };
 
   const handleMoveMapping = (index: number, direction: "up" | "down") => {
     setMappings(prev => {
-      const entityMappings = [...(prev[selectedMappingEntity] || [])];
+      const entityMappings = [...(prev[activeMappingKey] || [])];
       if (direction === "up" && index > 0) {
         const temp = entityMappings[index];
         entityMappings[index] = entityMappings[index - 1];
@@ -242,7 +338,7 @@ export default function MigrationDashboard() {
         entityMappings[index] = entityMappings[index + 1];
         entityMappings[index + 1] = temp;
       }
-      return { ...prev, [selectedMappingEntity]: entityMappings };
+      return { ...prev, [activeMappingKey]: entityMappings };
     });
   };
 
@@ -294,13 +390,19 @@ export default function MigrationDashboard() {
       setIsMigrating(true);
       setMigrationLogs(["Starting migration process..."]);
       
+      // Adapt payload with dynamically populated STRUCTURE mapping
+      const payloadMappings = {
+        ...mappings,
+        STRUCTURE: mappings[`STRUCTURE_${mappingStructureType}`] || mappings.STRUCTURE || []
+      };
+
       const res = await fetch("/api/migration/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           config,
           structureId: selectedStructureId,
-          mappings
+          mappings: payloadMappings
         })
       });
       const data = await res.json();
@@ -425,6 +527,8 @@ export default function MigrationDashboard() {
     setMigrationReport(null);
     setMigrationProgress(null);
     setJobpacks([]);
+    setSelectedJobpack(null);
+    setInspectionSummary(null);
 
     setSelectedStructureId(strId);
     
@@ -478,6 +582,48 @@ export default function MigrationDashboard() {
       console.error("Error fetching jobpacks:", err);
     } finally {
       setIsLoadingJobpacks(false);
+    }
+  };
+
+  const handleJobpackSelect = async (jp: any) => {
+    setSelectedJobpack(jp);
+    setInspectionSummary(null);
+    
+    const inspNoVal = jp.INSPNO || jp.inspno;
+    if (!selectedStructureId || !inspNoVal) return;
+
+    try {
+      setIsLoadingInspectionSummary(true);
+      const res = await fetch("/api/migration/inspection-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config,
+          str_id: selectedStructureId,
+          inspno: inspNoVal,
+          structureType: mappingStructureType
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setInspectionSummary(data.data);
+      } else {
+        toast.error(
+          <div className="flex flex-col gap-1">
+            <span className="font-bold">{data.error || "Failed to fetch inspection summary"}</span>
+            {data.details && <span className="text-xs opacity-90 font-mono break-all">{data.details}</span>}
+          </div>
+        );
+      }
+    } catch (err: any) {
+      toast.error(
+        <div className="flex flex-col gap-1">
+          <span className="font-bold">An error occurred</span>
+          <span className="text-xs opacity-90 font-mono break-all">{err.message}</span>
+        </div>
+      );
+    } finally {
+      setIsLoadingInspectionSummary(false);
     }
   };
 
@@ -677,10 +823,17 @@ export default function MigrationDashboard() {
                                   const hasRov = jp.HAS_ROV || jp.has_rov || jp.hasRov || false;
                                   const hasDiving = jp.HAS_DIVING || jp.has_diving || jp.hasDiving || false;
                                   
+                                  const isSelected = selectedJobpack && (selectedJobpack.INSPNO === jp.INSPNO || selectedJobpack.inspno === jp.INSPNO || selectedJobpack.INSPNO === jp.inspno);
+                                  
                                   return (
                                     <div 
                                       key={`${jobName}-${index}`} 
-                                      className="flex items-center justify-between gap-2 p-2 bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 dark:hover:border-slate-700/60 rounded-lg transition-all duration-200 shadow-sm group"
+                                      onClick={() => handleJobpackSelect(jp)}
+                                      className={`flex items-center justify-between gap-2 p-2 rounded-lg transition-all duration-200 shadow-sm group cursor-pointer border ${
+                                        isSelected 
+                                          ? "border-indigo-500 dark:border-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20" 
+                                          : "bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/50 border-slate-100 dark:border-slate-800/60 hover:border-slate-200 dark:hover:border-slate-700/60"
+                                      }`}
                                     >
                                       <div className="flex items-center gap-2 flex-1 min-w-0">
                                         <div className="w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100/50 dark:border-indigo-900/35 flex items-center justify-center text-indigo-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
@@ -1153,6 +1306,200 @@ export default function MigrationDashboard() {
                       )}
                     </CardContent>
                   </Card>
+
+                  {/* Section B: Inspection Data, Anomaly & Attachments */}
+                  <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+                    <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 pb-3">
+                      <div>
+                        <CardTitle className="text-sm font-black uppercase text-slate-800 dark:text-slate-200">
+                          Inspection Data, Anomaly & Attachments
+                        </CardTitle>
+                        <CardDescription className="text-[10px] uppercase font-bold text-slate-500 mt-0.5">
+                          Phase 2: Target Job Pack Analysis
+                        </CardDescription>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-6">
+                      {!selectedJobpack ? (
+                        <div className="py-12 flex flex-col items-center justify-center text-slate-400 text-center">
+                          <Sparkles className="w-8 h-8 opacity-20 mb-3 text-indigo-500 animate-pulse" />
+                          <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                            Select an Active Job Pack from the sidebar to view Inspection Data Summary
+                          </span>
+                        </div>
+                      ) : isLoadingInspectionSummary ? (
+                        <div className="py-12 flex flex-col items-center justify-center text-slate-400">
+                          <RefreshCw className="w-6 h-6 animate-spin mb-2 text-indigo-500" />
+                          <span className="text-xs font-bold uppercase tracking-widest">
+                            Loading Phase 2 Summary Details...
+                          </span>
+                        </div>
+                      ) : inspectionSummary ? (
+                        <div className="space-y-6">
+                          {/* Jobpack Header Details */}
+                          <div className="p-4 bg-indigo-50/30 dark:bg-indigo-950/10 border border-indigo-100/50 dark:border-indigo-900/35 rounded-xl flex items-center justify-between flex-wrap gap-4">
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-black uppercase tracking-wider text-indigo-500">
+                                Active Selection
+                              </span>
+                              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                {selectedJobpack.JOBNAME || selectedJobpack.jobname || selectedJobpack.JOB_NAME || selectedJobpack.job_name || "Selected Job Pack"}
+                              </h4>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] font-extrabold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/30 px-2 py-0.5 rounded-md">
+                                INSPNO: {selectedJobpack.INSPNO || selectedJobpack.inspno}
+                              </span>
+                              <span className="text-[9px] font-extrabold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/30 px-2 py-0.5 rounded-md">
+                                STR_ID: {selectedStructureId}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* ROV vs Diving Split Lists */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* ROV Inspections */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
+                                  ROV Platform Inspections
+                                </h5>
+                                <span className="text-[9px] font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200/40 dark:border-cyan-800/20 px-2 py-0.5 rounded">
+                                  {(inspectionSummary.rovInspections || []).length} Types
+                                </span>
+                              </div>
+                              
+                              <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                                {(inspectionSummary.rovInspections || []).length > 0 ? (
+                                  (inspectionSummary.rovInspections || []).map((rov: any, idx: number) => (
+                                    <div key={idx} className="p-3 bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/80 hover:border-slate-200 dark:hover:border-slate-700 rounded-xl shadow-sm flex items-center justify-between gap-3 group transition-all duration-200">
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className="w-7 h-7 rounded-lg bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-100/50 dark:border-cyan-900/30 flex items-center justify-center text-cyan-500 shrink-0">
+                                          <span className="text-[9px] font-extrabold">{rov.code}</span>
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
+                                            {rov.name}
+                                          </p>
+                                          <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5">
+                                            Oracle Table: {mappingStructureType === "PLATFORM" ? "PLATGI" : "allinspid"}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <span className="text-xs font-black text-slate-800 dark:text-slate-200">{rov.count}</span>
+                                        <span className="text-[8px] text-slate-400 block font-bold mt-0.5">Rows</span>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-center py-8 text-xs font-semibold text-slate-400 bg-white dark:bg-slate-900/20 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
+                                    No ROV inspection data records found.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Diving Inspections */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                  Diving Inspections
+                                </h5>
+                                <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/40 dark:border-emerald-800/20 px-2 py-0.5 rounded">
+                                  {(inspectionSummary.divingInspections || []).length} Types
+                                </span>
+                              </div>
+                              
+                              <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                                {(inspectionSummary.divingInspections || []).length > 0 ? (
+                                  (inspectionSummary.divingInspections || []).map((div: any, idx: number) => (
+                                    <div key={idx} className="p-3 bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/80 hover:border-slate-200 dark:hover:border-slate-700 rounded-xl shadow-sm flex items-center justify-between gap-3 group transition-all duration-200">
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100/50 dark:border-emerald-900/30 flex items-center justify-center text-emerald-500 shrink-0">
+                                          <span className="text-[9px] font-extrabold">{div.code}</span>
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                                            {div.name}
+                                          </p>
+                                          <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5">
+                                            Oracle Table: allinspid
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <span className="text-xs font-black text-slate-800 dark:text-slate-200">{div.count}</span>
+                                        <span className="text-[8px] text-slate-400 block font-bold mt-0.5">Rows</span>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-center py-8 text-xs font-semibold text-slate-400 bg-white dark:bg-slate-900/20 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
+                                    No Diving inspection data records found.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* General Data Storage Audits & Log Summary */}
+                          <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                            <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
+                              <Database className="w-3.5 h-3.5 text-indigo-500" />
+                              General Media & Log Verification Audit
+                            </h5>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              {/* Diver Logs Card */}
+                              <div className="p-4 bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 rounded-2xl space-y-1 group hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
+                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Diver Logs (LOGS Table)</span>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-lg font-black text-slate-800 dark:text-slate-200">{inspectionSummary.logsCount || 0}</span>
+                                  <span className="text-[8px] px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded uppercase font-bold border border-indigo-100/50 dark:border-indigo-900/20">
+                                    Diver & ROV
+                                  </span>
+                                </div>
+                                <p className="text-[8px] text-slate-400">All diver logs reside centrally in the LOGS table.</p>
+                              </div>
+
+                              {/* ROV Video Logs Card */}
+                              <div className="p-4 bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 rounded-2xl space-y-1 group hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
+                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">ROV Video (PLATG/PLATGI)</span>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-lg font-black text-cyan-600 dark:text-cyan-400">{inspectionSummary.platgVideoCount || 0}</span>
+                                  <span className="text-[8px] px-1.5 py-0.5 bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 rounded uppercase font-bold border border-cyan-100/50 dark:border-cyan-900/20">
+                                    ROV Video
+                                  </span>
+                                </div>
+                                <p className="text-[8px] text-slate-400">ROV video logs are embedded directly in the PLATG/PLATGI tables.</p>
+                              </div>
+
+                              {/* Diving Video Logs Card */}
+                              <div className="p-4 bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 rounded-2xl space-y-1 group hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
+                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Diving Video (video)</span>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">{inspectionSummary.videoCount || 0}</span>
+                                  <span className="text-[8px] px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded uppercase font-bold border border-emerald-100/50 dark:border-emerald-900/20">
+                                    Diving Video
+                                  </span>
+                                </div>
+                                <p className="text-[8px] text-slate-400">Diving video references reside in the dedicated video table.</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="py-12 flex flex-col items-center justify-center text-slate-400 text-center">
+                          <Database className="w-8 h-8 opacity-20 mb-3" />
+                          <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                            Failed to load summary metadata.
+                          </span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             </TabsContent>
@@ -1227,7 +1574,7 @@ export default function MigrationDashboard() {
                               {mappingStructureType === "PLATFORM" ? "PLATFORM → platform" : "U_PIPELINE → u_pipeline"}
                             </span>
                           </span>
-                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STRUCTURE"] || []).length}</span>
+                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings[activeMappingKey] || []).length}</span>
                         </button>
                         <button
                           onClick={() => setSelectedMappingEntity("ATTACHMENT")}
@@ -1279,7 +1626,17 @@ export default function MigrationDashboard() {
                           </span>
                           <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_FACES"] || []).length}</span>
                         </button>
-                        
+                        <button
+                          onClick={() => setSelectedMappingEntity("JOBPACK_SOW")}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "JOBPACK_SOW" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                        >
+                          <span className="flex flex-col items-start gap-0.5">
+                            <span>Jobpack & SOW</span>
+                            <span className="text-[8px] opacity-75 font-mono lowercase">WORKPL → jobpack/u_sow</span>
+                          </span>
+                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["JOBPACK_SOW"] || []).length}</span>
+                        </button>
+
                         <div className="pt-4 pb-1">
                           <Label className="text-[10px] font-black uppercase text-slate-400">Components</Label>
                         </div>
@@ -1301,6 +1658,46 @@ export default function MigrationDashboard() {
                                 </span>
                               </span>
                               <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings[s.CODE] || []).length}</span>
+                            </button>
+                          );
+                        })}
+                        
+                        <div className="pt-4 pb-1">
+                          <Label className="text-[10px] font-black uppercase text-slate-400">Inspections</Label>
+                        </div>
+                        {inspectionSummary && (inspectionSummary.rovInspections || []).map((rov: any) => {
+                          const key = `INSP_ROV_${rov.code}`;
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => handleSelectInspectionMapping("ROV", rov.code, "PLATGI")}
+                              className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === key ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                            >
+                              <span className="flex flex-col items-start gap-0.5 max-w-[210px] overflow-hidden">
+                                <span className="truncate w-full text-left">ROV: {rov.code} {rov.name ? `- ${rov.name}` : ""}</span>
+                                <span className="text-[8px] opacity-75 font-mono lowercase truncate w-full text-left">
+                                  PLATGI (SCODE='{rov.code}') → inspection_data
+                                </span>
+                              </span>
+                              <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 shrink-0">{(mappings[key] || []).length}</span>
+                            </button>
+                          );
+                        })}
+                        {inspectionSummary && (inspectionSummary.divingInspections || []).map((div: any) => {
+                          const key = `INSP_DIV_${div.code}`;
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => handleSelectInspectionMapping("DIVING", div.code, div.code)}
+                              className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === key ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                            >
+                              <span className="flex flex-col items-start gap-0.5 max-w-[210px] overflow-hidden">
+                                <span className="truncate w-full text-left">DIVING: {div.code} {div.name ? `- ${div.name}` : ""}</span>
+                                <span className="text-[8px] opacity-75 font-mono lowercase truncate w-full text-left">
+                                  {div.code} → inspection_data
+                                </span>
+                              </span>
+                              <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 shrink-0">{(mappings[key] || []).length}</span>
                             </button>
                           );
                         })}
@@ -1326,6 +1723,13 @@ export default function MigrationDashboard() {
                             pgDesc = isPlat ? "PostgreSQL Platform Entity" : "PostgreSQL Pipeline Entity";
                             pkCol = isPlat ? "PLAT_ID" : "PIPE_ID";
                             break;
+                          case "JOBPACK_SOW":
+                            oracleTable = "WORKPL + TASKSTR + U_SOW + JOB_VESSEL";
+                            oracleDesc = "Combined Jobpack and Scope of Work details";
+                            pgTable = "jobpack & u_sow";
+                            pgDesc = "Normalized Jobpack and Scope of Work tables";
+                            pkCol = "INSPNO";
+                            break;
                           case "ATTACHMENT":
                             oracleTable = "U_ATTACH_1";
                             oracleDesc = "Legacy Multimedia Attachments Reference Table";
@@ -1350,15 +1754,31 @@ export default function MigrationDashboard() {
                             pkCol = "PLAT_ID";
                             break;
                           default:
-                            let specTable = `${selectedMappingEntity}_COMP`;
-                            if (selectedMappingEntity.toLowerCase() === 'an') {
-                              specTable = isPlat ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+                            if (selectedMappingEntity.startsWith("INSP_ROV_")) {
+                              oracleTable = "PLATGI";
+                              const scode = selectedMappingEntity.replace("INSP_ROV_", "");
+                              oracleDesc = `Legacy ROV Inspection Type: ${scode}`;
+                              pgTable = "insp_records";
+                              pgDesc = "Normalized inspection records (inspection_data JSONB)";
+                              pkCol = "INSP_ID";
+                            } else if (selectedMappingEntity.startsWith("INSP_DIV_")) {
+                              const typeCode = selectedMappingEntity.replace("INSP_DIV_", "");
+                              oracleTable = typeCode;
+                              oracleDesc = `Legacy Diving Inspection Spec Table: ${typeCode}`;
+                              pgTable = "insp_records";
+                              pgDesc = "Normalized inspection records (inspection_data JSONB)";
+                              pkCol = "INSP_ID";
+                            } else {
+                              let specTable = `${selectedMappingEntity}_COMP`;
+                              if (selectedMappingEntity.toLowerCase() === 'an') {
+                                specTable = isPlat ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+                              }
+                              oracleTable = `ALLCOMPID + ${specTable}`;
+                              oracleDesc = `Legacy detailed spec view joined with ${specTable}`;
+                              pgTable = "structure_components";
+                              pgDesc = "Centralized polymorphic components registry";
+                              pkCol = "COMP_ID";
                             }
-                            oracleTable = `ALLCOMPID + ${specTable}`;
-                            oracleDesc = `Legacy detailed spec view joined with ${specTable}`;
-                            pgTable = "structure_components";
-                            pgDesc = "Centralized polymorphic components registry";
-                            pkCol = "COMP_ID";
                         }
 
                         return (
@@ -1401,15 +1821,44 @@ export default function MigrationDashboard() {
                           <div className="col-span-2 text-right pr-4">Actions</div>
                         </div>
                         
-                        {(mappings[selectedMappingEntity] || []).length === 0 ? (
+                        {(mappings[activeMappingKey] || []).length === 0 ? (
                           <div className="p-8 text-center text-slate-400 text-xs font-bold uppercase tracking-widest border border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
                             No mapping rules defined. Unmapped fields will be ignored or dumped to JSON data.
                           </div>
                         ) : (
-                          (mappings[selectedMappingEntity] || []).map((mapRule, idx) => (
-                            <div key={idx} className="grid grid-cols-12 gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
+                          <>
+                            {(() => {
+                              if (selectedMappingEntity === "JOBPACK_SOW") {
+                                return (
+                                  <datalist id="oracle-columns-list">
+                                    <option value="INSPNO" />
+                                    <option value="JOBNAME" />
+                                    <option value="ISTART" />
+                                    <option value="CONTRAC" />
+                                    <option value="JOB_TYPE" />
+                                    <option value="VESSEL_NAME" />
+                                    <option value="DATE_START" />
+                                    <option value="REP_PREFIX" />
+                                  </datalist>
+                                );
+                              }
+                              let tableKey = "";
+                              if (selectedMappingEntity.startsWith("INSP_ROV_")) tableKey = "PLATGI";
+                              else if (selectedMappingEntity.startsWith("INSP_DIV_")) tableKey = selectedMappingEntity.replace("INSP_DIV_", "");
+                              
+                              return tableKey && oracleColumnsCache[tableKey] && oracleColumnsCache[tableKey].length > 0 ? (
+                                <datalist id="oracle-columns-list">
+                                  {oracleColumnsCache[tableKey].map((col: string) => (
+                                    <option key={col} value={col} />
+                                  ))}
+                                </datalist>
+                              ) : null;
+                            })()}
+                            {(mappings[activeMappingKey] || []).map((mapRule, idx) => (
+                              <div key={idx} className="grid grid-cols-12 gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
                               <div className="col-span-4">
                                 <Input 
+                                  list="oracle-columns-list"
                                   value={mapRule.oracleCol} 
                                   onChange={(e) => handleUpdateMapping(idx, "oracleCol", e.target.value)}
                                   placeholder="e.g. STR_ID" 
@@ -1442,7 +1891,7 @@ export default function MigrationDashboard() {
                                   type="button"
                                   variant="ghost" 
                                   size="icon" 
-                                  disabled={idx === (mappings[selectedMappingEntity] || []).length - 1}
+                                  disabled={idx === (mappings[activeMappingKey] || []).length - 1}
                                   onClick={() => handleMoveMapping(idx, "down")}
                                   className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none"
                                 >
@@ -1459,7 +1908,8 @@ export default function MigrationDashboard() {
                                 </Button>
                               </div>
                             </div>
-                          ))
+                          ))}
+                          </>
                         )}
                       </div>
                     </div>

@@ -25,7 +25,12 @@ import {
   UserCheck, 
   CalendarDays, 
   Check, 
-  Eye
+  Eye,
+  Download,
+  Share2,
+  Mail,
+  FileJson,
+  Copy
 } from "lucide-react";
 
 interface MigrationReportPreviewProps {
@@ -121,6 +126,10 @@ export default function MigrationReportPreview({
   const [includeSignOff, setIncludeSignOff] = useState(true);
   const [generationDate, setGenerationDate] = useState("");
 
+  // Export states
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   const printAreaRef = useRef<HTMLDivElement>(null);
 
   // Set date on mount
@@ -141,6 +150,24 @@ export default function MigrationReportPreview({
       document.title = prevTitle;
     }, 1000);
   };
+
+  // Toggle print-active class on body during print trigger
+  useEffect(() => {
+    const handleBeforePrint = () => {
+      document.body.classList.add("printing-active");
+    };
+    const handleAfterPrint = () => {
+      document.body.classList.remove("printing-active");
+    };
+
+    window.addEventListener("beforeprint", handleBeforePrint);
+    window.addEventListener("afterprint", handleAfterPrint);
+
+    return () => {
+      window.removeEventListener("beforeprint", handleBeforePrint);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, []);
 
   // Handle auto-print if requested
   useEffect(() => {
@@ -167,6 +194,633 @@ export default function MigrationReportPreview({
   } else if (totalPgRows === 0 && totalOracleRows > 0) {
     migrationStatus = "FAILED";
   }
+
+
+
+  // Handler for high-fidelity client-side A4 PDF download
+  const handleExportPDF = async () => {
+    setIsExportingPDF(true);
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      // Accent top border (Indigo 600)
+      doc.setFillColor(79, 70, 229);
+      doc.rect(15, 15, 180, 1.8, "F");
+
+      // Main Document Title
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(15);
+      doc.setTextColor(15, 23, 42); // Slate 900
+      doc.text(reportTitle.toUpperCase(), 15, 24);
+
+      // Veracity Brand Subtitle
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139); // Slate 500
+      doc.text("VERACITY INTEGRITY AUDIT & SCHEMA TRANSLATION ANALYTICS", 15, 28.5);
+
+      // Unique Stamp box (Confidential seal code)
+      doc.setFillColor(248, 250, 252);
+      doc.rect(145, 19, 50, 17, "F");
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(145, 19, 50, 17, "D");
+
+      doc.setFontSize(6);
+      doc.setTextColor(148, 163, 184);
+      doc.text("REPORT CODE", 148, 23);
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`MIG-${selectedStructureId}-${new Date().getFullYear()}`, 148, 27.5);
+
+      // Status Badge in Stamp box
+      let badgeBg = [240, 253, 250]; // Emerald 50
+      let badgeText = [5, 150, 105]; // Emerald 700
+      if (migrationStatus === "FAILED") {
+        badgeBg = [255, 241, 242]; // Rose 50
+        badgeText = [225, 29, 72]; // Rose 700
+      } else if (migrationStatus === "COMPLETED WITH ERRORS") {
+        badgeBg = [254, 243, 199]; // Amber 50
+        badgeText = [217, 119, 6]; // Amber 700
+      }
+      doc.setFillColor(badgeBg[0], badgeBg[1], badgeBg[2]);
+      doc.rect(148, 30.2, 44, 4, "F");
+      doc.setFontSize(5.5);
+      doc.setTextColor(badgeText[0], badgeText[1], badgeText[2]);
+      doc.text(migrationStatus, 150.5, 33.2);
+
+      doc.setDrawColor(241, 245, 249);
+      doc.line(15, 39, 195, 39);
+
+      // Metadata card grid
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 116, 139);
+      doc.text("STRUCTURE NAME:", 15, 45);
+      doc.text("STRUCTURE ID:", 15, 50);
+      doc.text("ASSET CLASS:", 15, 55);
+      doc.text("UNIT STANDARD:", 15, 60);
+
+      doc.setTextColor(30, 41, 59);
+      doc.setFont("helvetica", "normal");
+      doc.text(selectedStructure?.TITLE || "Platform ID " + selectedStructureId, 48, 45);
+      doc.setFont("helvetica", "bold");
+      doc.text(selectedStructureId, 48, 50);
+      doc.setFont("helvetica", "normal");
+      doc.text(selectedStructure?.PTYPE === "PIPE" ? "Pipeline Structure" : "Platform Structure", 48, 55);
+      doc.text(selectedStructure?.DEF_UNIT || "METRIC", 48, 60);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 116, 139);
+      doc.text("SOURCE DB:", 110, 45);
+      doc.text("DESTINATION DB:", 110, 50);
+      doc.text("GENERATED ON:", 110, 55);
+      doc.text("VERIFIED BY:", 110, 60);
+
+      doc.setTextColor(30, 41, 59);
+      doc.setFont("helvetica", "normal");
+      const hostShort = oracleConfig.host ? (oracleConfig.host.length > 25 ? oracleConfig.host.substring(0, 22) + "..." : oracleConfig.host) : "Local Oracle";
+      doc.text(`Oracle DB (${hostShort})`, 140, 45);
+      doc.text("PostgreSQL (Supabase)", 140, 50);
+      doc.setFont("helvetica", "bold");
+      doc.text(generationDate, 140, 55);
+      doc.setFont("helvetica", "normal");
+      doc.text(inspectorName || "Asset Engineer", 140, 60);
+
+      doc.setDrawColor(241, 245, 249);
+      doc.line(15, 65, 195, 65);
+
+      // --- Executive Metrics ---
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      doc.text("EXECUTIVE AUDIT SUMMARY", 15, 71);
+
+      const cardWidth = 41;
+      const cardHeight = 14;
+      const cardGap = 5;
+      const cardsData = [
+        { label: "ORACLE RECORDS", val: totalOracleRows.toString() },
+        { label: "POSTGRES RECORDS", val: totalPgRows.toString(), color: [79, 70, 229] },
+        { label: "TRANSFER RATE", val: `${overallAccuracy}%`, color: overallAccuracy >= 90 ? [5, 150, 105] : overallAccuracy >= 60 ? [217, 119, 6] : [225, 29, 72] },
+        { label: "FAILED RECORDS", val: totalErrorsCount.toString(), color: totalErrorsCount > 0 ? [225, 29, 72] : [5, 150, 105] }
+      ];
+
+      cardsData.forEach((c, idx) => {
+        const x = 15 + idx * (cardWidth + cardGap);
+        doc.setFillColor(248, 250, 252);
+        doc.rect(x, 75, cardWidth, cardHeight, "F");
+        doc.setDrawColor(241, 245, 249);
+        doc.rect(x, 75, cardWidth, cardHeight, "D");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(5.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text(c.label, x + 3, 79);
+
+        doc.setFontSize(10.5);
+        if (c.color) {
+          doc.setTextColor(c.color[0], c.color[1], c.color[2]);
+        } else {
+          doc.setTextColor(30, 41, 59);
+        }
+        doc.text(c.val, x + 3, 86.5);
+      });
+
+      // Accuracy bar indicator
+      doc.setFillColor(248, 250, 252);
+      doc.rect(15, 93, 180, 12, "F");
+      doc.setDrawColor(241, 245, 249);
+      doc.rect(15, 93, 180, 12, "D");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6);
+      doc.setTextColor(100, 116, 139);
+      doc.text("OVERALL ACCURACY & COMPLETENESS SUCCESS RATE", 18, 97.5);
+      doc.text(`${overallAccuracy}%`, 185, 97.5, { align: "right" });
+
+      doc.setFillColor(226, 232, 240);
+      doc.rect(18, 100.5, 174, 2.2, "F");
+
+      let barColor = [79, 70, 229];
+      if (overallAccuracy >= 95) barColor = [16, 185, 129];
+      else if (overallAccuracy < 75) barColor = [244, 63, 94];
+
+      doc.setFillColor(barColor[0], barColor[1], barColor[2]);
+      doc.rect(18, 100.5, 174 * (overallAccuracy / 100), 2.2, "F");
+
+      // --- Table Breakdown ---
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      doc.text("DETAILED DATA TRANSLATION BREAKDOWN", 15, 112);
+
+      const tableRows = Object.entries(migrationReport).map(([key, item]) => {
+        const percent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
+        let statusText = "SUCCESSFUL";
+        if (item.status === "skipped") statusText = "SKIPPED";
+        else if (item.errors.length > 0 || item.status === "failed") statusText = "FAILED";
+
+        const compName = getComponentFullName(key);
+        const nameCell = compName ? `${key} (${compName})` : key;
+
+        return [
+          nameCell,
+          item.oracleRows.toString(),
+          item.migratedRows.toString(),
+          `${percent}%`,
+          statusText
+        ];
+      });
+
+      autoTable(doc, {
+        startY: 116,
+        head: [["Entity Table Name", "Oracle Count", "Postgres Count", "Accuracy", "Process Status"]],
+        body: tableRows,
+        theme: "striped",
+        headStyles: {
+          fillColor: [79, 70, 229],
+          textColor: 255,
+          fontSize: 7,
+          fontStyle: "bold"
+        },
+        bodyStyles: {
+          fontSize: 6.5,
+          textColor: [51, 65, 85]
+        },
+        columnStyles: {
+          0: { cellWidth: 70 },
+          1: { halign: "right", cellWidth: 25 },
+          2: { halign: "right", cellWidth: 25 },
+          3: { halign: "right", cellWidth: 25 },
+          4: { halign: "center", cellWidth: 35 }
+        },
+        margin: { left: 15, right: 15 }
+      });
+
+      let finalY = (doc as any).lastAutoTable.finalY + 8;
+
+      // Unmapped warning
+      if (unmappedComponents && unmappedComponents.length > 0) {
+        if (finalY > 235) {
+          doc.addPage();
+          finalY = 20;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(180, 83, 9);
+        doc.text("UNMAPPED COMPONENT TYPES (SKIPPED MIGRATION)", 15, finalY);
+
+        finalY += 3.5;
+
+        const unmappedRows = unmappedComponents.map(item => {
+          const compName = item.name || getComponentFullName(item.code);
+          const nameCell = compName ? `${item.code} (${compName})` : item.code;
+          return [nameCell, item.rowCount.toString(), "SKIPPED / UNMAPPED"];
+        });
+
+        autoTable(doc, {
+          startY: finalY,
+          head: [["Component Code", "Oracle Record Count", "Migration Status"]],
+          body: unmappedRows,
+          theme: "striped",
+          headStyles: {
+            fillColor: [217, 119, 6],
+            textColor: 255,
+            fontSize: 7,
+            fontStyle: "bold"
+          },
+          bodyStyles: {
+            fontSize: 6.5,
+            textColor: [51, 65, 85]
+          },
+          columnStyles: {
+            0: { cellWidth: 95 },
+            1: { halign: "right", cellWidth: 40 },
+            2: { halign: "center", cellWidth: 45 }
+          },
+          margin: { left: 15, right: 15 }
+        });
+
+        finalY = (doc as any).lastAutoTable.finalY + 8;
+      }
+
+      // Itemized Copied Records Manifest
+      const manifestItems: string[] = [];
+      const structType = selectedStructure?.PTYPE === "PIPE" ? "Pipeline" : "Platform";
+
+      if (migrationReport["STRUCTURE"]?.status === "success") {
+        manifestItems.push(`${structType} structure master records successfully translated and upserted into PostgreSQL target table.`);
+      }
+      
+      ["STR_ELV", "STR_LEVEL", "STR_FACES"].forEach(key => {
+        const rep = migrationReport[key];
+        if (rep && rep.status === "success" && rep.migratedRows > 0) {
+          const entityLabel = key === "STR_ELV" ? "Elevations" : key === "STR_LEVEL" ? "Levels" : "Faces";
+          manifestItems.push(`${rep.migratedRows} structural ${entityLabel.toLowerCase()} records processed, linked, and inserted.`);
+        }
+      });
+
+      Object.entries(migrationReport).forEach(([key, rep]) => {
+        const isSystem = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC"].includes(key.toUpperCase());
+        if (!isSystem && rep.status === "success" && rep.migratedRows > 0) {
+          manifestItems.push(`${rep.migratedRows} legacy '${key}' (Component) records successfully extracted, transformed, and saved.`);
+        }
+      });
+
+      if (migrationReport["U_ASSOC"]?.status === "success" && migrationReport["U_ASSOC"].migratedRows > 0) {
+        manifestItems.push(`${migrationReport["U_ASSOC"].migratedRows} structural components parent/child hierarchy mappings successfully resolved.`);
+      }
+
+      if (migrationReport["ATTACHMENT"]?.status === "success" && migrationReport["ATTACHMENT"].migratedRows > 0) {
+        manifestItems.push(`${migrationReport["ATTACHMENT"].migratedRows} legacy file attachments linked, cataloged, and registered.`);
+      }
+
+      if (migrationReport["COMMENT"]?.status === "success" && migrationReport["COMMENT"].migratedRows > 0) {
+        manifestItems.push(`${migrationReport["COMMENT"].migratedRows} historical comments and field logs migrated successfully.`);
+      }
+
+      if (manifestItems.length > 0) {
+        if (finalY > 230) {
+          doc.addPage();
+          finalY = 20;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(30, 41, 59);
+        doc.text("ITEMIZED COPIED RECORDS MANIFEST", 15, finalY);
+
+        finalY += 5;
+
+        manifestItems.forEach(item => {
+          if (finalY > 265) {
+            doc.addPage();
+            finalY = 20;
+          }
+
+          doc.setDrawColor(16, 185, 129);
+          doc.setFillColor(240, 253, 250);
+          doc.circle(18, finalY - 1, 1.5, "FD");
+          
+          doc.setDrawColor(5, 150, 105);
+          doc.line(17.3, finalY - 1.2, 17.8, finalY - 0.7);
+          doc.line(17.8, finalY - 0.7, 18.7, finalY - 1.6);
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7.5);
+          doc.setTextColor(51, 65, 85);
+          
+          const lines = doc.splitTextToSize(item, 165);
+          doc.text(lines, 23, finalY);
+          
+          finalY += (lines.length * 4) + 2.5;
+        });
+        
+        finalY += 3;
+      }
+
+      // Errors and Diagnostics
+      const failedItems = Object.entries(migrationReport).filter(([_, item]) => item.errors && item.errors.length > 0);
+      if (includeErrors && failedItems.length > 0) {
+        if (finalY > 220) {
+          doc.addPage();
+          finalY = 20;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(225, 29, 72);
+        doc.text("DATABASE EXCEPTION & ERROR DIAGNOSTICS", 15, finalY);
+
+        finalY += 3.5;
+
+        failedItems.forEach(([tblName, item]) => {
+          if (finalY > 250) {
+            doc.addPage();
+            finalY = 20;
+          }
+
+          doc.setFillColor(254, 242, 242);
+          doc.rect(15, finalY, 180, 18, "F");
+          doc.setDrawColor(254, 226, 226);
+          doc.rect(15, finalY, 180, 18, "D");
+
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(6.5);
+          doc.setTextColor(225, 29, 72);
+          doc.text(`TABLE: ${tblName.toUpperCase()}`, 18, finalY + 4);
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(6);
+          doc.setTextColor(100, 116, 139);
+          const errSnippet = item.errors[0] ? (item.errors[0].length > 105 ? item.errors[0].substring(0, 102) + "..." : item.errors[0]) : "Unknown foreign key constraint violation.";
+          doc.text(`ERROR LOG: > ${errSnippet}`, 18, finalY + 9);
+
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(71, 85, 105);
+          doc.text(`RESOLUTION: Verify target schema constraints in public.${tblName.toLowerCase()} on PostgreSQL (Supabase).`, 18, finalY + 14);
+
+          finalY += 21;
+        });
+
+        finalY += 2;
+      }
+
+      // Process Step & Log Reports
+      if (includeLogs && migrationLogs && migrationLogs.length > 0) {
+        if (finalY > 220) {
+          doc.addPage();
+          finalY = 20;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(30, 41, 59);
+        doc.text("PROCESS STEP & LOG REPORTS", 15, finalY);
+
+        finalY += 5;
+
+        const logLines: string[] = [];
+        migrationLogs.forEach(log => {
+          const splitLogs = doc.splitTextToSize(`> ${log}`, 170);
+          logLines.push(...splitLogs);
+        });
+
+        let currentBlockY = finalY;
+        doc.setFillColor(15, 23, 42); // Slate 900
+        
+        let spaceRemaining = 270 - currentBlockY;
+        let linesThatFit = Math.floor(spaceRemaining / 3.5);
+        
+        if (linesThatFit < 5) {
+          doc.addPage();
+          currentBlockY = 20;
+          spaceRemaining = 270 - currentBlockY;
+          linesThatFit = Math.floor(spaceRemaining / 3.5);
+        }
+
+        const blockLines = logLines.slice(0, linesThatFit);
+        const rectHeight = (blockLines.length * 3.5) + 6;
+        doc.rect(15, currentBlockY, 180, rectHeight, "F");
+        
+        doc.setFont("courier", "bold");
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184); // Slate 400
+        doc.text("PROCESS AUDIT TRAIL:", 18, currentBlockY + 4.5);
+        
+        doc.setFont("courier", "normal");
+        doc.setTextColor(52, 211, 153); // Emerald 400
+        
+        let logY = currentBlockY + 8.5;
+        blockLines.forEach(line => {
+          doc.text(line, 18, logY);
+          logY += 3.5;
+        });
+
+        let remainingLogLines = logLines.slice(linesThatFit);
+        finalY = logY + 4;
+
+        while (remainingLogLines.length > 0) {
+          doc.addPage();
+          currentBlockY = 20;
+          
+          spaceRemaining = 270 - currentBlockY;
+          linesThatFit = Math.floor(spaceRemaining / 3.5);
+          
+          const currentBlockLines = remainingLogLines.slice(0, linesThatFit);
+          const currentRectHeight = (currentBlockLines.length * 3.5) + 4;
+          
+          doc.setFillColor(15, 23, 42); // Slate 900
+          doc.rect(15, currentBlockY, 180, currentRectHeight, "F");
+          
+          doc.setFont("courier", "normal");
+          doc.setTextColor(52, 211, 153); // Emerald 400
+          
+          logY = currentBlockY + 3.5;
+          currentBlockLines.forEach(line => {
+            doc.text(line, 18, logY);
+            logY += 3.5;
+          });
+          
+          remainingLogLines = remainingLogLines.slice(linesThatFit);
+          finalY = logY + 4;
+        }
+      }
+
+      // Sign off
+      if (includeSignOff) {
+        if (finalY > 215) {
+          doc.addPage();
+          finalY = 20;
+        }
+
+        doc.setDrawColor(226, 232, 240);
+        doc.line(15, finalY, 195, finalY);
+
+        finalY += 5;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(30, 41, 59);
+        doc.text("LEAD INSPECTOR VERIFICATION", 15, finalY);
+
+        finalY += 8;
+
+        doc.setDrawColor(30, 41, 59);
+        doc.line(15, finalY, 80, finalY);
+        doc.line(100, finalY, 135, finalY);
+
+        doc.setFontSize(5.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text("VERIFIER SIGNATURE", 15, finalY + 3);
+        doc.text("DATE SIGNED", 100, finalY + 3);
+
+        finalY += 9;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7);
+        doc.setTextColor(30, 41, 59);
+        doc.text(inspectorName, 15, finalY);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.line(15, finalY + 1.8, 80, finalY + 1.8);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(5.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text("AUTHORIZED NAME / TITLE", 15, finalY + 5);
+        doc.text("VERACITY STAMP", 100, finalY + 5);
+
+        // Affix Stamp Box
+        doc.setDrawColor(203, 213, 225);
+        doc.setFillColor(248, 250, 252);
+        doc.rect(145, finalY - 20, 50, 22, "F");
+        doc.rect(145, finalY - 20, 50, 22, "D");
+        
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(5);
+        doc.setTextColor(148, 163, 184);
+        doc.text("AFFIX SEAL HERE", 149, finalY - 16);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(4.5);
+        doc.text("Asset Integrity Dept.\nOracle Data Audit Unit", 149, finalY - 12);
+      }
+
+      // Dynamic page footer on all pages
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setDrawColor(241, 245, 249);
+        doc.line(15, 285, 195, 285);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(5.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text("MIGRATION VERIFICATION AUDIT MANIFEST • CONFIDENTIAL", 15, 289);
+        doc.text(`PAGE ${i} OF ${pageCount}`, 195, 289, { align: "right" });
+      }
+
+      doc.save(`${reportTitle.replace(/\s+/g, "_")}_${selectedStructureId}.pdf`);
+    } catch (error) {
+      console.error("Failed to generate PDF:", error);
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  // Handler to export structured JSON metrics
+  const handleExportJSON = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+      structureId: selectedStructureId,
+      structureTitle: selectedStructure?.TITLE,
+      generatedAt: generationDate,
+      summary: {
+        totalOracleRows,
+        totalPgRows,
+        overallAccuracy,
+        totalErrorsCount,
+        migrationStatus
+      },
+      report: migrationReport,
+      unmappedComponents,
+      logs: migrationLogs
+    }, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `migration_report_${selectedStructureId}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  // Handler to copy report summary text
+  const handleCopyClipboardText = () => {
+    const summaryText = `
+MIGRATION VERIFICATION AUDIT SUMMARY
+------------------------------------
+Report Code: MIG-${selectedStructureId}-${new Date().getFullYear()}
+Structure: ${selectedStructure?.TITLE || "Platform ID " + selectedStructureId} (ID: ${selectedStructureId})
+Asset Class: ${selectedStructure?.PTYPE === "PIPE" ? "Pipeline Structure" : "Platform Structure"}
+Unit Standard: ${selectedStructure?.DEF_UNIT || "METRIC"}
+Generated On: ${generationDate}
+Verified By: ${inspectorName}
+
+EXECUTIVE METRICS:
+- Oracle Source Records: ${totalOracleRows}
+- Postgres Dest Records: ${totalPgRows}
+- Transfer Rate: ${overallAccuracy}%
+- Failed Records: ${totalErrorsCount}
+- Overall Status: ${migrationStatus}
+
+DETAILED BREAKDOWN:
+${Object.entries(migrationReport).map(([key, item]) => {
+  const percent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
+  return `- ${key} (${getComponentFullName(key) || "System"}): ${item.oracleRows} -> ${item.migratedRows} (${percent}% - ${item.status.toUpperCase()})`;
+}).join("\n")}
+
+${unmappedComponents && unmappedComponents.length > 0 ? `
+UNMAPPED COMPONENTS (SKIPPED):
+${unmappedComponents.map(item => `- ${item.code} (${getComponentFullName(item.code) || "Unknown"}): ${item.rowCount} records`).join("\n")}
+` : ""}
+`;
+    navigator.clipboard.writeText(summaryText.trim());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Handler to share report via pre-filled email
+  const handleShareEmail = () => {
+    const subject = encodeURIComponent(`Migration Audit Report: ${selectedStructure?.TITLE || selectedStructureId}`);
+    const body = encodeURIComponent(`Dear Team,
+
+Please find the Migration Audit Summary for the platform/pipeline structure below:
+
+Report Code: MIG-${selectedStructureId}-${new Date().getFullYear()}
+Structure: ${selectedStructure?.TITLE || "Platform ID " + selectedStructureId} (ID: ${selectedStructureId})
+Generated On: ${generationDate}
+Status: ${migrationStatus}
+
+Key Metrics:
+- Oracle Records: ${totalOracleRows}
+- Postgres Records: ${totalPgRows}
+- Migration Accuracy: ${overallAccuracy}%
+- Errors Encountered: ${totalErrorsCount}
+
+Detailed report tables and execution logs are attached in the system dashboard.
+
+Best regards,
+${inspectorName}
+`);
+    window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
+  };
 
   // Compile detailed copied manifest items dynamically based on counts
   const renderManifestItems = () => {
@@ -238,6 +892,23 @@ export default function MigrationReportPreview({
             </div>
           </div>
           <div className="flex items-center gap-2.5">
+            <Button 
+              onClick={handleExportPDF}
+              disabled={isExportingPDF}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800/50 text-white font-black uppercase tracking-wider text-xs px-5 h-9 rounded-lg shadow-md flex items-center gap-1.5 transition-all"
+            >
+              {isExportingPDF ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  Download PDF
+                </>
+              )}
+            </Button>
             <Button 
               onClick={handlePrint}
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-wider text-xs px-5 h-9 rounded-lg shadow-md flex items-center gap-1.5 transition-all"
@@ -383,6 +1054,51 @@ export default function MigrationReportPreview({
                     <span className="text-[9px] text-slate-500">Physical validation sign-off area</span>
                   </div>
                 </label>
+              </div>
+
+              <div className="h-[1px] bg-slate-800" />
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Step 4: Export & Share</span>
+                <h4 className="text-sm font-bold text-slate-200">Share Report</h4>
+              </div>
+
+              <div className="space-y-2">
+                <Button 
+                  onClick={handleExportJSON}
+                  variant="outline"
+                  className="w-full justify-start gap-2 border-slate-800 hover:bg-slate-800/80 bg-slate-900/40 text-slate-300 hover:text-white h-9 text-xs font-bold uppercase"
+                >
+                  <FileJson className="w-4 h-4 text-amber-500" />
+                  Download JSON Data
+                </Button>
+                
+                <Button 
+                  onClick={handleCopyClipboardText}
+                  variant="outline"
+                  className="w-full justify-start gap-2 border-slate-800 hover:bg-slate-800/80 bg-slate-900/40 text-slate-300 hover:text-white h-9 text-xs font-bold uppercase relative"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-500" />
+                      <span>Copied Summary!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 text-indigo-400" />
+                      <span>Copy Text Summary</span>
+                    </>
+                  )}
+                </Button>
+
+                <Button 
+                  onClick={handleShareEmail}
+                  variant="outline"
+                  className="w-full justify-start gap-2 border-slate-800 hover:bg-slate-800/80 bg-slate-900/40 text-slate-300 hover:text-white h-9 text-xs font-bold uppercase"
+                >
+                  <Mail className="w-4 h-4 text-emerald-400" />
+                  Share via Email
+                </Button>
               </div>
             </div>
 
@@ -857,21 +1573,33 @@ export default function MigrationReportPreview({
               color: black !important;
               overflow: visible !important;
               height: auto !important;
+              min-height: 0 !important;
             }
 
-            /* 2. Hide everything on the screen by default */
-            body * {
+            /* 2. Hide the main dashboard page entirely when printing is active */
+            body.printing-active > *:not(div[data-radix-portal]) {
+              display: none !important;
+            }
+
+            /* 3. Completely hide radix portal overlays, close buttons, and non-printable siblings */
+            body.printing-active div[class*="bg-black/80"],
+            body.printing-active button:has(svg.lucide-x),
+            body.printing-active button[class*="absolute"],
+            body.printing-active .DialogOverlay {
+              display: none !important;
               visibility: hidden !important;
+              height: 0 !important;
+              width: 0 !important;
+              overflow: hidden !important;
             }
 
-            /* 3. Unconstrain Radix Dialog/Portal overlays and parents of our report */
-            div[data-radix-portal],
-            div[data-radix-portal] > div,
-            div[data-radix-portal] > div > div,
-            div[role="dialog"],
-            #migration-dialog-content,
-            #migration-dialog-work-area,
-            #migration-report-canvas-container {
+            /* 4. Unconstrain every ancestor wrapper of our printable report inside the portal */
+            body.printing-active div[data-radix-portal],
+            body.printing-active div[data-radix-portal] > div,
+            body.printing-active div[role="dialog"],
+            body.printing-active #migration-dialog-content,
+            body.printing-active #migration-dialog-work-area,
+            body.printing-active #migration-report-canvas-container {
               visibility: visible !important;
               overflow: visible !important;
               position: static !important;
@@ -894,24 +1622,22 @@ export default function MigrationReportPreview({
               bottom: auto !important;
             }
 
-            /* 4. Hide screen-only interactive elements inside the dialog (header, sidebar) */
+            /* 5. Hide screen-only interactive elements inside the dialog (header, sidebar) */
             #migration-dialog-content > div:first-child,
             #migration-dialog-work-area > div:first-child {
               display: none !important;
             }
 
-            /* 5. Force the printable report to display and flow naturally */
-            #migration-printable-report, 
-            #migration-printable-report * {
-              visibility: visible !important;
-            }
-
+            /* 6. Force the printable report to display and flow naturally */
             #migration-printable-report {
-              position: relative !important;
+              visibility: visible !important;
               display: block !important;
+              position: relative !important;
               width: 100% !important;
               max-width: 210mm !important;
               min-height: 297mm !important;
+              height: auto !important;
+              overflow: visible !important;
               padding: 15mm !important;
               margin: 0 auto !important;
               border: none !important;
@@ -920,7 +1646,16 @@ export default function MigrationReportPreview({
               color: black !important;
             }
 
-            /* 6. Page-break settings for elegant text flow */
+            #migration-printable-report * {
+              visibility: visible !important;
+            }
+
+            /* Hide the absolute hardcoded bottom page footer during print */
+            #migration-printable-report > div.absolute.bottom-6 {
+              display: none !important;
+            }
+
+            /* 7. Page-break settings for elegant text flow */
             .page-break-inside-avoid {
               page-break-inside: avoid !important;
             }

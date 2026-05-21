@@ -10,7 +10,7 @@ import { withAuth } from "@/utils/with-auth";
 export const POST = withAuth(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ str_id: string }> }
+    { params, user }: { params: Promise<{ str_id: string }>; user: any }
   ) => {
     let connection;
     try {

@@ -10,7 +10,7 @@ import { withAuth } from "@/utils/with-auth";
 export const POST = withAuth(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ str_id: string }> }
+    { params, user }: { params: Promise<{ str_id: string }>; user: any }
   ) => {
     let connection;
     try {
@@ -78,6 +78,17 @@ export const POST = withAuth(
           { strId: str_id }
         );
         typeCounts = typeResult.rows || [];
+        
+        // If query succeeded but returned 0 rows or only rows with empty/null INSP_TYPE,
+        // trigger the fallback to try INSPTYPE column.
+        const hasValidTypes = typeCounts.some((row: any) => {
+          const code = row.INSP_TYPE || row.insp_type || "";
+          return String(code).trim() !== "";
+        });
+        
+        if (typeCounts.length === 0 || !hasValidTypes) {
+          throw new Error("INSP_TYPE returned no records or only empty values. Trying INSPTYPE fallback.");
+        }
       } catch (countErr: any) {
         console.warn("Oracle query with INSP_TYPE failed, trying fallback with INSPTYPE:", countErr.message);
         try {
@@ -114,8 +125,8 @@ export const POST = withAuth(
           inspnoDataMap[inspno].rovCount += count;
         }
 
-        // Diving logic: insp_type not in ('PLATGI','NAVIG','LOGS','EXSUM')
-        if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM'].includes(inspType)) {
+        // Diving logic: insp_type not in ('PLATGI','NAVIG','LOGS','EXSUM') and is not empty
+        if (inspType && !['PLATGI', 'NAVIG', 'LOGS', 'EXSUM'].includes(inspType)) {
           inspnoDataMap[inspno].divingCounts[inspType] = (inspnoDataMap[inspno].divingCounts[inspType] || 0) + count;
         }
       }
