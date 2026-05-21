@@ -40,7 +40,8 @@ const ComponentMesh = ({
     onClick,
     start,
     end,
-    thickness = 0.3
+    thickness = 0.3,
+    showWeldLabels = false
 }: { 
     component: Component3D; 
     isSelected: boolean; 
@@ -48,6 +49,7 @@ const ComponentMesh = ({
     start: [number, number, number];
     end: [number, number, number];
     thickness?: number;
+    showWeldLabels?: boolean;
 }) => {
     const [hovered, setHovered] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
@@ -85,8 +87,16 @@ const ComponentMesh = ({
     const euler = new THREE.Euler().setFromQuaternion(quaternion);
 
     // Zoom-based visibility logic removed as per user request
-    // Labels now only show on hover or selection
-    const showLabel = hovered || isSelected;
+    // Labels now only show on hover or selection, or persistent weld labels if toggled
+    const showLabel = hovered || isSelected || (showWeldLabels && isWeld);
+    
+    let labelText = component.q_id;
+    if (isWeld) {
+        const match = component.q_id.match(/WN\s*N?([A-Za-z0-9]+)/i) || component.q_id.match(/N?([A-Za-z0-9]+)/);
+        if (match) {
+            labelText = match[1];
+        }
+    }
     
     // Offset anodes from the center of the member so they sit on the surface
     const offsetPos = isAnode ? [0.4, 0, 0] : [0, 0, 0];
@@ -155,10 +165,12 @@ const ComponentMesh = ({
                         className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${
                             isSelected 
                                 ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100" 
-                                : "bg-white/90 text-blue-900 border-blue-200"
+                                : isWeld && showWeldLabels
+                                    ? "bg-orange-500 text-white border-orange-400 scale-100 opacity-90 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
+                                    : "bg-white/90 text-blue-900 border-blue-200"
                         }`}
                     >
-                        {component.q_id}
+                        {labelText}
                     </div>
                 </Html>
             )}
@@ -243,6 +255,29 @@ export function Structural3DViewer({
     onSelectComponent 
 }: Structural3DViewerProps) {
     const [showGrid, setShowGrid] = useState(true);
+    const [showWeldLabels, setShowWeldLabels] = useState(false);
+    const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
+    const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
+    const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | null>(null);
+
+    // Helper to sanitize elevation typos
+    const sanitizeElevation = (elvVal: any): number => {
+        if (elvVal === undefined || elvVal === null) return 0;
+        let val = typeof elvVal === 'number' ? elvVal : parseFloat(elvVal);
+        if (isNaN(val)) return 0;
+        if (val === 50.772) return -50.772; // Fix 50m spike typo
+        if (val < -1000) return val / 1000;  // Fix -21424m typo
+        return val;
+    };
+
+    const availableElevations = useMemo(() => {
+        const values = elevations.map(e => sanitizeElevation(e.elv));
+        return Array.from(new Set(values)).sort((a, b) => b - a);
+    }, [elevations]);
+
+    const availableFaces = useMemo(() => {
+        return faces.map(f => f.face).filter(Boolean);
+    }, [faces]);
     
     const { componentLayouts, foundationMembers, elvMarkers } = useMemo(() => {
         // 1. Determine Leg Footprints and Grid Centering
@@ -291,8 +326,27 @@ export function Structural3DViewer({
             }
         });
 
+        const isD21JT = platformDetails?.title?.toUpperCase().includes('D21JT') || false;
+
+        const getLegCoordsAtElv = (legName: string, yVal: number) => {
+            const key = legName.toUpperCase();
+            if (isD21JT) {
+                const L = 13.91 - 0.12489 * (yVal - 2.872);
+                const W = 12.45 - 0.16665 * (yVal - 2.872);
+                
+                if (key === 'A1') return { x: -L/2, z: W/2 };
+                if (key === 'B1') return { x: L/2, z: W/2 };
+                if (key === 'A2') return { x: -L/2, z: -W/2 };
+                if (key === 'B2') return { x: L/2, z: -W/2 };
+            }
+            if (legMap[key]) {
+                return legMap[key];
+            }
+            return { x: 0, z: 0 };
+        };
+
         // 2. Determine Elevation Levels
-        const elvValues = elevations.map(e => parseFloat(e.elv || "0")).sort((a, b) => b - a);
+        const elvValues = elevations.map(e => sanitizeElevation(e.elv)).sort((a, b) => b - a);
         const maxElv = elvValues.length > 0 ? Math.max(...elvValues) : 5;
         const minElv = elvValues.length > 0 ? Math.min(...elvValues) : -30;
 
@@ -300,12 +354,14 @@ export function Structural3DViewer({
         const foundationMembers: any[] = [];
         const elvMarkers: any[] = [];
         
-        // Render Vertical Legs
-        Object.entries(legMap).forEach(([name, pos]) => {
+        // Render Vertical Legs (Tapered/Splayed)
+        Object.keys(legMap).forEach((name) => {
+            const startCoords = getLegCoordsAtElv(name, maxElv + 5);
+            const endCoords = getLegCoordsAtElv(name, minElv);
             foundationMembers.push({
                 id: `leg-${name}`,
-                start: [pos.x, maxElv + 5, pos.z], // Extend slightly above max
-                end: [pos.x, minElv, pos.z],
+                start: [startCoords.x, maxElv + 5, startCoords.z], // Extend slightly above max
+                end: [endCoords.x, minElv, endCoords.z],
                 thickness: 0.8,
                 color: "#94a3b8", // slate-400 (galvanized look)
                 label: name
@@ -314,66 +370,72 @@ export function Structural3DViewer({
 
         // Render Horizontal Rows (Faces) at each elevation
         faces.forEach(face => {
-            const fromPos = legMap[face.face_from?.toUpperCase()];
-            const toPos = legMap[face.face_to?.toUpperCase()];
-            
-            if (fromPos && toPos) {
-                elvValues.forEach((elv, idx) => {
-                    foundationMembers.push({
-                        id: `face-${face.face}-${idx}`,
-                        start: [fromPos.x, elv, fromPos.z],
-                        end: [toPos.x, elv, toPos.z],
-                        thickness: 0.4,
-                        color: "#64748b", // slate-500
-                        label: face.face
-                    });
+            elvValues.forEach((elv, idx) => {
+                const fromCoords = getLegCoordsAtElv(face.face_from, elv);
+                const toCoords = getLegCoordsAtElv(face.face_to, elv);
+                foundationMembers.push({
+                    id: `face-${face.face}-${idx}`,
+                    start: [fromCoords.x, elv, fromCoords.z],
+                    end: [toCoords.x, elv, toCoords.z],
+                    thickness: 0.4,
+                    color: "#64748b", // slate-500
+                    label: face.face
                 });
-            }
+            });
         });
 
         // Generate Elevation Markers
         elevations.forEach(e => {
+            const y = sanitizeElevation(e.elv);
             elvMarkers.push({
-                y: parseFloat(e.elv || "0"),
-                label: `${e.elv}m`
+                y: y,
+                label: `${y.toFixed(3)}m`
             });
         });
 
         // 4. Build 3D Node Map for existing components
         const nodeMap = new Map<string, THREE.Vector3>();
+        const nodeLegMap = new Map<string, string>();
         
         components.forEach(c => {
             const md = c.metadata || {};
+            const code = (c.code || "").toUpperCase();
+            const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG", "WN", "CF", "CG", "CD", "CO", "CA"].includes(code);
             
             const processNode = (nodeName: string | undefined, legName: string | undefined, elv: string | undefined) => {
                 if (!nodeName || nodeMap.has(nodeName)) return;
                 
                 let x = 0, y = 0, z = 0;
                 
+                // Determine vertical coordinate (elevation) first
+                if (elv) {
+                    y = sanitizeElevation(elv);
+                } else if (md.depth) {
+                    y = -sanitizeElevation(md.depth) / 10 || 0;
+                }
+                
                 // Determine base horizontal coordinates
                 const legKey = legName?.toUpperCase();
-                if (legKey && legMap[legKey]) {
-                    x = legMap[legKey].x;
-                    z = legMap[legKey].z;
+                if (legKey) {
+                    const coords = getLegCoordsAtElv(legKey, y);
+                    x = coords.x;
+                    z = coords.z;
+                    nodeLegMap.set(nodeName, legKey);
                 } else if (md.easting || md.northing) {
                     x = parseFloat(md.easting || "0") / 100 || 0;
                     z = parseFloat(md.northing || "0") / 100 || 0;
                 }
                 
-                // Apply Distance and Clock Position Offsets
-                if (md.dist) {
+                // Only apply distance/clock position offsets for non-primary components (like clamps/anodes)
+                // and only if the distance is small (e.g. less than 3 meters)
+                if (md.dist && !isPrimary) {
                     const distance = parseFloat(md.dist);
-                    const clockPos = parseFloat(md.clk_pos || "12");
-                    const angle = (clockPos / 12) * Math.PI * 2;
-                    x += Math.sin(angle) * distance;
-                    z += Math.cos(angle) * distance;
-                }
-                
-                // Determine vertical coordinate (elevation)
-                if (elv) {
-                    y = parseFloat(elv);
-                } else if (md.depth) {
-                    y = -parseFloat(md.depth || "0") / 10 || 0;
+                    if (distance < 3.0) {
+                        const clockPos = parseFloat(md.clk_pos || "12");
+                        const angle = (clockPos / 12) * Math.PI * 2;
+                        x += Math.sin(angle) * distance;
+                        z += Math.cos(angle) * distance;
+                    }
                 }
                 
                 nodeMap.set(nodeName, new THREE.Vector3(x, y, z));
@@ -415,10 +477,10 @@ export function Structural3DViewer({
             } else if (md.associated_comp_id) {
                 pendingAttachments.push(c);
                 return; // Skip to next, resolve in Pass 2
-            } else if (md.s_leg && legMap[md.s_leg.toUpperCase()]) {
-                const legPos = legMap[md.s_leg.toUpperCase()];
-                const y = md.elv_1 ? parseFloat(md.elv_1) : (md.depth ? -parseFloat(md.depth)/10 : 0);
-                start.set(legPos.x, y, legPos.z);
+            } else if (md.s_leg) {
+                const y = sanitizeElevation(md.elv_1 || (md.depth ? -parseFloat(md.depth)/10 : 0));
+                const coords = getLegCoordsAtElv(md.s_leg, y);
+                start.set(coords.x, y, coords.z);
                 end.copy(start);
                 resolved = true;
             } else if (md.easting || md.northing) {
@@ -461,7 +523,7 @@ export function Structural3DViewer({
                 start.copy(pStart).add(pEnd).multiplyScalar(0.5); // Midpoint default
                 
                 if (md.depth || md.elv_1) {
-                    const targetY = md.elv_1 ? parseFloat(md.elv_1) : (-parseFloat(md.depth) / 10);
+                    const targetY = sanitizeElevation(md.elv_1 || (-parseFloat(md.depth) / 10));
                     if (Math.abs(pEnd.y - pStart.y) > 0.001) {
                         const t = (targetY - pStart.y) / (pEnd.y - pStart.y);
                         const clampedT = Math.max(0, Math.min(1, t));
@@ -490,15 +552,122 @@ export function Structural3DViewer({
             intermediateLayouts.set(c.id, { component: c, start, end, thickness });
         });
 
-        const componentLayouts = Array.from(intermediateLayouts.values()).map(layout => ({
+        const resolvedLayouts = Array.from(intermediateLayouts.values()).map(layout => ({
             component: layout.component,
             start: [layout.start.x, layout.start.y, layout.start.z] as [number, number, number],
             end: [layout.end.x, layout.end.y, layout.end.z] as [number, number, number],
             thickness: layout.thickness
         }));
 
-        return { componentLayouts, foundationMembers, elvMarkers };
-    }, [components, platformDetails, elevations, faces]);
+        const getComponentLegs = (comp: any) => {
+            const compMd = comp.metadata || {};
+            const sLeg = (compMd.s_leg || nodeLegMap.get(compMd.s_node) || "").toUpperCase();
+            const fLeg = (compMd.f_leg || nodeLegMap.get(compMd.f_node) || "").toUpperCase();
+            return { sLeg, fLeg };
+        };
+
+        // Helper to check if component belongs strictly to the face plane (outermost members only)
+        const isComponentOnFace = (comp: any, faceName: string) => {
+            const compMd = comp.metadata || {};
+            const faceObj = faces.find(f => f.face?.toUpperCase() === faceName.toUpperCase());
+            if (!faceObj) return false;
+
+            const fFrom = (faceObj.face_from || "").toUpperCase();
+            const fTo = (faceObj.face_to || "").toUpperCase();
+            const faceLegs = [fFrom, fTo].filter(Boolean);
+            if (faceLegs.length !== 2) return false;
+
+            const { sLeg, fLeg } = getComponentLegs(comp);
+            if (!sLeg || !fLeg) return false;
+
+            const sMatch = faceLegs.includes(sLeg);
+            const fMatch = faceLegs.includes(fLeg);
+
+            // Outermost face members only: both ends must belong to the face's leg set {fFrom, fTo}
+            if (sMatch && fMatch) return true;
+
+            // If explicit face metadata is present, still require the component to be on the face legs
+            if (compMd.face?.toUpperCase() === faceName.toUpperCase()) {
+                return sMatch && fMatch;
+            }
+
+            return false;
+        };
+
+        const filteredLayouts = resolvedLayouts.filter(layout => {
+            const c = layout.component;
+            const md = c.metadata || {};
+            
+            if (selectedElevations.length > 0) {
+                const startY = layout.start[1];
+                const endY = layout.end[1];
+                
+                const matchesStart = selectedElevations.some(selElv => Math.abs(startY - selElv) < 0.1);
+                const matchesEnd = selectedElevations.some(selElv => Math.abs(endY - selElv) < 0.1);
+                
+                // Both start and end coordinates must match one of the selected elevations
+                // (keeps only the horizontal members/components at this level slice)
+                if (!matchesStart || !matchesEnd) return false;
+            }
+            
+            if (selectedFaces.length > 0) {
+                const matchesFace = selectedFaces.some(faceName => isComponentOnFace(c, faceName));
+                if (!matchesFace) return false;
+            }
+            
+            return true;
+        });
+
+        const filteredFoundationMembers = foundationMembers.filter(m => {
+            if (m.id.startsWith("leg-")) {
+                const legName = m.label;
+                if (selectedFaces.length > 0) {
+                    const matchesFace = selectedFaces.some(faceName => {
+                        const faceObj = faces.find(f => f.face?.toUpperCase() === faceName.toUpperCase());
+                        if (faceObj) {
+                            return faceObj.face_from?.toUpperCase() === legName.toUpperCase() || 
+                                   faceObj.face_to?.toUpperCase() === legName.toUpperCase();
+                        }
+                        return false;
+                    });
+                    if (!matchesFace) return false;
+                }
+            }
+            
+            if (m.id.startsWith("face-")) {
+                const faceName = m.label;
+                if (selectedFaces.length > 0) {
+                    if (!selectedFaces.includes(faceName)) return false;
+                }
+            }
+
+            // Both start and end coordinates of foundation members must match selected elevations
+            if (selectedElevations.length > 0) {
+                const startY = m.start[1];
+                const endY = m.end[1];
+                
+                const matchesStart = selectedElevations.some(selElv => Math.abs(startY - selElv) < 0.1);
+                const matchesEnd = selectedElevations.some(selElv => Math.abs(endY - selElv) < 0.1);
+                
+                if (!matchesStart || !matchesEnd) return false;
+            }
+            
+            return true;
+        });
+
+        const filteredElvMarkers = elvMarkers.filter(m => {
+            if (selectedElevations.length > 0) {
+                return selectedElevations.some(selElv => Math.abs(m.y - selElv) < 0.1);
+            }
+            return true;
+        });
+
+        return { 
+            componentLayouts: filteredLayouts, 
+            foundationMembers: filteredFoundationMembers, 
+            elvMarkers: filteredElvMarkers
+        };
+    }, [components, platformDetails, elevations, faces, selectedElevations, selectedFaces]);
 
     return (
         <div className="w-full h-full bg-blue-50 relative rounded-3xl overflow-hidden border border-blue-100 shadow-2xl">
@@ -542,6 +711,7 @@ export function Structural3DViewer({
                                     start={layout.start}
                                     end={layout.end}
                                     thickness={layout.thickness}
+                                    showWeldLabels={showWeldLabels}
                                 />
                         ))}
                     </SelectToZoom>
@@ -598,7 +768,121 @@ export function Structural3DViewer({
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Left: Orbit | Right: Pan | Scroll: Zoom</span>
             </div>
 
-            <div className="absolute top-6 right-6 flex items-center gap-3">
+            {/* Click-outside backdrop */}
+            {openDropdown && (
+                <div 
+                    className="absolute inset-0 z-40 cursor-default bg-transparent" 
+                    onClick={() => setOpenDropdown(null)} 
+                />
+            )}
+
+            <div className="absolute top-6 right-6 flex items-center gap-3 z-50">
+                {/* Elevation Filter */}
+                <div className="relative">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setOpenDropdown(openDropdown === "elevation" ? null : "elevation")}
+                        className={cn(
+                            "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                            selectedElevations.length > 0 ? "border-blue-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]" : "border-slate-200 text-slate-500"
+                        )}
+                    >
+                        Elevation {selectedElevations.length > 0 ? `(${selectedElevations.length})` : ""} ▼
+                    </Button>
+                    
+                    {openDropdown === "elevation" && (
+                        <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-56 flex flex-col gap-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Elevation</span>
+                                {selectedElevations.length > 0 && (
+                                    <button 
+                                        onClick={() => setSelectedElevations([])}
+                                        className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-2 max-h-60 overflow-y-auto py-1">
+                                {availableElevations.map((elv) => {
+                                    const isChecked = selectedElevations.includes(elv);
+                                    return (
+                                        <label key={elv} className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={isChecked}
+                                                onChange={() => {
+                                                    if (isChecked) {
+                                                        setSelectedElevations(selectedElevations.filter(e => e !== elv));
+                                                    } else {
+                                                        setSelectedElevations([...selectedElevations, elv]);
+                                                    }
+                                                }}
+                                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                                            />
+                                            <span className="text-xs font-bold text-slate-700">{elv.toFixed(3)}m</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Face Filter */}
+                <div className="relative">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setOpenDropdown(openDropdown === "face" ? null : "face")}
+                        className={cn(
+                            "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                            selectedFaces.length > 0 ? "border-blue-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]" : "border-slate-200 text-slate-500"
+                        )}
+                    >
+                        Face {selectedFaces.length > 0 ? `(${selectedFaces.length})` : ""} ▼
+                    </Button>
+                    
+                    {openDropdown === "face" && (
+                        <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-48 flex flex-col gap-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Face</span>
+                                {selectedFaces.length > 0 && (
+                                    <button 
+                                        onClick={() => setSelectedFaces([])}
+                                        className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-2 max-h-60 overflow-y-auto py-1">
+                                {availableFaces.map((face) => {
+                                    const isChecked = selectedFaces.includes(face);
+                                    return (
+                                        <label key={face} className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={isChecked}
+                                                onChange={() => {
+                                                    if (isChecked) {
+                                                        setSelectedFaces(selectedFaces.filter(f => f !== face));
+                                                    } else {
+                                                        setSelectedFaces([...selectedFaces, face]);
+                                                    }
+                                                }}
+                                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                                            />
+                                            <span className="text-xs font-bold text-slate-700">{face}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
                 <Button
                     variant="outline"
                     size="sm"
@@ -609,6 +893,18 @@ export function Structural3DViewer({
                     )}
                 >
                     {showGrid ? "Grid: ON" : "Grid: OFF"}
+                </Button>
+
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowWeldLabels(!showWeldLabels)}
+                    className={cn(
+                        "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                        showWeldLabels ? "border-orange-200 text-orange-600 shadow-[0_0_15px_rgba(249,115,22,0.15)]" : "border-slate-200 text-slate-400"
+                    )}
+                >
+                    {showWeldLabels ? "Weld Labels: ON" : "Weld Labels: OFF"}
                 </Button>
 
                 <div className="bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border border-blue-100 shadow-lg flex items-center gap-3">
