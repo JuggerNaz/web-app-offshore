@@ -3,9 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowLeft, Wifi, Cable, Activity, Settings2, Play, Square, Trash2, Download, Upload, Building2, GitBranch } from 'lucide-react';
+import { ArrowLeft, Wifi, Cable, Activity, Settings2, Play, Square, Trash2, Download, Upload, Building2, GitBranch, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { createClient } from '@/utils/supabase/client';
+import { useROVConnection } from '@/components/rov-connection-provider';
+import { toast } from 'sonner';
 
 type ConnectionType = 'serial' | 'network';
 type ParseMethod = 'position' | 'id';
@@ -37,6 +39,8 @@ interface DataAcquisitionSettings {
             dataBits: 5 | 6 | 7 | 8;
             parity: 'none' | 'even' | 'odd';
             stopBits: 1 | 1.5 | 2;
+            usbVendorId?: number;
+            usbProductId?: number;
         };
         network: {
             protocol: Protocol;
@@ -68,7 +72,7 @@ export default function DataAcquisitionPage() {
     // Connection Settings
     const [connectionType, setConnectionType] = useState<ConnectionType>('serial');
     const [comPort, setComPort] = useState<string>('');
-    const [availablePorts, setAvailablePorts] = useState<Array<{ id: string, name: string }>>([]);
+    const [availablePorts, setAvailablePorts] = useState<Array<{ id: string, name: string, vid?: number, pid?: number }>>([]);
     const [knownPorts, setKnownPorts] = useState<any[]>([]);
     const [baudRate, setBaudRate] = useState(9600);
     const [dataBits, setDataBits] = useState<5 | 6 | 7 | 8>(8);
@@ -87,18 +91,11 @@ export default function DataAcquisitionPage() {
     // Field Mappings
     const [fields, setFields] = useState<FieldMapping[]>([]);
 
-    // Connection Status
-    const [isConnected, setIsConnected] = useState(false);
+    // Connection Status (Use global provider)
+    const { isConnected, isConnecting, rawBuffer, connect: globalConnect, disconnect: globalDisconnect } = useROVConnection();
     const [liveData, setLiveData] = useState('');
     const [lastProcessedFrame, setLastProcessedFrame] = useState('');
     const [parsedData, setParsedData] = useState<Record<string, string>>({});
-
-    // Web Serial API
-    const [serialPort, setSerialPort] = useState<any>(null);
-    const [reader, setReader] = useState<any>(null);
-    const [isWebSerialSupported, setIsWebSerialSupported] = useState(false);
-    const dataBufferRef = useRef<string>('');
-    const readableStreamClosedRef = useRef<any>(null);
 
     // Available target fields based on type
     const [availableTargetFields, setAvailableTargetFields] = useState<{ name: string, label: string }[]>([]);
@@ -143,6 +140,7 @@ export default function DataAcquisitionPage() {
     }, [structureType]);
 
     // Check Web Serial API support and get available ports
+    const [isWebSerialSupported, setIsWebSerialSupported] = useState(false);
     useEffect(() => {
         const checkSerialSupport = async () => {
             if ('serial' in navigator) {
@@ -153,42 +151,39 @@ export default function DataAcquisitionPage() {
         checkSerialSupport();
     }, []);
 
-    // UI Update Loop - Throttles updates to prevent flickering (every 100ms)
-    // AND ensures we only show COMPLETE frames (based on String Length) to avoid visual "cutting"
+    // UI Update Loop for Live Testing Terminal
     useEffect(() => {
-        let interval: NodeJS.Timeout;
-        if (isConnected) {
-            interval = setInterval(() => {
-                if (dataBufferRef.current) {
-                    const snapshot = dataBufferRef.current;
-                    let validEndIndex = snapshot.length;
+        if (isConnected && rawBuffer) {
+            const snapshot = rawBuffer;
+            let validEndIndex = snapshot.length;
 
-                    // If using Position-based or ID-based parsing, ensure we don't display a partial frame at the end
-                    if ((parseMethod === 'position' || parseMethod === 'id') && startCharacter && stringLength > 0) {
-                        const lastStartIndex = snapshot.lastIndexOf(startCharacter);
-                        if (lastStartIndex !== -1) {
-                            // Calculate length of the potential last frame
-                            const potentialFrameLength = snapshot.length - lastStartIndex;
-
-                            // If it's shorter than expected run length, it's incomplete.
-                            // We wait for more data before showing this part.
-                            if (potentialFrameLength < stringLength) {
-                                validEndIndex = lastStartIndex;
-                            }
-                        }
+            if ((parseMethod === 'position' || parseMethod === 'id') && startCharacter && stringLength > 0) {
+                const lastStartIndex = snapshot.lastIndexOf(startCharacter);
+                if (lastStartIndex !== -1) {
+                    const potentialFrameLength = snapshot.length - lastStartIndex;
+                    if (potentialFrameLength < stringLength) {
+                        validEndIndex = lastStartIndex;
                     }
-
-                    // Take valid content and show the recent history (up to 2000 chars)
-                    const validContent = snapshot.substring(0, validEndIndex);
-                    setLiveData(validContent.slice(-2000));
                 }
-            }, 100);
+            }
+
+            const validContent = snapshot.substring(0, validEndIndex);
+            setLiveData(validContent.slice(-2000));
         }
-        return () => clearInterval(interval);
-    }, [isConnected, startCharacter, stringLength, parseMethod]);
+    }, [isConnected, rawBuffer, startCharacter, stringLength, parseMethod]);
+
+    // Auto-disconnect on unmount (Requirement: Back button/Navigate away)
+    useEffect(() => {
+        return () => {
+            if (isConnected) {
+                console.log("[Data Acquisition] Component unmounting, auto-disconnecting...");
+                globalDisconnect();
+            }
+        };
+    }, [isConnected, globalDisconnect]);
 
     // Function to refresh available ports
-    const refreshAvailablePorts = async () => {
+    const refreshAvailablePorts = async (preferredPortInfo?: { vid?: number, pid?: number }) => {
         if ('serial' in navigator) {
             try {
                 const ports = await (navigator as any).serial.getPorts();
@@ -225,19 +220,58 @@ export default function DataAcquisitionPage() {
 
                     return {
                         id: `port-${index}`,
-                        name: label
+                        name: label,
+                        vid: vid,
+                        pid: pid
                     };
                 });
                 setAvailablePorts(portList);
-                if (portList.length > 0 && !comPort) {
-                    setComPort(portList[0].id);
+                
+                // 1. If we just added a new port, select it specifically
+                if (preferredPortInfo?.vid) {
+                    const newlyAdded = portList.find((p: { vid?: number, pid?: number, id: string }) => p.vid === preferredPortInfo.vid && p.pid === preferredPortInfo.pid);
+                    if (newlyAdded) {
+                        setComPort(newlyAdded.id);
+                        return;
+                    }
+                }
+
+                // 2. Otherwise, if we have a saved port and nothing is selected, try to find it
+                if (!comPort || comPort === 'new') {
+                    const saved = localStorage.getItem(STORAGE_KEYS[structureType]);
+                    if (saved) {
+                        try {
+                            const settings = JSON.parse(saved);
+                            const savedVid = settings.connection.serial.usbVendorId;
+                            const savedPid = settings.connection.serial.usbProductId;
+                            if (savedVid && savedPid) {
+                                const found = portList.find((p: { vid?: number, pid?: number, id: string }) => p.vid === savedVid && p.pid === savedPid);
+                                if (found) {
+                                    setComPort(found.id);
+                                    return;
+                                }
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                }
+
+                if (portList.length > 0 && (!comPort || comPort === 'new')) {
+                    const currentPortExists = portList.find((p: { id: string }) => p.id === comPort);
+                    if (!currentPortExists) {
+                        setComPort(portList[0].id);
+                    }
                 } else if (portList.length === 0) {
-                    setComPort('new'); // Select "Add New" by default if empty
+                    setComPort('new');
                 }
             } catch (error) {
                 console.error('Error getting serial ports:', error);
             }
         }
+    };
+
+    const handleRefreshPorts = async () => {
+        await refreshAvailablePorts();
+        toast.success('Device list refreshed');
     };
 
     // Get default settings based on structure type
@@ -426,7 +460,15 @@ export default function DataAcquisitionPage() {
             structureType,
             connection: {
                 type: connectionType,
-                serial: { comPort, baudRate, dataBits, parity, stopBits },
+                serial: { 
+                    comPort, 
+                    baudRate, 
+                    dataBits, 
+                    parity, 
+                    stopBits,
+                    usbVendorId: availablePorts.find(p => p.id === comPort)?.vid,
+                    usbProductId: availablePorts.find(p => p.id === comPort)?.pid
+                },
                 network: { protocol, ipAddress, port },
             },
             parsing: {
@@ -499,105 +541,32 @@ export default function DataAcquisitionPage() {
     };
 
     const handleConnect = async () => {
-        if (!isWebSerialSupported) {
-            alert('Web Serial API is not supported in this browser. Please use Chrome, Edge, or Opera.');
-            return;
-        }
+        // Construct temporary settings for testing
+        const tempSettings = {
+            structureType,
+            connection: {
+                type: connectionType,
+                serial: { comPort, baudRate, dataBits, parity, stopBits },
+                network: { protocol, ipAddress, port },
+            },
+            parsing: {
+                method: parseMethod,
+                stringLength,
+                startCharacter,
+            },
+            fields,
+            lastModified: Date.now(),
+        };
 
         try {
-            let port;
-
-            // Try to use the selected known port
-            if (comPort && comPort !== 'new' && comPort.startsWith('port-')) {
-                const portIndex = parseInt(comPort.replace('port-', ''));
-                if (!isNaN(portIndex) && knownPorts[portIndex]) {
-                    port = knownPorts[portIndex];
-                }
-            }
-
-            if (!port) {
-                // Request a port (browser picker) - for new devices or fallback
-                port = await (navigator as any).serial.requestPort();
-            }
-
-            // Open the port with the configured settings
-            await port.open({
-                baudRate: baudRate,
-                dataBits: dataBits,
-                parity: parity,
-                stopBits: stopBits,
-            });
-
-            setSerialPort(port);
-            setIsConnected(true);
-            dataBufferRef.current = ''; // Reset buffer
-
-            // Refresh available ports list
-            await refreshAvailablePorts();
-
-            // Start reading data
-            const textDecoder = new TextDecoderStream();
-            const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-            readableStreamClosedRef.current = readableStreamClosed;
-            const reader = textDecoder.readable.getReader();
-            setReader(reader);
-
-            // Read loop
-            const readLoop = async () => {
-                try {
-                    while (true) {
-                        const { value, done } = await reader.read();
-                        if (done) {
-                            break;
-                        }
-                        if (value) {
-                            // Append new data to ref buffer (non-blocking for UI)
-                            dataBufferRef.current += value;
-
-                            // Prevent infinite memory growth in Ref
-                            if (dataBufferRef.current.length > 10000) {
-                                dataBufferRef.current = dataBufferRef.current.slice(-5000);
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error reading from serial port:', error);
-                }
-            };
-
-            readLoop();
-
+            await globalConnect(structureType, tempSettings);
         } catch (error) {
-            console.error('Failed to connect to serial port:', error);
-            alert('Failed to connect to serial port. Please check your device and try again.');
+            console.error('Failed to connect:', error);
         }
     };
 
     const handleDisconnect = async () => {
-        try {
-            // Cancel the reader to signal the loop to exit
-            if (reader) {
-                await reader.cancel();
-                setReader(null);
-            }
-
-            // Wait for the stream to close essentially
-            if (readableStreamClosedRef.current) {
-                await readableStreamClosedRef.current.catch(() => { /* Ignore error */ });
-            }
-
-            // Close the port
-            if (serialPort) {
-                await serialPort.close();
-                setSerialPort(null);
-            }
-
-            setIsConnected(false);
-            setLiveData('');
-            setParsedData({});
-        } catch (error) {
-            console.error('Error disconnecting from serial port:', error);
-        }
+        await globalDisconnect();
     };
 
     const applyModification = (value: string, field: FieldMapping): string => {
@@ -846,7 +815,16 @@ export default function DataAcquisitionPage() {
                                 {/* COM Port Selection */}
                                 <div className="p-4 bg-muted/50 rounded-lg">
                                     <div className="flex items-center justify-between mb-2">
-                                        <label className="block text-sm font-medium">Serial Device</label>
+                                        <div className="flex items-center gap-2">
+                                            <label className="block text-sm font-medium">Serial Device</label>
+                                            <button 
+                                                onClick={handleRefreshPorts}
+                                                className="p-1 hover:bg-muted rounded-full transition-colors"
+                                                title="Refresh device list"
+                                            >
+                                                <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+                                            </button>
+                                        </div>
                                         {isWebSerialSupported ? (
                                             <span className="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
                                                 Web Serial API Supported
@@ -859,7 +837,30 @@ export default function DataAcquisitionPage() {
                                     </div>
                                     <select
                                         value={comPort}
-                                        onChange={(e) => setComPort(e.target.value)}
+                                        onChange={async (e) => {
+                                            const val = e.target.value;
+                                            if (val === 'new') {
+                                                try {
+                                                    // Immediately trigger the browser picker for "Add New"
+                                                    if ('serial' in navigator) {
+                                                        const port = await (navigator as any).serial.requestPort();
+                                                        if (port) {
+                                                            const info = port.getInfo();
+                                                            await refreshAvailablePorts({
+                                                                vid: info.usbVendorId,
+                                                                pid: info.usbProductId
+                                                            });
+                                                            toast.success('New device authorized and added to list');
+                                                        }
+                                                    }
+                                                } catch (err) {
+                                                    console.warn('User cancelled port selection');
+                                                    // Stay on "Add New" or revert? Revert to previous if possible
+                                                }
+                                            } else {
+                                                setComPort(val);
+                                            }
+                                        }}
                                         className="w-full bg-background border border-input rounded-lg px-3 py-2"
                                         disabled={isConnected}
                                     >

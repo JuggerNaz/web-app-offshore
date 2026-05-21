@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
+import { cn } from "@/lib/utils";
 
 interface Point {
     x: number;
@@ -26,9 +27,9 @@ interface SeabedDebrisPlotProps {
     legCount?: 3 | 4 | 6 | 8 | 16;
     gridDistances?: number[]; // e.g. [3, 6, 9, 12, 15, 18, 21]
     debrisItems?: DebrisItem[];
-    onDebrisMove?: (id: string | number, x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number }) => void;
-    onAddDebris?: (x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number }) => void;
-    onHover?: (x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number } | null) => void;
+    onDebrisMove?: (id: string | number, x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number, nearestLeg?: string, distToNearestLeg?: number }) => void;
+    onAddDebris?: (x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number, nearestLeg?: string, distToNearestLeg?: number }) => void;
+    onHover?: (x: number, y: number, geometry: { distance: number, angle: number, face: string, startLeg?: string, endLeg?: string, nearestDistance?: number, nearestLeg?: string, distToNearestLeg?: number } | null) => void;
     onSelectDebris?: (id: string | number | null) => void;
     readOnly?: boolean;
 
@@ -40,6 +41,9 @@ interface SeabedDebrisPlotProps {
     };
     distanceOffset?: number;
     referenceItems?: DebrisItem[];
+    registeredQids?: string[];
+    legsMetadata?: any[];
+    highlightQid?: string;
 }
 
 const VIEW_SIZE = 600;
@@ -60,6 +64,9 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
     manualEntry,
     distanceOffset = 0,
     referenceItems = [],
+    registeredQids = [],
+    legsMetadata = [],
+    highlightQid = '',
 }) => {
     const isDraggingRef = React.useRef(false);
 
@@ -171,6 +178,26 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
         else if (angle >= 135 && angle < 225) { face = 'SOUTH'; startLeg = bl; endLeg = br; }
         else { face = 'WEST'; startLeg = tl; endLeg = bl; }
 
+        // Find nearest leg and distance to it
+        let nearestLeg = startLeg;
+        let distToNearestLeg = 0;
+        
+        const startPos = legPositions.find(p => p.name === startLeg);
+        const endPos = legPositions.find(p => p.name === endLeg);
+        
+        if (startPos && endPos) {
+            const dStart = Math.sqrt(Math.pow(screenX - startPos.x, 2) + Math.pow(screenY - startPos.y, 2));
+            const dEnd = Math.sqrt(Math.pow(screenX - endPos.x, 2) + Math.pow(screenY - endPos.y, 2));
+            
+            if (dStart < dEnd) {
+                nearestLeg = startLeg;
+                distToNearestLeg = dStart / pxPerMeter;
+            } else {
+                nearestLeg = endLeg;
+                distToNearestLeg = dEnd / pxPerMeter;
+            }
+        }
+
         // Find target box distance (always round UP to the next interval to identify the "area")
         let nearestDistance = gridDistances[0];
         if (gridDistances.length > 0) {
@@ -183,7 +210,16 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
             }
         }
 
-        return { distance: logicalDist, angle, face, startLeg, endLeg, nearestDistance };
+        return { 
+            distance: logicalDist, 
+            angle, 
+            face, 
+            startLeg, 
+            endLeg, 
+            nearestDistance,
+            nearestLeg,
+            distToNearestLeg: distToNearestLeg + distanceOffset
+        };
     };
 
     // Auto-calculate position from manual text fields
@@ -224,21 +260,42 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
             const offsetPx = renderDist * pxPerMeter;
             
             if (layoutType === 'rectangular') {
+                const x1 = bounds.minX - offsetPx;
+                const x2 = bounds.maxX + offsetPx;
+                const y1 = bounds.minY - offsetPx;
+                const y2 = bounds.maxY + offsetPx;
+
+                // Identify 4 faces for this distance
+                const outCols = 2;
+                const outRows = 2;
+                const tl = 'A1';
+                const tr = `A${outCols}`;
+                const bl = `${String.fromCharCode(64 + outRows)}1`;
+                const br = `${String.fromCharCode(64 + outRows)}${outCols}`;
+
+                const qidN = `S/BED(${tl}-${tr})-${dist}M`.toUpperCase();
+                const qidS = `S/BED(${bl}-${br})-${dist}M`.toUpperCase();
+                const qidE = `S/BED(${tr}-${br})-${dist}M`.toUpperCase();
+                const qidW = `S/BED(${tl}-${bl})-${dist}M`.toUpperCase();
+
+                const colorActive = "rgba(148, 163, 184, 0.4)"; // Brightened slate-400 equivalent for grid
+                const colorInactive = "rgba(239, 68, 68, 0.25)"; // Brighter red for unregistered
+
+                const hasN = registeredQids.length === 0 || registeredQids.includes(qidN);
+                const hasS = registeredQids.length === 0 || registeredQids.includes(qidS);
+                const hasE = registeredQids.length === 0 || registeredQids.includes(qidE);
+                const hasW = registeredQids.length === 0 || registeredQids.includes(qidW);
+
                 return (
-                    <rect
-                        key={`grid-${i}`}
-                        x={bounds.minX - offsetPx}
-                        y={bounds.minY - offsetPx}
-                        width={(bounds.maxX - bounds.minX) + offsetPx * 2}
-                        height={(bounds.maxY - bounds.minY) + offsetPx * 2}
-                        fill="none"
-                        stroke="rgba(100, 116, 139, 0.3)"
-                        strokeDasharray="4 4"
-                        strokeWidth="1"
-                    />
+                    <g key={`grid-${i}`}>
+                        <line x1={x1} y1={y1} x2={x2} y2={y1} stroke={hasN ? colorActive : colorInactive} strokeDasharray={hasN ? "4 4" : "2 2"} strokeWidth="1" />
+                        <line x1={x1} y1={y2} x2={x2} y2={y2} stroke={hasS ? colorActive : colorInactive} strokeDasharray={hasS ? "4 4" : "2 2"} strokeWidth="1" />
+                        <line x1={x2} y1={y1} x2={x2} y2={y2} stroke={hasE ? colorActive : colorInactive} strokeDasharray={hasE ? "4 4" : "2 2"} strokeWidth="1" />
+                        <line x1={x1} y1={y1} x2={x1} y2={y2} stroke={hasW ? colorActive : colorInactive} strokeDasharray={hasW ? "4 4" : "2 2"} strokeWidth="1" />
+                    </g>
                 );
             } else {
-                // Triangle grid lines expanded from center
+                // Triangle/Polygon - Fallback to full polygon if registeredQids logic not yet complex enough for 3+ legs
                 const outerPoints = legPositions.map(p => {
                     const dx = p.x - CENTER;
                     const dy = p.y - CENTER;
@@ -251,7 +308,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                         key={`grid-${i}`}
                         points={outerPoints.join(' ')}
                         fill="none"
-                        stroke="rgba(100, 116, 139, 0.3)"
+                        stroke="rgba(148, 163, 184, 0.3)"
                         strokeDasharray="4 4"
                         strokeWidth="1"
                     />
@@ -276,19 +333,19 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1.5">
                         <div className="w-2.5 h-2.5 rounded-full bg-blue-700 border border-blue-400/30 shadow-sm" />
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Metallic</span>
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Metallic</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <div className="w-2.5 h-2.5 rounded-full bg-orange-600 border border-orange-400/30 shadow-sm" />
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Non-Metallic</span>
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Non-Metallic</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <div className="w-2.5 h-2.5 rounded-full bg-green-600 border border-green-400/30 shadow-sm" />
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Seepage</span>
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Seepage</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <div className="w-2.5 h-2.5 rounded-full bg-purple-600 border-purple-400/30 shadow-sm" />
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Crater</span>
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Crater</span>
                     </div>
                 </div>
             </div>
@@ -332,7 +389,7 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
 
                 >
                     {/* Background Compass Labels */}
-                    <g className="text-[10px] fill-slate-500 font-bold pointer-events-none">
+                    <g className="text-[10px] fill-slate-500 dark:fill-slate-200 font-black pointer-events-none uppercase tracking-widest">
                         <text x={CENTER} y={20} textAnchor="middle">NORTH</text>
                         <text x={CENTER} y={VIEW_SIZE - 10} textAnchor="middle">SOUTH</text>
                         <text x={VIEW_SIZE - 35} y={CENTER + 4} textAnchor="start">EAST</text>
@@ -347,31 +404,77 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                         {gridDistances.map((dist, i) => {
                             const renderDist = Math.max(0, dist - distanceOffset);
                             const offsetPx = renderDist * pxPerMeter;
-                            const topY = bounds.minY - offsetPx;
-                            const bottomY = bounds.maxY + offsetPx;
-                            const leftX = bounds.minX - offsetPx;
-                            const rightX = bounds.maxX + offsetPx;
+                            const x1 = bounds.minX - offsetPx;
+                            const x2 = bounds.maxX + offsetPx;
+                            const y1 = bounds.minY - offsetPx;
+                            const y2 = bounds.maxY + offsetPx;
+
+                            const tl = 'A1';
+                            const tr = `A${legCount / 2}`;
+                            const bl = `${String.fromCharCode(64 + 2)}1`;
+                            const br = `${String.fromCharCode(64 + 2)}${legCount / 2}`;
+
+                            const qidN = `S/BED(${tl}-${tr})-${dist}M`.toUpperCase();
+                            const qidS = `S/BED(${bl}-${br})-${dist}M`.toUpperCase();
+                            const qidE = `S/BED(${tr}-${br})-${dist}M`.toUpperCase();
+                            const qidW = `S/BED(${tl}-${bl})-${dist}M`.toUpperCase();
+
+                            const hasN = registeredQids.length === 0 || registeredQids.includes(qidN);
+                            const hasS = registeredQids.length === 0 || registeredQids.includes(qidS);
+                            const hasE = registeredQids.length === 0 || registeredQids.includes(qidE);
+                            const hasW = registeredQids.length === 0 || registeredQids.includes(qidW);
+
+                            const colorActive = "fill-slate-500 dark:fill-slate-200";
+                            const colorInactive = "fill-red-400/40 dark:fill-red-400/80";
+
+                            const isHighlightedN = highlightQid && highlightQid.toUpperCase() === qidN;
+                            const isHighlightedS = highlightQid && highlightQid.toUpperCase() === qidS;
+                            const isHighlightedE = highlightQid && highlightQid.toUpperCase() === qidE;
+                            const isHighlightedW = highlightQid && highlightQid.toUpperCase() === qidW;
 
                             return (
                                 <React.Fragment key={`lbl-${i}`}>
-                                    {/* Corners (Distances) */}
-                                    <text x={leftX - 4} y={topY - 4} textAnchor="end">{dist}m</text>
-                                    <text x={rightX + 4} y={topY - 4} textAnchor="start">{dist}m</text>
-                                    <text x={leftX - 4} y={bottomY + 10} textAnchor="end">{dist}m</text>
-                                    <text x={rightX + 4} y={bottomY + 10} textAnchor="start">{dist}m</text>
+                                    {/* Sector Highlights (rectangles) */}
+                                    {(() => {
+                                        const prevDist = i === 0 ? distanceOffset : gridDistances[i - 1];
+                                        const boxSizePx = (dist - prevDist) * pxPerMeter;
+                                        
+                                        return (
+                                            <>
+                                                {isHighlightedN && (
+                                                    <rect x={x1} y={y1} width={x2 - x1} height={boxSizePx} className="fill-blue-500/10 pointer-events-none animation-pulse" />
+                                                )}
+                                                {isHighlightedS && (
+                                                    <rect x={x1} y={y2 - boxSizePx} width={x2 - x1} height={boxSizePx} className="fill-blue-500/10 pointer-events-none animation-pulse" />
+                                                )}
+                                                {isHighlightedE && (
+                                                    <rect x={x2 - boxSizePx} y={y1} width={boxSizePx} height={y2 - y1} className="fill-blue-500/10 pointer-events-none animation-pulse" />
+                                                )}
+                                                {isHighlightedW && (
+                                                    <rect x={x1} y={y1} width={boxSizePx} height={y2 - y1} className="fill-blue-500/10 pointer-events-none animation-pulse" />
+                                                )}
+                                            </>
+                                        );
+                                    })()}
 
-                                    {/* Box Sector QIDs (Light color in 4 faces) */}
-                                    <text x={CENTER} y={topY + 12} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                        S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'})-{dist}M
+                                    {/* Corners (Distances) */}
+                                    <text x={x1 - 4} y={y1 - 4} textAnchor="end" className={cn(hasN || hasW ? colorActive : colorInactive, (isHighlightedN || isHighlightedW) && "fill-blue-600 dark:fill-blue-400 scale-110")}>{dist}m</text>
+                                    <text x={x2 + 4} y={y1 - 4} textAnchor="start" className={cn(hasN || hasE ? colorActive : colorInactive, (isHighlightedN || isHighlightedE) && "fill-blue-600 dark:fill-blue-400 scale-110")}>{dist}m</text>
+                                    <text x={x1 - 4} y={y2 + 10} textAnchor="end" className={cn(hasS || hasW ? colorActive : colorInactive, (isHighlightedS || isHighlightedW) && "fill-blue-600 dark:fill-blue-400 scale-110")}>{dist}m</text>
+                                    <text x={x2 + 4} y={y2 + 10} textAnchor="start" className={cn(hasS || hasE ? colorActive : colorInactive, (isHighlightedS || isHighlightedE) && "fill-blue-600 dark:fill-blue-400 scale-110")}>{dist}m</text>
+
+                                    {/* Box Sector QIDs */}
+                                    <text x={CENTER} y={y1 + 12} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedN ? "fill-blue-600 dark:fill-blue-400 opacity-100 font-black scale-110" : hasN ? "fill-slate-400 dark:fill-slate-300 opacity-80" : "fill-red-400 opacity-30")}>
+                                        {qidN}
                                     </text>
-                                    <text x={CENTER} y={bottomY - 4} textAnchor="middle" className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                        S/BED({legPositions.find(p => p.name === 'B1')?.name || 'B1'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
+                                    <text x={CENTER} y={y2 - 4} textAnchor="middle" className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedS ? "fill-blue-600 dark:fill-blue-400 opacity-100 font-black scale-110" : hasS ? "fill-slate-400 dark:fill-slate-300 opacity-80" : "fill-red-400 opacity-30")}>
+                                        {qidS}
                                     </text>
-                                    <text x={rightX - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${rightX - 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                        S/BED({legPositions.find(p => p.name === `A${legCount / 2}`)?.name || 'A2'}-{legPositions.find(p => p.name === `B${legCount / 2}`)?.name || 'B2'})-{dist}M
+                                    <text x={x2 - 4} y={CENTER} textAnchor="middle" transform={`rotate(90, ${x2 - 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedE ? "fill-blue-600 dark:fill-blue-400 opacity-100 font-black scale-110" : hasE ? "fill-slate-400 dark:fill-slate-300 opacity-80" : "fill-red-400 opacity-30")}>
+                                        {qidE}
                                     </text>
-                                    <text x={leftX + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${leftX + 4}, ${CENTER})`} className="text-[10px] font-mono fill-slate-400 opacity-40 uppercase">
-                                        S/BED({legPositions.find(p => p.name === 'A1')?.name || 'A1'}-{legPositions.find(p => p.name === 'B1')?.name || 'B1'})-{dist}M
+                                    <text x={x1 + 4} y={CENTER} textAnchor="middle" transform={`rotate(-90, ${x1 + 4}, ${CENTER})`} className={cn("text-[10px] font-mono uppercase transition-all duration-300", isHighlightedW ? "fill-blue-600 dark:fill-blue-400 opacity-100 font-black scale-110" : hasW ? "fill-slate-400 dark:fill-slate-300 opacity-80" : "fill-red-400 opacity-30")}>
+                                        {qidW}
                                     </text>
                                 </React.Fragment>
                             );
@@ -380,24 +483,76 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
 
                     {/* Platform Legs */}
                     <g>
-                        {legPositions.map((pos, i) => (
-                            <g key={`leg-${i}`}>
-                                <circle
-                                    cx={pos.x}
-                                    cy={pos.y}
-                                    r="8"
-                                    className="fill-white dark:fill-slate-800 stroke-slate-500 stroke-2"
-                                />
-                                <text
-                                    x={pos.x}
-                                    y={pos.y + 20}
-                                    textAnchor="middle"
-                                    className="text-[8px] fill-slate-600 dark:fill-slate-400 font-bold"
-                                >
-                                    {pos.name}
-                                </text>
-                            </g>
-                        ))}
+                        {legPositions.map((pos, i) => {
+                            // Find matching metadata using the business rules
+                            const meta = legsMetadata.find(c => {
+                                const m = c.metadata || {};
+                                const isNotDeleted = m.del === 0 || m.del === null || m.del === undefined;
+                                const matchesLegName = (m.f_leg === pos.name && m.s_leg === pos.name) || 
+                                                     c.q_id.toUpperCase() === `LEG ${pos.name.toUpperCase()}` ||
+                                                     c.q_id.toUpperCase() === pos.name.toUpperCase();
+                                const nodesDifferent = m.f_node && m.s_node && m.f_node !== m.s_node;
+                                return isNotDeleted && matchesLegName && nodesDifferent;
+                            })?.metadata;
+
+                            let nodeInfo = '';
+                            let elevInfo = '';
+                            if (meta) {
+                                const e1 = parseFloat(meta.elv_1 || meta.elevation_1 || '0');
+                                const e2 = parseFloat(meta.elv_2 || meta.elevation_2 || '0');
+                                
+                                // Identify the bottom elevation (minimum value) and its corresponding node
+                                if (e2 <= e1) {
+                                    nodeInfo = meta.f_node || meta.start_node || '';
+                                    elevInfo = `${e2}m`;
+                                } else {
+                                    nodeInfo = meta.s_node || meta.end_node || '';
+                                    elevInfo = `${e1}m`;
+                                }
+                            }
+
+                            return (
+                                <g key={`leg-${i}`}>
+                                    <circle
+                                        cx={pos.x}
+                                        cy={pos.y}
+                                        r="8"
+                                        className="fill-white dark:fill-slate-800 stroke-slate-500 dark:stroke-slate-400 stroke-2 shadow-sm"
+                                    />
+                                    <g transform={`translate(${pos.x}, ${pos.y + 20})`}>
+                                        <text
+                                            x={0}
+                                            y={0}
+                                            textAnchor="middle"
+                                            className="text-[9px] fill-blue-600 dark:fill-blue-400 font-black uppercase"
+                                        >
+                                            {pos.name}
+                                        </text>
+                                        {nodeInfo && (
+                                            <text
+                                                x={0}
+                                                y={10}
+                                                textAnchor="middle"
+                                                className="text-[7px] fill-slate-500 dark:fill-slate-300 font-black uppercase tracking-widest"
+                                            >
+                                                N:{nodeInfo}
+                                            </text>
+                                        )}
+                                        {elevInfo && (
+                                            <text
+                                                x={0}
+                                                y={18}
+                                                textAnchor="middle"
+                                                className="text-[7px] fill-slate-500 dark:fill-slate-300 font-bold"
+                                            >
+                                                EL:{elevInfo}
+                                            </text>
+                                        )}
+                                    </g>
+                                    <title>{`Leg: ${pos.name}${nodeInfo ? `\nNodes: ${nodeInfo}` : ''}${elevInfo ? `\nBottom Elevation: ${elevInfo}` : ''}`}</title>
+                                </g>
+                            );
+                        })}
                     </g>
 
                     {/* Plot Lines connecting legs (Visual only) */}
@@ -423,32 +578,66 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                     )}
 
                     {/* Reference / Comparison Markers (Ghost) */}
-                    <g className="pointer-events-none">
-                        {referenceItems.map((item) => (
-                            <g key={`ref-${item.id}`} transform={`translate(${toScreen(item.x) - CENTER}, ${toScreen(item.y) - CENTER})`}>
-                                <circle
-                                    cx={CENTER}
-                                    cy={CENTER}
-                                    r="10"
-                                    className="fill-none stroke-slate-400 dark:stroke-slate-500 stroke-[1px] opacity-40"
-                                    strokeDasharray="2 2"
-                                />
-                                <circle
-                                    cx={CENTER}
-                                    cy={CENTER}
-                                    r="1.5"
-                                    className="fill-slate-400 dark:fill-slate-500 opacity-50"
-                                />
-                                <text
-                                    x={CENTER}
-                                    y={CENTER + 15}
-                                    textAnchor="middle"
-                                    className="fill-slate-400 dark:fill-slate-500 text-[8px] font-black opacity-60 uppercase"
+                    <g>
+                        {referenceItems.map((item) => {
+                            const colorClass = item.type === 'Gas Seepage' 
+                                ? 'stroke-green-500' 
+                                : item.type === 'Crater' 
+                                    ? 'stroke-purple-500' 
+                                    : item.isMetallic 
+                                        ? 'stroke-blue-500' 
+                                        : 'stroke-orange-500';
+
+                            return (
+                                <g 
+                                    key={`ref-${item.id}`} 
+                                    transform={`translate(${toScreen(item.x) - CENTER}, ${toScreen(item.y) - CENTER})`}
+                                    className="cursor-pointer group"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onSelectDebris?.(item.id);
+                                    }}
                                 >
-                                    REF#{item.label}
-                                </text>
-                            </g>
-                        ))}
+                                    {/* Halo for visibility */}
+                                    <circle
+                                        cx={CENTER}
+                                        cy={CENTER}
+                                        r="12"
+                                        className={cn(
+                                            "fill-white/40 dark:fill-slate-800/40 transition-all",
+                                            activeDebrisId === item.id ? "fill-cyan-400/20 r-15" : "group-hover:fill-white/60"
+                                        )}
+                                    />
+                                    <circle
+                                        cx={CENTER}
+                                        cy={CENTER}
+                                        r="10"
+                                        className={cn(
+                                            `fill-none ${colorClass} stroke-[2px] transition-all`,
+                                            activeDebrisId === item.id ? "opacity-100 stroke-[3px]" : "opacity-60"
+                                        )}
+                                        strokeDasharray="3 2"
+                                    />
+                                    <circle
+                                        cx={CENTER}
+                                        cy={CENTER}
+                                        r="2"
+                                        className={`fill-current ${colorClass} opacity-80`}
+                                    />
+                                    <text
+                                        x={CENTER}
+                                        y={CENTER + 20}
+                                        textAnchor="middle"
+                                        className={cn(
+                                            `fill-current ${colorClass} text-[9px] font-black uppercase tracking-tighter transition-all`,
+                                            activeDebrisId === item.id ? "opacity-100 scale-110" : "opacity-80"
+                                        )}
+                                    >
+                                        REF#{item.label}
+                                    </text>
+                                </g>
+                            );
+                        })}
                     </g>
 
                     {/* Debris Markers */}
@@ -516,15 +705,17 @@ export const SeabedDebrisPlot: React.FC<SeabedDebrisPlotProps> = ({
                                 cx={CENTER}
                                 cy={CENTER}
                                 r={activeDebrisId === item.id ? "13" : "10"}
-                                className={`stroke-2 ${activeDebrisId === item.id ? 'stroke-cyan-400 stroke-[3px]' : 'stroke-white/30'} ${
+                                className={cn(
+                                    "stroke-2 transition-all duration-300",
+                                    activeDebrisId === item.id ? 'stroke-cyan-400 dark:stroke-cyan-300 stroke-[3px]' : 'stroke-white/50 dark:stroke-white/40',
                                     item.type === 'Gas Seepage' 
-                                        ? 'fill-green-600' 
+                                        ? 'fill-green-600 dark:fill-green-500' 
                                         : item.type === 'Crater' 
-                                            ? 'fill-purple-600' 
+                                            ? 'fill-purple-600 dark:fill-purple-500' 
                                             : item.isMetallic 
-                                                ? 'fill-blue-700' 
-                                                : 'fill-orange-600'
-                                }`}
+                                                ? 'fill-blue-700 dark:fill-blue-600' 
+                                                : 'fill-orange-600 dark:fill-orange-500'
+                                )}
                             />
                             
                             {/* Number */}

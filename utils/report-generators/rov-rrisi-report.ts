@@ -52,7 +52,7 @@ export const generateROVRRISIReport = async (
             text: [30, 41, 59] as [number, number, number],
             anomaly: [239, 68, 68] as [number, number, number],
             rectified: [34, 197, 94] as [number, number, number],
-            riser: [71, 85, 105] as [number, number, number],
+            riser: [160, 175, 195] as [number, number, number],
             mudline: [145, 123, 76] as [number, number, number],
         };
 
@@ -62,14 +62,21 @@ export const generateROVRRISIReport = async (
         const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
 
-        // Filter records by QID prefix
+        // Filter records strictly by type and prefix
         const filteredRecords = records.filter(r => {
             const qid = (r.structure_components?.q_id || '').toUpperCase();
+            const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            
+            if (rType === 'R') {
+                // Strict Riser Filter: RRISI only + Prefix R only + NOT RISG
+                return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+            }
             return qid.startsWith(typeConfig.prefix);
         });
 
         if (filteredRecords.length === 0) {
-            console.warn(`No records found for ${typeConfig.title} (Prefix: ${typeConfig.prefix})`);
+            console.warn(`No matching records found for ${typeConfig.title}`);
         }
 
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
@@ -232,9 +239,9 @@ export const generateROVRRISIReport = async (
 
             // --- Draw Riser ---
             const drawP = (x1: number, y1: number, x2: number, y2: number, isV: boolean) => {
-                doc.setLineWidth(rWidth); doc.setDrawColor(50, 60, 80); doc.line(x1, y1, x2, y2);
-                doc.setLineWidth(rWidth * 0.7); doc.setDrawColor(71, 85, 105); doc.line(x1, y1, x2, y2);
-                doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(148, 163, 184); 
+                doc.setLineWidth(rWidth); doc.setDrawColor(120, 130, 150); doc.line(x1, y1, x2, y2);
+                doc.setLineWidth(rWidth * 0.7); doc.setDrawColor(160, 175, 195); doc.line(x1, y1, x2, y2);
+                doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(220, 230, 240); 
                 const o = -rWidth * 0.15; if (isV) doc.line(x1 + o, y1, x2 + o, y2); else doc.line(x1, y1 + o, x2, y2 + o);
             };
             drawP(cX, eToY(designStart), cX, bY, true);
@@ -251,11 +258,11 @@ export const generateROVRRISIReport = async (
                         doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
                     }
                 };
-                drawC([50, 60, 80], rWidth, 0); drawC([71, 85, 105], rWidth * 0.7, 0); drawC([148, 163, 184], rWidth * 0.2, -rWidth * 0.15);
+                drawC([120, 130, 150], rWidth, 0); drawC([160, 175, 195], rWidth * 0.7, 0); drawC([220, 230, 240], rWidth * 0.2, -rWidth * 0.15);
             }
             if (rType !== 'J' && rType !== 'I') {
                 drawP(endX, pipeY, gX + gW - 5, pipeY, false);
-                doc.setFontSize(6); doc.setTextColor(71, 85, 105); doc.text("PIPELINE", endX + 10, pipeY + 8);
+                doc.setFontSize(6); doc.setTextColor(120, 130, 150); doc.text("PIPELINE", endX + 10, pipeY + 8);
             }
 
             // Scale
@@ -299,10 +306,30 @@ export const generateROVRRISIReport = async (
             });
 
             // --- Table ---
-            const sortedR = [...recordsInGroup].sort((a, b) => (parseFloat(b.elevation) || 0) - (parseFloat(a.elevation) || 0));
+            // Sort by Elevation (descending) but ensure Bends/Pipelines are always last
+            const sortedR = [...recordsInGroup].sort((a, b) => {
+                const itemA = (a.inspection_data?.riser_item || a.description || "").toLowerCase();
+                const itemB = (b.inspection_data?.riser_item || b.description || "").toLowerCase();
+                
+                const isBendA = itemA.includes('bend');
+                const isBendB = itemB.includes('bend');
+                const isPipeA = itemA.includes('pipeline') || itemA.includes('pipe');
+                const isPipeB = itemB.includes('pipeline') || itemB.includes('pipe');
+
+                // Priority: Normal < Bend < Pipeline
+                if (isPipeA && !isPipeB) return 1;
+                if (!isPipeA && isPipeB) return -1;
+                if (isBendA && !isBendB) return 1;
+                if (!isBendA && isBendB) return -1;
+
+                // Otherwise sort by elevation descending
+                const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
+                const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
+                return elB - elA;
+            });
             autoTable(doc, {
                 startY: currentY,
-                margin: { left: dX, right: margin },
+                margin: { left: dX, right: margin, top: margin + 22 + 6 },
                 tableWidth: dW,
                 head: [['Loc / Elev', 'CP (mV)', 'Findings / Anomalies']],
                 body: sortedR.map(r => {
@@ -326,19 +353,43 @@ export const generateROVRRISIReport = async (
                 theme: 'grid',
                 headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8 },
                 styles: { fontSize: 7, cellPadding: 2 },
-                columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } }
+                columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } },
+                didDrawPage: (data) => {
+                    if (data.pageNumber > 1) drawHeader(doc);
+                }
             });
+        }
 
-            if (config.showSignatures !== false) {
-                const sigY = pageHeight - 32; const sigW = contentWidth / 3;
-                const drawS = (l: string, lx: number) => {
-                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 4, 15, 'S');
-                    if (!config.printFriendly) { doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 4, 4, 'F'); doc.setTextColor(255, 255, 255); }
-                    else doc.setTextColor(...colors.navy);
-                    doc.setFontSize(7); doc.text(l, lx + 2, sigY + 3);
-                };
-                drawS('PREPARED BY', margin); drawS('REVIEWED BY', margin + sigW); drawS('APPROVED BY', margin + (sigW * 2));
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
+        if (config.showSignatures !== false) {
+            let sigY = pageHeight - 38;
+            if (finalY > sigY - 10) {
+                doc.addPage();
+                drawHeader(doc);
+                sigY = pageHeight - 38;
             }
+            const sigW = contentWidth / 3;
+            const drawSig = (label: string, lx: number) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                doc.rect(lx, sigY, sigW - 4, 18);
+                if (!config.printFriendly) {
+                    doc.setFillColor(...colors.navy);
+                    doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                    doc.setTextColor(255);
+                } else {
+                    doc.setTextColor(...colors.navy);
+                }
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.5);
+                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.text("Name:", lx + 2, sigY + 10);
+                doc.text("Date:", lx + 2, sigY + 13.5);
+                doc.text("Signature:", lx + 2, sigY + 17);
+            };
+
+            drawSig('PREPARED BY', margin);
+            drawSig('REVIEWED BY', margin + sigW);
+            drawSig('APPROVED BY', margin + (sigW * 2));
         }
 
         // --- Finalize Page Numbers ---

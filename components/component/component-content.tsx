@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,6 +20,7 @@ import { InspectionSummaryModal } from "@/components/dialogs/inspection-summary-
 import { AnomalySummaryModal } from "@/components/dialogs/anomaly-summary-modal";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
+import { useSearchParams } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
@@ -74,6 +75,7 @@ export default function ComponentContent() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [isLoadingTypes, setIsLoadingTypes] = useState(true);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const searchParams = useSearchParams();
 
   // Modal states for Inspections and Anomalies
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
@@ -151,6 +153,23 @@ export default function ComponentContent() {
   } = useSWR(apiUrl, fetcher);
 
   const components = componentsData?.data || [];
+  const processedCompIdRef = useRef<string | null>(null);
+
+  // Auto-open component spec if compId is in URL
+  useEffect(() => {
+    const compId = searchParams.get("compId");
+    if (compId && components.length > 0 && !selectedComponent && processedCompIdRef.current !== compId) {
+      const comp = components.find((c: Component) => String(c.id) === compId);
+      if (comp) {
+        processedCompIdRef.current = compId;
+        setSelectedComponent(comp);
+        setDialogMode('view');
+        setDialogOpen(true);
+      }
+    } else if (!compId) {
+      processedCompIdRef.current = null;
+    }
+  }, [searchParams, components, selectedComponent]);
 
   // Full unfiltered component list for resolving associated Q IDs
   const { data: allComponentsData } = useSWR(

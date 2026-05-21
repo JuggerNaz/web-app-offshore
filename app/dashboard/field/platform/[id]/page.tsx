@@ -29,13 +29,13 @@ import {
   Activity,
   Save,
   ChevronRight,
-  ArrowLeft
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function DetailPage() {
   const { id } = useParams();
-  const type = "platform";
+  const type = "platform" as string;
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pageId, setPageId] = useAtom(urlId);
@@ -81,23 +81,35 @@ export default function DetailPage() {
     }
   };
 
-  if (error) return (
-    <div className="flex flex-col items-center justify-center h-full text-center p-8">
-      <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-2xl mb-4 text-red-500">
-        <Activity className="h-8 w-8" />
+  if (error)
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-8">
+        <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-2xl mb-4 text-red-500">
+          <Activity className="h-8 w-8" />
+        </div>
+        <h2 className="text-xl font-black tracking-tight mb-2">Failed to Load Asset</h2>
+        <p className="text-slate-500 max-w-xs mx-auto mb-6">
+          We couldn't retrieve the data for this {type}.
+        </p>
+        <Button
+          onClick={() => window.location.reload()}
+          variant="outline"
+          className="rounded-xl px-8 font-bold"
+        >
+          Retry
+        </Button>
       </div>
-      <h2 className="text-xl font-black tracking-tight mb-2">Failed to Load Asset</h2>
-      <p className="text-slate-500 max-w-xs mx-auto mb-6">We couldn't retrieve the data for this {type}.</p>
-      <Button onClick={() => window.location.reload()} variant="outline" className="rounded-xl px-8 font-bold">Retry</Button>
-    </div>
-  );
+    );
 
-  if (isLoading) return (
-    <div className="flex-1 flex flex-col items-center justify-center p-20 space-y-4">
-      <div className="w-16 h-16 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin" />
-      <p className="text-xs font-black uppercase tracking-widest text-slate-400">Synchronizing Data...</p>
-    </div>
-  );
+  if (isLoading)
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-20 space-y-4">
+        <div className="w-16 h-16 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin" />
+        <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+          Synchronizing Data...
+        </p>
+      </div>
+    );
 
   const isNew = id === "new";
   const title = data?.data?.title || (isNew ? `New ${type}` : "Loading...");
@@ -105,7 +117,11 @@ export default function DetailPage() {
 
   return (
     <div className="flex-1 w-full flex flex-col animate-in fade-in duration-700 h-full overflow-hidden">
-      <Tabs defaultValue="spec1" onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+      <Tabs
+        defaultValue="spec1"
+        onValueChange={setActiveTab}
+        className="w-full h-full flex flex-col"
+      >
         {/* Fixed Top Header Section */}
         <div className="bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b px-8 pt-8 pb-6 shadow-sm space-y-6 shrink-0 z-20">
           <div className="flex items-center justify-between max-w-7xl mx-auto w-full">
@@ -125,7 +141,11 @@ export default function DetailPage() {
                       href={`/dashboard/field/structures?field=${fieldId}`}
                       className="text-xs text-muted-foreground hover:text-foreground transition-colors capitalize"
                     >
-                      {type === "platform" ? "Platforms" : type === "pipeline" ? "Pipelines" : "Structures"}
+                      {type === "platform"
+                        ? "Platforms"
+                        : type === "pipeline"
+                          ? "Pipelines"
+                          : "Structures"}
                     </Link>
                     <ChevronRight className="w-3 h-3 text-muted-foreground" />
                   </>
@@ -139,7 +159,11 @@ export default function DetailPage() {
                     </Link>
                     <ChevronRight className="w-3 h-3 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground capitalize">
-                      {type === "platform" ? "Platforms" : type === "pipeline" ? "Pipelines" : "Structures"}
+                      {type === "platform"
+                        ? "Platforms"
+                        : type === "pipeline"
+                          ? "Pipelines"
+                          : "Structures"}
                     </span>
                     <ChevronRight className="w-3 h-3 text-muted-foreground" />
                   </>
@@ -152,7 +176,9 @@ export default function DetailPage() {
                 <div className="h-1 w-1 rounded-full bg-blue-500" />
                 <span className="text-blue-600/80">{type} Details</span>
               </div>
-              <h1 className="text-3xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none">{title}</h1>
+              <h1 className="text-3xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none">
+                {title}
+              </h1>
             </div>
 
             <div className="flex items-center gap-3">
@@ -184,26 +210,43 @@ export default function DetailPage() {
               value="spec1"
               icon={<FileText className="h-4 w-4" />}
               label={
-                type === "platform" ? "Platform Specs" :
-                  type === "pipeline" ? "Pipeline Specs" :
-                    "Basic Specs"
+                type === "platform"
+                  ? "Platform Specs"
+                  : type === "pipeline"
+                    ? "Pipeline Specs"
+                    : "Basic Specs"
               }
             />
-            <TabTrigger 
-              value="spec2" 
-              icon={<Database className="h-4 w-4" />} 
-              label={type === "pipeline" ? "Geodetic Parameter" : "Extended Data"} 
-              disabled={isNew} 
+            <TabTrigger
+              value="spec2"
+              icon={<Database className="h-4 w-4" />}
+              label={type === "pipeline" ? "Geodetic Parameter" : "Extended Data"}
+              disabled={isNew}
             />
-            <TabTrigger 
-              value="structure-image" 
-              icon={<ImageIcon className="h-4 w-4" />} 
-              label={type === "pipeline" ? "Photos" : "Visuals"} 
-              disabled={isNew} 
+            <TabTrigger
+              value="structure-image"
+              icon={<ImageIcon className="h-4 w-4" />}
+              label={type === "pipeline" ? "Photos" : "Visuals"}
+              disabled={isNew}
             />
-            <TabTrigger value="comments" icon={<MessageSquare className="h-4 w-4" />} label="Comments" disabled={isNew} />
-            <TabTrigger value="attachments" icon={<Paperclip className="h-4 w-4" />} label="Attachments" disabled={isNew} />
-            <TabTrigger value="components" icon={<Boxes className="h-4 w-4" />} label="Components" disabled={isNew} />
+            <TabTrigger
+              value="comments"
+              icon={<MessageSquare className="h-4 w-4" />}
+              label="Comments"
+              disabled={isNew}
+            />
+            <TabTrigger
+              value="attachments"
+              icon={<Paperclip className="h-4 w-4" />}
+              label="Attachments"
+              disabled={isNew}
+            />
+            <TabTrigger
+              value="components"
+              icon={<Boxes className="h-4 w-4" />}
+              label="Components"
+              disabled={isNew}
+            />
           </TabsList>
         </div>
 
@@ -245,7 +288,17 @@ export default function DetailPage() {
   );
 }
 
-function TabTrigger({ value, icon, label, disabled }: { value: string, icon: React.ReactNode, label: string, disabled?: boolean }) {
+function TabTrigger({
+  value,
+  icon,
+  label,
+  disabled,
+}: {
+  value: string;
+  icon: React.ReactNode;
+  label: string;
+  disabled?: boolean;
+}) {
   return (
     <TabsTrigger
       value={value}

@@ -44,7 +44,7 @@ export default function ManagerOverviewPage() {
     const platforms = platformsData?.data || [];
 
     // Fetch jobpacks
-    const { data: jobpacksData } = useSWR("/api/jobpack?limit=1000", fetcher);
+    const { data: jobpacksData } = useSWR("/api/jobpack?limit=1000&has_inspection=true", fetcher);
     const jobpacks = (jobpacksData?.data || []).map((j: any) => ({
         task_id: j.id, name: j.name, status: j.status,
         metadata: j.metadata || {}, created_at: j.created_at,

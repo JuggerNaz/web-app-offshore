@@ -12,7 +12,7 @@ import {
   Layers,
   Command,
   ArrowRight,
-  Loader2
+  Hourglass
 } from "lucide-react";
 import { Command as CommandPrimitive } from "cmdk";
 import { useRouter } from "next/navigation";
@@ -93,7 +93,7 @@ export function GlobalSearch() {
               className="flex h-10 w-full rounded-md bg-transparent text-lg font-medium outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
             />
             {loading ? (
-              <Loader2 className="ml-2 h-4 w-4 animate-spin text-blue-500" />
+              <Hourglass className="ml-2 h-4 w-4 animate-bounce text-blue-500" />
             ) : (
               <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-[10px] font-black text-slate-400 uppercase tracking-widest border border-slate-200 dark:border-slate-700">
                 <Command className="h-3 w-3" />
@@ -102,7 +102,15 @@ export function GlobalSearch() {
             )}
           </div>
           <CommandPrimitive.List className="max-h-[350px] overflow-y-auto overflow-x-hidden p-2 custom-scrollbar">
-            <CommandPrimitive.Empty className="py-12 text-center text-sm">
+            {loading && results.length === 0 && (
+              <div className="py-12 text-center text-sm">
+                <div className="flex flex-col items-center gap-2">
+                  <Hourglass className="h-8 w-8 text-blue-400 animate-spin" />
+                  <p className="text-slate-400 font-medium animate-pulse">Searching the deep database...</p>
+                </div>
+              </div>
+            )}
+            <CommandPrimitive.Empty className={cn("py-12 text-center text-sm", loading && "hidden")}>
               <div className="flex flex-col items-center gap-2">
                 <Search className="h-8 w-8 text-slate-200 dark:text-slate-800" />
                 <p className="text-slate-400 font-medium">No results found for "{query}"</p>
@@ -145,7 +153,7 @@ export function GlobalSearch() {
                   {[
                     { label: "Platforms", icon: <Building2 className="h-4 w-4" />, url: "/dashboard/field/platform" },
                     { label: "Jobpacks", icon: <Briefcase className="h-4 w-4" />, url: "/dashboard/jobpack" },
-                    { label: "Anomalies", icon: <AlertTriangle className="h-4 w-4" />, url: "/dashboard/inspection/anomalies" },
+                    { label: "Anomalies", icon: <AlertTriangle className="h-4 w-4" />, url: "/dashboard/utilities/anomalies-findings" },
                     { label: "Settings", icon: <Command className="h-4 w-4" />, url: "/dashboard/settings" },
                   ].map((action) => (
                     <button

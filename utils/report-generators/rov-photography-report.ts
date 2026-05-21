@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { format } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 interface CompanySettings {
     company_name?: string;
@@ -20,15 +21,29 @@ interface ReportConfig {
     showSignatures?: boolean;
 }
 
-// Helper to load images with better error handling
-const loadPhotoData = async (url: string) => {
-    try {
-        const result = await loadLogoWithTransparency(url);
-        return result;
-    } catch (e) {
-        console.warn(`Failed to load photo: ${url}`, e);
-        return null;
-    }
+// Helper to load images efficiently for reports
+const loadPhotoData = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
+    return new Promise((resolve) => {
+        const img = new window.Image();
+        img.crossOrigin = "Anonymous";
+        img.src = url;
+        img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+                ctx.drawImage(img, 0, 0);
+                resolve({ data: canvas.toDataURL("image/jpeg", 0.8), width: img.width, height: img.height });
+            } else {
+                resolve(null);
+            }
+        };
+        img.onerror = () => {
+            console.warn(`Failed to load photo: ${url}`);
+            resolve(null);
+        };
+    });
 };
 
 /**
@@ -172,18 +187,17 @@ export const generateROVPhotographyReport = async (
 
                 // 2. Image
                 try {
-                    // Sanitize path - ensure it's not a filter string or malformed
-                    const path = photo.path || "";
-                    if (!path || path.includes('=') || path.length < 5) {
-                        console.warn("Skipping invalid photo path:", path);
+                    const path = photo.path || photo.previewUrl || "";
+                    if (!path) {
+                        console.warn("Skipping photo with empty path");
                         continue;
                     }
 
-                    const { data: publicUrlData } = supabase.storage.from('attachments').getPublicUrl(path);
-                    const url = publicUrlData.publicUrl;
+                    const url = getAttachmentUrl(photo, supabase);
+
                     const imgData = await loadPhotoData(url);
                     if (imgData) {
-                        doc.addImage(imgData.data, 'PNG', xPos, currentY, imgWidth, imgHeight);
+                        doc.addImage(imgData.data, 'JPEG', xPos, currentY, imgWidth, imgHeight);
                     } else {
                         doc.setDrawColor(200); doc.rect(xPos, currentY, imgWidth, imgHeight);
                         doc.setFontSize(8); doc.text("Image Load Failed", xPos + imgWidth / 2, currentY + imgHeight / 2, { align: "center" });

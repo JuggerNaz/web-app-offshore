@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { Activity, Settings } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useROVConnection } from '@/components/rov-connection-provider';
 
 type ConnectionType = 'serial' | 'network';
 type ParseMethod = 'position' | 'id';
@@ -60,13 +61,9 @@ interface ROVDataStringBannerProps {
 }
 
 export function ROVDataStringBanner({ structureType }: ROVDataStringBannerProps) {
+    const { isConnected, isConnecting, connect, disconnect, fields: globalFields } = useROVConnection();
     const [settings, setSettings] = useState<DataAcquisitionSettings | null>(null);
-    const [fields, setFields] = useState<FieldMapping[]>([]);
-
-    // Connection Status
-    const [isConnected, setIsConnected] = useState(false);
-    const [liveData, setLiveData] = useState('');
-    const [parsedData, setParsedData] = useState<Record<string, string>>({});
+    const [localFields, setLocalFields] = useState<FieldMapping[]>([]);
 
     const pathname = usePathname();
     const searchParams = useSearchParams();
@@ -74,20 +71,6 @@ export function ROVDataStringBanner({ structureType }: ROVDataStringBannerProps)
     // Construct return URL
     const returnPath = pathname + (searchParams.toString() ? '?' + searchParams.toString() : '');
     const settingsUrl = `/dashboard/settings/data-acquisition?returnTo=${encodeURIComponent(returnPath)}`;
-
-    // Web Serial API
-    const [serialPort, setSerialPort] = useState<any>(null);
-    const [reader, setReader] = useState<any>(null);
-    const [isWebSerialSupported, setIsWebSerialSupported] = useState(false);
-    const dataBufferRef = useRef<string>('');
-    const readableStreamClosedRef = useRef<any>(null);
-
-    // Initial check for Web Serial support
-    useEffect(() => {
-        if (typeof window !== 'undefined' && 'serial' in navigator) {
-            setIsWebSerialSupported(true);
-        }
-    }, []);
 
     // Load settings from localStorage when structureType changes
     useEffect(() => {
@@ -97,13 +80,13 @@ export function ROVDataStringBanner({ structureType }: ROVDataStringBannerProps)
                 try {
                     const parsedSettings = JSON.parse(saved) as DataAcquisitionSettings;
                     setSettings(parsedSettings);
-                    setFields(parsedSettings.fields || []);
+                    setLocalFields(parsedSettings.fields || []);
                 } catch (error) {
                     console.error('Failed to parse saved settings:', error);
                 }
             } else {
                 setSettings(null);
-                setFields([]);
+                setLocalFields([]);
             }
         };
 
@@ -121,190 +104,19 @@ export function ROVDataStringBanner({ structureType }: ROVDataStringBannerProps)
 
     }, [structureType]);
 
-    const applyModification = (value: string, field: FieldMapping): string => {
-        if (/[a-zA-Z]/.test(value)) return value;
-        if (field.modify === 'none') return value;
-
-        const numValue = parseFloat(value);
-        if (isNaN(numValue)) return value;
-
-        let result = numValue;
-        switch (field.modify) {
-            case 'add': result = numValue + field.modifyValue; break;
-            case 'subtract': result = numValue - field.modifyValue; break;
-            case 'multiply': result = numValue * field.modifyValue; break;
-            case 'divide':
-                result = field.modifyValue !== 0 ? numValue / field.modifyValue : numValue;
-                break;
-        }
-
-        return result.toString();
-    };
-
-    const parseData = (dataString: string) => {
-        if (!settings) return;
-        const parsed: Record<string, string> = {};
-
-        const { method: parseMethod, stringLength, startCharacter } = settings.parsing;
-        let processedData = dataString;
-
-        if ((parseMethod === 'position' || parseMethod === 'id') && startCharacter) {
-            let startIndex = dataString.lastIndexOf(startCharacter);
-
-            if (startIndex !== -1 && (startIndex + stringLength > dataString.length)) {
-                startIndex = dataString.lastIndexOf(startCharacter, startIndex - 1);
-            }
-
-            if (startIndex !== -1 && (startIndex + stringLength <= dataString.length)) {
-                processedData = dataString.substring(startIndex, startIndex + stringLength);
-            } else {
-                return;
-            }
-        }
-
-        fields.forEach(field => {
-            let value: string = '';
-
-            if (field.defaultDataOption === 'system_date') {
-                value = new Date().toLocaleDateString();
-            } else if (field.defaultDataOption === 'system_time') {
-                value = new Date().toLocaleTimeString();
-            } else {
-                if (parseMethod === 'position') {
-                    const start = parseInt(field.positionValue);
-                    if (!isNaN(start) && start < processedData.length) {
-                        value = processedData.substring(start, Math.min(start + field.length, processedData.length));
-                    }
-                    if (value.length > 0 && /[a-zA-Z]/.test(value[0])) {
-                        value = value.substring(1);
-                    }
-                } else {
-                    const idPrefix = field.idValue;
-                    const escapedPrefix = idPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const regex = new RegExp(`${escapedPrefix}([^,]+)`);
-                    const match = processedData.match(regex);
-                    value = match ? match[1].substring(0, field.length) : field.defaultDataValue;
-
-                    if (value.length > 0 && /[a-zA-Z]/.test(value[0])) {
-                        value = value.substring(1);
-                    }
-                }
-            }
-
-            value = applyModification(value, field);
-            parsed[field.label] = value;
-        });
-
-        setParsedData(parsed);
-    };
-
-    // UI Update Loop for Parsed Data
+    // Explicitly disconnect when navigating away from this component (if connected)
     useEffect(() => {
-        let interval: NodeJS.Timeout;
-        if (isConnected) {
-            interval = setInterval(() => {
-                if (dataBufferRef.current && settings) {
-                    const snapshot = dataBufferRef.current;
-                    let validEndIndex = snapshot.length;
-
-                    if ((settings.parsing.method === 'position' || settings.parsing.method === 'id') && settings.parsing.startCharacter && settings.parsing.stringLength > 0) {
-                        const lastStartIndex = snapshot.lastIndexOf(settings.parsing.startCharacter);
-                        if (lastStartIndex !== -1 && (snapshot.length - lastStartIndex) < settings.parsing.stringLength) {
-                            validEndIndex = lastStartIndex;
-                        }
-                    }
-
-                    const validContent = snapshot.substring(0, validEndIndex);
-                    // Pass only the most recent complete frame block or enough context to parseData
-                    parseData(validContent.slice(-2000));
-                }
-            }, 100);
-        }
-        return () => clearInterval(interval);
-    }, [isConnected, settings, fields]);
+        return () => {
+            console.log("[ROV Banner] Unmounting, terminating ROV connection...");
+            disconnect(); 
+        };
+    }, [disconnect]);
 
     const handleConnectToggle = async () => {
         if (isConnected) {
-            handleDisconnect();
-            return;
-        }
-
-        if (!settings) {
-            alert('Settings not found. Please click Settings to configure Data Acquisition.');
-            return;
-        }
-
-        if (settings.connection.type === 'network') {
-            alert('Network connection is not implemented in this version.');
-            return;
-        }
-
-        if (!isWebSerialSupported) {
-            alert('Web Serial API is not supported in this browser. Please use Chrome, Edge, or Opera.');
-            return;
-        }
-
-        try {
-            const port = await (navigator as any).serial.requestPort();
-            await port.open({
-                baudRate: settings.connection.serial.baudRate,
-                dataBits: settings.connection.serial.dataBits,
-                parity: settings.connection.serial.parity,
-                stopBits: settings.connection.serial.stopBits,
-            });
-
-            setSerialPort(port);
-            setIsConnected(true);
-            dataBufferRef.current = '';
-
-            const textDecoder = new TextDecoderStream();
-            const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-            readableStreamClosedRef.current = readableStreamClosed;
-            const reader = textDecoder.readable.getReader();
-            setReader(reader);
-
-            const readLoop = async () => {
-                try {
-                    while (true) {
-                        const { value, done } = await reader.read();
-                        if (done) break;
-                        if (value) {
-                            dataBufferRef.current += value;
-                            if (dataBufferRef.current.length > 10000) {
-                                dataBufferRef.current = dataBufferRef.current.slice(-5000);
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error reading from serial port:', error);
-                }
-            };
-
-            readLoop();
-
-        } catch (error) {
-            console.error('Failed to connect to serial port:', error);
-            alert('Failed to connect to serial port. Cannot establish connection.');
-        }
-    };
-
-    const handleDisconnect = async () => {
-        try {
-            if (reader) {
-                await reader.cancel();
-                setReader(null);
-            }
-            if (readableStreamClosedRef.current) {
-                await readableStreamClosedRef.current.catch(() => { });
-            }
-            if (serialPort) {
-                await serialPort.close();
-                setSerialPort(null);
-            }
-            setIsConnected(false);
-            setParsedData({});
-        } catch (error) {
-            console.error('Error disconnecting from serial port:', error);
+            await disconnect();
+        } else {
+            await connect(structureType);
         }
     };
 
@@ -322,10 +134,11 @@ export function ROVDataStringBanner({ structureType }: ROVDataStringBannerProps)
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 mt-1 relative">
                             <Button
                                 variant={isConnected ? "default" : "outline"}
+                                disabled={isConnecting}
                                 className={`h-6 text-[10px] px-2 gap-1 rounded ${isConnected ? "bg-green-600 hover:bg-green-700 text-white" : "text-slate-600 dark:text-slate-400"}`}
                                 onClick={handleConnectToggle}
                             >
-                                {isConnected ? (
+                                {isConnecting ? "Connecting..." : isConnected ? (
                                     <>
                                         <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse"></span>
                                         Connected
@@ -343,14 +156,17 @@ export function ROVDataStringBanner({ structureType }: ROVDataStringBannerProps)
 
                 {/* Data Values Horizontal List */}
                 <div className="flex-1 flex items-center justify-start md:justify-around px-2 py-3 gap-6 overflow-x-auto min-w-0">
-                    {fields.length > 0 ? fields.map(field => (
-                        <div key={field.id} className="flex flex-col items-center min-w-[60px]">
-                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">{field.label}</span>
-                            <span className="font-bold font-mono text-base text-slate-800 dark:text-slate-200">
-                                {parsedData[field.label] !== undefined ? parsedData[field.label] : '-'}
-                            </span>
-                        </div>
-                    )) : (
+                    {localFields.length > 0 ? localFields.map(field => {
+                        const globalField = globalFields.find(gf => gf.targetField === field.targetField || gf.label === field.label);
+                        return (
+                            <div key={field.id} className="flex flex-col items-center min-w-[60px]">
+                                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">{field.label}</span>
+                                <span className="font-bold font-mono text-base text-slate-800 dark:text-slate-200">
+                                    {globalField ? globalField.value : '-'}
+                                </span>
+                            </div>
+                        );
+                    }) : (
                         <span className="text-xs text-muted-foreground italic">No fields configured. Setup data acquisition settings.</span>
                     )}
                 </div>
@@ -368,3 +184,4 @@ export function ROVDataStringBanner({ structureType }: ROVDataStringBannerProps)
         </Card>
     );
 }
+

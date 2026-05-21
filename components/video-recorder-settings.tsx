@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { enumerateDevices, detectMissingDependencies, type DeviceInfo, type MissingDependency } from '@/lib/video-recorder/device-capabilities';
 import { loadSettings, saveSettings, resetSettings, getSmartDefaults, type WorkstationSettings } from '@/lib/video-recorder/settings-manager';
 import { createMediaRecorder, startRecording, saveFile, generateFilename, getPhotoExtension, FORMAT_CONFIGS } from '@/lib/video-recorder/media-recorder';
@@ -126,6 +126,18 @@ export default function VideoRecorderSettings() {
         };
         setSettings(updated);
         saveSettings(updated);
+    }
+
+    async function handleRefreshDevices() {
+        setLoading(true);
+        const { videoDevices: vDevices, audioDevices: aDevices } = await enumerateDevices();
+        setVideoDevices(vDevices);
+        setAudioDevices(aDevices);
+        setLoading(false);
+        toast({
+            description: 'Device lists updated',
+            variant: 'default',
+        });
     }
 
     function handleResolutionChange(resolution: string) {
@@ -810,22 +822,38 @@ export default function VideoRecorderSettings() {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium mb-2">
-                                    Video Device
-                                </label>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-sm font-medium">
+                                        Video Device
+                                    </label>
+                                    <button 
+                                        onClick={handleRefreshDevices}
+                                        className="p-1 hover:bg-muted rounded-full transition-colors"
+                                        title="Refresh video devices"
+                                    >
+                                        <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+                                    </button>
+                                </div>
                                 {videoDevices.length > 0 ? (
                                     <>
                                         <select
                                             value={settings.video.deviceId}
-                                            onChange={(e) => handleVideoDeviceChange(e.target.value)}
+                                            onChange={(e) => {
+                                                if (e.target.value === 'request') {
+                                                    requestPermissions();
+                                                } else {
+                                                    handleVideoDeviceChange(e.target.value);
+                                                }
+                                            }}
                                             className="w-full bg-background border border-input rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-ring"
                                         >
                                             <option value="">Select camera...</option>
                                             {videoDevices.map((device) => (
                                                 <option key={device.deviceId} value={device.deviceId}>
-                                                    {device.label}
+                                                    {device.label || `Camera ${device.deviceId.slice(0, 5)}`}
                                                 </option>
                                             ))}
+                                            <option value="request">➕ Add / Request Permission...</option>
                                         </select>
                                         {settings.video.deviceId && (
                                             <div className="mt-2 inline-flex items-center gap-2 text-xs font-semibold px-2 py-1 bg-green-50 dark:bg-green-950/20 text-green-600 dark:text-green-400 rounded">
@@ -900,20 +928,36 @@ export default function VideoRecorderSettings() {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium mb-2">
-                                    Audio Device
-                                </label>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-sm font-medium">
+                                        Audio Device
+                                    </label>
+                                    <button 
+                                        onClick={handleRefreshDevices}
+                                        className="p-1 hover:bg-muted rounded-full transition-colors"
+                                        title="Refresh audio devices"
+                                    >
+                                        <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+                                    </button>
+                                </div>
                                 <select
                                     value={settings.audio.deviceId}
-                                    onChange={(e) => handleAudioDeviceChange(e.target.value)}
+                                    onChange={(e) => {
+                                        if (e.target.value === 'request') {
+                                            requestPermissions();
+                                        } else {
+                                            handleAudioDeviceChange(e.target.value);
+                                        }
+                                    }}
                                     className="w-full bg-background border border-input rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-ring"
                                 >
                                     <option value="">Select microphone...</option>
                                     {audioDevices.map((device) => (
                                         <option key={device.deviceId} value={device.deviceId}>
-                                            {device.label}
+                                            {device.label || `Microphone ${device.deviceId.slice(0, 5)}`}
                                         </option>
                                     ))}
+                                    <option value="request">➕ Add / Request Permission...</option>
                                 </select>
                             </div>
 

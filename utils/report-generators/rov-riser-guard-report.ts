@@ -132,29 +132,19 @@ export const generateROVRiserGuardReport = async (
         };
 
         // ── Grouping Logic ──────────────────────────────────────────────────────
-        const idToComp: Record<number, { q_id: string, name: string, parent_id: number | null, is_rg: boolean }> = {};
+        const compRegistry = new Map<number, any>();
+        const qidRegistry  = new Map<string, any>();
         
-        const addCompToMap = (c: any) => {
+        const addCompToRegistry = (c: any) => {
             if (!c || !c.id) return;
-            const qid = (c.q_id || "").toUpperCase();
-            const typeCode = (c.code || c.metadata?.type || "").toUpperCase();
-            const compName = c.comp_name || c.name || "Riser Guard";
-
-            // Group by Riser Guard (RG)
-            const isRG = qid.startsWith("RG") || typeCode === "RG" || typeCode === "RISERGUARD";
-            
-            idToComp[c.id] = {
-                q_id: c.q_id || `ID: ${c.id}`,
-                name: compName,
-                parent_id: c.metadata?.parent_id || c.metadata?.comp_id_parent || c.metadata?.parent_comp_id || c.metadata?.associated_comp_id || null,
-                is_rg: isRG
-            };
+            compRegistry.set(c.id, c);
+            if (c.q_id) qidRegistry.set(c.q_id.toUpperCase(), c);
         };
 
-        // 1. Build initial map from records
+        // 1. Build initial registry from records
         records.forEach(r => {
-            addCompToMap(r.structure_components);
-            addCompToMap(r.component);
+            addCompToRegistry(r.structure_components);
+            addCompToRegistry(r.component);
         });
 
         // 2. Load all components for the structure to resolve parents
@@ -165,19 +155,19 @@ export const generateROVRiserGuardReport = async (
                     .from('structure_components')
                     .select('*')
                     .eq('structure_id', effectiveStructureId);
-                allComps?.forEach(addCompToMap);
+                allComps?.forEach(addCompToRegistry);
             } catch (e) {}
         }
 
-        // 3. targeted fetch for any missing 'Associated' component IDs
+        // 3. Targeted fetch for any missing parent/associated component IDs
         const missingIds = new Set<number>();
         records.forEach(r => {
             const comp = r.structure_components || r.component || {};
             const metadata = comp.metadata || {};
-            const aid = metadata.associated_comp_qid || metadata.associated_comp_id || metadata.parent_id || 
+            const aid = metadata.associated_comp_id || metadata.parent_id || 
                         metadata.comp_id_parent || metadata.parent_comp_id || 
                         metadata.associated_id;
-            if (aid && !idToComp[Number(aid)]) missingIds.add(Number(aid));
+            if (aid && !compRegistry.has(Number(aid))) missingIds.add(Number(aid));
         });
 
         if (missingIds.size > 0) {
@@ -186,34 +176,121 @@ export const generateROVRiserGuardReport = async (
                     .from('structure_components')
                     .select('*')
                     .in('id', Array.from(missingIds));
-                extraComps?.forEach(addCompToMap);
+                extraComps?.forEach(addCompToRegistry);
             } catch (e) {}
         }
 
-        // 4. Grouping Logic
-        const rgGroups: Record<number, any[]> = {};
+        // Helper to find the ultimate parent for a Riser Guard branch
+        const getRGBranchInfo = (cid: number | null, depth = 0): { top: any | null, hasRG: boolean } => {
+            if (!cid || depth > 5) return { top: null, hasRG: false };
+            const c = compRegistry.get(cid);
+            if (!c) return { top: null, hasRG: false };
+
+            const qid = (c.q_id || "").toUpperCase();
+            const typeCode = (c.code || c.metadata?.type || "").toUpperCase();
+            const isRG = qid.startsWith("RG") || qid.startsWith("RISG") || typeCode === "RG" || typeCode === "RISG" || typeCode === "RISERGUARD";
+
+            const meta = c.metadata || {};
+            const pId = meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id;
+            
+            let parentId = pId ? Number(pId) : null;
+            
+            // Fallback 1: If no parent ID, but we have a parent QID string, try to resolve it
+            if (!parentId) {
+                const pQid = (meta.associated_comp_qid || meta.parent_qid || meta.parent_q_id || "").toUpperCase();
+                if (pQid && qidRegistry.has(pQid)) {
+                    parentId = qidRegistry.get(pQid).id;
+                }
+            }
+
+            // Fallback 2: Recursive QID prefix matching (e.g., "RISG 2-SUPP-A1" -> "RISG 2")
+            if (!parentId && qid.includes("-")) {
+                let currentQid = qid;
+                while (currentQid.includes("-")) {
+                    currentQid = currentQid.substring(0, currentQid.lastIndexOf("-")).trim();
+                    if (qidRegistry.has(currentQid)) {
+                        parentId = qidRegistry.get(currentQid).id;
+                        break;
+                    }
+                }
+            }
+
+            const result = getRGBranchInfo(parentId, depth + 1);
+            
+            return {
+                top: result.top || c,
+                hasRG: result.hasRG || isRG
+            };
+        };
+
+        const rgGroups: Record<string, any[]> = {}; // Key: Parent QID
+        const parentIdMap: Record<string, number> = {}; // QID -> ID mapping
+
+        // Pre-identify all top-level RG components for prefix matching fallback
+        const topLevelRGs: any[] = [];
+        compRegistry.forEach(c => {
+            const qid = (c.q_id || "").toUpperCase();
+            const typeCode = (c.code || c.metadata?.type || "").toUpperCase();
+            const isRG = qid.startsWith("RG") || qid.startsWith("RISG") || typeCode === "RG" || typeCode === "RISG" || typeCode === "RISERGUARD";
+            const meta = c.metadata || {};
+            const pId = meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id;
+            
+            if (isRG && !pId) topLevelRGs.push(c);
+        });
+
         records.forEach(r => {
+            const inspCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+            
+            // STRICT FILTER: Only RGVI records are allowed in this report
+            if (inspCode !== "RGVI") return;
+
             const comp = r.structure_components || r.component || {};
             const metadata = comp.metadata || {};
+            const qid = (comp.q_id || "").toUpperCase().trim();
             
-            // Get the Parent ID (using associated_comp_qid fallback to its own id)
-            const parentIdVal = metadata.associated_comp_qid || metadata.associated_comp_id || metadata.parent_id || comp.id;
-            const groupId = Number(parentIdVal);
+            let resolvedTop: any = null;
+            let hasRG = false;
 
-            // ONLY include if the resolved group belongs to a RG component type
-            const parentInfo = idToComp[groupId];
-            if (groupId && parentInfo?.is_rg) {
-                if (!rgGroups[groupId]) rgGroups[groupId] = [];
-                rgGroups[groupId].push(r);
+            // 1. Primary: Aggressive Prefix Matching
+            let bestPrefixMatch: any = null;
+            topLevelRGs.forEach(trg => {
+                const trgQid = (trg.q_id || "").toUpperCase().trim();
+                if (trgQid && qid.startsWith(trgQid)) {
+                    if (!bestPrefixMatch || trgQid.length > (bestPrefixMatch.q_id || "").length) {
+                        bestPrefixMatch = trg;
+                    }
+                }
+            });
+
+            if (bestPrefixMatch) {
+                resolvedTop = bestPrefixMatch;
+                hasRG = true;
+            } else {
+                // 2. Secondary: Hierarchy Resolution
+                const startId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id || comp.id;
+                const branch = getRGBranchInfo(Number(startId));
+                resolvedTop = branch.top;
+                hasRG = branch.hasRG;
+            }
+            
+            // 3. Grouping
+            if (hasRG && resolvedTop && resolvedTop.id) {
+                const key = String(resolvedTop.id);
+                if (!rgGroups[key]) rgGroups[key] = [];
+                rgGroups[key].push(r);
+                parentIdMap[key] = resolvedTop.id;
             }
         });
 
         // Filter and Sort by Parent QID
-        const sortedParentIds = Object.keys(rgGroups).map(Number).sort((a, b) => {
-            const qidA = idToComp[a]?.q_id || "";
-            const qidB = idToComp[b]?.q_id || "";
-            return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: 'base' });
+        const sortedParentKeys = Object.keys(rgGroups).sort((a, b) => {
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
         });
+
+        if (sortedParentKeys.length === 0) {
+            // If no RG records found, but we have some records, we might want to show a blank state or throw
+            // But per request, we only filter RG.
+        }
 
         const buildRow = (r: any, idx: number): string[] => {
             const d   = r.inspection_data || {};
@@ -233,6 +310,22 @@ export const generateROVRiserGuardReport = async (
                 : "—";
 
             const findingsParts: string[] = [];
+
+            // GVI Specific Metrics
+            const mg = d.marine_growth ?? d.marine_growth_hard ?? "";
+            if (mg !== "" && mg !== null && mg !== undefined) findingsParts.push(`Marine Growth: ${mg}`);
+
+            const compCond = d.component_condition ?? d.general_condition ?? "";
+            if (compCond) findingsParts.push(`Component Condition: ${compCond}`);
+
+            const coatCond = d.coating_condition ?? "";
+            if (coatCond) findingsParts.push(`Coating Condition: ${coatCond}`);
+
+            const debris = d.debris ?? "";
+            if (debris) {
+                const mat = d.debris_material ? ` (${d.debris_material})` : "";
+                findingsParts.push(`Debris: ${debris}${mat}`);
+            }
 
             // CP Additional
             const additionals = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
@@ -275,38 +368,40 @@ export const generateROVRiserGuardReport = async (
         };
 
         // ── Generation ──────────────────────────────────────────────────────────
-        sortedParentIds.forEach((parentId, groupIdx) => {
+        sortedParentKeys.forEach((parentKey, groupIdx) => {
             if (groupIdx > 0) doc.addPage();
             
-            const groupRecords = rgGroups[parentId].sort((a, b) => {
+            const allGroupRecords = rgGroups[parentKey];
+            const parentId = parentIdMap[parentKey];
+            const parentComp = compRegistry.get(parentId);
+            const parentName = parentComp?.name || (parentKey === "GENERAL" ? "General Components" : "Riser Guard");
+            const displayParentQid = (parentComp?.q_id || parentKey).replace(/[.\s,;]+$/, "").trim();
+
+            drawPageHeader(doc);
+            const startY = drawContextRow(doc, margin + HEADER_H + 2, allGroupRecords);
+
+            // RG Section Label (Sub-header)
+            const subH = 6;
+            let subY = startY;
+            doc.setFillColor(...colors.navy);
+            doc.rect(margin, subY, contentWidth, subH, "F");
+            doc.setTextColor(255);
+            doc.setFontSize(8); doc.setFont("helvetica", "bold");
+            const labelText = parentKey === "GENERAL" ? "GENERAL COMPONENTS" : `${parentName.toUpperCase()} (${displayParentQid})`;
+            doc.text(labelText, margin + 4, subY + 4.2);
+            
+            let currentY = subY + subH + 2;
+
+            // Draw a single consolidated table for all records in this RG group
+            const groupRecords = allGroupRecords.sort((a, b) => {
                 const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
                 const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
                 return elB - elA;
             });
 
-            const parentComp = idToComp[parentId];
-            const rawParentQid = parentComp?.q_id || `ID: ${parentId}`;
-            const displayQid = rawParentQid.replace(/[.\s,;]+$/, "").trim();
-            const parentName = parentComp?.name || "Riser Guard";
-
-            drawPageHeader(doc);
-            const startY = drawContextRow(doc, margin + HEADER_H + 2, groupRecords);
-
-            // RG Section Label (Sub-header)
-            const subH = 6;
-            const subY = startY;
-            doc.setFillColor(...colors.navy);
-            doc.rect(margin, subY, contentWidth, subH, "F");
-            doc.setTextColor(255);
-            doc.setFontSize(8); doc.setFont("helvetica", "bold");
-            const labelText = `${parentName.toUpperCase()} (${displayQid})`;
-            doc.text(labelText, margin + 4, subY + 4.2);
-            
-            (doc as any)._tableStartY = subY + subH + 2;
-
             autoTable(doc, {
-                startY: (doc as any)._tableStartY,
-                margin: { left: margin, right: margin, bottom: 35 },
+                startY: currentY,
+                margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: 35 },
                 head: [[
                     { content: "Item No.",       styles: { halign: "center" } },
                     { content: "QID",             styles: { halign: "center" } },
@@ -359,33 +454,9 @@ export const generateROVRiserGuardReport = async (
                     }
                 },
                 didDrawPage: (data) => {
-                    // Signatures
-                    if (config.showSignatures !== false) {
-                        const sigY = pageHeight - 32;
-                        const sigW = contentWidth / 3;
-                        const drawSigFooter = (label: string, lx: number) => {
-                            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
-                            doc.rect(lx, sigY, sigW - 4, 18);
-                            if (!config.printFriendly) {
-                                doc.setFillColor(...colors.navy);
-                                doc.rect(lx, sigY, sigW - 4, 4.5, "F");
-                                doc.setTextColor(255);
-                            } else {
-                                doc.setTextColor(...colors.navy);
-                            }
-                            doc.setFontSize(7); doc.setFont("helvetica", "bold");
-                            doc.text(label, lx + 2, sigY + 3.5);
-                            doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
-                            doc.text("Name:", lx + 2, sigY + 10);
-                            doc.text("Date:", lx + 2, sigY + 13.5);
-                            doc.text("Signature:", lx + 2, sigY + 17);
-                        };
-                        drawSigFooter("PREPARED BY", margin);
-                        drawSigFooter("REVIEWED BY", margin + sigW);
-                        drawSigFooter("APPROVED BY", margin + sigW * 2);
-                    }
-
-                    // Bottom bar
+                    if (data.pageNumber > 1) drawPageHeader(doc);
+                    
+                    // Footer Bottom
                     doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                     doc.setTextColor(...colors.text);
                     doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
@@ -399,6 +470,37 @@ export const generateROVRiserGuardReport = async (
                     }
                 }
             });
+
+            currentY = (doc as any).lastAutoTable.finalY + 4;
+            if (config.showSignatures !== false) {
+                let sigY = pageHeight - 38;
+                if (currentY > sigY - 10) {
+                    doc.addPage();
+                    drawPageHeader(doc);
+                    sigY = pageHeight - 38;
+                }
+                const sigW = contentWidth / 3;
+                const drawSigFooter = (label: string, lx: number) => {
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                    doc.rect(lx, sigY, sigW - 4, 18);
+                    if (!config.printFriendly) {
+                        doc.setFillColor(...colors.navy);
+                        doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                        doc.setTextColor(255);
+                    } else {
+                        doc.setTextColor(...colors.navy);
+                    }
+                    doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                    doc.text(label, lx + 2, sigY + 3.5);
+                    doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
+                    doc.text("Name:", lx + 2, sigY + 10);
+                    doc.text("Date:", lx + 2, sigY + 13.5);
+                    doc.text("Signature:", lx + 2, sigY + 17);
+                };
+                drawSigFooter("PREPARED BY", margin);
+                drawSigFooter("REVIEWED BY", margin + sigW);
+                drawSigFooter("APPROVED BY", margin + sigW * 2);
+            }
         });
 
         if (config.returnBlob) return doc.output("blob");

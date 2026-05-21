@@ -230,7 +230,7 @@ export const generateDefectSummaryReport = async (
                 2: { cellWidth: lw }, 3: { cellWidth: vw },
                 4: { cellWidth: lw }, 5: { cellWidth: vw },
             },
-            margin: { left: margin, right: margin },
+            margin: { left: margin, right: margin, top: margin + headerH + 5 },
         });
 
         return (d as any).lastAutoTable.finalY;
@@ -361,7 +361,7 @@ export const generateDefectSummaryReport = async (
 
         autoTable(d, {
             startY: tableY,
-            margin: { left: tableX },
+            margin: { left: tableX, top: margin + headerH + 5 },
             tableWidth: tableW,
             head: [["Priority Level", "Total Count"]],
             body: sortedLabels.map(l => {

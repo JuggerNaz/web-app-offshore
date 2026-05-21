@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS public.company_settings (
     department_name TEXT,
     logo_path TEXT,
     storage_provider TEXT NOT NULL DEFAULT 'Supabase',
+    storage_config JSONB DEFAULT '{}'::jsonb NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );

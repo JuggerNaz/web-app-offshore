@@ -446,7 +446,10 @@ export const generateDefectAnomalyReport = async (
                 2: { cellWidth: labelColWidth },
                 3: { cellWidth: valueColWidth }
             },
-            margin: { left: margin, right: margin, top: margin + headerH + 5 }
+            margin: { left: margin, right: margin, top: margin + headerH + 5 },
+            didDrawPage: (data) => {
+                if (data.pageNumber > 1) drawHeader(doc);
+            }
         });
 
         let lastY = (doc as any).lastAutoTable.finalY + 5;
@@ -655,7 +658,15 @@ export const generateDefectAnomalyReport = async (
             });
         };
 
-        drawSignatories();
+        // Draw Signatories at the bottom of the current page (or new page if no space)
+        if (config.showSignatures !== false) {
+            const sigY_needed = pageHeight - margin - footerH;
+            if (lastY > sigY_needed - 5) {
+                doc.addPage();
+                drawHeader(doc);
+            }
+            drawSignatories();
+        }
 
         globalPage++;
 

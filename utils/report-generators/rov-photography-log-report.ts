@@ -127,7 +127,7 @@ export const generateROVPhotographyLogReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 12 },
             head: [
                 ['Item No.', 'Real Time', 'Photo Title', 'Details']
             ],
@@ -175,11 +175,18 @@ export const generateROVPhotographyLogReport = async (
 
         // Add Signatures if requested
         if (config.showSignatures !== false) {
-            const totalPages = doc.internal.pages.length - 1;
-            // Go to the last page
-            doc.setPage(totalPages);
+            const finalY = (doc as any).lastAutoTable?.finalY ?? (pageHeight - 50);
+            let sigY = pageHeight - 35;
             
-            const sigY = pageHeight - 35;
+            // If the table ended too low, push signatures to a new page
+            if (finalY > sigY - 10) {
+                doc.addPage();
+                // Redraw header/footer for the new page
+                const totalPages = doc.internal.pages.length - 1;
+                drawHeaderFooter(doc, totalPages, totalPages);
+                sigY = pageHeight - 35;
+            }
+            
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15);

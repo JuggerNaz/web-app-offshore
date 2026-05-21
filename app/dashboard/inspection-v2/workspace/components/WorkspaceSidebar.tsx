@@ -95,8 +95,8 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
   return (
     <div className="w-[320px] flex flex-col gap-3 shrink-0 overflow-hidden">
       {/* 1. Diver / ROV Log */}
-      <Card className="flex flex-col border-slate-200 shadow-sm rounded-md shrink-0 mb-2">
-        <div className="bg-[#1f2937] text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md">
+      <Card className="border-2 border-slate-300 dark:border-slate-500 shadow-xl rounded-lg bg-white dark:bg-slate-950 overflow-hidden flex flex-col min-w-0">
+        <div className="bg-slate-800 dark:bg-slate-950 text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md border-b dark:border-slate-800">
           <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DIVE LOG"}</span>
           <div className="flex items-center gap-2 text-slate-300">
             <button
@@ -129,27 +129,27 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
             </button>
           </div>
         </div>
-        <div className="p-2.5 bg-white space-y-2 rounded-b-md">
+        <div className="p-2.5 bg-white dark:bg-slate-900 space-y-2 rounded-b-md">
           <div className="flex justify-between text-xs px-1">
             <div>
-              <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-0.5">
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold block uppercase tracking-wider mb-0.5">
                 Active Selection
               </span>
-              <span className="font-bold text-slate-800 text-xs">{activeDep?.jobNo || "None"}</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">{activeDep?.jobNo || "None"}</span>
             </div>
             <div className="text-right">
-              <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-0.5">
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold block uppercase tracking-wider mb-0.5">
                 Time In Water
               </span>
-              <span className="font-mono font-bold text-blue-600 text-xs">{timeInWater}</span>
+              <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">{timeInWater}</span>
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-100/60 rounded px-2 py-1.5 text-center relative">
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+          <div className="bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-2 py-1.5 text-center relative">
+            <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-0.5">
               Current Movement
             </span>
-            <span className="font-black text-slate-900 text-[14px] leading-tight flex items-center justify-center">
+            <span className="font-black text-slate-900 dark:text-white text-[14px] leading-tight flex items-center justify-center">
               {currentMovement || "Awaiting Deployment"}
             </span>
           </div>
@@ -162,7 +162,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
                 (inspMethod === "DIVING" && currentMovement === diveActionsList[0]?.label)
               }
               variant="outline"
-              className="flex-1 h-7 text-[11px] font-bold text-slate-500 border-slate-200 hover:text-slate-700 bg-white shadow-sm"
+              className="flex-1 h-7 text-[11px] font-bold text-slate-500 dark:text-slate-400 border-slate-300 dark:border-slate-800 hover:text-slate-700 dark:hover:text-slate-200 bg-white dark:bg-slate-900 shadow-sm"
             >
               <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Rollback
             </Button>
@@ -216,7 +216,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
                         Next Action... <ChevronDown className="w-3.5 h-3.5 ml-1 shrink-0" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent>
+                    <DropdownMenuContent className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 shadow-xl">
                       {options.map((opt) => (
                         <DropdownMenuItem
                           key={opt}
@@ -291,7 +291,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
                 </span>
                 <button
                   onClick={() => pipWindow.close()}
-                  className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"
+                  className="p-1 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>

@@ -44,6 +44,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
+import { formatInspectionTypeName } from "@/utils/inspection-utils";
 import { InspectionForm } from "./InspectionForm";
 
 interface WorkspaceMainProps {
@@ -120,6 +121,9 @@ interface WorkspaceMainProps {
   setInspectionTypeSearch: (val: string) => void;
   findingType: "Complete" | "Anomaly" | "Finding" | "Incomplete";
   activeMGIProfile?: any;
+  setEditingAttachment: (att: any) => void;
+  deletedAttachmentIds: string[];
+  setDeletedAttachmentIds: (ids: string[] | ((prev: string[]) => string[])) => void;
 }
 
 export function WorkspaceMain(props: WorkspaceMainProps) {
@@ -188,6 +192,9 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
     findingType,
     supabase,
     activeMGIProfile,
+    setEditingAttachment,
+    deletedAttachmentIds,
+    setDeletedAttachmentIds,
   } = props;
 
   const FORM_AREA_ID = "workspace-form-area";
@@ -282,11 +289,11 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
 
   return (
     <div className="flex-1 flex flex-col gap-3 min-w-[500px] overflow-hidden">
-      <Card className="flex flex-col flex-1 border-slate-200 shadow-sm rounded-md bg-white overflow-hidden relative">
+      <Card className="flex flex-col flex-1 border-slate-200 dark:border-slate-800 shadow-sm rounded-md bg-white dark:bg-slate-950 overflow-hidden relative">
         {!selectedComp ? (
-          <div className="flex-1 flex items-center justify-center flex-col text-slate-400 p-10 text-center">
-            <Activity className="w-12 h-12 mb-4 opacity-30 text-blue-500" />
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-2">
+          <div className="flex-1 flex items-center justify-center flex-col text-slate-400 dark:text-slate-600 p-10 text-center">
+            <Activity className="w-12 h-12 mb-4 opacity-30 text-blue-500 dark:text-blue-400" />
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">
               Awaiting Target Selection
             </h2>
             <p className="text-xs max-w-[280px]">
@@ -299,7 +306,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
             {!activeSpec ? (
               <div className="p-5 flex flex-col items-center justify-center text-center h-full">
                 <div className="w-full max-w-2xl flex flex-col items-center">
-                  <div className="text-[11px] font-bold uppercase text-slate-400 tracking-widest mb-4">
+                  <div className="text-[11px] font-bold uppercase text-slate-400 dark:text-slate-500 tracking-widest mb-4">
                     Select Scope to Inspect ({selectedComp.name})
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
@@ -381,32 +388,52 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                             onClick={() => {
                               setActiveSpec(t);
                               const newProps: Record<string, any> = {};
-                              const compNT = selectedComp.nominalThk && selectedComp.nominalThk !== "-" ? selectedComp.nominalThk : 
+                               const compNT = selectedComp.nominalThk && selectedComp.nominalThk !== "-" ? selectedComp.nominalThk : 
                                              (selectedComp.wallThickness && selectedComp.wallThickness !== "-" ? selectedComp.wallThickness : null);
-                              if (compNT) {
-                                const specProps = it?.default_properties || [];
-                                let propsList: any[] = [];
-                                if (typeof specProps === "string") {
-                                  try {
-                                    const parsed = JSON.parse(specProps);
-                                    propsList = Array.isArray(parsed)
-                                      ? parsed
-                                      : parsed.properties || [];
-                                  } catch (e) {}
-                                } else if (Array.isArray(specProps)) {
-                                  propsList = specProps;
-                                }
+                              
+                              const compElev = (selectedComp.lowestElev && selectedComp.lowestElev !== '-') ? selectedComp.lowestElev : 
+                                              ((selectedComp.endElev && selectedComp.endElev !== '-') ? selectedComp.endElev : 
+                                              (selectedComp.depth ? selectedComp.depth.replace(/[^\d.-]/g, '') : null));
 
-                                const ntField = propsList.find(
-                                  (p: any) =>
-                                    String(p.label || p.name || "")
-                                      .toLowerCase()
-                                      .includes("nominal thickness") ||
-                                    String(p.label || p.name || "").toLowerCase() === "nt"
-                                );
-                                if (ntField) {
-                                  newProps[ntField.name || ntField.label] = compNT;
-                                }
+                              const specProps = it?.default_properties || [];
+                              let propsList: any[] = [];
+                              if (typeof specProps === "string") {
+                                try {
+                                  const parsed = JSON.parse(specProps);
+                                  propsList = Array.isArray(parsed)
+                                    ? parsed
+                                    : parsed.properties || [];
+                                } catch (e) {}
+                              } else if (Array.isArray(specProps)) {
+                                propsList = specProps;
+                              }
+
+                              const ntField = propsList.find((p: any) => {
+                                const label = String(p.label || p.name || "").toLowerCase();
+                                return label.includes("nominal thickness") || 
+                                       label === "nt" || 
+                                       label.includes("wall thickness") ||
+                                       label === "wt" ||
+                                       label === "wall_thk" ||
+                                       label === "nominal_thickness";
+                              });
+                              
+                              if (ntField && compNT) {
+                                const fieldKey = ntField.name || ntField.label;
+                                newProps[fieldKey] = compNT;
+                                console.log(`[Auto-fill Main] Populating ${fieldKey} with ${compNT} from component data.`);
+                              }
+
+                              const elevField = propsList.find(
+                                (p: any) =>
+                                  String(p.label || p.name || "").toLowerCase().includes("depth") ||
+                                  String(p.label || p.name || "").toLowerCase().includes("elevation") ||
+                                  String(p.label || p.name || "").toLowerCase() === "el"
+                              );
+                              if (elevField && compElev) {
+                                // Prefer 'verification_depth' as the standard key for this form field
+                                const targetKey = elevField.name === 'verification_depth' || elevField.label === 'Verification Depth' ? 'verification_depth' : (elevField.name || elevField.label);
+                                newProps[targetKey] = compElev;
                               }
                               setDynamicProps(newProps);
                               setFindingType("Complete");
@@ -426,18 +453,18 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                               setManualOverride(false);
                               setIsUserInteraction(false);
                             }}
-                            className={`w-full h-14 bg-white border font-bold shadow-sm flex justify-between items-center group transition-all ${
+                            className={`w-full h-14 bg-white dark:bg-slate-900 border font-bold shadow-sm flex justify-between items-center group transition-all ${
                               statusColor === "green"
-                                ? "border-green-200 hover:bg-green-50/50"
+                                ? "border-green-200 dark:border-green-800 hover:bg-green-50/50 dark:hover:bg-green-900/20"
                                 : statusColor === "red"
-                                  ? "border-red-200 hover:bg-red-50/30"
+                                  ? "border-red-200 dark:border-red-800 hover:bg-red-50/30 dark:hover:bg-red-900/20"
                                   : statusColor === "orange"
-                                    ? "border-orange-200 hover:bg-orange-50/30"
+                                    ? "border-orange-200 dark:border-orange-800 hover:bg-orange-50/30 dark:hover:bg-orange-900/20"
                                     : statusColor === "teal"
-                                      ? "border-teal-200 hover:bg-teal-50/30"
+                                      ? "border-teal-200 dark:border-teal-800 hover:bg-teal-50/30 dark:hover:bg-teal-900/20"
                                       : statusColor === "amber"
-                                        ? "border-amber-200 hover:bg-amber-50/30"
-                                        : "border-blue-200 hover:bg-blue-50"
+                                        ? "border-amber-200 dark:border-amber-800 hover:bg-amber-50/30 dark:hover:bg-amber-900/20"
+                                        : "border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20"
                             }`}
                           >
                             <div className="flex items-center gap-2.5">
@@ -468,16 +495,16 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                   <span
                                     className={`text-sm font-bold truncate ${
                                       statusColor === "green"
-                                        ? "text-green-700"
+                                        ? "text-green-700 dark:text-green-400"
                                         : statusColor === "red"
-                                          ? "text-red-700"
+                                          ? "text-red-700 dark:text-red-400"
                                           : statusColor === "orange"
-                                            ? "text-orange-700"
+                                            ? "text-orange-700 dark:text-orange-400"
                                             : statusColor === "teal"
-                                              ? "text-teal-700"
+                                              ? "text-teal-700 dark:text-teal-400"
                                               : statusColor === "amber"
-                                                ? "text-amber-700"
-                                                : "text-blue-700"
+                                                ? "text-amber-700 dark:text-amber-400"
+                                                : "text-blue-700 dark:text-blue-400"
                                     }`}
                                     title={it?.name || t}
                                   >
@@ -486,16 +513,16 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                   <span
                                     className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${
                                       statusColor === "green"
-                                        ? "bg-green-50 border-green-200 text-green-700"
+                                        ? "bg-green-50/50 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400"
                                         : statusColor === "red"
-                                          ? "bg-red-50 border-red-200 text-red-700"
+                                          ? "bg-red-50/50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400"
                                           : statusColor === "orange"
-                                            ? "bg-orange-50 border-orange-200 text-orange-700"
+                                            ? "bg-orange-50/50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-400"
                                             : statusColor === "teal"
-                                              ? "bg-teal-50 border-teal-200 text-teal-700"
+                                              ? "bg-teal-50/50 dark:bg-teal-900/30 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-400"
                                               : statusColor === "amber"
-                                                ? "bg-amber-50 border-amber-200 text-amber-700"
-                                                : "bg-blue-50 border-blue-200 text-blue-700"
+                                                ? "bg-amber-50/50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400"
+                                                : "bg-blue-50/50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400"
                                     }`}
                                   >
                                     {it?.code || t}
@@ -545,23 +572,23 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
-                          className="w-full h-12 border-dashed border-2 text-slate-500 font-bold hover:border-blue-400 hover:bg-blue-50/30 flex items-center justify-center gap-2"
+                          className="w-full h-12 border-dashed border-2 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold hover:border-blue-400 dark:hover:border-blue-700 hover:bg-blue-50/30 dark:hover:bg-blue-900/20 flex items-center justify-center gap-2"
                         >
                           <Plus className="w-4 h-4" /> Add Additional Inspection Type
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent
-                        className="w-[350px] p-0 shadow-2xl border-slate-200"
+                        className="w-[350px] p-0 shadow-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950"
                         align="center"
                         side="top"
                       >
                         <div className="flex flex-col">
-                          <div className="p-3 border-b border-slate-100 bg-slate-50/50">
+                          <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
                             <div className="relative">
                               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                               <Input
                                 placeholder="Search type name or code..."
-                                className="pl-9 h-9 text-xs bg-white border-slate-200 focus-visible:ring-blue-500"
+                                className="pl-9 h-9 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500"
                                 value={inspectionTypeSearch}
                                 onChange={(e) => setInspectionTypeSearch(e.target.value)}
                                 autoFocus
@@ -604,13 +631,13 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                       setIsAddInspOpen(false);
                                       setInspectionTypeSearch("");
                                     }}
-                                    className="w-full text-left px-3 py-2.5 rounded-md hover:bg-blue-50 transition-colors group"
+                                    className="w-full text-left px-3 py-2.5 rounded-md hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors group"
                                   >
                                     <div className="flex flex-col">
-                                      <span className="text-xs font-bold text-slate-700 group-hover:text-blue-700">
+                                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-blue-700 dark:group-hover:text-blue-400">
                                         {it.name}
                                       </span>
-                                      <span className="text-[10px] font-mono font-medium text-slate-400 group-hover:text-blue-500">
+                                      <span className="text-[10px] font-mono font-medium text-slate-400 dark:text-slate-500 group-hover:text-blue-500 dark:group-hover:text-blue-300">
                                         {it.code}
                                       </span>
                                     </div>
@@ -668,8 +695,16 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                 onChangeTaskClick={() => setShowTaskSelector(true)}
                 onChangeComponentClick={() => setShowCompSelector(true)}
                 isEditing={!!editingRecordId}
+                onDeleteRecord={() => editingRecordId && handleDeleteRecord(editingRecordId)}
+                onPrintReport={() => {
+                  const r = currentRecords.find((rec: any) => rec.insp_id === editingRecordId);
+                  if (r) handlePrintAnomaly(r);
+                }}
                 supabase={supabase}
                 activeMGIProfile={props.activeMGIProfile}
+                setEditingAttachment={setEditingAttachment}
+                deletedAttachmentIds={deletedAttachmentIds}
+                setDeletedAttachmentIds={setDeletedAttachmentIds}
               />
             )}
           </div>
@@ -677,9 +712,9 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
       </Card>
 
       <Card
-        className={`flex flex-col ${capturedEventsPipWindow ? "h-[40px]" : "h-[280px]"} border-slate-200 shadow-sm rounded-md bg-white overflow-hidden shrink-0 transition-all duration-500 ease-in-out`}
+        className={`flex flex-col ${capturedEventsPipWindow ? "h-[40px]" : "h-[280px]"} border-2 border-slate-200 dark:border-slate-500 shadow-2xl rounded-md bg-white dark:bg-slate-900/60 overflow-hidden shrink-0 transition-all duration-500 ease-in-out`}
       >
-        <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
+        <div className="bg-slate-800 dark:bg-slate-900/80 text-white px-3 py-2 text-[11px] font-black uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0 border-b dark:border-slate-700 backdrop-blur-sm">
           <div className="flex items-center gap-2">
             <span>CAPTURED EVENTS</span>
             <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">
@@ -710,33 +745,33 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-[10px] text-slate-300 hover:text-white hover:bg-slate-700 mr-1"
+                className="h-6 px-2 text-[10px] text-slate-300 hover:text-white hover:bg-slate-700 dark:hover:bg-slate-800 mr-1"
               >
                 <Settings2 className="w-3.5 h-3.5 mr-1" />
                 Columns
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-0 bg-white border-slate-200 shadow-xl" align="end">
-              <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-                <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
+            <PopoverContent className="w-64 p-0 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-xl" align="end">
+              <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 flex items-center gap-2">
                   <Settings2 className="w-3 h-3" /> Column Configuration
                 </h4>
               </div>
               <div className="p-1 max-h-[300px] overflow-y-auto">
                 {columnSettings.map((col, idx) => (
-                  <div key={col.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded group">
+                  <div key={col.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded group">
                     <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
                         onClick={() => handleMoveColumn(idx, 'up')}
                         disabled={idx === 0}
-                        className="p-0.5 hover:bg-slate-200 rounded disabled:opacity-30"
+                        className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded disabled:opacity-30"
                       >
                         <ChevronUp className="w-2.5 h-2.5" />
                       </button>
                       <button 
                         onClick={() => handleMoveColumn(idx, 'down')}
                         disabled={idx === columnSettings.length - 1}
-                        className="p-0.5 hover:bg-slate-200 rounded disabled:opacity-30"
+                        className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded disabled:opacity-30"
                       >
                         <ChevronDown className="w-2.5 h-2.5" />
                       </button>
@@ -744,18 +779,18 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                     <GripVertical className="w-3 h-3 text-slate-300 cursor-grab" />
                     <button 
                       onClick={() => toggleColumnVisibility(col.id)}
-                      className={`flex-1 text-left text-[11px] font-bold ${col.visible ? 'text-slate-700' : 'text-slate-400 line-through'}`}
+                      className={`flex-1 text-left text-[11px] font-bold ${col.visible ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-600 line-through'}`}
                     >
                       {col.label}
                     </button>
-                    <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${col.visible ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-200'}`}>
+                    <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${col.visible ? 'bg-blue-600 border-blue-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
                       {col.visible && <Check className="w-2.5 h-2.5 text-white" />}
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="p-2 bg-slate-50 border-t border-slate-100">
-                <p className="text-[9px] text-slate-400 font-medium italic">First two columns (Actions, Status) are fixed.</p>
+              <div className="p-2 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+                <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic">First two columns (Actions, Status) are fixed.</p>
               </div>
             </PopoverContent>
           </Popover>
@@ -778,13 +813,13 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
           <ScrollArea className="flex-1 w-full relative">
             <div className="min-w-full inline-block align-middle overflow-x-auto">
             <table className="w-full text-left text-xs whitespace-nowrap table-auto">
-              <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider z-20">
+              <thead className="bg-slate-100 dark:bg-slate-900 sticky top-0 border-b border-slate-200 dark:border-slate-500 font-black text-slate-500 dark:text-white uppercase tracking-wider z-20">
                 <tr>
                   {activeTableColumns.map(col => (
                     <th 
                       key={col.id} 
                       className={`px-3 py-3 transition-colors group ${
-                        col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-100' : ''
+                        col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800' : ''
                       } ${
                         col.id === 'cr_date' ? 'w-20' : ''
                       } ${
@@ -804,7 +839,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {displayRecords.map((r: any) => {
                   const formatCounter = (val: any) => {
                     if (!val) return null;
@@ -820,7 +855,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                   };
 
                   return (
-                    <tr key={r.insp_id} className="hover:bg-slate-50 group">
+                    <tr key={r.insp_id} className="hover:bg-slate-100 dark:hover:bg-slate-900/50 group border-b dark:border-slate-700/50">
                       {activeTableColumns.map(col => {
                         switch (col.id) {
                           case 'actions':
@@ -829,42 +864,42 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                      <button className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600" title="Report Options">
+                                      <button className="p-1.5 px-2 bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300" title="Report Options">
                                         <FileText className="w-3.5 h-3.5" /> Actions
                                       </button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start" className="w-48">
+                                    <DropdownMenuContent align="start" className="w-48 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
                                       {r.has_anomaly && (
                                         <>
-                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Reports</div>
+                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800 mb-1">Reports</div>
                                           {r.inspection_data?._meta_status === 'Finding' ? (
-                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700">
+                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 dark:text-blue-400 focus:text-blue-700 dark:focus:text-blue-300">
                                               <ClipboardCheck className="w-3.5 h-3.5 mr-2" /> Print Finding Report
                                             </DropdownMenuItem>
                                           ) : (
-                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                            <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300">
                                               <AlertTriangle className="w-3.5 h-3.5 mr-2" /> Print {r.inspection_data?._meta_status || 'Defect'} Report
                                             </DropdownMenuItem>
                                           )}
-                                          <div className="border-t border-slate-50 my-1"></div>
+                                          <div className="border-t border-slate-100 dark:border-slate-800 my-1"></div>
                                         </>
                                       )}
-                                      <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Details</div>
+                                      <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Details</div>
                                       <DropdownMenuItem onClick={() => {
                                         const comp = (allComps || []).find((c: any) => c.id === r.component_id);
                                         if (comp) {
                                           setSelectedComp(comp);
                                           setCompSpecDialogOpen(true);
                                         }
-                                      }} className="text-xs py-2 cursor-pointer">
-                                        <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" /> View Component Spec
+                                      }} className="text-xs py-2 cursor-pointer dark:text-slate-200">
+                                        <Info className="w-3.5 h-3.5 mr-2 text-indigo-600 dark:text-indigo-400" /> View Component Spec
                                       </DropdownMenuItem>
-                                      <div className="border-t border-slate-50 my-1"></div>
-                                      <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Modify</div>
-                                      <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer">
-                                        <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" /> Edit Record
+                                      <div className="border-t border-slate-100 dark:border-slate-800 my-1"></div>
+                                      <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Modify</div>
+                                      <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer dark:text-slate-200">
+                                        <Edit className="w-3.5 h-3.5 mr-2 text-blue-600 dark:text-blue-400" /> Edit Record
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                      <DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="text-xs py-2 cursor-pointer text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300">
                                         <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
                                       </DropdownMenuItem>
                                     </DropdownMenuContent>
@@ -877,23 +912,23 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                               <td key={col.id} className="px-3 py-3 align-top text-center">
                                 <div className="flex flex-col items-center gap-1.5 mt-0.5">
                                   {r.has_anomaly ? (
-                                    <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
-                                      <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                    <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100 dark:bg-red-900/30">
+                                      <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
                                     </div>
                                   ) : r.status === 'COMPLETED' ? (
-                                    <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
-                                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                                    <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100 dark:bg-green-900/30">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
                                     </div>
                                   ) : (
-                                    <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100">
-                                      <FileClock className="w-3.5 h-3.5 text-amber-600" />
+                                    <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                                      <FileClock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                     </div>
                                   )}
                                   {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
                                     <Button 
                                       variant="ghost" 
                                       size="sm" 
-                                      className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
+                                      className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-500"
                                       onClick={async () => {
                                         const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
                                         if (data) setViewingRecordAttachments(data);
@@ -907,62 +942,76 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                             );
                           case 'cr_date':
                             return (
-                              <td key={col.id} className="px-3 py-3 text-slate-600 align-top">
-                                <div className="text-sm font-medium">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
+                              <td key={col.id} className="px-3 py-3 text-slate-600 dark:text-slate-400 align-top">
+                                <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
                                 <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), 'HH:mm') : '-'}</div>
                               </td>
                             );
                           case 'type':
                             return (
-                              <td key={col.id} className="px-3 py-3 font-bold text-slate-800 align-top">
+                              <td key={col.id} className="px-3 py-3 font-bold text-slate-800 dark:text-slate-200 align-top">
                                 <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
-                                <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
+                                <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-bold w-fit uppercase text-muted-foreground dark:text-slate-400 border-slate-200 dark:border-slate-800 shadow-none mt-1">
                                   {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
                                 </Badge>
                               </td>
                             );
                           case 'component':
                             return (
-                              <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                <div className="font-bold text-sm">{r.structure_components?.q_id || '-'}</div>
-                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
+                              <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
+                                <div className="font-bold text-sm text-slate-800 dark:text-slate-100">{r.structure_components?.q_id || '-'}</div>
+                                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
                               </td>
                             );
                           case 'elev':
                             return (
-                              <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                              <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-400 align-top">
                                 {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
                               </td>
                             );
                           case 'anomaly_ref':
                             return (
-                              <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                              <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
                                 {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
-                                  <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{r.insp_anomalies[0].anomaly_ref_no}</span>
-                                ) : <span className="text-slate-300">-</span>}
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800 w-fit">{r.insp_anomalies[0].anomaly_ref_no}</span>
+                                    {r.insp_anomalies[0].priority_code && (
+                                      <span className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded shadow-sm w-fit uppercase tracking-wider ${
+                                          r.insp_anomalies[0].priority_code.includes('1') ? 'bg-red-600' :
+                                          r.insp_anomalies[0].priority_code.includes('2') ? 'bg-orange-500' :
+                                          r.insp_anomalies[0].priority_code.includes('3') ? 'bg-yellow-500 text-black' :
+                                          r.insp_anomalies[0].priority_code.includes('4') ? 'bg-blue-500' :
+                                          r.insp_anomalies[0].priority_code.includes('5') ? 'bg-slate-500' :
+                                          'bg-slate-900'
+                                      }`}>
+                                        {r.insp_anomalies[0].priority_code}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : <span className="text-slate-300 dark:text-slate-700">-</span>}
                               </td>
                             );
                           case 'cp_reading':
                             return (
-                              <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                              <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-400 align-top">
                                 {(() => {
                                   const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp;
-                                  return cp ? <span className="font-mono text-xs">{cp}</span> : <span className="text-slate-300">-</span>;
+                                  return cp ? <span className="font-mono text-xs">{cp}</span> : <span className="text-slate-300 dark:text-slate-700">-</span>;
                                 })()}
                               </td>
                             );
                           case 'dive_no':
                             return (
-                              <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                <span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300">-</span>}</span>
+                              <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
+                                <span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300 dark:text-slate-700">-</span>}</span>
                               </td>
                             );
                           case 'tape_no':
                             return (
-                              <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300">-</span>}</span>
+                              <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
+                                <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300 dark:text-slate-700">-</span>}</span>
                                 {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                  <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
+                                  <div className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1">
                                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                                     {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
                                   </div>
@@ -986,8 +1035,8 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
       {capturedEventsPipWindow && (
         <>
           {createPortal(
-            <div className="h-screen w-screen flex flex-col bg-white overflow-hidden">
-              <div className="bg-slate-800 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0">
+            <div className="h-screen w-screen flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
+              <div className="bg-slate-800 dark:bg-slate-950 text-white px-3 py-2 text-[11px] font-black uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0 border-b dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <span>CAPTURED EVENTS (FLOATING)</span>
                   <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider">
@@ -1088,13 +1137,13 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
               <ScrollArea className="flex-1 w-full relative">
                 <div className="min-w-full inline-block align-middle overflow-x-auto">
                 <table className="w-full text-left text-xs whitespace-nowrap table-auto">
-                  <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider z-20">
+                  <thead className="bg-slate-100 dark:bg-slate-900 sticky top-0 border-b border-slate-200 dark:border-slate-800 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider z-20">
                     <tr>
                       {activeTableColumns.map(col => (
                         <th 
                           key={col.id} 
                           className={`px-3 py-3 transition-colors group ${
-                            col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-100' : ''
+                            col.id !== 'actions' && col.id !== 'status' ? 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800' : ''
                           } ${
                             col.id === 'cr_date' ? 'w-20' : ''
                           } ${
@@ -1114,7 +1163,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                     {displayRecords.map((r: any) => {
                       const formatCounter = (val: any) => {
                         if (!val) return null;
@@ -1130,7 +1179,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                       };
 
                       return (
-                        <tr key={r.insp_id} className="hover:bg-slate-50 group">
+                        <tr key={r.insp_id} className="hover:bg-slate-100 dark:hover:bg-slate-900/50 group border-b dark:border-slate-700/50">
                           {activeTableColumns.map(col => {
                             switch (col.id) {
                               case 'actions':
@@ -1139,42 +1188,42 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                     <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <button className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600" title="Report Options">
-                                            <FileText className="w-3.5 h-3.5" /> Actions
-                                          </button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="start" className="w-48" container={capturedEventsPipWindow?.document.body}>
+                                        <button className="p-1.5 px-2 bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300" title="Report Options">
+                                          <FileText className="w-3.5 h-3.5" /> Actions
+                                        </button>
+                                      </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="start" className="w-48 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800" container={capturedEventsPipWindow?.document.body}>
                                           {r.has_anomaly && (
                                             <>
-                                              <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Reports</div>
+                                              <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800 mb-1">Reports</div>
                                               {r.inspection_data?._meta_status === 'Finding' ? (
-                                                <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700">
+                                                <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-blue-600 dark:text-blue-400 focus:text-blue-700 dark:focus:text-blue-300">
                                                   <ClipboardCheck className="w-3.5 h-3.5 mr-2" /> Print Finding Report
                                                 </DropdownMenuItem>
                                               ) : (
-                                                <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                                <DropdownMenuItem onClick={() => handlePrintAnomaly(r)} className="text-xs py-2 cursor-pointer text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300">
                                                   <AlertTriangle className="w-3.5 h-3.5 mr-2" /> Print {r.inspection_data?._meta_status || 'Defect'} Report
                                                 </DropdownMenuItem>
                                               )}
-                                              <div className="border-t border-slate-50 my-1"></div>
+                                              <div className="border-t border-slate-100 dark:border-slate-800 my-1"></div>
                                             </>
                                           )}
-                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Details</div>
+                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Details</div>
                                           <DropdownMenuItem onClick={() => {
                                             const comp = (allComps || []).find((c: any) => c.id === r.component_id);
                                             if (comp) {
                                               setSelectedComp(comp);
                                               setCompSpecDialogOpen(true);
                                             }
-                                          }} className="text-xs py-2 cursor-pointer">
-                                            <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" /> View Component Spec
+                                          }} className="text-xs py-2 cursor-pointer dark:text-slate-200">
+                                            <Info className="w-3.5 h-3.5 mr-2 text-indigo-600 dark:text-indigo-400" /> View Component Spec
                                           </DropdownMenuItem>
-                                          <div className="border-t border-slate-50 my-1"></div>
-                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Modify</div>
-                                          <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer">
-                                            <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" /> Edit Record
+                                          <div className="border-t border-slate-100 dark:border-slate-800 my-1"></div>
+                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Modify</div>
+                                          <DropdownMenuItem onClick={() => handleEditRecord(r)} className="text-xs py-2 cursor-pointer dark:text-slate-200">
+                                            <Edit className="w-3.5 h-3.5 mr-2 text-blue-600 dark:text-blue-400" /> Edit Record
                                           </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700">
+                                          <DropdownMenuItem onClick={() => handleDeleteRecord(r.insp_id)} className="text-xs py-2 cursor-pointer text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300">
                                             <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
                                           </DropdownMenuItem>
                                         </DropdownMenuContent>
@@ -1187,23 +1236,23 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                   <td key={col.id} className="px-3 py-3 align-top text-center">
                                     <div className="flex flex-col items-center gap-1.5 mt-0.5">
                                       {r.has_anomaly ? (
-                                        <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100">
-                                          <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                        <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100 dark:bg-red-900/30">
+                                          <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
                                         </div>
                                       ) : r.status === 'COMPLETED' ? (
-                                        <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100">
-                                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                                        <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100 dark:bg-green-900/30">
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
                                         </div>
                                       ) : (
-                                        <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100">
-                                          <FileClock className="w-3.5 h-3.5 text-amber-600" />
+                                        <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                                          <FileClock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                         </div>
                                       )}
                                       {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
                                         <Button 
                                           variant="ghost" 
                                           size="sm" 
-                                          className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
+                                          className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-500"
                                           onClick={async () => {
                                             const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
                                             if (data) setViewingRecordAttachments(data);
@@ -1217,30 +1266,30 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 );
                               case 'cr_date':
                                 return (
-                                  <td key={col.id} className="px-3 py-3 text-slate-600 align-top">
-                                    <div className="text-sm font-medium">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
+                                  <td key={col.id} className="px-3 py-3 text-slate-600 dark:text-slate-400 align-top">
+                                    <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
                                     <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), 'HH:mm') : '-'}</div>
                                   </td>
                                 );
                               case 'type':
                                 return (
-                                  <td key={col.id} className="px-3 py-3 font-bold text-slate-800 align-top">
+                                  <td key={col.id} className="px-3 py-3 font-bold text-slate-800 dark:text-slate-200 align-top">
                                     <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-bold w-fit uppercase text-muted-foreground dark:text-slate-400 border-slate-200 dark:border-slate-800 shadow-none mt-1">
                                       {r.inspection_type_code || r.inspection_type?.code || 'UNK'}
                                     </Badge>
                                   </td>
                                 );
                               case 'component':
                                 return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    <div className="font-bold text-sm">{r.structure_components?.q_id || '-'}</div>
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
+                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
+                                    <div className="font-bold text-sm text-slate-800 dark:text-slate-100">{r.structure_components?.q_id || '-'}</div>
+                                    <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
                                   </td>
                                 );
                               case 'elev':
                                 return (
-                                  <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">
+                                  <td key={col.id} className="px-3 py-3 text-center text-sm font-bold text-slate-600 dark:text-slate-400 align-top">
                                     {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
                                   </td>
                                 );
@@ -1248,8 +1297,15 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 return (
                                   <td key={col.id} className="px-3 py-3 align-top text-slate-700">
                                     {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
-                                      <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{r.insp_anomalies[0].anomaly_ref_no}</span>
-                                    ) : <span className="text-slate-300">-</span>}
+                                      <div className="flex flex-col gap-1">
+                                        <span className="text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800 w-fit">{r.insp_anomalies[0].anomaly_ref_no}</span>
+                                        {r.insp_anomalies[0].priority_code && (
+                                          <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded w-fit uppercase tracking-tighter">
+                                            Priority: {r.insp_anomalies[0].priority_code}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : <span className="text-slate-300 dark:text-slate-700">-</span>}
                                   </td>
                                 );
                               case 'cp_reading':

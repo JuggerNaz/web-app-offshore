@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string; type: string }> }
+) {
   const { id, type } = await params;
 
   const supabase = createClient();
@@ -23,16 +26,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       );
   }
 
-  let data = directData ? [...directData] : [];
+  let data: any[] = directData ? [...directData] : [];
 
   if (type === "inspection" || type === "INSPECTION") {
-    const { data: media, error: mediaError } = await supabase
+    const { data: media, error: mediaError } = await (supabase as any)
       .from("insp_media")
       .select("*")
       .eq("inspection_id", Number(id));
-    
+
     if (media && media.length > 0) {
-      const normalizedMedia = media.map(m => ({
+      const normalizedMedia = (media as any[]).map((m: any) => ({
         id: `media-${m.media_id}`,
         name: m.name || `Snapshot ${m.media_id}`,
         path: m.file_path,
@@ -41,9 +44,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         meta: {
           ...m.meta,
           bucket: "inspection-media",
-          is_insp_media: true
+          is_insp_media: true,
         },
-        cr_date: m.captured_at
+        cr_date: m.captured_at,
       }));
       data = [...data, ...normalizedMedia];
     }
@@ -54,10 +57,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       .from("insp_records")
       .select("insp_id, jobpack_id, structure_id")
       .eq("component_id", Number(id));
-      
+
     if (inspRecords && inspRecords.length > 0) {
       const inspIds = inspRecords.map((r: any) => r.insp_id);
-      
+
       // 1. Fetch from attachment table
       const { data: inspAttachments } = await supabase
         .from("attachment")
@@ -66,14 +69,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         .in("source_id", inspIds);
 
       // 2. Fetch from insp_media table
-      const { data: inspMedia } = await supabase
+      const { data: inspMedia } = await (supabase as any)
         .from("insp_media")
         .select("*")
         .in("inspection_id", inspIds);
 
       const allInspAttachments = [
         ...(inspAttachments || []),
-        ...(inspMedia || []).map(m => ({
+        ...((inspMedia || []) as any[]).map((m: any) => ({
           id: `media-${m.media_id}`,
           name: m.name || `Snapshot ${m.media_id}`,
           path: m.file_path,
@@ -82,26 +85,36 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           meta: {
             ...m.meta,
             bucket: "inspection-media",
-            is_insp_media: true
+            is_insp_media: true,
           },
-          cr_date: m.captured_at
-        }))
+          cr_date: m.captured_at,
+        })),
       ];
 
       if (allInspAttachments.length > 0) {
         // Fetch Jobpacks and Platforms for enrichment
-        const jobpackIds = Array.from(new Set(inspRecords.map((r: any) => r.jobpack_id).filter(Boolean) as number[]));
-        const structureIds = Array.from(new Set(inspRecords.map((r: any) => r.structure_id).filter(Boolean) as number[]));
-        
+        const jobpackIds = Array.from(
+          new Set(inspRecords.map((r: any) => r.jobpack_id).filter(Boolean) as number[])
+        );
+        const structureIds = Array.from(
+          new Set(inspRecords.map((r: any) => r.structure_id).filter(Boolean) as number[])
+        );
+
         const jobpackMap = new Map();
         if (jobpackIds.length > 0) {
-          const { data: jobpacks } = await supabase.from("jobpack").select("id, name").in("id", jobpackIds);
+          const { data: jobpacks } = await supabase
+            .from("jobpack")
+            .select("id, name")
+            .in("id", jobpackIds);
           (jobpacks || []).forEach((jp: any) => jobpackMap.set(jp.id, jp.name));
         }
 
         const platformMap = new Map();
         if (structureIds.length > 0) {
-          const { data: platforms } = await (supabase as any).from("platform").select("plat_id, title").in("plat_id", structureIds);
+          const { data: platforms } = await (supabase as any)
+            .from("platform")
+            .select("plat_id, title")
+            .in("plat_id", structureIds);
           (platforms || []).forEach((p: any) => platformMap.set(p.plat_id, p.title));
         }
 
@@ -126,7 +139,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           return {
             ...att,
             source_name: sourceName,
-            source_type: "Inspection"
+            source_type: "Inspection",
           };
         });
 
@@ -136,7 +149,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 
   // Set source names for direct component attachments
-  data = data.map(att => {
+  data = data.map((att) => {
     if (att.source_type?.toLowerCase() === "component") {
       return { ...att, source_name: "Direct Component", source_type: "Component" };
     }
@@ -146,24 +159,26 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   // Enrich data with user information
   if (data && data.length > 0) {
     const userIds = Array.from(new Set(data.map((item) => item.user_id).filter(Boolean)));
-    
+
     // Fetch user information using RPC function
-    const { data: usersData, error: usersError } = await (supabase.rpc as any)('get_user_info', {
-      user_ids: userIds
+    const { data: usersData, error: usersError } = await (supabase.rpc as any)("get_user_info", {
+      user_ids: userIds,
     });
-    
+
     // Create a map of user_id to user name
     const userMap = new Map();
     if (usersData && !usersError && Array.isArray(usersData)) {
       usersData.forEach((user: any) => {
-        userMap.set(user.id, user.full_name || user.email || 'Unknown User');
+        userMap.set(user.id, user.full_name || user.email || "Unknown User");
       });
     }
 
     // Enrich attachments with user names
     const enrichedData = data.map((attachment) => ({
       ...attachment,
-      user_name: attachment.user_id ? userMap.get(attachment.user_id) || attachment.user_id : 'Unknown',
+      user_name: attachment.user_id
+        ? userMap.get(attachment.user_id) || attachment.user_id
+        : "Unknown",
     }));
 
     return NextResponse.json({ data: enrichedData });
@@ -172,7 +187,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({ data });
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string; type: string }> }
+) {
   const { id } = await params;
   const body = await request.json();
   const supabase = createClient();
@@ -202,7 +220,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   return NextResponse.json({ data });
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string; type: string }> }
+) {
   const { id } = await params;
   const body = await request.json();
   const supabase = createClient();

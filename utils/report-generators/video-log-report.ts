@@ -304,7 +304,7 @@ export const generateVideoLogReport = async (
             },
             margin: { left: margin, right: margin, top: margin + headerH + 6 },
             didDrawPage: (data: any) => {
-                if (data.pageNumber > 1 || !isFirstPage) {
+                if (data.pageNumber > 1) {
                     drawHeader(doc);
                 }
             }

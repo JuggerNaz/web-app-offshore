@@ -33,14 +33,13 @@ export async function GET(request: NextRequest) {
   }
 
   const componentIds = (components || []).map((c: any) => c.id);
-  const componentMap = new Map<number, any>(
-    (components || []).map((c: any) => [c.id, c])
-  );
+  const componentMap = new Map<number, any>((components || []).map((c: any) => [c.id, c]));
 
   // 2. Get all insp_records for these components OR directly by structure_id
   const { data: inspRecords, error: inspError } = await (supabase as any)
     .from("insp_records")
-    .select(`
+    .select(
+      `
       insp_id,
       component_id,
       structure_id,
@@ -54,8 +53,11 @@ export async function GET(request: NextRequest) {
       rov_job_id,
       dive_job_id,
       inspection_type!left(id, code, name)
-    `)
-    .or(`structure_id.eq.${structureId},component_id.in.(${componentIds.length > 0 ? componentIds.join(',') : '0'})`)
+    `
+    )
+    .or(
+      `structure_id.eq.${structureId},component_id.in.(${componentIds.length > 0 ? componentIds.join(",") : "0"})`
+    )
     .order("inspection_date", { ascending: false });
 
   if (inspError) {
@@ -68,7 +70,8 @@ export async function GET(request: NextRequest) {
   if (componentIds.length > 0) {
     const { data: compRecords } = await (supabase as any)
       .from("insp_records")
-      .select(`
+      .select(
+        `
         insp_id,
         component_id,
         structure_id,
@@ -82,7 +85,8 @@ export async function GET(request: NextRequest) {
         rov_job_id,
         dive_job_id,
         inspection_type!left(id, code, name)
-      `)
+      `
+      )
       .in("component_id", componentIds)
       .order("inspection_date", { ascending: false });
 
@@ -105,18 +109,16 @@ export async function GET(request: NextRequest) {
   const inspIds = allInspRecords.map((r) => r.insp_id);
 
   // 3. Build inspection record lookup map (moved up for anomaly mapping)
-  const inspMap = new Map<number, any>(
-    allInspRecords.map((r) => [r.insp_id, r])
-  );
+  const inspMap = new Map<number, any>(allInspRecords.map((r) => [r.insp_id, r]));
 
   // 3. Get all anomalies for these inspection records to include their attachments
-  const { data: anomalies } = await supabase
+  const { data: anomalies } = await (supabase as any)
     .from("insp_anomalies")
     .select("anomaly_id, insp_id, anomaly_ref_no")
     .in("insp_id", inspIds);
 
   const anomalyIds = (anomalies || []).map((a: any) => a.anomaly_id).filter(Boolean);
-  
+
   // Map anomaly ID to its parent inspection record for enrichment later
   const anomalyToInspMap = new Map<number, any>();
   const anomalyRefMap = new Map<number, string>();
@@ -132,14 +134,16 @@ export async function GET(request: NextRequest) {
   const { data: attachments, error: attError } = await supabase
     .from("attachment")
     .select("*")
-    .or(`and(source_type.ilike.inspection,source_id.in.(${inspIds.join(',')})),and(source_type.ilike.anomaly,source_id.in.(${anomalyIds.length > 0 ? anomalyIds.join(',') : '0'}))`);
+    .or(
+      `and(source_type.ilike.inspection,source_id.in.(${inspIds.join(",")})),and(source_type.ilike.anomaly,source_id.in.(${anomalyIds.length > 0 ? anomalyIds.join(",") : "0"}))`
+    );
 
   if (attError) {
     return handleSupabaseError(attError, "Failed to fetch inspection attachments");
   }
 
   // 5. Also fetch from insp_media (captured during inspection recording)
-  const { data: inspMedia, error: mediaError } = await supabase
+  const { data: inspMedia, error: mediaError } = await (supabase as any)
     .from("insp_media")
     .select("*")
     .in("inspection_id", inspIds);
@@ -153,17 +157,17 @@ export async function GET(request: NextRequest) {
     name: m.file_name || `Snapshot ${m.media_id}`,
     path: m.file_path,
     source_id: m.anomaly_id || m.inspection_id,
-    source_type: m.anomaly_id ? 'ANOMALY' : 'INSPECTION',
+    source_type: m.anomaly_id ? "ANOMALY" : "INSPECTION",
     user_id: m.cr_user || null,
     cr_date: m.captured_at || m.cr_date,
     meta: {
       type: m.media_type,
       size: 0,
-      mime: m.media_type?.toLowerCase().includes('video') ? 'video/mp4' : 'image/jpeg',
-      bucket: 'inspection-media',
+      mime: m.media_type?.toLowerCase().includes("video") ? "video/mp4" : "image/jpeg",
+      bucket: "inspection-media",
       is_insp_media: true,
-      anomaly_id: m.anomaly_id
-    }
+      anomaly_id: m.anomaly_id,
+    },
   }));
 
   const combinedAttachments = [...(attachments || []), ...normalizedMedia];
@@ -173,11 +177,7 @@ export async function GET(request: NextRequest) {
   }
 
   // 4. Fetch jobpack names for relevant jobpack_ids
-  const jobpackIds = Array.from(new Set(
-    allInspRecords
-      .map((r) => r.jobpack_id)
-      .filter(Boolean)
-  ));
+  const jobpackIds = Array.from(new Set(allInspRecords.map((r) => r.jobpack_id).filter(Boolean)));
 
   const jobpackMap = new Map<number, string>();
   if (jobpackIds.length > 0) {
@@ -195,11 +195,13 @@ export async function GET(request: NextRequest) {
 
   // 7. Enrich attachments with inspection + component info
   const enriched = combinedAttachments.map((att: any) => {
-    const isAnomalyAtt = att.source_type?.toLowerCase() === 'anomaly';
+    const isAnomalyAtt = att.source_type?.toLowerCase() === "anomaly";
     const sourceId = Number(att.source_id);
     const insp = isAnomalyAtt ? anomalyToInspMap.get(sourceId) : inspMap.get(sourceId);
     if (!insp) {
-      console.warn(`No inspection found for attachment ${att.id} (source_id: ${att.source_id}, source_type: ${att.source_type})`);
+      console.warn(
+        `No inspection found for attachment ${att.id} (source_id: ${att.source_id}, source_type: ${att.source_type})`
+      );
       return { ...att };
     }
 

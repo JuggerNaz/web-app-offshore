@@ -54,15 +54,15 @@ export default async function UserPage() {
   };
 
   return (
-    <div className="flex-1 w-full max-w-6xl mx-auto space-y-12 overflow-y-auto overflow-x-hidden custom-scrollbar p-6 lg:p-10 bg-white/30">
+    <div className="flex-1 w-full max-w-6xl mx-auto space-y-12 overflow-y-auto overflow-x-hidden custom-scrollbar p-6 lg:p-10 bg-white/30 dark:bg-slate-950/30">
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-10">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 dark:border-slate-800 pb-10">
         <div className="space-y-2">
           <div className="flex items-center gap-2 mb-1">
              <div className="w-8 h-2 bg-blue-600 rounded-full" />
              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600">User Profile Service</span>
           </div>
-          <h1 className="text-4xl lg:text-5xl font-black tracking-tight text-slate-900 leading-none">Account Settings</h1>
+          <h1 className="text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white leading-none">Account Settings</h1>
           <p className="text-lg font-medium text-slate-500 max-w-lg">
             Manage your personal identity, professional designation, and security preferences.
           </p>
@@ -79,10 +79,10 @@ export default async function UserPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Security Settings */}
-        <Card className="border-none shadow-md bg-white">
+        <Card className="border-none shadow-md bg-white dark:bg-slate-900">
           <CardHeader className="border-b pb-6">
             <CardTitle className="flex items-center gap-2.5 text-lg font-black text-slate-800">
-              <div className="p-1.5 bg-amber-50 text-amber-600 rounded-md">
+              <div className="p-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-md">
                 <Lock className="w-4 h-4" />
               </div>
               Security & Identity
@@ -90,21 +90,21 @@ export default async function UserPage() {
             <CardDescription className="text-sm font-medium">Manage your password and security gatekeepers</CardDescription>
           </CardHeader>
           <CardContent className="pt-8 space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-5 border border-slate-100 rounded-xl bg-slate-50/50 gap-4 transition-all hover:border-amber-200">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-5 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 gap-4 transition-all hover:border-amber-200 dark:hover:border-amber-900">
               <div className="space-y-1">
-                <p className="font-black text-slate-800 text-sm uppercase tracking-wide">Account Password</p>
+                <p className="font-black text-slate-800 dark:text-slate-200 text-sm uppercase tracking-wide">Account Password</p>
                 <p className="text-[11px] font-bold text-slate-400">
                   LAST UPDATED {formatDate(user.updated_at || user.created_at).toUpperCase()}
                 </p>
               </div>
-              <Button variant="outline" size="sm" className="h-10 px-5 font-black text-blue-600 bg-white border-blue-100 hover:bg-blue-50 transition-all" asChild>
+              <Button variant="outline" size="sm" className="h-10 px-5 font-black text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-950 border-blue-100 dark:border-blue-900/30 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all" asChild>
                 <a href="/protected/reset-password">CHANGE PASSWORD</a>
               </Button>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-5 border border-slate-100 rounded-xl bg-slate-50/50 gap-4 transition-all hover:border-slate-200">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-5 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 gap-4 transition-all hover:border-slate-200 dark:hover:border-slate-700">
               <div className="space-y-1 flex-1">
-                <p className="font-black text-slate-800 text-sm uppercase tracking-wide">Two-Factor Auth</p>
+                <p className="font-black text-slate-800 dark:text-slate-200 text-sm uppercase tracking-wide">Two-Factor Auth</p>
                 <p className="text-[11px] font-bold text-slate-400">
                   EXTRA LAYER OF ACCOUNT PROTECTION
                 </p>
@@ -117,10 +117,10 @@ export default async function UserPage() {
         </Card>
 
         {/* App Preferences */}
-        <Card className="border-none shadow-md bg-white">
+        <Card className="border-none shadow-md bg-white dark:bg-slate-900">
           <CardHeader className="border-b pb-6">
             <CardTitle className="flex items-center gap-2.5 text-lg font-black text-slate-800">
-              <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md">
+              <div className="p-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-md">
                 <Settings className="w-4 h-4" />
               </div>
               Application Environment
@@ -130,7 +130,7 @@ export default async function UserPage() {
           <CardContent className="pt-8 space-y-8">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <label className="font-black text-slate-800 text-sm uppercase tracking-wide flex items-center gap-2">
+                <label className="font-black text-slate-800 dark:text-slate-200 text-sm uppercase tracking-wide flex items-center gap-2">
                   <Palette className="w-4 h-4 text-blue-500" />
                   Interface Theme
                 </label>
@@ -145,7 +145,7 @@ export default async function UserPage() {
 
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <label className="font-black text-slate-800 text-sm uppercase tracking-wide flex items-center gap-2">
+                <label className="font-black text-slate-800 dark:text-slate-200 text-sm uppercase tracking-wide flex items-center gap-2">
                   <Bell className="w-4 h-4 text-blue-500" />
                   Email Notifications
                 </label>
@@ -153,7 +153,7 @@ export default async function UserPage() {
                   ALERTS FOR OFFSHORE OPERATIONS
                 </p>
               </div>
-              <Badge variant="outline" className="h-7 px-3 font-black border-blue-200 text-blue-600 bg-blue-50/50 uppercase tracking-widest text-[9px]">
+              <Badge variant="outline" className="h-7 px-3 font-black border-blue-200 dark:border-blue-900/30 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10 uppercase tracking-widest text-[9px]">
                 Enabled
               </Badge>
             </div>
@@ -162,7 +162,7 @@ export default async function UserPage() {
       </div>
 
       {/* Admin Information */}
-      <Card className="border-none shadow-sm bg-slate-50/30">
+      <Card className="border-none shadow-sm bg-slate-50/30 dark:bg-slate-900/30">
         <CardHeader className="pb-4">
           <CardTitle className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Authentication Context</CardTitle>
         </CardHeader>

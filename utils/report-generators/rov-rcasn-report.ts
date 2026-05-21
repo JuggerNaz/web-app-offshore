@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
     company_name?: string;
@@ -35,6 +36,7 @@ export const generateROVCasnReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | void> => {
+    const supabase = createClient();
     console.log("[ROV Caisson Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
         const doc = new jsPDF({ orientation: "portrait" });
@@ -42,7 +44,6 @@ export const generateROVCasnReport = async (
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 12;
         const contentWidth = pageWidth - margin * 2;
-
 
         const colors = {
             navy:      [31,  55,  93]  as [number, number, number],
@@ -55,6 +56,13 @@ export const generateROVCasnReport = async (
             finding:   [124, 58,  237] as [number, number, number],
         };
 
+        // ── Filter Records ──────────────────────────────────────────────────────
+        const filteredRecords = records.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase();
+            const compCode = (r.structure_components?.code || '').toUpperCase();
+            return typeCode === 'RCASN' || compCode === 'CS';
+        });
+
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
         let contractorLogo: any = null;
@@ -65,6 +73,9 @@ export const generateROVCasnReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
+        // Fetch all components to build a complete QID map for grouping
+        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        
         const HEADER_H = 24;
 
         const drawPageHeader = (d: jsPDF, caissonQid?: string) => {
@@ -131,53 +142,76 @@ export const generateROVCasnReport = async (
             return startY + ROW_H * 2 + 4;
         };
 
+
         // ── Grouping Logic ──────────────────────────────────────────────────────
-        // 1. Map all records to their parent Caisson QID if possible
-        // 2. Fallback to component's own QID if it's a Caisson
-        
-        const caissonGroups: Record<string, any[]> = {};
-        const idToQidMap: Record<number, string> = {};
-        records.forEach(r => {
-            const comp = r.structure_components || r.component || {};
-            const metadata = comp.metadata || {};
-            const typeCode = (comp.code || metadata.type || "").toUpperCase();
-            if (typeCode === "CS" && comp.id && comp.q_id) {
-                idToQidMap[comp.id] = comp.q_id;
-            }
+        const compRegistry = new Map<number, any>();
+        const qidRegistry  = new Map<string, any>();
+        allComps?.forEach(c => {
+            compRegistry.set(c.id, c);
+            qidRegistry.set(c.q_id.toUpperCase(), c);
         });
 
-        records.forEach(r => {
+        const getGroupKey = (r: any): string => {
             const comp = r.structure_components || r.component || {};
             const metadata = comp.metadata || {};
-            const typeCode = (comp.code || metadata.type || "").toUpperCase();
-            const qid = comp.q_id || "Unknown";
+            const qid = (comp.q_id || "Unknown").toUpperCase();
             
-            // Try to find parent QID
-            let parentQid = metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id;
+            // 1. Check explicit association in record metadata
             const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
-            
-            if (!parentQid && parentId && idToQidMap[parentId]) {
-                parentQid = idToQidMap[parentId];
+            let parentQid  = metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id;
+
+            // Helper to find the ultimate "CS" parent in the hierarchy
+            const findUltimateCSParent = (cid: number | null, depth = 0): string | null => {
+                if (!cid || depth > 5) return null;
+                const c = compRegistry.get(cid);
+                if (!c) return null;
+                
+                const meta = c.metadata || {};
+                const pId = meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id;
+                const typeCode = (c.code || "").toUpperCase();
+                
+                // If it's a CS and has no parent, it's our ultimate group key
+                if (typeCode === "CS" && !pId) return c.q_id;
+                
+                // Otherwise keep climbing
+                return findUltimateCSParent(pId, depth + 1) || (typeCode === "CS" ? c.q_id : null);
+            };
+
+            // 2. Try climbing the registry hierarchy
+            const ultimateParent = findUltimateCSParent(parentId || comp.id);
+            if (ultimateParent) return ultimateParent;
+
+            // 3. Fallback to explicit parent QID string
+            if (parentQid) return parentQid;
+
+            // 4. Fallback to prefix matching against all top-level CS components
+            if (qid.startsWith("CS")) {
+                let bestMatch = "";
+                allComps?.forEach(c => {
+                    const cCode = (c.code || "").toUpperCase();
+                    const cQid  = (c.q_id || "").toUpperCase();
+                    const cMeta = c.metadata || {};
+                    const cpId  = cMeta.associated_comp_id || cMeta.parent_id || cMeta.comp_id_parent || cMeta.parent_comp_id || cMeta.associated_id;
+                    
+                    if (cCode === "CS" && !cpId && qid.startsWith(cQid) && cQid.length > bestMatch.length) {
+                        bestMatch = c.q_id;
+                    }
+                });
+                if (bestMatch) return bestMatch;
             }
-            
-            let groupKey = "General";
-            
-            if (typeCode === "CS") {
-                groupKey = qid;
-            } else if (parentQid) {
-                groupKey = parentQid;
-            } else {
-                // If it starts with CS, it's likely a caisson or part of one
-                const match = qid.match(/^(CS-[^-_ ]+)/);
-                if (match) {
-                    groupKey = match[1];
-                } else if (qid.startsWith("CS")) {
-                    groupKey = qid;
-                }
-            }
-            
-            if (!caissonGroups[groupKey]) caissonGroups[groupKey] = [];
-            caissonGroups[groupKey].push(r);
+
+            // 5. Fallback to regex for CS-XX pattern
+            const match = qid.match(/^(CS-[^-_ ]+)/i);
+            if (match) return match[1];
+
+            return (comp.code || "").toUpperCase() === "CS" ? qid : "General";
+        };
+
+        const caissonGroups: Record<string, any[]> = {};
+        filteredRecords.forEach(r => {
+            const key = getGroupKey(r).toUpperCase();
+            if (!caissonGroups[key]) caissonGroups[key] = [];
+            caissonGroups[key].push(r);
         });
         
         const sortedCaissonQids = Object.keys(caissonGroups).sort((a, b) => {
@@ -279,7 +313,7 @@ export const generateROVCasnReport = async (
 
             autoTable(doc, {
                 startY: (doc as any)._tableStartY,
-                margin: { left: margin, right: margin, bottom: config.showSignatures !== false ? 35 : 15 },
+                margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: config.showSignatures !== false ? 35 : 15 },
                 head: [[
                     { content: "Item\nNo.",       styles: { halign: "center", valign: "middle" } },
                     { content: "QID",             styles: { halign: "center", valign: "middle" } },
@@ -341,34 +375,7 @@ export const generateROVCasnReport = async (
                 didDrawCell: (data) => {
                 },
                 didDrawPage: (data) => {
-                    // Footer Signatures
-                    if (config.showSignatures !== false) {
-                        const sigY = pageHeight - 32;
-                        const sigW = contentWidth / 3;
-                        const isPF = config.printFriendly;
-
-                        const drawSigFooter = (label: string, lx: number) => {
-                            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
-                            doc.rect(lx, sigY, sigW - 4, 18);
-                            if (!isPF) {
-                                doc.setFillColor(...colors.navy);
-                                doc.rect(lx, sigY, sigW - 4, 4.5, "F");
-                                doc.setTextColor(255);
-                            } else {
-                                doc.setTextColor(...colors.navy);
-                            }
-                            doc.setFontSize(7); doc.setFont("helvetica", "bold");
-                            doc.text(label, lx + 2, sigY + 3.5);
-                            doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
-                            doc.text("Name:", lx + 2, sigY + 10);
-                            doc.text("Date:", lx + 2, sigY + 13.5);
-                            doc.text("Signature:", lx + 2, sigY + 17);
-                        };
-
-                        drawSigFooter("PREPARED BY", margin);
-                        drawSigFooter("REVIEWED BY", margin + sigW);
-                        drawSigFooter("APPROVED BY", margin + sigW * 2);
-                    }
+                    if (data.pageNumber > 1) drawPageHeader(doc);
 
                     // Footer Bottom Text
                     doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
@@ -384,6 +391,37 @@ export const generateROVCasnReport = async (
                     }
                 },
             });
+            
+            const finalY = (doc as any).lastAutoTable?.finalY ?? (doc as any)._tableStartY;
+            if (config.showSignatures !== false) {
+                let sigY = pageHeight - 38;
+                if (finalY > sigY - 10) {
+                    doc.addPage();
+                    drawPageHeader(doc);
+                    sigY = pageHeight - 38;
+                }
+                const sigW = contentWidth / 3;
+                const drawSigFooter = (label: string, lx: number) => {
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                    doc.rect(lx, sigY, sigW - 4, 18);
+                    if (!config.printFriendly) {
+                        doc.setFillColor(...colors.navy);
+                        doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                        doc.setTextColor(255);
+                    } else {
+                        doc.setTextColor(...colors.navy);
+                    }
+                    doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                    doc.text(label, lx + 2, sigY + 3.5);
+                    doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
+                    doc.text("Name:", lx + 2, sigY + 10);
+                    doc.text("Date:", lx + 2, sigY + 13.5);
+                    doc.text("Signature:", lx + 2, sigY + 17);
+                };
+                drawSigFooter("PREPARED BY", margin);
+                drawSigFooter("REVIEWED BY", margin + sigW);
+                drawSigFooter("APPROVED BY", margin + sigW * 2);
+            }
         });
 
         // --- 8. Output ---

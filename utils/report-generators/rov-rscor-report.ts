@@ -19,6 +19,7 @@ interface ReportConfig {
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
     showSignatures?: boolean;
+    showPageNumbers?: boolean;
 }
 
 export const generateROVRSCORReport = async (
@@ -46,7 +47,17 @@ export const generateROVRSCORReport = async (
             rectified: [22, 163, 74] as [number, number, number],
         };
 
-        const drawHeader = async (d: jsPDF) => {
+        // --- 1. Preparation ---
+        let companyLogo: any = null;
+        let contractorLogo: any = null;
+        if (companySettings.logo_url) {
+            try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
+        }
+        if (headerData.contractorLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        }
+
+        const drawHeader = (d: jsPDF) => {
             const headerH = 22;
             const isPF = config.printFriendly;
             if (isPF) {
@@ -57,21 +68,8 @@ export const generateROVRSCORReport = async (
                 d.setTextColor(255);
             }
 
-            // NasQuest Logo (Right)
-            if (companySettings.logo_url) {
-                try {
-                    const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                    if (logoData) drawLogo(d, logoData, 16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
-                } catch (e) {}
-            }
-
-            // Contractor Logo (Left)
-            if (headerData.contractorLogoUrl) {
-                try {
-                    const logoData = await loadLogoWithTransparency(headerData.contractorLogoUrl);
-                    if (logoData) drawLogo(d, logoData, 16, 16, margin + 4, margin + 4, 'left', 'center');
-                } catch (e) {}
-            }
+            if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 4, 'left',  'center');
 
             d.setFontSize(10); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
@@ -122,7 +120,7 @@ export const generateROVRSCORReport = async (
 
             const compData = compRecords[0]?.structure_components || {};
             if (i > 0) doc.addPage();
-            await drawHeader(doc);
+            drawHeader(doc);
             let currentY = drawContext(doc, margin + 22 + 2);
 
             doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 6, 'F');
@@ -252,8 +250,16 @@ export const generateROVRSCORReport = async (
                 if (!locValues.has('end')) finalPoints.push({ x: homActualX1 + (homLen * 0.95), depth: 0, burial: 0 });
                 finalPoints.sort((a, b) => a.x - b.x);
 
-                const mudBaseline = homY + 12;
-                const getMudY = (p: any) => p.burial > 0 ? mudBaseline - (p.burial / 100 * 10) : mudBaseline + (p.depth * depthScale);
+                const mudBaseline = homY + 3; // Baseline is the bottom of the horizontal member
+                const getMudY = (p: any) => {
+                    if (p.burial > 0) {
+                        // Burial moves mudline UP from bottom (homY+3) to top (homY-3)
+                        return mudBaseline - (p.burial / 100 * 6);
+                    } else {
+                        // Scour moves mudline DOWN from bottom (homY+3)
+                        return mudBaseline + (p.depth * depthScale);
+                    }
+                };
 
                 da.setDrawColor(...colors.mud); da.setLineWidth(1.5);
                 let curX = margin + 5; let curY = getMudY(finalPoints[0]);
@@ -300,7 +306,7 @@ export const generateROVRSCORReport = async (
 
             autoTable(doc, {
                 startY: currentY,
-                margin: { left: margin, right: margin },
+                margin: { left: margin, right: margin, top: margin + 22 + 6 },
                 head: [['Location', 'Scour Depth', 'Burial %', 'Exposed Pile', 'Remarks']],
                 body: compRecords.map(r => {
                     const rd = r.inspection_data || {};
@@ -335,6 +341,9 @@ export const generateROVRSCORReport = async (
                 theme: 'grid',
                 headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 7, halign: 'center' },
                 styles: { fontSize: 7 },
+                didDrawPage: (data) => {
+                    if (data.pageNumber > 1) drawHeader(doc);
+                },
                 didParseCell: (data) => {
                     if (data.section === 'body') {
                         const r = compRecords[data.row.index];
@@ -354,23 +363,36 @@ export const generateROVRSCORReport = async (
             });
         }
 
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
         if (config.showSignatures !== false) {
-            const sigY = pageHeight - 22;
-            const sigW = (contentWidth / 3) - 2;
-            const drawSigBlock = (label: string, lx: number) => {
-                const isPF = config.printFriendly;
-                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW, 11, 'S');
+            let sigY = pageHeight - 38;
+            if (finalY > sigY - 10) {
+                doc.addPage();
+                drawHeader(doc);
+                sigY = pageHeight - 38;
+            }
+            const sigW = contentWidth / 3;
+            const drawSig = (label: string, lx: number) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                doc.rect(lx, sigY, sigW - 4, 18);
                 if (!isPF) {
-                    doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW, 3, 'F');
+                    doc.setFillColor(...colors.navy);
+                    doc.rect(lx, sigY, sigW - 4, 4.5, "F");
                     doc.setTextColor(255);
                 } else {
                     doc.setTextColor(...colors.navy);
                 }
-                doc.setFontSize(6); doc.text(label, lx + 2, sigY + 2.2);
-                doc.setTextColor(...colors.text); doc.setFontSize(5); 
-                doc.text('Name:', lx + 2, sigY + 6.5); doc.text('Date:', lx + 2, sigY + 9);
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.5);
+                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.text("Name:", lx + 2, sigY + 10);
+                doc.text("Date:", lx + 2, sigY + 13.5);
+                doc.text("Signature:", lx + 2, sigY + 17);
             };
-            drawSigBlock('PREPARED BY', margin); drawSigBlock('REVIEWED BY', margin + sigW + 3); drawSigBlock('APPROVED BY', margin + (sigW * 2) + 6);
+
+            drawSig('PREPARED BY', margin);
+            drawSig('REVIEWED BY', margin + sigW);
+            drawSig('APPROVED BY', margin + (sigW * 2));
         }
 
         if (config.returnBlob) return doc.output("blob");

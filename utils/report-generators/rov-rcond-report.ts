@@ -305,7 +305,7 @@ export const generateROVCondReport = async (
 
             autoTable(doc, {
                 startY: (doc as any)._tableStartY,
-                margin: { left: margin, right: margin, bottom: 35 },
+                margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: 35 },
                 head: [[
                     { content: "Item No.",       styles: { halign: "center" } },
                     { content: "QID",             styles: { halign: "center" } },
@@ -360,31 +360,7 @@ export const generateROVCondReport = async (
                     }
                 },
                 didDrawPage: (data) => {
-                    // Signatures
-                    if (config.showSignatures !== false) {
-                        const sigY = pageHeight - 32;
-                        const sigW = contentWidth / 3;
-                        const drawSigFooter = (label: string, lx: number) => {
-                            doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
-                            doc.rect(lx, sigY, sigW - 4, 18);
-                            if (!config.printFriendly) {
-                                doc.setFillColor(...colors.navy);
-                                doc.rect(lx, sigY, sigW - 4, 4.5, "F");
-                                doc.setTextColor(255);
-                            } else {
-                                doc.setTextColor(...colors.navy);
-                            }
-                            doc.setFontSize(7); doc.setFont("helvetica", "bold");
-                            doc.text(label, lx + 2, sigY + 3.5);
-                            doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
-                            doc.text("Name:", lx + 2, sigY + 10);
-                            doc.text("Date:", lx + 2, sigY + 13.5);
-                            doc.text("Signature:", lx + 2, sigY + 17);
-                        };
-                        drawSigFooter("PREPARED BY", margin);
-                        drawSigFooter("REVIEWED BY", margin + sigW);
-                        drawSigFooter("APPROVED BY", margin + sigW * 2);
-                    }
+                    if (data.pageNumber > 1) drawPageHeader(doc);
 
                     // Bottom bar
                     doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
@@ -400,6 +376,37 @@ export const generateROVCondReport = async (
                     }
                 }
             });
+            
+            const finalY = (doc as any).lastAutoTable?.finalY ?? (doc as any)._tableStartY;
+            if (config.showSignatures !== false) {
+                let sigY = pageHeight - 38;
+                if (finalY > sigY - 10) {
+                    doc.addPage();
+                    drawPageHeader(doc);
+                    sigY = pageHeight - 38;
+                }
+                const sigW = contentWidth / 3;
+                const drawSigFooter = (label: string, lx: number) => {
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                    doc.rect(lx, sigY, sigW - 4, 18);
+                    if (!config.printFriendly) {
+                        doc.setFillColor(...colors.navy);
+                        doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                        doc.setTextColor(255);
+                    } else {
+                        doc.setTextColor(...colors.navy);
+                    }
+                    doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                    doc.text(label, lx + 2, sigY + 3.5);
+                    doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
+                    doc.text("Name:", lx + 2, sigY + 10);
+                    doc.text("Date:", lx + 2, sigY + 13.5);
+                    doc.text("Signature:", lx + 2, sigY + 17);
+                };
+                drawSigFooter("PREPARED BY", margin);
+                drawSigFooter("REVIEWED BY", margin + sigW);
+                drawSigFooter("APPROVED BY", margin + sigW * 2);
+            }
         });
 
         if (config.returnBlob) return doc.output("blob");

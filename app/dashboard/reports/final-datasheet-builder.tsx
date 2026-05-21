@@ -40,7 +40,8 @@ const TOC_SECTIONS = [
       { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
   ]},
   { id: 3, name: "Cathodic Protection Potential Survey", templates: [
-      { id: "rov-cp-report", name: "ROV CP Survey Report", mode: "ROV" }
+      { id: "rov-cp-report", name: "ROV CP Survey Report", mode: "ROV" },
+      { id: "diving-cpclb-report", name: "Diving CP Calibration Report", mode: "Diving" }
   ]},
   { id: 4, name: "Flooded Member Detection", templates: [
       { id: "fmd-report", name: "ROV FMD Survey Report", mode: "ROV" }
@@ -61,7 +62,8 @@ const TOC_SECTIONS = [
       { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", mode: "ROV" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
-      { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" }
+      { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" },
+      { id: "diving-szone-report", name: "Diving Splash Zone Inspection", mode: "Diving" }
   ]},
   { id: 8, name: "Anode Inspection", templates: [
       { id: "rov-anode-report", name: "ROV Anode Inspection Report", mode: "ROV" }
