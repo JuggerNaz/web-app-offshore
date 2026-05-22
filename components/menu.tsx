@@ -18,6 +18,7 @@ import {
   ClipboardCheck,
   Crown,
   AlertTriangle,
+  ShieldAlert,
   Sparkles,
   Paperclip,
   Box,
@@ -28,6 +29,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { RoleGate } from "@/components/role-gate";
 
 interface MenuLinkProps {
   href: string;
@@ -66,13 +68,15 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<LayoutDashboard className="h-[18px] w-[18px]" />}
             text="Analytics"
           />
-          <MenuLink
-            href="/dashboard/manager-overview"
-            isCollapsed={isCollapsed}
-            label="Manager Overview"
-            icon={<Crown className="h-[18px] w-[18px]" />}
-            text="Manager Overview"
-          />
+          <RoleGate minRole="manager" hide>
+            <MenuLink
+              href="/dashboard/manager-overview"
+              isCollapsed={isCollapsed}
+              label="Manager Overview"
+              icon={<Crown className="h-[18px] w-[18px]" />}
+              text="Manager Overview"
+            />
+          </RoleGate>
 
         </div>
 
@@ -181,13 +185,15 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
               Utilities
             </p>
           )}
-          <MenuLink
-            href="/dashboard/utilities/migration"
-            isCollapsed={isCollapsed}
-            label="Oracle Migration"
-            icon={<Database className="h-[18px] w-[18px] text-indigo-500" />}
-            text="Oracle Migration"
-          />
+          <RoleGate allowedRoles={["super_admin"]} hide>
+            <MenuLink
+              href="/dashboard/utilities/migration"
+              isCollapsed={isCollapsed}
+              label="Oracle Migration"
+              icon={<Database className="h-[18px] w-[18px] text-indigo-500" />}
+              text="Oracle Migration"
+            />
+          </RoleGate>
           <MenuLink
             href="/dashboard/utilities/library"
             isCollapsed={isCollapsed}
@@ -238,6 +244,24 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             text="QA-QC"
           />
         </div>
+
+        {/* Administration Section */}
+        <RoleGate minRole="company_admin" hide>
+          <div className="space-y-1">
+            {!isCollapsed && (
+              <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                Administration
+              </p>
+            )}
+            <MenuLink
+              href="/dashboard/admin/users"
+              isCollapsed={isCollapsed}
+              label="User Management"
+              icon={<ShieldAlert className="h-[18px] w-[18px] text-red-500" />}
+              text="User Management"
+            />
+          </div>
+        </RoleGate>
 
       </nav>
     </TooltipProvider>
