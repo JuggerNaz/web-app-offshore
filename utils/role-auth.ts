@@ -74,11 +74,19 @@ export async function getUserMembership(supabase: any, userId: string, companyId
   // Flatten and format memberships list for returning
   const formattedMemberships = memberships.map(({ company: _, ...m }: any) => m);
 
+  // Fetch the user's role and modules from user_roles
+  const { data: userRole } = await supabase
+    .from("user_roles")
+    .select("role, modules")
+    .eq("user_id", userId)
+    .maybeSingle();
+
   return {
     profile,
     membership: membershipDetails as CompanyMembership,
     company: company as Company,
     memberships: formattedMemberships as CompanyMembership[],
+    userRole: userRole || { role: "User", modules: [] },
   };
 }
 

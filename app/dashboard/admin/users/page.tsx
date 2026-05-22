@@ -30,8 +30,38 @@ import {
   Loader2,
   Check,
   Ban,
-  UserCheck
+  UserCheck,
+  Shield,
+  Save
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+
+const AVAILABLE_MODULES = [
+  "Field Assets",
+  "Planning",
+  "Work Packages",
+  "Inspection",
+  "Reports",
+  "Executive Summary",
+  "Oracle Migration",
+  "Library",
+  "Platform 3D",
+  "Inspection Type",
+  "Attachments",
+  "Anomalies & Findings",
+  "Smart Query",
+  "QA-QC",
+  "User Data",
+  "Settings"
+];
 
 export default function UserManagementPage() {
   const { profile: currentProfile, activeCompanyId } = useUserRole();
@@ -41,6 +71,63 @@ export default function UserManagementPage() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Access Configuration Dialog States
+  const [editingMember, setEditingMember] = useState<any | null>(null);
+  const [editSystemRole, setEditSystemRole] = useState<string>("User");
+  const [editModules, setEditModules] = useState<string[]>([]);
+  const [isSavingAccess, setIsSavingAccess] = useState(false);
+
+  const handleOpenAccessDialog = (member: any) => {
+    setEditingMember(member);
+    setEditSystemRole(member.systemRole || "User");
+    setEditModules(member.modules || []);
+  };
+
+  const handleModuleToggle = (moduleName: string) => {
+    setEditModules((prev) =>
+      prev.includes(moduleName)
+        ? prev.filter((m) => m !== moduleName)
+        : [...prev, moduleName]
+    );
+  };
+
+  const handleSaveAccessConfiguration = async () => {
+    if (!editingMember) return;
+    try {
+      setIsSavingAccess(true);
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      if (activeCompanyId) {
+        headers["x-company-id"] = activeCompanyId;
+      }
+
+      const res = await fetch(`/api/admin/users/${editingMember.id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          systemRole: editSystemRole,
+          modules: editModules,
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          setMembers((prev) =>
+            prev.map((m) => (m.id === editingMember.id ? json.data : m))
+          );
+          setEditingMember(null);
+        }
+      } else {
+        const json = await res.json();
+        alert(json.error || "Failed to update access configuration");
+      }
+    } catch (err) {
+      console.error("[UserManagement] Failed to save access configuration:", err);
+    } finally {
+      setIsSavingAccess(false);
+    }
+  };
 
   const fetchMembers = async () => {
     try {
@@ -374,6 +461,18 @@ export default function UserManagementPage() {
                         <span className="text-xs font-semibold text-slate-500">Restricted</span>
                       ) : (
                         <div className="flex justify-end gap-2">
+                          {member.is_active && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={isPending}
+                              onClick={() => handleOpenAccessDialog(member)}
+                              className="h-8 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
+                            >
+                              <Shield className="h-3.5 w-3.5 mr-1" />
+                              Access
+                            </Button>
+                          )}
                           {member.is_active ? (
                             <Button
                               size="sm"
@@ -415,6 +514,83 @@ export default function UserManagementPage() {
         onUserInvited={handleUserInvited}
         activeCompanyId={activeCompanyId}
       />
+
+      {/* Access Configuration Dialog */}
+      <Dialog open={!!editingMember} onOpenChange={(open) => !open && setEditingMember(null)}>
+        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white">
+              <Shield className="h-5 w-5 text-amber-500" />
+              Access Configuration
+            </DialogTitle>
+            <DialogDescription className="text-slate-500 dark:text-slate-400">
+              Change role and module permissions for {editingMember?.user?.email || editingMember?.user?.email || "this user"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">System Role</label>
+              <Select value={editSystemRole} onValueChange={setEditSystemRole}>
+                <SelectTrigger className="h-10 rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-950 border-slate-850 text-white">
+                  <SelectItem value="Admin">Administrator</SelectItem>
+                  <SelectItem value="Operator">Operator</SelectItem>
+                  <SelectItem value="Viewer">Viewer</SelectItem>
+                  <SelectItem value="User">Basic User</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-normal">
+                Admins have full access to manage roles. Other roles are for categorizing access.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Module Access</label>
+              <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-850">
+                {AVAILABLE_MODULES.map((mod) => (
+                  <div key={mod} className="flex flex-row items-center space-x-2.5 py-1">
+                    <Checkbox
+                      id={`mod-${mod}`}
+                      checked={editModules.includes(mod)}
+                      onCheckedChange={() => handleModuleToggle(mod)}
+                      className="rounded-md border-slate-350 dark:border-slate-700 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                    />
+                    <label
+                      htmlFor={`mod-${mod}`}
+                      className="text-sm font-semibold cursor-pointer text-slate-750 dark:text-slate-350 select-none"
+                    >
+                      {mod}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="sm:justify-between border-t border-slate-100 dark:border-slate-850 pt-4 gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setEditingMember(null)}
+              className="rounded-xl border-none hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSavingAccess}
+              onClick={handleSaveAccessConfiguration}
+              className="bg-blue-600 hover:bg-blue-700 text-white gap-2 rounded-xl px-5 font-semibold shadow-lg hover:shadow-blue-500/10 active:scale-95 transition-all"
+            >
+              {isSavingAccess ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save Configuration
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

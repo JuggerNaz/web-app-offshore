@@ -32,7 +32,30 @@ export const GET = withRole(["company_admin", "super_admin"], async (request, { 
       return apiError("Failed to retrieve company members", 500);
     }
 
-    return apiSuccess(memberships);
+    if (!memberships || memberships.length === 0) {
+      return apiSuccess([]);
+    }
+
+    // Fetch user_roles for these user_ids
+    const userIds = memberships.map((m: any) => m.user_id);
+    const { data: userRoles, error: rolesError } = await supabase
+      .from("user_roles")
+      .select("user_id, role, modules")
+      .in("user_id", userIds);
+
+    if (rolesError) {
+      console.error("[GET /api/admin/users] rolesError:", rolesError);
+    }
+
+    const rolesMap = new Map<string, any>(userRoles?.map((r: any) => [r.user_id, r]) || []);
+
+    const mergedMemberships = memberships.map((m: any) => ({
+      ...m,
+      systemRole: rolesMap.get(m.user_id)?.role || "User",
+      modules: rolesMap.get(m.user_id)?.modules || [],
+    }));
+
+    return apiSuccess(mergedMemberships);
   } catch (error: any) {
     console.error("[GET /api/admin/users] Error:", error);
     return apiError("Internal server error", 500);
@@ -122,7 +145,27 @@ export const POST = withRole(["company_admin", "super_admin"], async (request, {
       return apiError("User invited but failed to add to company", 500);
     }
 
-    return apiCreated(newMembership);
+    // 4. Create default user_roles entry
+    const { error: defaultRoleError } = await adminClient
+      .from("user_roles")
+      .upsert({
+        user_id: invitedUser.id,
+        role: "User",
+        modules: [],
+        updated_at: new Date().toISOString()
+      }, { onConflict: "user_id" });
+
+    if (defaultRoleError) {
+      console.error("[POST /api/admin/users] Default user_roles Error:", defaultRoleError);
+    }
+
+    const mergedNewMembership = {
+      ...newMembership,
+      systemRole: "User",
+      modules: [],
+    };
+
+    return apiCreated(mergedNewMembership);
   } catch (error: any) {
     console.error("[POST /api/admin/users] Error:", error);
     return apiError("Internal server error", 500);

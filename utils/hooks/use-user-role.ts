@@ -15,6 +15,8 @@ export function useUserRole() {
     hasMinRole,
     isAdmin,
     canEdit,
+    modules,
+    systemRole,
     refresh,
   } = useUserProfile();
 
@@ -30,6 +32,8 @@ export function useUserRole() {
     hasMinRole,
     isAdmin,
     canEdit,
+    modules: modules || [],
+    systemRole: systemRole || "User",
     refresh,
   };
 }

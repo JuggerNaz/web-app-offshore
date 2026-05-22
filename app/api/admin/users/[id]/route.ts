@@ -14,7 +14,7 @@ export const PATCH = withRole(
     try {
       const { id } = await params;
       const json = await request.json();
-      const { role, is_active } = json;
+      const { role, is_active, systemRole, modules } = json;
 
       const supabase = createClient() as any;
 
@@ -38,15 +38,50 @@ export const PATCH = withRole(
       if (role !== undefined) updateData.role = role;
       if (is_active !== undefined) updateData.is_active = is_active;
 
-      if (Object.keys(updateData).length === 0) {
-        return apiError("No update parameters provided", 400);
+      // Handle user_roles update
+      if (systemRole !== undefined || modules !== undefined) {
+        const targetUserId = targetMembership.user_id;
+        
+        // Fetch current to merge/fallback
+        const { data: currentRoleRow } = await supabase
+          .from("user_roles")
+          .select("role, modules")
+          .eq("user_id", targetUserId)
+          .maybeSingle();
+          
+        const newSystemRole = systemRole !== undefined ? systemRole : (currentRoleRow?.role || "User");
+        const newModules = modules !== undefined ? modules : (currentRoleRow?.modules || []);
+
+        const { error: roleError } = await supabase
+          .from("user_roles")
+          .upsert({
+            user_id: targetUserId,
+            role: newSystemRole,
+            modules: newModules,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "user_id" });
+
+        if (roleError) {
+          console.error("[PATCH /api/admin/users/[id]] user_roles update error:", roleError);
+        }
       }
 
-      const { data: updated, error: updateError } = await supabase
+      if (Object.keys(updateData).length > 0) {
+        const { error: updateError } = await supabase
+          .from("company_memberships")
+          .update(updateData)
+          .eq("id", id)
+          .eq("company_id", company.id); // Ensure scoped to active company
+
+        if (updateError) {
+          console.error("[PATCH /api/admin/users/[id]] Update Error:", updateError);
+          return apiError("Failed to update membership", 500);
+        }
+      }
+
+      // Re-fetch the full membership along with profiles and user_roles to return it correctly
+      const { data: finalMembership, error: finalError } = await supabase
         .from("company_memberships")
-        .update(updateData)
-        .eq("id", id)
-        .eq("company_id", company.id) // Ensure scoped to active company
         .select(`
           id,
           user_id,
@@ -56,14 +91,27 @@ export const PATCH = withRole(
           created_at,
           user:profiles!user_id(*)
         `)
+        .eq("id", id)
         .single();
 
-      if (updateError) {
-        console.error("[PATCH /api/admin/users/[id]] Update Error:", updateError);
-        return apiError("Failed to update membership", 500);
+      if (finalError || !finalMembership) {
+        return apiError("Failed to retrieve updated member info", 500);
       }
 
-      return apiSuccess(updated);
+      // Get user role information
+      const { data: userRoleRow } = await supabase
+        .from("user_roles")
+        .select("role, modules")
+        .eq("user_id", finalMembership.user_id)
+        .maybeSingle();
+
+      const responseData = {
+        ...finalMembership,
+        systemRole: userRoleRow?.role || "User",
+        modules: userRoleRow?.modules || [],
+      };
+
+      return apiSuccess(responseData);
     } catch (error: any) {
       console.error("[PATCH /api/admin/users/[id]] Error:", error);
       return apiError("Internal server error", 500);

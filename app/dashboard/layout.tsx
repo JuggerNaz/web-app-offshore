@@ -23,13 +23,31 @@ export default async function Layout({ children }: { children: React.ReactNode }
   }
 
   let initialProfileData: any = undefined;
+  let deactivationError: string | null = null;
+
   try {
     const result = await getUserMembership(supabase, user.id);
-    if (result && !("error" in result)) {
-      initialProfileData = result;
+    if (result) {
+      if ("error" in result) {
+        const isDeactivated = result.error === "User profile is inactive" || result.error === "No active company memberships found";
+        deactivationError = isDeactivated
+          ? "Your account has been deactivated. Please contact your administrator."
+          : `Access Denied: ${result.error}`;
+      } else {
+        initialProfileData = result;
+      }
     }
   } catch (error) {
     console.error("Error pre-fetching profile inside layout:", error);
+  }
+
+  if (deactivationError) {
+    try {
+      await supabase.auth.signOut();
+    } catch (signOutErr) {
+      console.error("Sign out error in layout:", signOutErr);
+    }
+    return redirect(`/sign-in?error=${encodeURIComponent(deactivationError)}`);
   }
 
   return (

@@ -34,11 +34,19 @@ import { UserProfileCard } from "@/components/user-profile-card";
 
 const AVAILABLE_MODULES = [
     "Field Assets",
-    "Work Packages",
     "Planning",
+    "Work Packages",
     "Inspection",
     "Reports",
+    "Executive Summary",
+    "Oracle Migration",
     "Library",
+    "Platform 3D",
+    "Inspection Type",
+    "Attachments",
+    "Anomalies & Findings",
+    "Smart Query",
+    "QA-QC",
     "User Data",
     "Settings"
 ];

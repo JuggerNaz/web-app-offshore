@@ -47,6 +47,8 @@ interface UserProfileContextType {
   hasMinRole: (role: UserRole) => boolean;
   isAdmin: boolean;
   canEdit: boolean;
+  modules: string[];
+  systemRole: string | null;
   refresh: () => Promise<void>;
 }
 
@@ -69,6 +71,31 @@ export function UserProfileProvider({
     initialData?.company.id || null
   );
   const [isLoading, setIsLoading] = useState(!initialData);
+
+  const fetchProfileSilent = async () => {
+    try {
+      const headers: HeadersInit = {};
+      const stored = typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null;
+      if (stored) {
+        headers["x-company-id"] = stored;
+      }
+
+      const res = await fetch("/api/auth/profile", { headers });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          setData(json.data);
+        }
+      } else if (res.status === 403 || res.status === 401) {
+        if (typeof window !== "undefined") {
+          const errorMsg = "Your account has been deactivated. Please contact your administrator.";
+          window.location.href = `/sign-in?error=${encodeURIComponent(errorMsg)}`;
+        }
+      }
+    } catch (err) {
+      console.error("[UserProfileProvider] Error in silent profile check:", err);
+    }
+  };
 
   const fetchProfile = async (targetCompanyId?: string | null) => {
     try {
@@ -96,6 +123,11 @@ export function UserProfileProvider({
             }
           }
         }
+      } else if (res.status === 403 || res.status === 401) {
+        if (typeof window !== "undefined") {
+          const errorMsg = "Your account has been deactivated. Please contact your administrator.";
+          window.location.href = `/sign-in?error=${encodeURIComponent(errorMsg)}`;
+        }
       }
     } catch (err) {
       console.error("[UserProfileProvider] Error fetching profile:", err);
@@ -119,6 +151,13 @@ export function UserProfileProvider({
         }
       }
     }
+
+    // Set up silent polling for real-time deactivation check (every 15 seconds)
+    const interval = setInterval(() => {
+      fetchProfileSilent();
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const setActiveCompanyId = async (companyId: string) => {
@@ -148,6 +187,8 @@ export function UserProfileProvider({
     hasMinRole,
     isAdmin,
     canEdit,
+    modules: (data as any)?.userRole?.modules || [],
+    systemRole: (data as any)?.userRole?.role || "User",
     refresh: () => fetchProfile(activeCompanyId),
   };
 
