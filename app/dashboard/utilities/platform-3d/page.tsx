@@ -17,7 +17,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Structural3DViewer } from "./_components/Structural3DViewer";
+import dynamic from "next/dynamic";
+
+const Structural3DViewer = dynamic(
+    () => import("./_components/Structural3DViewer").then((mod) => mod.Structural3DViewer),
+    {
+        ssr: false,
+        loading: () => (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-3xl min-h-[450px]">
+                <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-2" />
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Loading 3D Engine...</p>
+            </div>
+        )
+    }
+);
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 
 interface Platform {

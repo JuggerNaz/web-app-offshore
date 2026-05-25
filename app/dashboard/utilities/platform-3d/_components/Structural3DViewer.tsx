@@ -17,6 +17,7 @@ import {
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Play, Box, Radio, Compass } from "lucide-react";
 
 interface Component3D {
     id: number;
@@ -185,7 +186,8 @@ const FoundationMember = ({
     thickness, 
     color, 
     label,
-    showLabel = true
+    showLabel = true,
+    renderMesh = true
 }: { 
     start: [number, number, number]; 
     end: [number, number, number]; 
@@ -193,6 +195,7 @@ const FoundationMember = ({
     color: string;
     label?: string;
     showLabel?: boolean;
+    renderMesh?: boolean;
 }) => {
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
@@ -208,10 +211,12 @@ const FoundationMember = ({
 
     return (
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
-            <mesh castShadow receiveShadow>
-                <cylinderGeometry args={[thickness, thickness, length, 8]} />
-                <meshStandardMaterial color={color} metalness={0.8} roughness={0.2} transparent opacity={0.4} />
-            </mesh>
+            {renderMesh && (
+                <mesh castShadow receiveShadow>
+                    <cylinderGeometry args={[thickness, thickness, length, 8]} />
+                    <meshStandardMaterial color={color} metalness={0.8} roughness={0.2} transparent opacity={0.4} />
+                </mesh>
+            )}
             {showLabel && label && (
                 <Html distanceFactor={20} position={[0, length / 2 + 1, 0]} center>
                     <div className="px-3 py-1 bg-white/10 backdrop-blur-md text-[14px] font-black text-slate-900 dark:text-white rounded-full border border-white/20 shadow-2xl pointer-events-none uppercase tracking-[0.2em]">
@@ -259,6 +264,16 @@ export function Structural3DViewer({
     const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
     const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
     const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | null>(null);
+    const [isActivated, setIsActivated] = useState(false);
+    const [isActivating, setIsActivating] = useState(false);
+
+    const handleActivate = () => {
+        setIsActivating(true);
+        setTimeout(() => {
+            setIsActivated(true);
+            setIsActivating(false);
+        }, 1200);
+    };
 
     // Helper to sanitize elevation typos
     const sanitizeElevation = (elvVal: any): number => {
@@ -364,7 +379,8 @@ export function Structural3DViewer({
                 end: [endCoords.x, minElv, endCoords.z],
                 thickness: 0.8,
                 color: "#94a3b8", // slate-400 (galvanized look)
-                label: name
+                label: name,
+                renderMesh: false
             });
         });
 
@@ -379,7 +395,8 @@ export function Structural3DViewer({
                     end: [toCoords.x, elv, toCoords.z],
                     thickness: 0.4,
                     color: "#64748b", // slate-500
-                    label: face.face
+                    label: face.face,
+                    renderMesh: false
                 });
             });
         });
@@ -669,6 +686,121 @@ export function Structural3DViewer({
         };
     }, [components, platformDetails, elevations, faces, selectedElevations, selectedFaces]);
 
+    if (!isActivated) {
+        return (
+            <div className="w-full h-full min-h-[450px] relative rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 text-slate-100 shadow-2xl flex flex-col items-center justify-center p-8 transition-all duration-500">
+                <style>{`
+                  @keyframes loading-bar {
+                    0% { transform: translateX(-100%); }
+                    50% { transform: translateX(100%); }
+                    100% { transform: translateX(-100%); }
+                  }
+                `}</style>
+                {/* Technical Blueprint Grid Pattern background */}
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:3rem_3rem] opacity-30 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-tr from-slate-950 via-slate-900/90 to-blue-950/40 pointer-events-none" />
+                
+                {isActivating ? (
+                    /* SCANNING / TELEMETRY LOADING STATE */
+                    <div className="relative z-10 flex flex-col items-center justify-center space-y-6 max-w-md text-center animate-in fade-in zoom-in duration-500">
+                        {/* Scanning Hologram Ring */}
+                        <div className="relative w-24 h-24 flex items-center justify-center">
+                            <div className="absolute inset-0 rounded-full border-4 border-blue-500/10 border-t-blue-500 animate-spin" />
+                            <div className="absolute inset-2 rounded-full border-4 border-indigo-500/10 border-b-indigo-500 animate-spin [animation-direction:reverse] [animation-duration:1.5s]" />
+                            <Box className="w-10 h-10 text-blue-400 animate-pulse" />
+                        </div>
+                        
+                        <div className="space-y-2">
+                            <h3 className="text-sm font-black uppercase tracking-[0.25em] text-blue-400 animate-pulse flex items-center justify-center gap-2">
+                                <Radio className="h-4 w-4 animate-ping text-blue-500" />
+                                Connecting Telemetry
+                            </h3>
+                            <div className="flex flex-col gap-1 items-center">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse delay-100">
+                                    Allocating WebGL Buffer...
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse delay-300">
+                                    Parsing {components.length} Structural Nodes...
+                                </span>
+                            </div>
+                        </div>
+                        
+                        {/* Fake Progress Bar */}
+                        <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden relative">
+                            <div className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-blue-500 to-indigo-500 animate-[loading-bar_1.2s_ease-in-out_infinite]" style={{ width: '60%' }} />
+                        </div>
+                    </div>
+                ) : (
+                    /* DEFER ACTIVATION / INITIAL PLACEHOLDER */
+                    <div className="relative z-10 flex flex-col items-center justify-center space-y-8 max-w-xl text-center p-4">
+                        {/* Top Decorative Tag */}
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] shadow-sm shadow-blue-500/5 animate-pulse">
+                            <Compass className="w-3.5 h-3.5 stroke-[2] text-blue-400 animate-[spin_8s_linear_infinite]" />
+                            3D Modeling Utility Ready
+                        </div>
+
+                        {/* Title & Info */}
+                        <div className="space-y-3">
+                            <h2 className="text-2xl font-black uppercase tracking-tight text-white leading-none">
+                                {platformDetails?.title || "INTERACTIVE PLATFORM"}
+                            </h2>
+                            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider max-w-md mx-auto">
+                                Run diagnostics, view elevations, and inspect structural jacket anodes/welds in interactive 3D.
+                            </p>
+                        </div>
+
+                        {/* Telemetry Stats Grid */}
+                        <div className="grid grid-cols-3 gap-6 w-full max-w-md py-4 px-6 rounded-2xl bg-slate-950/50 border border-slate-800/80 backdrop-blur-sm shadow-inner">
+                            <div className="flex flex-col items-center justify-center text-center">
+                                <span className="text-xl font-black text-blue-400 leading-none mb-1">
+                                    {components.length}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                    Assets
+                                </span>
+                            </div>
+                            <div className="flex flex-col items-center justify-center text-center border-x border-slate-800/80">
+                                <span className="text-xl font-black text-indigo-400 leading-none mb-1">
+                                    {availableElevations.length}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                    Elevations
+                                </span>
+                            </div>
+                            <div className="flex flex-col items-center justify-center text-center">
+                                <span className="text-xl font-black text-emerald-400 leading-none mb-1">
+                                    {availableFaces.length}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                    Faces
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Action Trigger Card */}
+                        <button
+                            onClick={handleActivate}
+                            className="group relative flex flex-col items-center justify-center p-6 bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-[0.98] border border-blue-400/30 rounded-2xl shadow-lg hover:shadow-blue-500/20 transition-all duration-300 w-full max-w-sm overflow-hidden"
+                        >
+                            <div className="absolute inset-0 bg-radial-gradient from-blue-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                            
+                            <div className="relative z-10 flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 border border-white/20 text-white mb-3 group-hover:scale-110 transition-transform duration-300 shadow-md">
+                                <Play className="w-5 h-5 fill-current text-white stroke-[1.5]" />
+                            </div>
+                            
+                            <span className="relative z-10 text-xs font-black uppercase tracking-[0.25em] text-white">
+                                Load 3D Platform Model
+                            </span>
+                            <span className="relative z-10 text-[9px] font-bold text-blue-200 uppercase tracking-widest mt-1 opacity-80">
+                                Click to initialize GPU rendering
+                            </span>
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="w-full h-full bg-blue-50 relative rounded-3xl overflow-hidden border border-blue-100 shadow-2xl">
             <Canvas shadows gl={{ antialias: true }} dpr={[1, 2]}>
@@ -698,6 +830,7 @@ export function Structural3DViewer({
                                 color={m.color}
                                 label={m.label}
                                 showLabel={m.start[1] !== m.end[1]} // only show labels for vertical legs
+                                renderMesh={m.renderMesh}
                             />
                         ))}
 
