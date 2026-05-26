@@ -1,13 +1,9 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
 
-/**
- * GET /api/3d-scenes?platform_id=UUID
- * Fetch 3D scene data for a platform
- */
 // Helper function to map integer platform IDs to valid deterministic UUIDs
 function toUuid(id: string | number): string {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,22 +20,22 @@ function toUuid(id: string | number): string {
 }
 
 /**
- * GET /api/3d-scenes?platform_id=UUID
+ * GET /api/3d-scenes?platform_id=integer
  * Fetch 3D scene data for a platform
  */
 export const GET = withAuth(
-  async (request: NextRequest, { user }: { user: any }) => {
+  async (request: NextRequest, { params, user }: { params: Promise<any>; user: any }) => {
     const supabase = createClient();
     const { searchParams } = new URL(request.url);
     const platform_id = searchParams.get("platform_id");
 
     if (!platform_id) {
-      return new Response(JSON.stringify({ error: "Missing platform_id" }), { status: 400 });
+      return NextResponse.json({ error: "Missing platform_id" }, { status: 400 });
     }
 
     const uuidPlatformId = toUuid(platform_id);
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("platform_3d_scenes")
       .select("*")
       .eq("platform_id", uuidPlatformId)
@@ -60,19 +56,19 @@ export const GET = withAuth(
  * Save or update 3D scene data
  */
 export const POST = withAuth(
-  async (request: NextRequest, { user }: { user: any }) => {
+  async (request: NextRequest, { params, user }: { params: Promise<any>; user: any }) => {
     const supabase = createClient();
     const body = await request.json();
     const { platform_id, scene_data, name } = body;
 
     if (!platform_id) {
-      return new Response(JSON.stringify({ error: "Missing platform_id" }), { status: 400 });
+      return NextResponse.json({ error: "Missing platform_id" }, { status: 400 });
     }
 
     const uuidPlatformId = toUuid(platform_id);
 
     // Check if one exists
-    const { data: existing } = await supabase
+    const { data: existing } = await (supabase as any)
       .from("platform_3d_scenes")
       .select("id")
       .eq("platform_id", uuidPlatformId)
@@ -81,14 +77,14 @@ export const POST = withAuth(
 
     let result;
     if (existing) {
-      result = await supabase
+      result = await (supabase as any)
         .from("platform_3d_scenes")
         .update({ scene_data, updated_at: new Date().toISOString() })
         .eq("id", existing.id)
         .select()
         .single();
     } else {
-      result = await supabase
+      result = await (supabase as any)
         .from("platform_3d_scenes")
         .insert({
           platform_id: uuidPlatformId,

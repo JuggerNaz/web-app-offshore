@@ -2,14 +2,14 @@
 
 import React, { useMemo, useState, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { 
-    OrbitControls, 
-    PerspectiveCamera, 
-    Grid, 
-    Html, 
-    ContactShadows, 
-    Edges, 
-    Bounds, 
+import {
+    OrbitControls,
+    PerspectiveCamera,
+    Grid,
+    Html,
+    ContactShadows,
+    Edges,
+    Bounds,
     useBounds,
     Float,
     useHelper
@@ -35,17 +35,17 @@ interface Structural3DViewerProps {
     onSelectComponent: (component: Component3D) => void;
 }
 
-const ComponentMesh = ({ 
-    component, 
-    isSelected, 
+const ComponentMesh = ({
+    component,
+    isSelected,
     onClick,
     start,
     end,
     thickness = 0.3,
     showWeldLabels = false
-}: { 
-    component: Component3D; 
-    isSelected: boolean; 
+}: {
+    component: Component3D;
+    isSelected: boolean;
     onClick: () => void;
     start: [number, number, number];
     end: [number, number, number];
@@ -54,21 +54,21 @@ const ComponentMesh = ({
 }) => {
     const [hovered, setHovered] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
-    
+
     // Determine shape based on component code
     const code = (component.code || "").toUpperCase();
     const isNode = code.includes("NODE") || component.q_id.includes("NODE") || code === "ND";
     const isAnode = code === "AN" || code.includes("ANOD");
     const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
     const isClamp = code === "CL" || code.includes("CLAM");
-    
+
     // calculate position, rotation, length
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
     const length = startVec.distanceTo(endVec);
     const position = startVec.clone().add(endVec).multiplyScalar(0.5);
     const direction = endVec.clone().sub(startVec).normalize();
-    
+
     // Scale thickness based on type
     let baseThickness = thickness;
     if (isAnode) baseThickness = 0.15;
@@ -90,7 +90,7 @@ const ComponentMesh = ({
     // Zoom-based visibility logic removed as per user request
     // Labels now only show on hover or selection, or persistent weld labels if toggled
     const showLabel = hovered || isSelected || (showWeldLabels && isWeld);
-    
+
     let labelText = component.q_id;
     if (isWeld) {
         const match = component.q_id.match(/WN\s*N?([A-Za-z0-9]+)/i) || component.q_id.match(/N?([A-Za-z0-9]+)/);
@@ -98,7 +98,7 @@ const ComponentMesh = ({
             labelText = match[1];
         }
     }
-    
+
     // Offset anodes from the center of the member so they sit on the surface
     const offsetPos = isAnode ? [0.4, 0, 0] : [0, 0, 0];
 
@@ -106,92 +106,87 @@ const ComponentMesh = ({
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
             <group position={offsetPos as [number, number, number]}>
                 {/* Visual Mesh */}
-                <mesh castShadow receiveShadow>
-                {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
-                    <sphereGeometry args={[thickness * 1.5, 16, 16]} />
-                ) : isAnode ? (
-                    <boxGeometry args={[0.2, meshLength, 0.2]} />
-                ) : isClamp ? (
-                    <boxGeometry args={[baseThickness, 0.8, baseThickness]} />
-                ) : (
-                    <cylinderGeometry args={[baseThickness, baseThickness, meshLength, 12]} />
-                )}
-                <meshStandardMaterial 
-                    color={isSelected ? "#2563eb" : hovered ? "#3b82f6" : isAnode ? "#f97316" : isWeld ? "#d946ef" : isClamp ? "#b45309" : "#94a3b8"} 
-                    metalness={0.7}
-                    roughness={0.3}
-                    emissive={isSelected ? "#3b82f6" : isAnode ? "#ea580c" : isWeld ? "#c026d3" : "#000000"}
-                    emissiveIntensity={isSelected ? 0.5 : hovered ? 0.2 : 0}
-                />
-                <Edges 
-                    threshold={15} 
-                    color={isSelected ? "#ffffff" : hovered ? "#ffffff" : "#475569"} 
-                />
-                {isClamp && (
-                    <mesh position={[0, 0, 0]}>
-                        <boxGeometry args={[baseThickness + 0.4, 0.6, 0.05]} />
-                        <meshStandardMaterial color="#b45309" metalness={0.8} />
-                    </mesh>
-                )}
-            </mesh>
+                <mesh>
+                    {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
+                        <sphereGeometry args={[thickness * 1.5, 16, 16]} />
+                    ) : isAnode ? (
+                        <boxGeometry args={[0.2, meshLength, 0.2]} />
+                    ) : isClamp ? (
+                        <boxGeometry args={[baseThickness, 0.8, baseThickness]} />
+                    ) : (
+                        <cylinderGeometry args={[baseThickness, baseThickness, meshLength, 12]} />
+                    )}
+                    <meshStandardMaterial
+                        color={isSelected ? "#3b82f6" : hovered ? "#60a5fa" : isAnode ? "#f97316" : isWeld ? "#d946ef" : isClamp ? "#b45309" : "#e2e8f0"}
+                        metalness={0.9}
+                        roughness={0.2}
+                        emissive={isSelected ? "#2563eb" : isAnode ? "#ea580c" : isWeld ? "#c026d3" : "#000000"}
+                        emissiveIntensity={isSelected ? 0.3 : hovered ? 0.1 : 0}
+                    />
+                    {isClamp && (
+                        <mesh position={[0, 0, 0]}>
+                            <boxGeometry args={[baseThickness + 0.4, 0.6, 0.05]} />
+                            <meshStandardMaterial color="#b45309" metalness={0.8} />
+                        </mesh>
+                    )}
+                </mesh>
 
-            {/* Invisible Hit Box */}
-            <mesh 
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onClick();
-                }}
-                onPointerOver={(e) => {
-                    e.stopPropagation();
-                    setHovered(true);
-                }}
-                onPointerOut={(e) => {
-                    e.stopPropagation();
-                    setHovered(false);
-                }}
-            >
-                {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
-                    <sphereGeometry args={[thickness * 2, 8, 8]} />
-                ) : isAnode ? (
-                    <boxGeometry args={[0.5, meshLength + 0.2, 0.5]} />
-                ) : (
-                    <cylinderGeometry args={[baseThickness + 0.3, baseThickness + 0.3, isWeld ? meshLength + 0.5 : length + 0.5, 8]} />
-                )}
-                <meshBasicMaterial transparent opacity={0} />
-            </mesh>
+                {/* Invisible Hit Box */}
+                <mesh
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onClick();
+                    }}
+                    onPointerOver={(e) => {
+                        e.stopPropagation();
+                        setHovered(true);
+                    }}
+                    onPointerOut={(e) => {
+                        e.stopPropagation();
+                        setHovered(false);
+                    }}
+                >
+                    {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
+                        <sphereGeometry args={[thickness * 2, 8, 8]} />
+                    ) : isAnode ? (
+                        <boxGeometry args={[0.5, meshLength + 0.2, 0.5]} />
+                    ) : (
+                        <cylinderGeometry args={[baseThickness + 0.3, baseThickness + 0.3, isWeld ? meshLength + 0.5 : length + 0.5, 8]} />
+                    )}
+                    <meshBasicMaterial transparent opacity={0} />
+                </mesh>
 
-            {showLabel && (
-                <Html distanceFactor={15} position={[0, (isAnode || isWeld ? meshLength : length) / 2 + 0.5, 0]} center>
-                    <div 
-                        className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${
-                            isSelected 
-                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100" 
+                {showLabel && (
+                    <Html distanceFactor={15} position={[0, (isAnode || isWeld ? meshLength : length) / 2 + 0.5, 0]} center>
+                        <div
+                            className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
+                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
                                 : isWeld && showWeldLabels
                                     ? "bg-orange-500 text-white border-orange-400 scale-100 opacity-90 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
                                     : "bg-white/90 text-blue-900 border-blue-200"
-                        }`}
-                    >
-                        {labelText}
-                    </div>
-                </Html>
-            )}
+                                }`}
+                        >
+                            {labelText}
+                        </div>
+                    </Html>
+                )}
+            </group>
         </group>
-    </group>
     );
 };
 
-const FoundationMember = ({ 
-    start, 
-    end, 
-    thickness, 
-    color, 
+const FoundationMember = ({
+    start,
+    end,
+    thickness,
+    color,
     label,
     showLabel = true,
     renderMesh = true
-}: { 
-    start: [number, number, number]; 
-    end: [number, number, number]; 
-    thickness: number; 
+}: {
+    start: [number, number, number];
+    end: [number, number, number];
+    thickness: number;
     color: string;
     label?: string;
     showLabel?: boolean;
@@ -202,7 +197,7 @@ const FoundationMember = ({
     const length = startVec.distanceTo(endVec);
     const position = startVec.clone().add(endVec).multiplyScalar(0.5);
     const direction = endVec.clone().sub(startVec).normalize();
-    
+
     const quaternion = new THREE.Quaternion();
     if (length > 0.001) {
         quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
@@ -212,9 +207,9 @@ const FoundationMember = ({
     return (
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
             {renderMesh && (
-                <mesh castShadow receiveShadow>
+                <mesh>
                     <cylinderGeometry args={[thickness, thickness, length, 8]} />
-                    <meshStandardMaterial color={color} metalness={0.8} roughness={0.2} transparent opacity={0.4} />
+                    <meshStandardMaterial color={color} metalness={0.9} roughness={0.2} transparent opacity={0.6} />
                 </mesh>
             )}
             {showLabel && label && (
@@ -243,23 +238,24 @@ const ElevationMarker = ({ y, label }: { y: number, label: string }) => (
 
 // Component to handle auto-framing
 function SelectToZoom({ children }: { children: React.ReactNode }) {
-  const api = useBounds();
-  return (
-    <group onClick={(e) => (e.stopPropagation(), e.delta <= 2 && api.refresh(e.object).fit())} onPointerMissed={(e) => e.button === 0 && api.refresh().fit()}>
-      {children}
-    </group>
-  );
+    const api = useBounds();
+    return (
+        <group onClick={(e) => (e.stopPropagation(), e.delta <= 2 && api.refresh(e.object).fit())} onPointerMissed={(e) => e.button === 0 && api.refresh().fit()}>
+            {children}
+        </group>
+    );
 }
 
-export function Structural3DViewer({ 
-    components, 
+export function Structural3DViewer({
+    components,
     platformDetails,
     elevations = [],
     faces = [],
-    selectedCompId, 
-    onSelectComponent 
+    selectedCompId,
+    onSelectComponent
 }: Structural3DViewerProps) {
     const [showGrid, setShowGrid] = useState(true);
+    const [showWater, setShowWater] = useState(true);
     const [showWeldLabels, setShowWeldLabels] = useState(false);
     const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
     const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
@@ -290,15 +286,28 @@ export function Structural3DViewer({
         return Array.from(new Set(values)).sort((a, b) => b - a);
     }, [elevations]);
 
+    // Derived level markers from real elevation data
+    const { seabedY, waterSurfaceY, waterDepth } = useMemo(() => {
+        const elvValues = elevations.map(e => sanitizeElevation(e.elv));
+        // Lowest elevation minus a 5m buffer = seabed
+        const minElv = elvValues.length > 0 ? Math.min(...elvValues) : -30;
+        const seabedY = minElv - 5;
+        // Water surface is always MSL = 0
+        const waterSurfaceY = 0;
+        // Water column depth from surface to seabed
+        const waterDepth = Math.abs(waterSurfaceY - seabedY);
+        return { seabedY, waterSurfaceY, waterDepth };
+    }, [elevations]);
+
     const availableFaces = useMemo(() => {
         return faces.map(f => f.face).filter(Boolean);
     }, [faces]);
-    
+
     const { componentLayouts, foundationMembers, elvMarkers } = useMemo(() => {
         // 1. Determine Leg Footprints and Grid Centering
         const SPACING = 15; // default spacing between rows/cols
         const legMap: Record<string, { x: number, z: number }> = {};
-        
+
         // Collect all leg names from details and faces
         const allLegNamesSet = new Set<string>();
         if (platformDetails) {
@@ -313,7 +322,7 @@ export function Structural3DViewer({
         });
 
         const allLegNames = Array.from(allLegNamesSet);
-        
+
         // Extract unique rows (letters) and columns (numbers)
         const rowLetters = Array.from(new Set(allLegNames.map(n => n.match(/([A-Z]+)/)?.[1] || "")))
             .filter(Boolean).sort();
@@ -330,7 +339,7 @@ export function Structural3DViewer({
                 const num = match[2];
                 const rowIndex = rowLetters.indexOf(letter);
                 const colIndex = colNumbers.indexOf(num);
-                
+
                 // Map to centered coordinates
                 // Letter (A, B...) -> Z-axis (A is top/positive)
                 // Number (1, 2...) -> X-axis (1 is left/negative)
@@ -348,11 +357,11 @@ export function Structural3DViewer({
             if (isD21JT) {
                 const L = 13.91 - 0.12489 * (yVal - 2.872);
                 const W = 12.45 - 0.16665 * (yVal - 2.872);
-                
-                if (key === 'A1') return { x: -L/2, z: W/2 };
-                if (key === 'B1') return { x: L/2, z: W/2 };
-                if (key === 'A2') return { x: -L/2, z: -W/2 };
-                if (key === 'B2') return { x: L/2, z: -W/2 };
+
+                if (key === 'A1') return { x: -L / 2, z: W / 2 };
+                if (key === 'B1') return { x: L / 2, z: W / 2 };
+                if (key === 'A2') return { x: -L / 2, z: -W / 2 };
+                if (key === 'B2') return { x: L / 2, z: -W / 2 };
             }
             if (legMap[key]) {
                 return legMap[key];
@@ -368,7 +377,7 @@ export function Structural3DViewer({
         // 3. Generate Foundation Members (Legs and Rows)
         const foundationMembers: any[] = [];
         const elvMarkers: any[] = [];
-        
+
         // Render Vertical Legs (Tapered/Splayed)
         Object.keys(legMap).forEach((name) => {
             const startCoords = getLegCoordsAtElv(name, maxElv + 5);
@@ -413,24 +422,24 @@ export function Structural3DViewer({
         // 4. Build 3D Node Map for existing components
         const nodeMap = new Map<string, THREE.Vector3>();
         const nodeLegMap = new Map<string, string>();
-        
+
         components.forEach(c => {
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
             const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG", "WN", "CF", "CG", "CD", "CO", "CA"].includes(code);
-            
+
             const processNode = (nodeName: string | undefined, legName: string | undefined, elv: string | undefined) => {
                 if (!nodeName || nodeMap.has(nodeName)) return;
-                
+
                 let x = 0, y = 0, z = 0;
-                
+
                 // Determine vertical coordinate (elevation) first
                 if (elv) {
                     y = sanitizeElevation(elv);
                 } else if (md.depth) {
                     y = -sanitizeElevation(md.depth) / 10 || 0;
                 }
-                
+
                 // Determine base horizontal coordinates
                 const legKey = legName?.toUpperCase();
                 if (legKey) {
@@ -442,7 +451,7 @@ export function Structural3DViewer({
                     x = parseFloat(md.easting || "0") / 100 || 0;
                     z = parseFloat(md.northing || "0") / 100 || 0;
                 }
-                
+
                 // Only apply distance/clock position offsets for non-primary components (like clamps/anodes)
                 // and only if the distance is small (e.g. less than 3 meters)
                 if (md.dist && !isPrimary) {
@@ -454,7 +463,7 @@ export function Structural3DViewer({
                         z += Math.cos(angle) * distance;
                     }
                 }
-                
+
                 nodeMap.set(nodeName, new THREE.Vector3(x, y, z));
             };
 
@@ -469,7 +478,7 @@ export function Structural3DViewer({
         components.forEach((c, i) => {
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
-            
+
             let thickness = 0.15;
             if (code.includes("LG")) thickness = 0.5;
             else if (code.includes("HM") || code.includes("HD")) thickness = 0.25;
@@ -486,16 +495,16 @@ export function Structural3DViewer({
             if (hasStartNode || hasEndNode) {
                 if (hasStartNode) start.copy(nodeMap.get(md.s_node)!);
                 if (hasEndNode) end.copy(nodeMap.get(md.f_node)!);
-                
+
                 if (hasStartNode && !hasEndNode) end.copy(start);
                 else if (!hasStartNode && hasEndNode) start.copy(end);
-                
+
                 resolved = true;
             } else if (md.associated_comp_id) {
                 pendingAttachments.push(c);
                 return; // Skip to next, resolve in Pass 2
             } else if (md.s_leg) {
-                const y = sanitizeElevation(md.elv_1 || (md.depth ? -parseFloat(md.depth)/10 : 0));
+                const y = sanitizeElevation(md.elv_1 || (md.depth ? -parseFloat(md.depth) / 10 : 0));
                 const coords = getLegCoordsAtElv(md.s_leg, y);
                 start.set(coords.x, y, coords.z);
                 end.copy(start);
@@ -527,10 +536,10 @@ export function Structural3DViewer({
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
             let thickness = 0.15;
-            
+
             const parentId = md.associated_comp_id;
             const parentLayout = intermediateLayouts.get(parentId);
-            
+
             let start = new THREE.Vector3();
             let end = new THREE.Vector3();
 
@@ -538,7 +547,7 @@ export function Structural3DViewer({
                 const { start: pStart, end: pEnd } = parentLayout;
                 thickness = parentLayout.thickness; // Inherit parent thickness for proper relative scaling
                 start.copy(pStart).add(pEnd).multiplyScalar(0.5); // Midpoint default
-                
+
                 if (md.depth || md.elv_1) {
                     const targetY = sanitizeElevation(md.elv_1 || (-parseFloat(md.depth) / 10));
                     if (Math.abs(pEnd.y - pStart.y) > 0.001) {
@@ -549,7 +558,7 @@ export function Structural3DViewer({
                         start.setY(targetY); // Parent is horizontal, just match Y
                     }
                 }
-                
+
                 // Preserve parent direction so the attachment aligns parallel to the parent
                 const direction = pEnd.clone().sub(pStart).normalize();
                 if (direction.lengthSq() > 0.1) {
@@ -565,7 +574,7 @@ export function Structural3DViewer({
                 start.set(Math.cos(angle) * radius, maxElv, Math.sin(angle) * radius);
                 end.copy(start);
             }
-            
+
             intermediateLayouts.set(c.id, { component: c, start, end, thickness });
         });
 
@@ -614,24 +623,24 @@ export function Structural3DViewer({
         const filteredLayouts = resolvedLayouts.filter(layout => {
             const c = layout.component;
             const md = c.metadata || {};
-            
+
             if (selectedElevations.length > 0) {
                 const startY = layout.start[1];
                 const endY = layout.end[1];
-                
+
                 const matchesStart = selectedElevations.some(selElv => Math.abs(startY - selElv) < 0.1);
                 const matchesEnd = selectedElevations.some(selElv => Math.abs(endY - selElv) < 0.1);
-                
+
                 // Both start and end coordinates must match one of the selected elevations
                 // (keeps only the horizontal members/components at this level slice)
                 if (!matchesStart || !matchesEnd) return false;
             }
-            
+
             if (selectedFaces.length > 0) {
                 const matchesFace = selectedFaces.some(faceName => isComponentOnFace(c, faceName));
                 if (!matchesFace) return false;
             }
-            
+
             return true;
         });
 
@@ -642,15 +651,15 @@ export function Structural3DViewer({
                     const matchesFace = selectedFaces.some(faceName => {
                         const faceObj = faces.find(f => f.face?.toUpperCase() === faceName.toUpperCase());
                         if (faceObj) {
-                            return faceObj.face_from?.toUpperCase() === legName.toUpperCase() || 
-                                   faceObj.face_to?.toUpperCase() === legName.toUpperCase();
+                            return faceObj.face_from?.toUpperCase() === legName.toUpperCase() ||
+                                faceObj.face_to?.toUpperCase() === legName.toUpperCase();
                         }
                         return false;
                     });
                     if (!matchesFace) return false;
                 }
             }
-            
+
             if (m.id.startsWith("face-")) {
                 const faceName = m.label;
                 if (selectedFaces.length > 0) {
@@ -662,13 +671,13 @@ export function Structural3DViewer({
             if (selectedElevations.length > 0) {
                 const startY = m.start[1];
                 const endY = m.end[1];
-                
+
                 const matchesStart = selectedElevations.some(selElv => Math.abs(startY - selElv) < 0.1);
                 const matchesEnd = selectedElevations.some(selElv => Math.abs(endY - selElv) < 0.1);
-                
+
                 if (!matchesStart || !matchesEnd) return false;
             }
-            
+
             return true;
         });
 
@@ -679,9 +688,9 @@ export function Structural3DViewer({
             return true;
         });
 
-        return { 
-            componentLayouts: filteredLayouts, 
-            foundationMembers: filteredFoundationMembers, 
+        return {
+            componentLayouts: filteredLayouts,
+            foundationMembers: filteredFoundationMembers,
             elvMarkers: filteredElvMarkers
         };
     }, [components, platformDetails, elevations, faces, selectedElevations, selectedFaces]);
@@ -699,7 +708,7 @@ export function Structural3DViewer({
                 {/* Technical Blueprint Grid Pattern background */}
                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:3rem_3rem] opacity-30 pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-tr from-slate-950 via-slate-900/90 to-blue-950/40 pointer-events-none" />
-                
+
                 {isActivating ? (
                     /* SCANNING / TELEMETRY LOADING STATE */
                     <div className="relative z-10 flex flex-col items-center justify-center space-y-6 max-w-md text-center animate-in fade-in zoom-in duration-500">
@@ -709,7 +718,7 @@ export function Structural3DViewer({
                             <div className="absolute inset-2 rounded-full border-4 border-indigo-500/10 border-b-indigo-500 animate-spin [animation-direction:reverse] [animation-duration:1.5s]" />
                             <Box className="w-10 h-10 text-blue-400 animate-pulse" />
                         </div>
-                        
+
                         <div className="space-y-2">
                             <h3 className="text-sm font-black uppercase tracking-[0.25em] text-blue-400 animate-pulse flex items-center justify-center gap-2">
                                 <Radio className="h-4 w-4 animate-ping text-blue-500" />
@@ -724,7 +733,7 @@ export function Structural3DViewer({
                                 </span>
                             </div>
                         </div>
-                        
+
                         {/* Fake Progress Bar */}
                         <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden relative">
                             <div className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-blue-500 to-indigo-500 animate-[loading-bar_1.2s_ease-in-out_infinite]" style={{ width: '60%' }} />
@@ -783,11 +792,11 @@ export function Structural3DViewer({
                             className="group relative flex flex-col items-center justify-center p-6 bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-[0.98] border border-blue-400/30 rounded-2xl shadow-lg hover:shadow-blue-500/20 transition-all duration-300 w-full max-w-sm overflow-hidden"
                         >
                             <div className="absolute inset-0 bg-radial-gradient from-blue-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                            
+
                             <div className="relative z-10 flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 border border-white/20 text-white mb-3 group-hover:scale-110 transition-transform duration-300 shadow-md">
                                 <Play className="w-5 h-5 fill-current text-white stroke-[1.5]" />
                             </div>
-                            
+
                             <span className="relative z-10 text-xs font-black uppercase tracking-[0.25em] text-white">
                                 Load 3D Platform Model
                             </span>
@@ -802,17 +811,18 @@ export function Structural3DViewer({
     }
 
     return (
-        <div className="w-full h-full bg-blue-50 relative rounded-3xl overflow-hidden border border-blue-100 shadow-2xl">
-            <Canvas shadows gl={{ antialias: true }} dpr={[1, 2]}>
-                <color attach="background" args={["#f8fafc"]} />
+        <div className="w-full h-full bg-slate-900 relative rounded-3xl overflow-hidden shadow-2xl">
+            <Canvas gl={{ antialias: true }} dpr={[1, 2]}>
+                <color attach="background" args={["#cbd5e1"]} />
+                <fog attach="fog" args={["#cbd5e1", 50, 250]} />
                 <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
-                <OrbitControls makeDefault minDistance={2} maxDistance={500} />
-                
+                <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
+
                 <ambientLight intensity={1} />
                 <hemisphereLight intensity={0.5} groundColor="#f0f9ff" />
-                <pointLight position={[50, 50, 50]} intensity={1.5} castShadow />
-                <spotLight position={[-50, 50, 50]} angle={0.3} penumbra={1} intensity={1.5} castShadow />
-                
+                <pointLight position={[50, 50, 50]} intensity={1.5} />
+                <spotLight position={[-50, 50, 50]} angle={0.3} penumbra={1} intensity={1.5} />
+
                 <Bounds fit clip observe margin={1.0}>
                     <SelectToZoom>
                         {/* Elevation Markers */}
@@ -822,7 +832,7 @@ export function Structural3DViewer({
 
                         {/* Foundation Members (Skeleton) */}
                         {foundationMembers.map((m) => (
-                            <FoundationMember 
+                            <FoundationMember
                                 key={m.id}
                                 start={m.start}
                                 end={m.end}
@@ -836,55 +846,81 @@ export function Structural3DViewer({
 
                         {/* Existing Components */}
                         {componentLayouts.map((layout) => (
-                                <ComponentMesh 
-                                    key={layout.component.id}
-                                    component={layout.component}
-                                    isSelected={selectedCompId === layout.component.id}
-                                    onClick={() => onSelectComponent(layout.component)}
-                                    start={layout.start}
-                                    end={layout.end}
-                                    thickness={layout.thickness}
-                                    showWeldLabels={showWeldLabels}
-                                />
+                            <ComponentMesh
+                                key={layout.component.id}
+                                component={layout.component}
+                                isSelected={selectedCompId === layout.component.id}
+                                onClick={() => onSelectComponent(layout.component)}
+                                start={layout.start}
+                                end={layout.end}
+                                thickness={layout.thickness}
+                                showWeldLabels={showWeldLabels}
+                            />
                         ))}
                     </SelectToZoom>
                 </Bounds>
 
                 {/* Environment Planes - Outside Bounds to prevent zooming out */}
-                <group>
-                    {/* Sea Surface */}
-                    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-                        <planeGeometry args={[1000, 1000]} />
-                        <meshStandardMaterial color="#0ea5e9" transparent opacity={0.15} metalness={0.8} roughness={0.1} />
-                    </mesh>
+                {showWater && (
+                    <group>
+                        {/* Sea Surface plane at MSL (y=0) */}
+                        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, waterSurfaceY, 0]} receiveShadow={false}>
+                            <planeGeometry args={[2000, 2000]} />
+                            <meshStandardMaterial color="#38bdf8" transparent opacity={0.35} metalness={0.6} roughness={0.2} depthWrite={false} />
+                        </mesh>
 
-                    {/* Seabed */}
-                    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -50, 0]} receiveShadow>
-                        <planeGeometry args={[1000, 1000]} />
-                        <meshStandardMaterial color="#b45309" transparent opacity={0.1} metalness={0.1} roughness={0.9} />
-                    </mesh>
-                </group>
+                        {/* Seabed floor plane, positioned below lowest elevation */}
+                        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, seabedY, 0]} receiveShadow={false}>
+                            <planeGeometry args={[2000, 2000]} />
+                            <meshStandardMaterial color="#78350f" transparent opacity={0.85} metalness={0.1} roughness={0.9} depthWrite={false} />
+                        </mesh>
+
+                        {/* Seabed label */}
+                        <group position={[0, seabedY, 0]}>
+                            <Html position={[35, 1, 0]} center distanceFactor={20}>
+                                <div className="flex items-center gap-2">
+                                    <div className="h-[1px] w-8 bg-amber-600/60" />
+                                    <div className="px-2 py-0.5 bg-amber-900/80 backdrop-blur text-[9px] font-black text-amber-300 rounded border border-amber-600/40 shadow-lg whitespace-nowrap uppercase tracking-widest">
+                                        Seabed · {seabedY.toFixed(1)}m
+                                    </div>
+                                </div>
+                            </Html>
+                        </group>
+
+                        {/* Water line label at MSL */}
+                        <group position={[0, waterSurfaceY, 0]}>
+                            <Html position={[35, 1, 0]} center distanceFactor={20}>
+                                <div className="flex items-center gap-2">
+                                    <div className="h-[1px] w-8 bg-sky-400/60" />
+                                    <div className="px-2 py-0.5 bg-sky-900/80 backdrop-blur text-[9px] font-black text-sky-300 rounded border border-sky-500/40 shadow-lg whitespace-nowrap uppercase tracking-widest">
+                                        MSL · 0.0m
+                                    </div>
+                                </div>
+                            </Html>
+                        </group>
+                    </group>
+                )}
 
                 {showGrid && (
-                    <Grid 
-                        infiniteGrid 
-                        fadeDistance={150} 
-                        sectionSize={10} 
-                        sectionColor="#94a3b8" 
-                        cellColor="#cbd5e1" 
-                        cellThickness={1}
-                        sectionThickness={1.5}
-                        position={[0, 0, 0]}
+                    <Grid
+                        infiniteGrid
+                        fadeDistance={250}
+                        sectionSize={10}
+                        sectionColor="#451a03"
+                        cellColor="#78350f"
+                        cellThickness={0.8}
+                        sectionThickness={1.2}
+                        position={[0, seabedY + 0.1, 0]}
                     />
                 )}
-                
-                <ContactShadows 
-                    resolution={1024} 
-                    scale={150} 
-                    blur={2} 
-                    opacity={0.1} 
-                    far={40} 
-                    color="#1e293b" 
+
+                <ContactShadows
+                    resolution={256}
+                    scale={150}
+                    blur={2}
+                    opacity={0.1}
+                    far={40}
+                    color="#1e293b"
                 />
             </Canvas>
 
@@ -903,9 +939,9 @@ export function Structural3DViewer({
 
             {/* Click-outside backdrop */}
             {openDropdown && (
-                <div 
-                    className="absolute inset-0 z-40 cursor-default bg-transparent" 
-                    onClick={() => setOpenDropdown(null)} 
+                <div
+                    className="absolute inset-0 z-40 cursor-default bg-transparent"
+                    onClick={() => setOpenDropdown(null)}
                 />
             )}
 
@@ -923,13 +959,13 @@ export function Structural3DViewer({
                     >
                         Elevation {selectedElevations.length > 0 ? `(${selectedElevations.length})` : ""} ▼
                     </Button>
-                    
+
                     {openDropdown === "elevation" && (
                         <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-56 flex flex-col gap-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Elevation</span>
                                 {selectedElevations.length > 0 && (
-                                    <button 
+                                    <button
                                         onClick={() => setSelectedElevations([])}
                                         className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
                                     >
@@ -942,8 +978,8 @@ export function Structural3DViewer({
                                     const isChecked = selectedElevations.includes(elv);
                                     return (
                                         <label key={elv} className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors">
-                                            <input 
-                                                type="checkbox" 
+                                            <input
+                                                type="checkbox"
                                                 checked={isChecked}
                                                 onChange={() => {
                                                     if (isChecked) {
@@ -976,13 +1012,13 @@ export function Structural3DViewer({
                     >
                         Face {selectedFaces.length > 0 ? `(${selectedFaces.length})` : ""} ▼
                     </Button>
-                    
+
                     {openDropdown === "face" && (
                         <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-48 flex flex-col gap-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Face</span>
                                 {selectedFaces.length > 0 && (
-                                    <button 
+                                    <button
                                         onClick={() => setSelectedFaces([])}
                                         className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
                                     >
@@ -995,8 +1031,8 @@ export function Structural3DViewer({
                                     const isChecked = selectedFaces.includes(face);
                                     return (
                                         <label key={face} className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors">
-                                            <input 
-                                                type="checkbox" 
+                                            <input
+                                                type="checkbox"
                                                 checked={isChecked}
                                                 onChange={() => {
                                                     if (isChecked) {
@@ -1015,6 +1051,18 @@ export function Structural3DViewer({
                         </div>
                     )}
                 </div>
+
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowWater(!showWater)}
+                    className={cn(
+                        "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                        showWater ? "border-sky-300 text-sky-600 shadow-[0_0_15px_rgba(14,165,233,0.15)]" : "border-slate-200 text-slate-400"
+                    )}
+                >
+                    {showWater ? "Water: ON" : "Water: OFF"}
+                </Button>
 
                 <Button
                     variant="outline"
