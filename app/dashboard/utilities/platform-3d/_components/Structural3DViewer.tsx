@@ -118,8 +118,8 @@ const ComponentMesh = ({
                     )}
                     <meshStandardMaterial
                         color={isSelected ? "#3b82f6" : hovered ? "#60a5fa" : isAnode ? "#f97316" : isWeld ? "#d946ef" : isClamp ? "#b45309" : "#e2e8f0"}
-                        metalness={0.9}
-                        roughness={0.2}
+                        metalness={0.5}
+                        roughness={0.4}
                         emissive={isSelected ? "#2563eb" : isAnode ? "#ea580c" : isWeld ? "#c026d3" : "#000000"}
                         emissiveIntensity={isSelected ? 0.3 : hovered ? 0.1 : 0}
                     />
@@ -209,7 +209,7 @@ const FoundationMember = ({
             {renderMesh && (
                 <mesh>
                     <cylinderGeometry args={[thickness, thickness, length, 8]} />
-                    <meshStandardMaterial color={color} metalness={0.9} roughness={0.2} transparent opacity={0.6} />
+                    <meshStandardMaterial color={color} metalness={0.5} roughness={0.4} />
                 </mesh>
             )}
             {showLabel && label && (
@@ -813,8 +813,8 @@ export function Structural3DViewer({
     return (
         <div className="w-full h-full bg-slate-900 relative rounded-3xl overflow-hidden shadow-2xl">
             <Canvas gl={{ antialias: true }} dpr={[1, 2]}>
-                <color attach="background" args={["#cbd5e1"]} />
-                <fog attach="fog" args={["#cbd5e1", 50, 250]} />
+                <color attach="background" args={["#bce1f1"]} />
+                <fog attach="fog" args={["#bce1f1", 50, 250]} />
                 <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
 
