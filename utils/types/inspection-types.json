@@ -7,11 +7,20 @@
             "unitCategory": "VOLTAGE",
             "required": false
         },
-        "marine_growth": {
-            "name": "marine_growth",
-            "label": "Marine Growth",
+        "marine_growth_soft": {
+            "name": "marine_growth_soft",
+            "label": "Soft Marine Growth",
             "type": "combo",
-            "lib_code": "MGI",
+            "lib_code": "MGI_SOFT",
+            "group": "marine_growth",
+            "required": false
+        },
+        "marine_growth_hard": {
+            "name": "marine_growth_hard",
+            "label": "Hard Marine Growth",
+            "type": "combo",
+            "lib_code": "MGI_HARD",
+            "group": "marine_growth",
             "required": false
         },
         "debris": {
@@ -241,7 +250,10 @@
             ],
             "fields": [
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -1157,7 +1169,10 @@
                     "$ref": "cp_rdg"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "name": "wall_thickness",
@@ -1289,7 +1304,10 @@
                     "defaultImperial": "in"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "mgi_profile"
@@ -1781,7 +1799,10 @@
                     "$ref": "cp_rdg"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "debris"
@@ -1827,7 +1848,10 @@
                             "lib_code": "ADA"
                         },
                         {
-                            "$ref": "marine_growth"
+                            "$ref": "marine_growth_soft"
+                        },
+                        {
+                            "$ref": "marine_growth_hard"
                         },
                         {
                             "$ref": "debris",
@@ -1881,7 +1905,10 @@
                     "$ref": "mgi_soft_thickness_at_9"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 }
             ]
         },
@@ -1975,7 +2002,10 @@
                     "$ref": "debris_material"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -2043,7 +2073,10 @@
                             "$ref": "debris_material"
                         },
                         {
-                            "$ref": "marine_growth"
+                            "$ref": "marine_growth_soft"
+                        },
+                        {
+                            "$ref": "marine_growth_hard"
                         },
                         {
                             "name": "missing_bolts_nuts",
@@ -2101,7 +2134,10 @@
                     "$ref": "easting"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -2329,7 +2365,10 @@
                     "$ref": "easting"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "cp_rdg"
@@ -2362,7 +2401,10 @@
                     "$ref": "debris_material"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -2396,7 +2438,10 @@
                             "$ref": "debris_material"
                         },
                         {
-                            "$ref": "marine_growth"
+                            "$ref": "marine_growth_soft"
+                        },
+                        {
+                            "$ref": "marine_growth_hard"
                         },
                         {
                             "$ref": "component_condition"
@@ -2441,7 +2486,10 @@
                     "$ref": "debris_material"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -2475,7 +2523,10 @@
                             "$ref": "debris_material"
                         },
                         {
-                            "$ref": "marine_growth"
+                            "$ref": "marine_growth_soft"
+                        },
+                        {
+                            "$ref": "marine_growth_hard"
                         },
                         {
                             "$ref": "component_condition"

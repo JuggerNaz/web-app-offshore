@@ -1,0 +1,299 @@
+Status Code: 200
+Success: true
+Error: undefined
+
+Logs (90 lines):
+[LOG] WARNING: No active DATABASE_URL found in environment or .env.local. Skipping automatic RLS bypass.
+[LOG] Started migration for Structure ID: 1061
+[LOG] Structure Unit Type determined as: METRIC
+[LOG] Legacy Structure Name resolved as: "D21JT-A"
+[LOG] Skipped Structure migration (No mappings defined).
+[LOG] ================================================================
+[LOG] Starting Relational Inspection Migration Pipeline (Phases 1 - 6)
+[LOG] ================================================================
+[LOG] Cleaning up existing inspection data in Postgres for Structure ID 1061...
+[LOG] Successfully purged existing relational data for a clean migration run.
+[LOG] Phase 1: Fetching Jobpack details from Oracle (taskstr, workpl, job_vessel, sow_insp)...
+[LOG] taskstr: Found 3 INSPNO(s) with JOB_TYPE & CR_DATE for STR_ID 1061.
+[LOG] Filtering migration to single selected Job Pack (INSPNO: 00000003454).
+[LOG] workpl: Fetched 1 jobpack record(s).
+[LOG] job_vessel: Fetched 1 vessel record(s).
+[LOG] sow_insp: Fetched 1 report prefix(es).
+[LOG] Structure ID 1061 already exists in jobpack structures. Updating its details in-place.
+[LOG] Fetching active ROV and Diving inspection types from Oracle for INSPNO: 00000003454, STR_ID: 1061...
+[LOG] Found active inspection types in Oracle: ROV = [RFMD,RSCOR,RCOND,RMGI,RGVI,RRISI,RSEAB], Diving = [MGROW,RISER,CPCLB,UTCLB,UTWTK,GVINS,CPSURV,BSINS,CLEAN,PL_AN,SZONE]
+[LOG] Case-insensitive match found for Job Pack name "UIMC14/DIV/SKO/PLAT2" (ID 610). Updating details and merging structure list in Postgres.
+[LOG] WARNING: SOW scope load skipped: ORA-00904: "COMP_ID": invalid identifier
+[LOG] Phase 2: Migrating Jobs & Movements from Oracle LOGS...
+[LOG] Filtered LOGS rows to 109 record(s) matching selected INSPNO 00000003454.
+[LOG] Created ROV Job ID: 2328 (deployment 144R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2329 (deployment 145R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2330 (deployment 146R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2331 (deployment 147R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2332 (deployment 148R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2333 (deployment 149R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2334 (deployment 150R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2335 (deployment 151R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2336 (deployment 152R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2337 (deployment 153R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2338 (deployment 154R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2339 (deployment 155R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2340 (deployment 156R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1922 (dive 190D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1923 (dive 191D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1924 (dive 192D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1925 (dive 193D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1926 (dive 194D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1927 (dive 195D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1928 (dive 196D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1929 (dive 197D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1930 (dive 198D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1931 (dive 202D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1932 (dive 203D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1933 (dive 204D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1934 (dive 205D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1935 (dive 208D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1936 (dive 209D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1937 (dive 210D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 1938 (dive 211D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Successfully migrated 13 ROV Jobs & 17 Diving Jobs.
+[LOG] Phase 3: Migrating Video Tapes & Video Logs...
+[LOG] Migrating unique ROV tapes parsed from 'PLATGI'...
+[LOG] Pre-fetching all Diving tape log rows from 'VIDEO'...
+[LOG] Migrating unique Diving tapes parsed from 'VIDEO'...
+[LOG] Successfully migrated 25 Video Tapes and 422 Video Logs!
+[LOG] Phase 4: Migrating Inspection Records...
+[LOG] Loaded 996 component ID to Q_ID mapping(s) from Oracle ALLCOMPID.
+[LOG] Pre-populating component ID cache from existing PostgreSQL structure_components...
+[LOG] Loaded 996 component mapping(s) and 995 Q_ID mapping(s) from PostgreSQL.
+[LOG] Fetching primary inspections from Oracle 'PLATGI' (ROV Platform)...
+[LOG] Filtered primary inspections to 605 rows for INSPNO 00000003454.
+[LOG] Successfully migrated 605 ROV primary inspection records into PostgreSQL!
+[LOG] Fetching primary inspections from Oracle 'ALLINSPID' (Diving / Pipeline)...
+[LOG] Filtered primary inspections to 118 rows for INSPNO 00000003454.
+[LOG] Dynamically extracting all columns from Oracle diving inspection type tables: BSINS, CLEAN, CPCLB, CPSURV, SZONE, UTCLB, UTWTK, MGROW, PL_AN, GVINS, RISER...
+[LOG] Querying all columns from Oracle diving table BSINS...
+[LOG] Querying all columns from Oracle diving table CLEAN...
+[LOG] Querying all columns from Oracle diving table CPCLB...
+[LOG] Querying all columns from Oracle diving table CPSURV...
+[LOG] Querying all columns from Oracle diving table SZONE...
+[LOG] Querying all columns from Oracle diving table UTCLB...
+[LOG] Querying all columns from Oracle diving table UTWTK...
+[LOG] Querying all columns from Oracle diving table MGROW...
+[LOG] Querying all columns from Oracle diving table PL_AN...
+[LOG] Querying all columns from Oracle diving table GVINS...
+[LOG] Querying all columns from Oracle diving table RISER...
+[LOG] Successfully migrated 118 Diving primary inspection records into PostgreSQL!
+[LOG] Phase 5: Migrating Anomalies from Oracle 'u_defect' table...
+[LOG] Filtered legacy anomalies to 14 record(s) matching migrated inspections.
+[LOG] Successfully migrated 14 anomalies and updated parent inspection statuses!
+[LOG] Phase 6: Migrating Inspection specific attachments...
+[LOG] Filtered legacy attachments to 27 record(s) matching selected INSPNO 00000003454.
+[LOG] ERROR bulk-inserting inspection attachments: new row violates row-level security policy for table "attachment"
+[LOG] ================================================================
+[LOG] Relational Inspection Migration Pipeline completed successfully!
+[LOG] ================================================================
+
+Report:
+{
+  "STRUCTURE": {
+    "status": "skipped",
+    "oracleRows": 0,
+    "migratedRows": 0,
+    "errors": []
+  },
+  "STR_ELV": {
+    "status": "skipped",
+    "oracleRows": 0,
+    "migratedRows": 0,
+    "errors": []
+  },
+  "STR_LEVEL": {
+    "status": "skipped",
+    "oracleRows": 0,
+    "migratedRows": 0,
+    "errors": []
+  },
+  "STR_FACES": {
+    "status": "skipped",
+    "oracleRows": 0,
+    "migratedRows": 0,
+    "errors": []
+  },
+  "ATTACHMENT": {
+    "status": "skipped",
+    "oracleRows": 0,
+    "migratedRows": 0,
+    "errors": []
+  },
+  "COMMENT": {
+    "status": "skipped",
+    "oracleRows": 0,
+    "migratedRows": 0,
+    "errors": []
+  },
+  "U_ASSOC": {
+    "status": "skipped",
+    "oracleRows": 0,
+    "migratedRows": 0,
+    "errors": []
+  },
+  "JOBPACK": {
+    "status": "success",
+    "oracleRows": 1,
+    "migratedRows": 1,
+    "errors": []
+  },
+  "LOGS": {
+    "status": "success",
+    "oracleRows": 109,
+    "migratedRows": 30,
+    "errors": []
+  },
+  "VIDEO": {
+    "status": "success",
+    "oracleRows": 0,
+    "migratedRows": 25,
+    "errors": []
+  },
+  "INSP_ROV": {
+    "status": "success",
+    "oracleRows": 605,
+    "migratedRows": 605,
+    "errors": []
+  },
+  "INSP_DIVING": {
+    "status": "success",
+    "oracleRows": 118,
+    "migratedRows": 118,
+    "errors": []
+  },
+  "ANOMALY": {
+    "status": "success",
+    "oracleRows": 14,
+    "migratedRows": 14,
+    "errors": []
+  },
+  "INSP_ATTACHMENT": {
+    "status": "failed",
+    "oracleRows": 27,
+    "migratedRows": 0,
+    "errors": [
+      "new row violates row-level security policy for table \"attachment\""
+    ]
+  },
+  "U_SOW": {
+    "status": "success",
+    "oracleRows": 1,
+    "migratedRows": 1,
+    "errors": []
+  },
+  "INSP_ROV_RFMD": {
+    "status": "success",
+    "oracleRows": 114,
+    "migratedRows": 114,
+    "errors": []
+  },
+  "INSP_ROV_RGVI": {
+    "status": "success",
+    "oracleRows": 345,
+    "migratedRows": 345,
+    "errors": []
+  },
+  "INSP_ROV_RSEAB": {
+    "status": "success",
+    "oracleRows": 55,
+    "migratedRows": 55,
+    "errors": []
+  },
+  "INSP_ROV_RRISI": {
+    "status": "success",
+    "oracleRows": 18,
+    "migratedRows": 18,
+    "errors": []
+  },
+  "INSP_ROV_RCOND": {
+    "status": "success",
+    "oracleRows": 57,
+    "migratedRows": 57,
+    "errors": []
+  },
+  "INSP_ROV_RSCOR": {
+    "status": "success",
+    "oracleRows": 12,
+    "migratedRows": 12,
+    "errors": []
+  },
+  "INSP_ROV_RMGI": {
+    "status": "success",
+    "oracleRows": 4,
+    "migratedRows": 4,
+    "errors": []
+  },
+  "INSP_DIVING_BSINS": {
+    "status": "success",
+    "oracleRows": 3,
+    "migratedRows": 3,
+    "errors": []
+  },
+  "INSP_DIVING_CLEAN": {
+    "status": "success",
+    "oracleRows": 9,
+    "migratedRows": 9,
+    "errors": []
+  },
+  "INSP_DIVING_CPCLB": {
+    "status": "success",
+    "oracleRows": 12,
+    "migratedRows": 12,
+    "errors": []
+  },
+  "INSP_DIVING_CPSURV": {
+    "status": "success",
+    "oracleRows": 12,
+    "migratedRows": 12,
+    "errors": []
+  },
+  "INSP_DIVING_SZONE": {
+    "status": "success",
+    "oracleRows": 20,
+    "migratedRows": 20,
+    "errors": []
+  },
+  "INSP_DIVING_UTCLB": {
+    "status": "success",
+    "oracleRows": 8,
+    "migratedRows": 8,
+    "errors": []
+  },
+  "INSP_DIVING_UTWTK": {
+    "status": "success",
+    "oracleRows": 15,
+    "migratedRows": 15,
+    "errors": []
+  },
+  "INSP_DIVING_MGROW": {
+    "status": "success",
+    "oracleRows": 14,
+    "migratedRows": 14,
+    "errors": []
+  },
+  "INSP_DIVING_PL_AN": {
+    "status": "success",
+    "oracleRows": 4,
+    "migratedRows": 4,
+    "errors": []
+  },
+  "INSP_DIVING_GVINS": {
+    "status": "success",
+    "oracleRows": 15,
+    "migratedRows": 15,
+    "errors": []
+  },
+  "INSP_DIVING_RISER": {
+    "status": "success",
+    "oracleRows": 6,
+    "migratedRows": 6,
+    "errors": []
+  }
+}

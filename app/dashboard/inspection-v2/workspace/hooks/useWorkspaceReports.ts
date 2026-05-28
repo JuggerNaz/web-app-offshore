@@ -1287,7 +1287,7 @@ export function useWorkspaceReports(
                 .from('attachment')
                 .select('*')
                 .in('source_id', inspIds)
-                .eq('source_type', 'INSPECTION')
+                .in('source_type', ['inspection', 'INSPECTION'])
                 .is('is_deleted', false);
             dbAttachments = data || [];
         }
@@ -1326,7 +1326,7 @@ export function useWorkspaceReports(
                 .from('attachment')
                 .select('*')
                 .in('source_id', inspIds)
-                .eq('source_type', 'INSPECTION')
+                .in('source_type', ['inspection', 'INSPECTION'])
                 .is('is_deleted', false);
             dbAttachments = data || [];
         }

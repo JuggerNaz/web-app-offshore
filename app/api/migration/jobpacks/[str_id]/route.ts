@@ -28,42 +28,64 @@ export const POST = withAuth(
       connection = await getOracleConnection(config);
 
       let jobpacks = [];
-      try {
-        // Try left joining TASKSTR to get JOB_TYPE (Select a.INSPNO for ROV/Diving lookup)
-        const result = await connection.execute(
-          `SELECT DISTINCT a.INSPNO, w.JOBNAME, w.ISTART AS START_DATE, t.JOB_TYPE 
-           FROM allinspid a 
-           JOIN workpl w ON a.INSPNO = w.INSPNO 
-           LEFT JOIN TASKSTR t ON a.STR_ID = t.STR_ID AND a.INSPNO = t.INSPNO 
-           WHERE a.STR_ID = :strId 
-           ORDER BY w.ISTART ASC`,
-          { strId: str_id }
-        );
-        jobpacks = result.rows || [];
-      } catch (err: any) {
-        console.warn("Oracle query with t.JOB_TYPE failed, trying fallback with t.JOBTYPE:", err.message);
+      // Progressive fallback queries for fetching jobpack details
+      // Tables: workpl (INSPNO only, no STR_ID!), job_vessel (INSPNO, V_NAME, START_DATE), taskstr (STR_ID+INSPNO), sow_insp (STR_ID+INSPNO)
+      const jobpackQueries = [
+        // 1st: Full join with all 4 tables
+        {
+          label: "workpl + taskstr + sow_insp + job_vessel",
+          sql: `SELECT DISTINCT a.INSPNO, w.JOBNAME, w.ISTART AS START_DATE, t.JOB_TYPE,
+                  jv.V_NAME, jv.START_DATE AS VESSEL_START_DATE,
+                  si.REP_PREFIX
+                FROM allinspid a
+                LEFT JOIN workpl w ON a.INSPNO = w.INSPNO
+                LEFT JOIN TASKSTR t ON a.STR_ID = t.STR_ID AND a.INSPNO = t.INSPNO
+                LEFT JOIN job_vessel jv ON a.INSPNO = jv.INSPNO
+                LEFT JOIN sow_insp si ON a.INSPNO = si.INSPNO AND a.STR_ID = si.STR_ID
+                WHERE a.STR_ID = :strId
+                ORDER BY w.ISTART ASC`
+        },
+        // 2nd: Without sow_insp
+        {
+          label: "workpl + taskstr + job_vessel",
+          sql: `SELECT DISTINCT a.INSPNO, w.JOBNAME, w.ISTART AS START_DATE, t.JOB_TYPE,
+                  jv.V_NAME, jv.START_DATE AS VESSEL_START_DATE
+                FROM allinspid a
+                LEFT JOIN workpl w ON a.INSPNO = w.INSPNO
+                LEFT JOIN TASKSTR t ON a.STR_ID = t.STR_ID AND a.INSPNO = t.INSPNO
+                LEFT JOIN job_vessel jv ON a.INSPNO = jv.INSPNO
+                WHERE a.STR_ID = :strId
+                ORDER BY w.ISTART ASC`
+        },
+        // 3rd: Without job_vessel and sow_insp
+        {
+          label: "workpl + taskstr only",
+          sql: `SELECT DISTINCT a.INSPNO, w.JOBNAME, w.ISTART AS START_DATE, t.JOB_TYPE
+                FROM allinspid a
+                LEFT JOIN workpl w ON a.INSPNO = w.INSPNO
+                LEFT JOIN TASKSTR t ON a.STR_ID = t.STR_ID AND a.INSPNO = t.INSPNO
+                WHERE a.STR_ID = :strId
+                ORDER BY w.ISTART ASC`
+        },
+        // 4th: workpl only
+        {
+          label: "workpl only",
+          sql: `SELECT DISTINCT a.INSPNO, w.JOBNAME, w.ISTART AS START_DATE
+                FROM allinspid a
+                LEFT JOIN workpl w ON a.INSPNO = w.INSPNO
+                WHERE a.STR_ID = :strId
+                ORDER BY w.ISTART ASC`
+        }
+      ];
+      
+      for (const q of jobpackQueries) {
         try {
-          const result = await connection.execute(
-            `SELECT DISTINCT a.INSPNO, w.JOBNAME, w.ISTART AS START_DATE, t.JOBTYPE AS JOB_TYPE 
-             FROM allinspid a 
-             JOIN workpl w ON a.INSPNO = w.INSPNO 
-             LEFT JOIN TASKSTR t ON a.STR_ID = t.STR_ID AND a.INSPNO = t.INSPNO 
-             WHERE a.STR_ID = :strId 
-             ORDER BY w.ISTART ASC`,
-            { strId: str_id }
-          );
+          const result = await connection.execute(q.sql, { strId: str_id });
           jobpacks = result.rows || [];
-        } catch (fallbackErr: any) {
-          console.warn("Oracle query with t.JOBTYPE also failed, trying fallback without TASKSTR join:", fallbackErr.message);
-          const result = await connection.execute(
-            `SELECT DISTINCT a.INSPNO, w.JOBNAME, w.ISTART AS START_DATE 
-             FROM allinspid a 
-             JOIN workpl w ON a.INSPNO = w.INSPNO 
-             WHERE a.STR_ID = :strId 
-             ORDER BY w.ISTART ASC`,
-            { strId: str_id }
-          );
-          jobpacks = result.rows || [];
+          console.log(`Jobpacks query succeeded with: ${q.label}`);
+          break;
+        } catch (err: any) {
+          console.warn(`Jobpacks query failed with ${q.label}: ${err.message}. Trying next fallback...`);
         }
       }
 
@@ -148,10 +170,20 @@ export const POST = withAuth(
           HAS_DIVING: hasDiving
         };
       });
+      // Deduplicate enrichedJobpacks by INSPNO to ensure no duplicate jobpacks are returned in the UI
+      const uniqueJobpacks: any[] = [];
+      const seenInspNos = new Set<string>();
+      for (const jp of enrichedJobpacks) {
+        const inspno = String(jp.INSPNO || jp.inspno || "").trim();
+        if (inspno && !seenInspNos.has(inspno)) {
+          seenInspNos.add(inspno);
+          uniqueJobpacks.push(jp);
+        }
+      }
 
       return NextResponse.json({ 
         success: true, 
-        data: enrichedJobpacks
+        data: uniqueJobpacks
       });
 
     } catch (error: any) {

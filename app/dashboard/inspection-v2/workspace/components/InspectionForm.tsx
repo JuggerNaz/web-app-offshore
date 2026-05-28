@@ -969,7 +969,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                 return (
                                                                     <div key={groupName} className={!isUngrouped ? "border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm" : "col-span-full"}>
                                                                         {!isUngrouped && (
-                                                                            <label className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">{groupName}</label>
+                                                                            <label className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                                                                                {groupName === 'marine_growth' ? 'Marine Growth' : (groupName === 'grid_coordinates' || groupName === 'grid' ? 'Grid & Offset' : groupName)}
+                                                                            </label>
                                                                         )}
                                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-2 gap-x-3 gap-y-2">
                                                                             {fields.map((p: any) => {

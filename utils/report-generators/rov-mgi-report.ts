@@ -200,8 +200,12 @@ export const generateROVMGIReport = async (
                 const sVals = sList.map(v => parseFloat(d[v]) || (v === 'mgi_soft_thickness_at_12' ? parseFloat(d.mgi_soft_thickness) : 0) || 0);
                 
                 const mgData = parseMG(d.marine_growth);
-                const hCov = d.mgi_hard_coverage ?? mgData.h;
-                const sCov = d.mgi_soft_coverage ?? mgData.s;
+                const cleanCov = (v: any) => {
+                    if (v === null || v === undefined) return undefined;
+                    return String(v).replace('%', '').trim();
+                };
+                const hCov = cleanCov(d.marine_growth_hard) ?? d.mgi_hard_coverage ?? mgData.h;
+                const sCov = cleanCov(d.marine_growth_soft) ?? d.mgi_soft_coverage ?? mgData.s;
 
                 const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
                 const isAnomRecord = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));

@@ -2168,7 +2168,7 @@ function V10PreviewLayout() {
         .from("attachment")
         .select("path, id")
         .eq("source_id", id)
-        .eq("source_type", "INSPECTION");
+        .in("source_type", ["inspection", "INSPECTION"]);
 
       if (attachments && attachments.length > 0) {
         const paths = attachments.map((a) => a.path).filter(Boolean);
@@ -2182,7 +2182,7 @@ function V10PreviewLayout() {
           .from("attachment")
           .delete()
           .eq("source_id", id)
-          .eq("source_type", "INSPECTION");
+          .in("source_type", ["inspection", "INSPECTION"]);
       }
 
       // 2. Delete anomalies
@@ -3131,6 +3131,7 @@ function V10PreviewLayout() {
           { count: "exact" }
         )
         .eq("jobpack_id", parseInt(jobPackId || "0"))
+        .not(inspCol, "is", null)
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
 
@@ -3204,7 +3205,7 @@ function V10PreviewLayout() {
         const { data: allAtts } = await supabase
           .from("attachment")
           .select("source_id")
-          .eq("source_type", "INSPECTION")
+          .in("source_type", ["inspection", "INSPECTION"])
           .in(
             "source_id",
             insps.map((r) => r.insp_id)
@@ -5493,7 +5494,7 @@ function V10PreviewLayout() {
           defect_description: anomalyData.description,
           recommended_action: anomalyData.recommendedAction,
           rectified_date: anomalyData.rectify
-            ? anomalyData.rectifiedDate || new Date().toISOString()
+            ? anomalyData.rectifiedDate || format(new Date(), "yyyy-MM-dd")
             : null,
           rectified_remarks: anomalyData.rectify ? anomalyData.rectifiedRemarks : null,
           severity: (anomalyData.severity || "MINOR").toUpperCase(),
@@ -5863,10 +5864,10 @@ function V10PreviewLayout() {
 
     // Fetch existing attachments
     const { data: atts } = await supabase
-      .from("attachment")
-      .select("*")
-      .eq("source_id", recordId)
-      .eq("source_type", "INSPECTION");
+        .from("attachment")
+        .select("*")
+        .eq("source_id", recordId)
+        .in("source_type", ["inspection", "INSPECTION"]);
 
     if (atts && atts.length > 0) {
       const mapped = atts.map((a) => {
@@ -5924,7 +5925,7 @@ function V10PreviewLayout() {
         description: anomalyObj.defect_description || anomalyObj.description || "",
         recommendedAction: anomalyObj.recommended_action || "",
         rectify: anomalyObj.status === "CLOSED" || anomalyObj.rectified || false,
-        rectifiedDate: anomalyObj.rectified_date || "",
+        rectifiedDate: anomalyObj.rectified_date ? anomalyObj.rectified_date.substring(0, 10) : "",
         rectifiedRemarks: anomalyObj.rectified_remarks || "",
         severity: (anomalyObj.severity || "MINOR").toUpperCase(),
         referenceNo: anomalyObj.anomaly_ref_no || "",

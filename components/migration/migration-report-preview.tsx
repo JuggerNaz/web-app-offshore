@@ -47,7 +47,8 @@ interface MigrationReportPreviewProps {
     status: "success" | "failed" | "skipped"; 
     oracleRows: number; 
     migratedRows: number; 
-    errors: string[] 
+    errors: string[];
+    filesCopied?: number;
   }> | null;
   migrationLogs: string[];
   unmappedComponents?: Array<{ code: string; name?: string; rowCount: number }>;
@@ -368,7 +369,10 @@ export default function MigrationReportPreview({
         else if (item.errors.length > 0 || item.status === "failed") statusText = "FAILED";
 
         const compName = getComponentFullName(key);
-        const nameCell = compName ? `${key} (${compName})` : key;
+        let nameCell = compName ? `${key} (${compName})` : key;
+        if (item.filesCopied !== undefined && item.filesCopied !== null && item.filesCopied > 0) {
+          nameCell += ` [${item.filesCopied} Files Copied]`;
+        }
 
         return [
           nameCell,
@@ -1323,6 +1327,11 @@ ${inspectorName}
                             {getComponentFullName(key) && (
                               <span className="text-[10px] text-slate-500 font-bold ml-2 uppercase tracking-wide">
                                 ({getComponentFullName(key)})
+                              </span>
+                            )}
+                            {item.filesCopied !== undefined && item.filesCopied !== null && (
+                              <span className="text-[8px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-black uppercase tracking-wider ml-3 inline-flex items-center gap-1 select-none">
+                                {item.filesCopied} Files Copied
                               </span>
                             )}
                           </td>

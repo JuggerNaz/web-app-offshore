@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Database, Server, RefreshCw, ArrowRight, Play, Settings2, FileText, CheckCircle2, Plus, Trash2, Save, Sparkles, Printer, ChevronUp, ChevronDown, Eye } from "lucide-react";
+import { Database, Server, RefreshCw, ArrowRight, Play, Settings2, FileText, CheckCircle2, Plus, Trash2, Save, Sparkles, Printer, ChevronUp, ChevronDown, Eye, FolderOpen, Cloud, Network } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import MigrationReportPreview from "@/components/migration/migration-report-preview";
 
@@ -21,7 +21,9 @@ export default function MigrationDashboard() {
     user: "",
     password: "",
     useThickMode: false,
-    libDir: "C:\\instantclient_12_2"
+    libDir: "C:\\instantclient_12_2",
+    legacyAttachmentPath: "",
+    legacyAttachmentType: "local"
   });
   const [useConnectString, setUseConnectString] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -43,6 +45,17 @@ export default function MigrationDashboard() {
   const [mappingStructureType, setMappingStructureType] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
   
   const [oracleColumnsCache, setOracleColumnsCache] = useState<Record<string, string[]>>({});
+
+  const safeParseJson = async (res: Response) => {
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const text = await res.text();
+      const titleMatch = text.match(/<title>([\s\S]*?)<\/title>/i);
+      const titleText = titleMatch ? titleMatch[1].trim() : "";
+      throw new Error(`Server returned HTML error (${res.status}): ${titleText || "Check server terminal console logs."}`);
+    }
+    return res.json();
+  };
   
   const fetchOracleColumns = async (tableName: string) => {
     if (oracleColumnsCache[tableName]) return oracleColumnsCache[tableName];
@@ -53,7 +66,7 @@ export default function MigrationDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ config, tableName })
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.ok && data.success) {
         setOracleColumnsCache(prev => ({ ...prev, [tableName]: data.data.columns }));
         return data.data.columns;
@@ -164,9 +177,25 @@ export default function MigrationDashboard() {
       { oracleCol: "ISTART", pgCol: "start_date" },
       { oracleCol: "CONTRAC", pgCol: "contractor" },
       { oracleCol: "JOB_TYPE", pgCol: "job_type" },
-      { oracleCol: "VESSEL_NAME", pgCol: "vessel_name" },
-      { oracleCol: "DATE_START", pgCol: "vessel_date_of_start" },
+      { oracleCol: "V_NAME", pgCol: "vessel_name" },
+      { oracleCol: "START_DATE", pgCol: "vessel_date_of_start" },
       { oracleCol: "REP_PREFIX", pgCol: "sow_report_no" }
+    ],
+    "LOGS_ROV": [
+      { oracleCol: "DIVE_NO", pgCol: "job.deployment_no" },
+      { oracleCol: "DIVER", pgCol: "job.rov_operator" },
+      { oracleCol: "SUPERVISOR", pgCol: "job.rov_supervisor" },
+      { oracleCol: "REP_CO", pgCol: "job.report_coordinator" },
+      { oracleCol: "LOG_DATE", pgCol: "job.deployment_date" },
+      { oracleCol: "LOG_DETAIL", pgCol: "movement.remarks" }
+    ],
+    "LOGS_DIVE": [
+      { oracleCol: "DIVE_NO", pgCol: "job.dive_no" },
+      { oracleCol: "DIVER", pgCol: "job.diver_name" },
+      { oracleCol: "SUPERVISOR", pgCol: "job.dive_supervisor" },
+      { oracleCol: "REP_CO", pgCol: "job.report_coordinator" },
+      { oracleCol: "LOG_DATE", pgCol: "job.dive_date" },
+      { oracleCol: "LOG_DETAIL", pgCol: "movement.remarks" }
     ]
   });
 
@@ -344,13 +373,92 @@ export default function MigrationDashboard() {
 
   const [migrationLogs, setMigrationLogs] = useState<string[]>([]);
   const [isMigrating, setIsMigrating] = useState(false);
-  const [migrationReport, setMigrationReport] = useState<Record<string, { status: "success" | "failed" | "skipped"; oracleRows: number; migratedRows: number; errors: string[] }> | null>(null);
+  const [migrationReport, setMigrationReport] = useState<Record<string, { status: "success" | "failed" | "skipped"; oracleRows: number; migratedRows: number; errors: string[]; filesCopied?: number }> | null>(null);
   const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; label: string; percent: number } | null>(null);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [shouldAutoPrintReport, setShouldAutoPrintReport] = useState(false);
+  const [expandedRecords, setExpandedRecords] = useState<Record<string, boolean>>({});
+
+  const toggleRecordExpansion = (key: string) => {
+    setExpandedRecords(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const getFriendlyErrorDetails = (errStr: string) => {
+    const err = String(errStr).toLowerCase();
+    
+    if (err.includes("violates row-level security") || err.includes("rls") || err.includes("42501")) {
+      return {
+        title: "Row-Level Security (RLS) Permission Denied",
+        why: "The database blocked the write because the connection lacks sufficient permissions.",
+        rectify: "Check the RLS policies in Supabase for this table. Ensure that inserts are allowed for authenticated/service_role roles, or verify your auth session is active.",
+        severity: "high"
+      };
+    }
+    
+    if (err.includes("invalid input syntax for type time") || err.includes("22007") || err.includes("invalid input syntax for type date")) {
+      return {
+        title: "Date / Time Format Type Mismatch",
+        why: "A date or time value from Oracle does not match Postgres DATE or TIME data type formatting rules.",
+        rectify: "Verify date/time format matches exactly: 'YYYY-MM-DD' for date and 'HH:MM:SS' for time. Remove any ISO timezone prefixes/suffixes.",
+        severity: "medium"
+      };
+    }
+
+    if (err.includes("violates unique constraint") || err.includes("duplicate key") || err.includes("23505")) {
+      return {
+        title: "Unique Constraint Violation (Duplicate Record)",
+        why: "A record with the exact same unique key already exists in the destination Postgres table.",
+        rectify: "De-duplicate your source Oracle rows, clear existing rows from Postgres before re-migrating, or make unique column prefixes safer.",
+        severity: "medium"
+      };
+    }
+
+    if (err.includes("violates foreign key constraint") || err.includes("23503")) {
+      return {
+        title: "Foreign Key Referential Violation",
+        why: "The record references a parent record ID that has not yet been migrated to Postgres.",
+        rectify: "Make sure you migrate parent entities like Structure or Jobpack *before* running this migration block.",
+        severity: "high"
+      };
+    }
+
+    if (err.includes("violates not-null constraint") || err.includes("null value in column") || err.includes("23502")) {
+      const colMatch = err.match(/column "([^"]+)"/);
+      const colName = colMatch ? colMatch[1] : "required column";
+      return {
+        title: "Missing Required Value (Not-Null Constraint)",
+        why: `Column "${colName}" is mandatory in Postgres, but the incoming Oracle record was blank or missing this field.`,
+        rectify: `Provide a default mapping fallback for "${colName}" or ensure that the Oracle source field contains valid data.`,
+        severity: "medium"
+      };
+    }
+
+    if (err.includes("check constraint") || err.includes("chk_") || err.includes("23514")) {
+      return {
+        title: "Database Check Constraint Violated",
+        why: "The record contains a value that violates a defined Postgres CHECK column constraint.",
+        rectify: "Ensure that values like status or type codes map exactly to the uppercase allowed list (e.g. status in 'IN_PROGRESS', 'COMPLETED', etc.).",
+        severity: "medium"
+      };
+    }
+
+    return {
+      title: "General Migration/Database Error",
+      why: errStr,
+      rectify: "Inspect the schema mappings and check server-side logs for detailed database transaction traces.",
+      severity: "low"
+    };
+  };
 
   const handleExecuteMigration = async () => {
     if (!selectedStructureId) return;
+    if (!selectedJobpack) {
+      toast.error("Please select an Active Job Pack from the sidebar to migrate.");
+      return;
+    }
     
     setMigrationReport(null);
     const stages = [
@@ -402,10 +510,12 @@ export default function MigrationDashboard() {
         body: JSON.stringify({
           config,
           structureId: selectedStructureId,
-          mappings: payloadMappings
+          mappings: payloadMappings,
+          selectedInspNo: selectedJobpack.INSPNO || selectedJobpack.inspno,
+          legacyAttachmentPath: config.legacyAttachmentPath
         })
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       
       clearInterval(interval);
       
@@ -449,7 +559,7 @@ export default function MigrationDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config)
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       
       if (res.ok) {
         toast.success(data.message || "Connected successfully!");
@@ -485,7 +595,7 @@ export default function MigrationDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config)
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.ok) {
         setStructures(data.data || []);
       } else {
@@ -540,7 +650,7 @@ export default function MigrationDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config)
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.ok) {
         setSummary(data.data || []);
       } else {
@@ -570,7 +680,7 @@ export default function MigrationDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config)
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.ok) {
         setJobpacks(data.data || []);
       } else {
@@ -604,7 +714,7 @@ export default function MigrationDashboard() {
           structureType: mappingStructureType
         })
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.ok) {
         setInspectionSummary(data.data);
       } else {
@@ -734,6 +844,154 @@ export default function MigrationDashboard() {
                       {isConnecting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Server className="w-4 h-4 mr-2" />}
                       Test & Connect
                     </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="max-w-3xl mt-6 border-slate-200 dark:border-slate-800 shadow-sm bg-gradient-to-br from-white to-slate-50/30 dark:from-slate-900 dark:to-slate-950/20">
+                <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-sm font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                        <FolderOpen className="w-4 h-4 text-indigo-500" />
+                        Legacy Attachments Source Setting
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Configure where legacy media files are downloaded or copied from during Phase 6 attachment migration.
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                  <div className="space-y-4">
+                    <Label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                      Source Drive / Storage Selection
+                    </Label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setConfig({
+                          ...config,
+                          legacyAttachmentType: "local",
+                          legacyAttachmentPath: config.legacyAttachmentPath || "C:\\LegacyAttachments\\"
+                        })}
+                        className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all duration-200 ${
+                          config.legacyAttachmentType === "local"
+                            ? "border-indigo-500 bg-indigo-50/30 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/20 dark:text-indigo-400 ring-2 ring-indigo-500/20"
+                            : "border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400"
+                        }`}
+                      >
+                        <div className={`p-2 rounded-lg ${
+                          config.legacyAttachmentType === "local" ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                        }`}>
+                          <FolderOpen className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wider">Local Drive</p>
+                          <p className="text-[10px] opacity-80 font-medium">Local server folders</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setConfig({
+                          ...config,
+                          legacyAttachmentType: "network",
+                          legacyAttachmentPath: config.legacyAttachmentPath || "\\\\192.168.1.100\\shared\\attachments\\"
+                        })}
+                        className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all duration-200 ${
+                          config.legacyAttachmentType === "network"
+                            ? "border-indigo-500 bg-indigo-50/30 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/20 dark:text-indigo-400 ring-2 ring-indigo-500/20"
+                            : "border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400"
+                        }`}
+                      >
+                        <div className={`p-2 rounded-lg ${
+                          config.legacyAttachmentType === "network" ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                        }`}>
+                          <Network className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wider">Network Drive</p>
+                          <p className="text-[10px] opacity-80 font-medium">UNC shared drives</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setConfig({
+                          ...config,
+                          legacyAttachmentType: "cloud",
+                          legacyAttachmentPath: config.legacyAttachmentPath || "https://cloud-drive.com/attachments/"
+                        })}
+                        className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all duration-200 ${
+                          config.legacyAttachmentType === "cloud"
+                            ? "border-indigo-500 bg-indigo-50/30 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/20 dark:text-indigo-400 ring-2 ring-indigo-500/20"
+                            : "border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400"
+                        }`}
+                      >
+                        <div className={`p-2 rounded-lg ${
+                          config.legacyAttachmentType === "cloud" ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                        }`}>
+                          <Cloud className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wider">Cloud HTTP/S</p>
+                          <p className="text-[10px] opacity-80 font-medium">Web/Cloud hosting</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="legacyAttachmentPath" className="text-[10px] font-black uppercase text-slate-500">
+                      {config.legacyAttachmentType === "local" && "Local Directory Path"}
+                      {config.legacyAttachmentType === "network" && "Network Drive UNC Path"}
+                      {config.legacyAttachmentType === "cloud" && "Cloud Drive / Web Base URL"}
+                    </Label>
+                    <Input
+                      id="legacyAttachmentPath"
+                      value={config.legacyAttachmentPath}
+                      onChange={e => setConfig({...config, legacyAttachmentPath: e.target.value})}
+                      placeholder={
+                        config.legacyAttachmentType === "local" ? "e.g. C:\\LegacyAttachments\\" :
+                        config.legacyAttachmentType === "network" ? "e.g. \\\\server\\share\\attachments\\" :
+                        "e.g. https://cloud-drive.com/attachments/"
+                      }
+                      className="font-mono text-xs bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 h-10"
+                    />
+
+                    {config.legacyAttachmentType === "local" && (
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Specifies the local filesystem path on the host. Make sure backslashes are escaped correctly if needed, or simply write them natively (e.g. <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-500">C:\LegacyAttachments\</code>).
+                      </p>
+                    )}
+                    {config.legacyAttachmentType === "network" && (
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Specifies a remote network folder via standard Windows UNC naming conventions (e.g. <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-500">\\192.168.1.100\attachments\</code>).
+                      </p>
+                    )}
+                    {config.legacyAttachmentType === "cloud" && (
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Downloads legacy attachments on-the-fly via HTTP/S GET requests, combining this base URL with the filename (e.g. <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-500">https://my-server.com/files/</code>).
+                      </p>
+                    )}
+
+                    <div className="mt-4 p-4 rounded-xl bg-slate-50/80 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/80 space-y-2">
+                      <div className="flex items-start gap-2 text-[11px] text-slate-600 dark:text-slate-400">
+                        <Sparkles className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-slate-800 dark:text-slate-200 block uppercase tracking-wider text-[9px]">How file copying works:</span>
+                          <span className="leading-relaxed">
+                            During Phase 6, the system reads each attachment. If a path is configured here, it downloads or reads the file, then physically copies it to the active destination storage provider configured under Company Preferences (e.g., Supabase bucket or custom S3).
+                          </span>
+                        </div>
+                      </div>
+                      <div className="pl-6 text-[10px] text-slate-400/80">
+                        <span className="font-semibold text-slate-500 block uppercase tracking-wider text-[8px] mt-1.5">Fallback Search Strategy:</span>
+                        If the file isn't found in your configured drive setting, the migration pipeline automatically falls back to searching at the original Oracle database path (<code className="bg-slate-100/60 dark:bg-slate-800/60 px-1 py-0.2 rounded font-mono text-[9px]">A_PATH + A_FILENAME</code>). If still not found, it logs a warning but registers the metadata record gracefully.
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1068,7 +1326,15 @@ export default function MigrationDashboard() {
                               const hasErrors = item.errors && item.errors.length > 0;
                               const itemPercent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
                               return (
-                                <div key={key} className="p-4 flex flex-col gap-2 hover:bg-slate-50/20 dark:hover:bg-slate-900/20 transition-colors">
+                                <div 
+                                  key={key} 
+                                  onClick={() => hasErrors && toggleRecordExpansion(key)}
+                                  className={`p-4 flex flex-col gap-2 transition-colors ${
+                                    hasErrors 
+                                      ? "cursor-pointer hover:bg-rose-50/10 dark:hover:bg-rose-950/5" 
+                                      : "hover:bg-slate-50/20 dark:hover:bg-slate-900/20"
+                                  }`}
+                                >
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                        {(() => {
@@ -1120,9 +1386,16 @@ export default function MigrationDashboard() {
                                            );
                                          }
                                        })()}
+                                      {item.filesCopied !== undefined && item.filesCopied !== null && (
+                                        <span className="text-[8px] bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 px-1.5 py-0.5 rounded font-black uppercase select-none flex items-center gap-1">
+                                          <FolderOpen className="w-2.5 h-2.5" />
+                                          {item.filesCopied} File{item.filesCopied !== 1 ? 's' : ''} Copied
+                                        </span>
+                                      )}
                                       {hasErrors && (
-                                        <span className="text-[8px] bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 px-1.5 py-0.5 rounded font-black uppercase">
+                                        <span className="text-[8px] bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 select-none">
                                           {item.errors.length} Error{item.errors.length > 1 ? 's' : ''}
+                                          {expandedRecords[key] ? <ChevronUp className="w-2.5 h-2.5 ml-0.5 shrink-0" /> : <ChevronDown className="w-2.5 h-2.5 ml-0.5 shrink-0" />}
                                         </span>
                                       )}
                                     </div>
@@ -1165,14 +1438,37 @@ export default function MigrationDashboard() {
                                       </span>
                                     </div>
                                   </div>
-                                  {hasErrors && (
-                                    <div className="mt-1 p-3 bg-rose-50/50 dark:bg-rose-950/10 border border-rose-100/40 dark:border-rose-950/30 rounded-lg text-[10px] font-mono text-rose-600 dark:text-rose-400 space-y-1">
-                                      {item.errors.map((err, idx) => (
-                                        <div key={idx} className="flex gap-1">
-                                          <span className="select-none font-bold">&gt;</span>
-                                          <span className="break-all">{err}</span>
-                                        </div>
-                                      ))}
+                                  {hasErrors && expandedRecords[key] && (
+                                    <div className="mt-2 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
+                                      {item.errors.map((err, idx) => {
+                                        const diag = getFriendlyErrorDetails(err);
+                                        return (
+                                          <div key={idx} className="p-3.5 bg-rose-50/30 dark:bg-rose-950/10 border border-rose-100/40 dark:border-rose-950/30 rounded-xl space-y-2.5 shadow-sm text-left">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className={`w-1.5 h-1.5 rounded-full ${diag.severity === 'high' ? 'bg-rose-500 animate-pulse' : 'bg-amber-500'}`} />
+                                              <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-400">
+                                                {diag.title}
+                                              </span>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] pl-3 border-l border-rose-200 dark:border-rose-900/35">
+                                              <div className="space-y-0.5">
+                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Failure Reason</span>
+                                                <p className="text-slate-700 dark:text-slate-300 font-bold leading-relaxed break-words">{diag.why}</p>
+                                              </div>
+                                              <div className="space-y-0.5">
+                                                <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-500 uppercase tracking-widest">Rectification Action</span>
+                                                <p className="text-emerald-700 dark:text-emerald-400 font-bold leading-relaxed">{diag.rectify}</p>
+                                              </div>
+                                            </div>
+                                            
+                                            <div className="pt-2 pl-3 border-t border-rose-100/30 dark:border-rose-950/30">
+                                              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Raw Database Error Log</span>
+                                              <p className="font-mono text-[9px] text-slate-500 dark:text-slate-400 break-all select-all leading-tight mt-1 bg-slate-900/5 dark:bg-slate-900/30 p-2 rounded border border-slate-200/40 dark:border-slate-800/40">{err}</p>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>
@@ -1701,6 +1997,36 @@ export default function MigrationDashboard() {
                             </button>
                           );
                         })}
+
+                        <div className="pt-4 pb-1">
+                          <Label className="text-[10px] font-black uppercase text-slate-400">Logs & Movements</Label>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setSelectedMappingEntity("LOGS_ROV");
+                            fetchOracleColumns("LOGS");
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "LOGS_ROV" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                        >
+                          <span className="flex flex-col items-start gap-0.5">
+                            <span>ROV Logs Mapping</span>
+                            <span className="text-[8px] opacity-75 font-mono lowercase">LOGS (ROV) → jobs/movements</span>
+                          </span>
+                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 shrink-0">{(mappings["LOGS_ROV"] || []).length}</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedMappingEntity("LOGS_DIVE");
+                            fetchOracleColumns("LOGS");
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "LOGS_DIVE" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                        >
+                          <span className="flex flex-col items-start gap-0.5">
+                            <span>Diving Logs Mapping</span>
+                            <span className="text-[8px] opacity-75 font-mono lowercase">LOGS (Diving) → jobs/movements</span>
+                          </span>
+                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 shrink-0">{(mappings["LOGS_DIVE"] || []).length}</span>
+                        </button>
                       </div>
                     </div>
 
@@ -1729,6 +2055,20 @@ export default function MigrationDashboard() {
                             pgTable = "jobpack & u_sow";
                             pgDesc = "Normalized Jobpack and Scope of Work tables";
                             pkCol = "INSPNO";
+                            break;
+                          case "LOGS_ROV":
+                            oracleTable = "LOGS";
+                            oracleDesc = "Legacy Log Table (Filtered: LOG_TYPE = 'ROV LOG')";
+                            pgTable = "insp_rov_jobs & insp_rov_movements";
+                            pgDesc = "PostgreSQL ROV Jobs master and Movement logs";
+                            pkCol = "STR_ID, INSPNO, DIVE_NO";
+                            break;
+                          case "LOGS_DIVE":
+                            oracleTable = "LOGS";
+                            oracleDesc = "Legacy Log Table (Filtered: LOG_TYPE in DIVER/BELL LOG)";
+                            pgTable = "insp_dive_jobs & insp_dive_movements";
+                            pgDesc = "PostgreSQL Diving Jobs master and Movement logs";
+                            pkCol = "STR_ID, INSPNO, DIVE_NO";
                             break;
                           case "ATTACHMENT":
                             oracleTable = "U_ATTACH_1";

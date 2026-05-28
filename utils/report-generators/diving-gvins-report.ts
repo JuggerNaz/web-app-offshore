@@ -144,7 +144,10 @@ export const generateDivingGVINSReport = async (
 
             const coatingCond   = d.coating_condition ?? "—";
             const componentCond = d.component_condition ?? "—";
-            const mgPercent     = d.marine_growth ?? d.marine_growth_hard ?? "—";
+            const mgPercent     = (d.marine_growth ?? [
+                d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',
+                d.marine_growth_soft ? `Soft: ${d.marine_growth_soft}` : ''
+            ].filter(Boolean).join(', ')) || "—";
 
             const parts: string[] = [];
             if (r.description?.trim()) parts.push(r.description.trim());

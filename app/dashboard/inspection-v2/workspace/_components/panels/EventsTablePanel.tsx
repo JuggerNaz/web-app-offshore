@@ -257,7 +257,7 @@ export function EventsTablePanel({
                                 )}
                                 {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
                                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500" onClick={async () => {
-                                    const { data } = await supabase.from("attachment").select("*").eq("source_id", r.insp_id).eq("source_type", "INSPECTION");
+                                    const { data } = await supabase.from("attachment").select("*").eq("source_id", r.insp_id).in("source_type", ["inspection", "INSPECTION"]);
                                     if (data) setViewingRecordAttachments(data);
                                   }}><Paperclip className="w-3 h-3" /></Button>
                                 )}
@@ -266,49 +266,49 @@ export function EventsTablePanel({
                           );
                         case "cr_date":
                           return (
-                            <td key={col.id} className="px-3 py-3 text-slate-600 align-top">
+                            <td key={col.id} className="px-3 py-3 text-slate-600 dark:text-slate-300 align-top">
                               <div className="text-sm font-medium">{r.cr_date ? format(new Date(r.cr_date), "dd MMM") : "-"}</div>
                               <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), "HH:mm") : "-"}</div>
                             </td>
                           );
                         case "type":
                           return (
-                            <td key={col.id} className="px-3 py-3 font-bold text-slate-800 align-top">
+                            <td key={col.id} className="px-3 py-3 font-bold text-slate-800 dark:text-slate-100 align-top">
                               <div className="truncate max-w-[200px] text-sm" title={r.inspection_type?.name}>{r.inspection_type?.name || "UNK"}</div>
-                              <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1">{r.inspection_type_code || r.inspection_type?.code || "UNK"}</Badge>
+                              <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-800 shadow-none mt-1">{r.inspection_type_code || r.inspection_type?.code || "UNK"}</Badge>
                             </td>
                           );
                         case "component":
                           return (
-                            <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                            <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
                               <div className="font-bold text-sm">{r.structure_components?.q_id || "-"}</div>
-                              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || "-"}</div>
+                              <div className="text-[10px] text-slate-400 dark:text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || "-"}</div>
                             </td>
                           );
                         case "elev":
-                          return <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">{r.elevation ? `${r.elevation}m` : r.fp_kp || "-"}</td>;
+                          return <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top">{r.elevation ? `${r.elevation}m` : r.fp_kp || "-"}</td>;
                         case "anomaly_ref":
                           return (
-                            <td key={col.id} className="px-3 py-3 align-top text-slate-700">
+                            <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
                               {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
                                 <div className="flex flex-col gap-1">
-                                  <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">{r.insp_anomalies[0].anomaly_ref_no}</span>
+                                  <span className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-950/20 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-900/50 w-fit">{r.insp_anomalies[0].anomaly_ref_no}</span>
                                   {r.insp_anomalies[0].priority_code && (
                                     <span className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded shadow-sm w-fit uppercase tracking-wider ${r.insp_anomalies[0].priority_code.includes("1") ? "bg-red-600" : r.insp_anomalies[0].priority_code.includes("2") ? "bg-orange-500" : r.insp_anomalies[0].priority_code.includes("3") ? "bg-yellow-500 text-black" : r.insp_anomalies[0].priority_code.includes("4") ? "bg-blue-500" : r.insp_anomalies[0].priority_code.includes("5") ? "bg-slate-500" : "bg-slate-900"}`}>{r.insp_anomalies[0].priority_code}</span>
                                   )}
                                 </div>
-                              ) : <span className="text-slate-300">-</span>}
+                              ) : <span className="text-slate-300 dark:text-slate-600">-</span>}
                             </td>
                           );
                         case "cp_reading":
-                          return <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top">{(() => { const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp; return cp ? <span className="font-mono text-xs">{cp}</span> : <span className="text-slate-300">-</span>; })()}</td>;
+                          return <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top">{(() => { const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp; return cp ? <span className="font-mono text-xs">{cp}</span> : <span className="text-slate-300 dark:text-slate-600">-</span>; })()}</td>;
                         case "dive_no":
-                          return <td key={col.id} className="px-3 py-3 align-top text-slate-700"><span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300">-</span>}</span></td>;
+                          return <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200"><span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300 dark:text-slate-600">-</span>}</span></td>;
                         case "tape_no":
                           return (
-                            <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                              <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300">-</span>}</span>
-                              {(r.inspection_data?._meta_timecode || r.tape_count_no) && <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" />{formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}</div>}
+                            <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
+                              <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300 dark:text-slate-600">-</span>}</span>
+                              {(r.inspection_data?._meta_timecode || r.tape_count_no) && <div className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" />{formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}</div>}
                             </td>
                           );
                         default: return null;
