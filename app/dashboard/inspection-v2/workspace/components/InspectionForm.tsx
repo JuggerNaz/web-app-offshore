@@ -185,13 +185,39 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         const spec = (inspectionSpecs as any)?.inspectionTypes?.find((t: any) => 
             (t.code || '').toUpperCase() === activeSpecStr || (t.name || '').toUpperCase() === activeSpecStr
         );
-        const jsonFields = spec ? spec.fields.map((f: any) => {
+        
+        // Resolve component specific overrides
+        const compCode = (
+            selectedComp?.raw?.code || 
+            selectedComp?.raw?.metadata?.comp_type || 
+            selectedComp?.raw?.metadata?.type || 
+            selectedComp?.component_type || 
+            selectedComp?.type || 
+            selectedComp?.code || 
+            ''
+        ).toUpperCase().trim();
+
+        let fieldsToUse = spec ? spec.fields : [];
+        
+        if (spec && spec.component_overrides && compCode) {
+            const override = spec.component_overrides.find((ov: any) => 
+                ov.component_types && 
+                Array.isArray(ov.component_types) && 
+                ov.component_types.some((ct: string) => ct.toUpperCase().trim() === compCode)
+            );
+            if (override && override.fields) {
+                fieldsToUse = override.fields;
+            }
+        }
+
+        const jsonFields = (fieldsToUse || []).map((f: any) => {
             if (f.$ref) {
                 const fieldRef = (inspectionSpecs as any).sharedFields?.[f.$ref];
                 return fieldRef ? { ...fieldRef, ...f, $ref: undefined } : f;
             }
             return f;
-        }) : [];
+        });
+
         const excludedFields = [
             'northing', 'easting', 'verified_depth', 'verification_depth', 
             'location_northing', 'location_easting', 'inspection_date', 
@@ -199,9 +225,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             'x', 'y', 'reference_leg', 'distance_from_leg', 'nearest_leg',
             'dist_to_nearest_leg', 'face', 'reference_leg_id', 'nearest_leg_id'
         ];
-        const fieldsToUse = jsonFields.length > 0 ? jsonFields : activeFormProps;
-        return (fieldsToUse || []).filter((p: any) => p && shouldShowField(p) && !excludedFields.includes(p.name));
-    }, [activeSpec, activeFormProps, dynamicProps]);
+        const fieldsResult = jsonFields.length > 0 ? jsonFields : activeFormProps;
+        return (fieldsResult || []).filter((p: any) => p && shouldShowField(p) && !excludedFields.includes(p.name));
+    }, [activeSpec, activeFormProps, dynamicProps, selectedComp]);
 
     const fieldGroups = React.useMemo(() => {
         if (!resolvedFields) return null;

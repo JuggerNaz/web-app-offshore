@@ -545,6 +545,7 @@ export async function POST(request: NextRequest) {
     // Fetch all library items from u_lib_list in PostgreSQL for casing and description mapping
     const libDescMap = new Map<string, string>();
     const libIdToDescMap = new Map<string, string>();
+    const anodeTypeLib = new Map<string, string>();
     try {
       const { data: libList } = await supabase
         .from('u_lib_list')
@@ -553,6 +554,12 @@ export async function POST(request: NextRequest) {
         libList.forEach((item: any) => {
           if (item.lib_desc) {
             libDescMap.set(item.lib_desc.toLowerCase().trim(), item.lib_desc.trim());
+            if (item.lib_code === 'ANOD_TYP') {
+              anodeTypeLib.set(item.lib_desc.toLowerCase().trim(), item.lib_desc.trim());
+              if (item.lib_id) {
+                anodeTypeLib.set(item.lib_id.toLowerCase().trim(), item.lib_desc.trim());
+              }
+            }
           }
           if (item.lib_id && item.lib_desc) {
             libIdToDescMap.set(item.lib_id.toLowerCase().trim(), item.lib_desc.trim());
@@ -771,7 +778,17 @@ export async function POST(request: NextRequest) {
               logs.push(`Case 3 Match: No existing ID or Title matches in Postgres. Migrating with original Oracle ID ${resolvedStructureId}.`);
             }
 
-            logs.push(`Migrating Structure to Postgres '${targetTable}' table...`);
+            // Ensure the parent record exists in public.structure first to satisfy the foreign key constraint
+            const parentStructureObj = {
+              str_id: resolvedStructureId,
+              str_type: targetTable === 'u_pipeline' ? 'PIPELINE' : 'PLATFORM'
+            };
+            const { error: parentStructureErr } = await supabase
+              .from("structure" as any)
+              .upsert(parentStructureObj as any, { onConflict: 'str_id' });
+            if (parentStructureErr) {
+              logs.push(`WARNING: Failed to insert parent structure record: ${parentStructureErr.message}`);
+            }
 
             // Insert/Upsert in Supabase
             const { error: insertErr } = await supabase
@@ -843,7 +860,21 @@ export async function POST(request: NextRequest) {
                         const parsedDate = new Date(val);
                         if (!isNaN(parsedDate.getTime())) val = parsedDate.toISOString();
                       }
-                      val = coerceValue(mapping.pgCol, val);
+                      
+                      if (mapping.pgCol.endsWith("clk_pos")) {
+                        // Map Oracle 0-12 (or null/empty) to proper spaced string representation
+                        const numVal = (val === null || val === undefined || String(val).trim() === '') ? null : Number(val);
+                        if (numVal === null || numVal === 0 || isNaN(numVal)) {
+                          val = "N/A";
+                        } else if (numVal >= 1 && numVal <= 12) {
+                          val = `${numVal} O' CLOCK`;
+                        } else {
+                          val = "N/A";
+                        }
+                      } else {
+                        val = coerceValue(mapping.pgCol, val);
+                      }
+                      
                       setNestedProperty(pgRecord, mapping.pgCol, val);
                     }
                   });
@@ -899,8 +930,23 @@ export async function POST(request: NextRequest) {
     );
 
     if (structureSuccess) {
-      // Clear existing components for this structure to avoid conflicts/duplicates
-      await supabase.from("structure_components").delete().eq("structure_id", resolvedStructureId);
+      // Fetch all existing components for this structure to update in place and avoid duplicating/deleting them!
+      const existingCompMap = new Map<number, number>(); // comp_id -> pg_id
+      try {
+        const { data: existingComps } = await supabase
+          .from("structure_components")
+          .select("id, comp_id")
+          .eq("structure_id", resolvedStructureId);
+        if (existingComps) {
+          existingComps.forEach((c: any) => {
+            if (c.comp_id) {
+              existingCompMap.set(Number(c.comp_id), Number(c.id));
+            }
+          });
+        }
+      } catch (err: any) {
+        logs.push(`WARNING: Could not fetch existing components: ${err.message}`);
+      }
 
       for (const code of componentCodes) {
         const compMappings = mappings[code] || [];
@@ -964,7 +1010,19 @@ export async function POST(request: NextRequest) {
                       const parsedDate = new Date(val);
                       if (!isNaN(parsedDate.getTime())) val = parsedDate.toISOString();
                     }
-                    val = coerceValue(mapping.pgCol, val);
+                    if (mapping.pgCol.endsWith("clk_pos")) {
+                      // Map Oracle 0-12 (or null/empty) to proper spaced string representation
+                      const numVal = (val === null || val === undefined || String(val).trim() === '') ? null : Number(val);
+                      if (numVal === null || numVal === 0 || isNaN(numVal)) {
+                        val = "N/A";
+                      } else if (numVal >= 1 && numVal <= 12) {
+                        val = `${numVal} O' CLOCK`;
+                      } else {
+                        val = "N/A";
+                      }
+                    } else {
+                      val = coerceValue(mapping.pgCol, val);
+                    }
                     setNestedProperty(pgRecord, mapping.pgCol, val);
                   }
                 });
@@ -988,31 +1046,65 @@ export async function POST(request: NextRequest) {
                 return pgRecord;
               });
 
-              const { data: insertedComps, error: insertErr } = await supabase
-                .from("structure_components")
-                .insert(pgRecords as any)
-                .select("id, comp_id, q_id");
+              // Insert or update in place
+              const compsToInsert: any[] = [];
+              let migratedCount = 0;
 
-              if (insertErr) {
-                logs.push(`ERROR inserting ${code} components: ${insertErr.message}`);
-                report[code].errors.push(insertErr.message);
-              } else {
-                logs.push(`Successfully migrated ${rows.length} components for code ${code}!`);
-                report[code].status = "success";
-                report[code].migratedRows = rows.length;
-                if (insertedComps) {
-                  insertedComps.forEach(comp => {
-                    const pgId = Number(comp.id);
-                    if (comp.comp_id) {
-                      compIdMap.set(Number(comp.comp_id), pgId);
-                      compTypeCache.set(Number(comp.comp_id), code);
+              for (const record of pgRecords) {
+                const pgId = record.comp_id ? existingCompMap.get(Number(record.comp_id)) : null;
+                if (pgId) {
+                  // Update existing component in place
+                  const { error: updateErr } = await supabase
+                    .from("structure_components")
+                    .update(record as any)
+                    .eq("id", pgId);
+
+                  if (updateErr) {
+                    logs.push(`ERROR updating component ${record.q_id || record.comp_id}: ${updateErr.message}`);
+                    report[code].errors.push(updateErr.message);
+                  } else {
+                    migratedCount++;
+                    compIdMap.set(Number(record.comp_id), pgId);
+                    compTypeCache.set(Number(record.comp_id), code);
+                    if (record.q_id) {
+                      qIdMap.set(String(record.q_id).trim(), pgId);
                     }
-                    if (comp.q_id) {
-                      qIdMap.set(String(comp.q_id).trim(), pgId);
-                    }
-                  });
+                  }
+                } else {
+                  // Queue for insertion
+                  compsToInsert.push(record);
                 }
               }
+
+              if (compsToInsert.length > 0) {
+                const { data: insertedComps, error: insertErr } = await supabase
+                  .from("structure_components")
+                  .insert(compsToInsert)
+                  .select("id, comp_id, q_id");
+
+                if (insertErr) {
+                  logs.push(`ERROR inserting new ${code} components: ${insertErr.message}`);
+                  report[code].errors.push(insertErr.message);
+                } else {
+                  migratedCount += compsToInsert.length;
+                  if (insertedComps) {
+                    insertedComps.forEach(comp => {
+                      const newPgId = Number(comp.id);
+                      if (comp.comp_id) {
+                        compIdMap.set(Number(comp.comp_id), newPgId);
+                        compTypeCache.set(Number(comp.comp_id), code);
+                      }
+                      if (comp.q_id) {
+                        qIdMap.set(String(comp.q_id).trim(), newPgId);
+                      }
+                    });
+                  }
+                }
+              }
+
+              logs.push(`Successfully migrated ${migratedCount} components for code ${code}!`);
+              report[code].status = "success";
+              report[code].migratedRows = migratedCount;
             } else {
               logs.push(`No Oracle components found for code ${code} and Structure ID ${structureId}.`);
               report[code].status = "success";
@@ -3933,58 +4025,119 @@ export async function POST(request: NextRequest) {
             if (!comment) return {};
             const cleanComment = comment.trim();
             const lowerComment = cleanComment.toLowerCase();
-            let depletion: any = null;
+
             let anodeType: any = null;
+            let depletion: any = null;
 
-            // Pattern 1: Parse depletion percentage e.g. "0-25% Depleted" or "50% depletion" or "depletion 30%"
-            // Support formats like "0-25% Depleted", "0-25%", "25%"
-            const deplMatch = lowerComment.match(/(\d+(?:-\d+)?\s*%)\s*(?:depleted|depletion|dep)?/i) ||
-                             lowerComment.match(/(?:depleted|depletion|dep)\s*:?\s*(\d+(?:-\d+)?\s*%)/i);
-            if (deplMatch) {
-              depletion = deplMatch[1].toUpperCase().trim();
-            } else {
-              // Try plain number followed by "depleted" or preceded by "depletion"
-              const deplNumMatch = lowerComment.match(/(?:depleted|depletion|dep)\s*:?\s*(\d+)\b/i) ||
-                                  lowerComment.match(/\b(\d+)\s*(?:percent|pct)?\s*(?:depleted|depletion)/i);
-              if (deplNumMatch) {
-                depletion = deplNumMatch[1] + "%";
-              }
-            }
+            // Split comment by semicolon first (plain split to avoid Tailwind CSS regex static analysis bugs)
+            const sections = cleanComment.split(';');
 
-            // Pattern 2: Parse Anode Type and map to library item
-            // e.g. "ANODE: TYPE-F", "ANODE: TYPE F", "ANODE TYPE: F", "ANODE: BAR-0-25% Depleted"
-            const sections = cleanComment.split(/[;]+/);
+            // Construct regular expressions dynamically to shield them from Tailwind scanner
+            const typeRegex = new RegExp("\\btype\\s*(?:-|:|\\s)?\\s*([a-g0-9]+)\\b", "i");
+            const rangeRegex = new RegExp("(\\d+)\\s*-\\s*(\\d+)\\s*%");
+            const pctRegex = new RegExp("(\\d+)\\s*%");
+
             for (const sec of sections) {
               const trimmedSec = sec.trim();
               const lowerSec = trimmedSec.toLowerCase();
 
-              // If section mentions anode
-              if (lowerSec.includes("anode")) {
-                // Match type suffix (A, B, C, D, E, F, G, B2)
-                const typeLetterMatch = lowerSec.match(/\btype\s*(?:-|:|\s)?\s*([a-g]|b2)\b/i) ||
-                                        lowerSec.match(/\banode\s*(?:-|:|\s)?\s*(?:type\s*(?:-|:|\s)?)?\\s*([a-g]|b2)\b/i);
-                if (typeLetterMatch) {
-                  const code = typeLetterMatch[1].toUpperCase();
-                  anodeType = `ANODE TYPE ${code}`;
-                  break;
+              // 1. Parse Anode Type
+              // If section mentions "anode" and we haven't found anodeType yet
+              if (lowerSec.includes("anode") && !anodeType) {
+                // Check if it has a pattern like "type-X" or "type X"
+                const typeMatch = lowerSec.match(typeRegex);
+                if (typeMatch) {
+                  const code = typeMatch[1].toLowerCase().trim();
+                  const candidates = [`type ${code}`, `anode type ${code}`, code];
+                  for (const cand of candidates) {
+                    if (anodeTypeLib.has(cand)) {
+                      anodeType = anodeTypeLib.get(cand);
+                      break;
+                    }
+                  }
                 }
 
-                // If it is something like "ANODE: BAR-0-25% Depleted"
-                const barTypeMatch = lowerSec.match(/anode\s*:\s*([a-z0-9]+)\s*-\s*\d+/i);
-                if (barTypeMatch && barTypeMatch[1].toUpperCase() !== "TYPE") {
-                  anodeType = barTypeMatch[1].toUpperCase();
-                  break;
+                // If we didn't find it by type match, maybe the word after "anode:" is in the library?
+                if (!anodeType) {
+                  const colonParts = trimmedSec.split(":");
+                  if (colonParts.length > 1) {
+                    const valPart = colonParts[1].replace(/[-]/g, " ").trim().toLowerCase();
+                    const candidates = [valPart, valPart.split(/\s+/)[0]];
+                    for (const cand of candidates) {
+                      if (anodeTypeLib.has(cand)) {
+                        anodeType = anodeTypeLib.get(cand);
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+
+              // 2. Parse Depletion from section
+              if ((lowerSec.includes("deplet") || lowerSec.includes("%")) && !depletion) {
+                let category = "Bar";
+                if (lowerSec.includes("bracelet")) category = "Bracelet";
+                else if (lowerSec.includes("collar")) category = "Collar";
+                else if (lowerSec.includes("sled")) category = "Sled";
+                else if (lowerSec.includes("bar")) category = "Bar";
+
+                const rangeMatch = lowerSec.match(rangeRegex);
+                if (rangeMatch) {
+                  const start = parseInt(rangeMatch[1]);
+                  const end = parseInt(rangeMatch[2]);
+                  depletion = `${category}: ${start} - ${end}% Depletion`;
+                } else {
+                  const pctMatch = lowerSec.match(pctRegex);
+                  if (pctMatch) {
+                    const pct = parseInt(pctMatch[1]);
+                    if (pct >= 0 && pct <= 25) depletion = `${category}: 0 - 25% Depletion`;
+                    else if (pct > 25 && pct <= 50) depletion = `${category}: 25 - 50% Depletion`;
+                    else if (pct > 50 && pct <= 75) depletion = `${category}: 50 - 75% Depletion`;
+                    else if (pct > 75 && pct <= 100) depletion = `${category}: 75 - 100% Depletion`;
+                  } else if (lowerSec.includes("unable to estimate") || lowerSec.includes("unable to assess") || lowerSec.includes("cannot estimate")) {
+                    depletion = `${category}: Unable to Estimate`;
+                  }
                 }
               }
             }
 
-            // Fallback for Anode Type: if not found via sections, do a global regex match
+            // Fallback for anode type globally if not found in sections
             if (!anodeType) {
-              const fallbackMatch = lowerComment.match(/\btype\s*(?:-|:|\s)?\s*([a-g]|b2)\b/i) ||
-                                    lowerComment.match(/\banode\s*(?:-|:|\s)?\s*(?:type\s*(?:-|:|\s)?)?\\s*([a-g]|b2)\b/i);
-              if (fallbackMatch) {
-                const code = fallbackMatch[1].toUpperCase();
-                anodeType = `ANODE TYPE ${code}`;
+              const typeMatch = lowerComment.match(typeRegex);
+              if (typeMatch) {
+                const code = typeMatch[1].toLowerCase().trim();
+                const candidates = [`type ${code}`, `anode type ${code}`, code];
+                for (const cand of candidates) {
+                  if (anodeTypeLib.has(cand)) {
+                    anodeType = anodeTypeLib.get(cand);
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Fallback for depletion globally if not found in sections
+            if (!depletion) {
+              let category = "Bar";
+              if (lowerComment.includes("bracelet")) category = "Bracelet";
+              else if (lowerComment.includes("collar")) category = "Collar";
+              else if (lowerComment.includes("sled")) category = "Sled";
+              else if (lowerComment.includes("bar")) category = "Bar";
+
+              const rangeMatch = lowerComment.match(rangeRegex);
+              if (rangeMatch) {
+                const start = parseInt(rangeMatch[1]);
+                const end = parseInt(rangeMatch[2]);
+                depletion = `${category}: ${start} - ${end}% Depletion`;
+              } else {
+                const pctMatch = lowerComment.match(pctRegex);
+                if (pctMatch) {
+                  const pct = parseInt(pctMatch[1]);
+                  if (pct >= 0 && pct <= 25) depletion = `${category}: 0 - 25% Depletion`;
+                  else if (pct > 25 && pct <= 50) depletion = `${category}: 25 - 50% Depletion`;
+                  else if (pct > 50 && pct <= 75) depletion = `${category}: 50 - 75% Depletion`;
+                  else if (pct > 75 && pct <= 100) depletion = `${category}: 75 - 100% Depletion`;
+                }
               }
             }
 
@@ -4648,6 +4801,167 @@ export async function POST(request: NextRequest) {
             if (anodeDetails.depletion) {
               inspectionDataObj.anode_depletion = anodeDetails.depletion;
               inspectionDataObj.depletion = anodeDetails.depletion;
+            }
+
+            // 2b. Perform Flooded Member Detection (RFMD) Mapping
+            if (typCode.toUpperCase() === 'RFMD') {
+              // 1) Map COMP_COND to member_status
+              const compCondRaw = String(rowObj.COMP_COND || '').trim().toLowerCase();
+              let memberStatusVal = null;
+              if (compCondRaw) {
+                if (compCondRaw === 'fmd unable to take' || compCondRaw.includes('unable to take') || compCondRaw.includes('unable') || compCondRaw.includes('not take')) {
+                  memberStatusVal = 'Unable to Take Reading';
+                } else if (compCondRaw.includes('flood') || compCondRaw === 'f') {
+                  memberStatusVal = 'Flooded';
+                } else if (compCondRaw.includes('dry') || compCondRaw === 'd') {
+                  memberStatusVal = 'Dry';
+                } else if (compCondRaw.includes('grout') || compCondRaw === 'g') {
+                  memberStatusVal = 'Grouted';
+                } else if (compCondRaw.includes('inconclusive') || compCondRaw === 'i') {
+                  memberStatusVal = 'Inconclusive';
+                } else {
+                  // Fallback: convert to proper case
+                  memberStatusVal = compCondRaw.split(' ')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+                }
+              }
+              if (memberStatusVal) {
+                inspectionDataObj.member_status = memberStatusVal;
+              }
+
+              // 2) Extract and cut density value + unit from comments/findings
+              // Flexible regex: matches "density" followed by up to 40 non-digit chars (handles natural language
+              // like "density measured was 1.43 g/cc", "density value: 1.03", "density: 1.025 g/cm3", etc.)
+              const densityRegex = new RegExp("density[^0-9]{0,40}([0-9]+(?:\\.[0-9]+)?)\\s*(g\\/cm3|g\\/cm³|g\\/cc|kg\\/m3|kg\\/m³|lb\\/ft3|lb\\/ft³|lb\\/in3|lb\\/in³)?\\.?", "i");
+              const currentComments = findingsVal || '';
+              const densityMatch = currentComments.match(densityRegex);
+              if (densityMatch) {
+                const parsedDensity = parseFloat(densityMatch[1]);
+                if (!isNaN(parsedDensity)) {
+                  inspectionDataObj.density_value = parsedDensity;
+                  
+                  // Map the extracted unit to the proper Postgres DENSITY unit format
+                  const rawUnit = (densityMatch[2] || '').toLowerCase().trim();
+                  let mappedUnit = 'g/cm³'; // Default density unit
+                  if (rawUnit === 'g/cm3' || rawUnit === 'g/cm³' || rawUnit === 'g/cc') {
+                    mappedUnit = 'g/cm³';
+                  } else if (rawUnit === 'kg/m3' || rawUnit === 'kg/m³') {
+                    mappedUnit = 'kg/m³';
+                  } else if (rawUnit === 'lb/ft3' || rawUnit === 'lb/ft³') {
+                    mappedUnit = 'lb/ft³';
+                  } else if (rawUnit === 'lb/in3' || rawUnit === 'lb/in³') {
+                    mappedUnit = 'lb/in³';
+                  }
+                  inspectionDataObj.density_value_unit = mappedUnit;
+                  
+                  // Cut the entire matched density sentence from comments/findings
+                  let cutComments = currentComments.replace(densityMatch[0], "");
+                  cutComments = cutComments.replace(/[;,.]\s*[;,.]/g, ';')
+                                           .replace(/^\s*[;,.\-:\s]+/, '')
+                                           .replace(/\s*[;,.\-:\s]+$/, '')
+                                           .replace(/\s+/g, ' ')
+                                           .trim();
+                  
+                  findingsVal = cutComments;
+                  inspectionDataObj.findings = cutComments;
+                  inspectionDataObj.finding = cutComments;
+                }
+              }
+            }
+
+            // 2c. Perform ROV Scour (RSCOR) comment parsing
+            if (typCode.toUpperCase() === 'RSCOR') {
+              let scourComments = findingsVal || '';
+
+              // 1) Extract scour location — supports Leg name OR Node number
+              //    e.g. "SCOUR AT LEG: A1", "AT LEG A1", "LOCATION: A1", "AT NODE: 101A", "NODE: 203B"
+              const locRegex = /(?:scour\s+)?(?:at\s+)?(?:leg|node|location)\s*[:\-]?\s*([A-Za-z0-9\-\/]+)/i;
+              const locMatch = scourComments.match(locRegex);
+              if (locMatch) {
+                // Determine if it was a Node or Leg reference
+                const matchedKeyword = locMatch[0].toLowerCase();
+                const isNode = matchedKeyword.includes('node');
+                const prefix = isNode ? 'At Node' : 'At Leg';
+                inspectionDataObj.scour_location = `${prefix}: ${locMatch[1].toUpperCase()}`;
+                scourComments = scourComments.replace(locMatch[0], '');
+              }
+
+              // 2) Extract scour depth (e.g. "SCOUR DEPTH: 200mm", "SCOUR DEPTH 200 mm", "DEPTH: 200mm", "DEPTH 200")
+              const depthRegex = /(?:scour\s+)?depth\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mm|cm|m|in|ft)?/i;
+              const depthMatch = scourComments.match(depthRegex);
+              if (depthMatch) {
+                const depthVal = parseFloat(depthMatch[1]);
+                if (!isNaN(depthVal)) {
+                  inspectionDataObj.scour_depth = depthVal;
+                  // Map unit to proper format, default to mm
+                  const rawDepthUnit = (depthMatch[2] || 'mm').toLowerCase();
+                  inspectionDataObj.scour_depth_unit = rawDepthUnit;
+                }
+                scourComments = scourComments.replace(depthMatch[0], '');
+              }
+
+              // 3) Extract exposed pile flag (e.g. "PILE EXPOSED", "PILE NOT EXPOSED", "EXPOSED PILE", "NOT EXPOSED", "EXPOSED")
+              const exposedRegex = /(?:pile\s+(?:not\s+)?exposed|(?:not\s+)?exposed\s+pile|pile\s+is\s+(?:not\s+)?exposed|(?:not\s+)?exposed(?:\s+pile)?)/i;
+              const exposedMatch = scourComments.match(exposedRegex);
+              if (exposedMatch) {
+                const matchText = exposedMatch[0].toLowerCase();
+                const isExposed = !matchText.includes('not');
+                inspectionDataObj.Exposed_pile = isExposed ? 'Yes' : 'No';
+                scourComments = scourComments.replace(exposedMatch[0], '');
+              }
+
+              // 4) Extract burial percentage (e.g. "BURIAL: 30%", "BURIAL 30%", "BURIED 30%", "BURIAL PERCENT: 30", "30% BURIED")
+              const burialRegex = /(?:burial|buried)\s*(?:percent(?:age)?)?\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?)\s*%?|([0-9]+(?:\.[0-9]+)?)\s*%\s*(?:burial|buried)/i;
+              const burialMatch = scourComments.match(burialRegex);
+              if (burialMatch) {
+                const burialVal = parseFloat(burialMatch[1] || burialMatch[2]);
+                if (!isNaN(burialVal)) {
+                  inspectionDataObj.Burial_percent = burialVal;
+                }
+                scourComments = scourComments.replace(burialMatch[0], '');
+              }
+
+              // Clean up remaining comments after extraction
+              scourComments = scourComments
+                .replace(/[;,.]\s*[;,.]/g, ';')
+                .replace(/^\s*[;,.\-:\s]+/, '')
+                .replace(/\s*[;,.\-:\s]+$/, '')
+                .replace(/\s+/g, ' ')
+                .replace(/\bseabed\s*[:\-]?\s*/gi, '')
+                .trim();
+
+              if (scourComments !== findingsVal) {
+                findingsVal = scourComments;
+                inspectionDataObj.findings = scourComments;
+                inspectionDataObj.finding = scourComments;
+              }
+            }
+
+            // Copy COMP_COND to component_condition if present
+            const compCondVal = rowObj.COMP_COND !== undefined && rowObj.COMP_COND !== null ? String(rowObj.COMP_COND).trim() : null;
+            if (compCondVal) {
+              let normalizedVal = compCondVal;
+              if (isRov) {
+                const trimmedLower = compCondVal.toLowerCase();
+                if (libDescMap.has(trimmedLower)) {
+                  normalizedVal = libDescMap.get(trimmedLower) || compCondVal;
+                }
+              }
+              inspectionDataObj.component_condition = normalizedVal;
+            }
+
+            // Copy COAT_COND to coating_condition if present
+            const coatCondVal = rowObj.COAT_COND !== undefined && rowObj.COAT_COND !== null ? String(rowObj.COAT_COND).trim() : null;
+            if (coatCondVal) {
+              let normalizedVal = coatCondVal;
+              if (isRov) {
+                const trimmedLower = coatCondVal.toLowerCase();
+                if (libDescMap.has(trimmedLower)) {
+                  normalizedVal = libDescMap.get(trimmedLower) || coatCondVal;
+                }
+              }
+              inspectionDataObj.coating_condition = normalizedVal;
             }
 
             // 2. Perform Seabed Survey Coordinate Mapping & Debris/Dimension Parsing (Requirement 2 & 3)

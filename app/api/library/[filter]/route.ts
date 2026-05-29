@@ -42,22 +42,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   let visibleData = data?.filter((item: any) => item.hidden_item !== 'Y' && item.hidden_item !== 'y');
 
-  // Custom sort for POSITION to match 1-12 O'CLOCK order
+  // Custom sort for POSITION to match 1-12 O' CLOCK order
   if (decodedFilter === "POSITION" && visibleData) {
+    // Map items to have a space after O' (e.g. "O' CLOCK")
+    visibleData = visibleData.map((item: any) => {
+      const formatStr = (s: any) => typeof s === 'string' ? s.replace("O'CLOCK", "O' CLOCK") : s;
+      return {
+        ...item,
+        lib_id: formatStr(item.lib_id),
+        lib_desc: formatStr(item.lib_desc),
+        lib_name: formatStr(item.lib_name)
+      };
+    });
+
     const positionOrder = [
       "N/A",
-      "1 O'CLOCK",
-      "2 O'CLOCK",
-      "3 O'CLOCK",
-      "4 O'CLOCK",
-      "5 O'CLOCK",
-      "6 O'CLOCK",
-      "7 O'CLOCK",
-      "8 O'CLOCK",
-      "9 O'CLOCK",
-      "10 O'CLOCK",
-      "11 O'CLOCK",
-      "12 O'CLOCK"
+      "1 O' CLOCK",
+      "2 O' CLOCK",
+      "3 O' CLOCK",
+      "4 O' CLOCK",
+      "5 O' CLOCK",
+      "6 O' CLOCK",
+      "7 O' CLOCK",
+      "8 O' CLOCK",
+      "9 O' CLOCK",
+      "10 O' CLOCK",
+      "11 O' CLOCK",
+      "12 O' CLOCK"
     ];
     
     visibleData = visibleData.sort((a: any, b: any) => {

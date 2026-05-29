@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
   const { id, type } = await params;
 
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("comment")
     .select("*")
@@ -12,13 +12,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     .eq("structure_type", type);
 
   if (error) {
+    console.error("[Comment GET Error]", error);
     if (error.code === "PGRST116") {
       return NextResponse.json({ error: error.message }, { status: 404 });
     } else if (error.code === "22P02") {
       return NextResponse.json({ error: error.message }, { status: 400 });
     } else
       return NextResponse.json(
-        { error: `Failed to fetch comment for structure id ${id}` },
+        { error: error.message || `Failed to fetch comment for structure id ${id}` },
         { status: 500 }
       );
   }
@@ -65,7 +66,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
   const { id } = await params;
   const body = await request.json();
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase.from("comment").insert(body).single();
 
@@ -87,7 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
   const { id } = await params;
   const body = await request.json();
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
   // Extract comment id from body for targeted update
   const commentId = body.id;
@@ -127,7 +128,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string; type: string }> }) {
   const { id } = await params;
   const body = await request.json();
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
   const commentId = body.id;
   if (!commentId) {

@@ -2563,7 +2563,8 @@
                         "Flooded",
                         "Dry",
                         "Grouted",
-                        "Inconclusive"
+                        "Inconclusive",
+                        "Unable to Take Reading"
                     ],
                     "default": "Dry",
                     "required": true
