@@ -2110,7 +2110,7 @@
                             "name": "clamp_type",
                             "label": "Clamp Type",
                             "type": "combo",
-                            "lib_code": "CLT_TYP",
+                            "lib_code": "CLAM_TYP",
                             "required": false
                         },
                         {
@@ -2453,7 +2453,7 @@
                             "name": "clamp_type",
                             "label": "Clamp Type",
                             "type": "combo",
-                            "lib_code": "CLT_TYP",
+                            "lib_code": "CLAM_TYP",
                             "required": false
                         },
                         {
@@ -2538,7 +2538,7 @@
                             "name": "clamp_type",
                             "label": "Clamp Type",
                             "type": "combo",
-                            "lib_code": "CLT_TYP",
+                            "lib_code": "CLAM_TYP",
                             "required": false
                         },
                         {

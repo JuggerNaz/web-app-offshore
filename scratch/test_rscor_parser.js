@@ -5,11 +5,21 @@ const testScourParsing = (comments) => {
   let scourComments = comments || '';
 
   // 1) Extract scour location
-  const locRegex = /(?:scour\s+)?(?:at\s+)?(?:leg|location)\s*[:\-]?\s*([A-Za-z0-9\-\/]+)/i;
-  const locMatch = scourComments.match(locRegex);
-  if (locMatch) {
-    inspectionDataObj.scour_location = `At Leg: ${locMatch[1].toUpperCase()}`;
-    scourComments = scourComments.replace(locMatch[0], '');
+  const midRegex = /(?:scour\s+)?(?:at\s+)?mid\-?point/i;
+  const midMatch = scourComments.match(midRegex);
+  if (midMatch) {
+    inspectionDataObj.scour_location = 'At Midpoint';
+    scourComments = scourComments.replace(midMatch[0], '');
+  } else {
+    const locRegex = /(?:scour\s+)?(?:at\s+)?(?:leg|node|location)\s*[:\-]?\s*([A-Za-z0-9\-\/]+)/i;
+    const locMatch = scourComments.match(locRegex);
+    if (locMatch) {
+      const matchedKeyword = locMatch[0].toLowerCase();
+      const isNode = matchedKeyword.includes('node');
+      const prefix = isNode ? 'At Node' : 'At Leg';
+      inspectionDataObj.scour_location = `${prefix}: ${locMatch[1].toUpperCase()}`;
+      scourComments = scourComments.replace(locMatch[0], '');
+    }
   }
 
   // 2) Extract scour depth
@@ -71,6 +81,17 @@ const testCases = [
   "SCOUR AT LEG: F3; DEPTH 250mm; NOT EXPOSED; BURIAL PERCENT: 45",
   "NO SIGNIFICANT SCOUR OBSERVED AT THIS LOCATION",
   "30% BURIED; SCOUR AT LEG: G1; DEPTH: 50mm; PILE NOT EXPOSED",
+  
+  // Node references
+  "SCOUR AT NODE: 101A; SCOUR DEPTH: 120mm; PILE NOT EXPOSED",
+  "AT NODE 203B; DEPTH: 80mm; PILE EXPOSED",
+  "NODE: N5; SCOUR DEPTH 0mm; PILE NOT EXPOSED",
+
+  // Midpoint references
+  "SCOUR AT MIDPOINT; SCOUR DEPTH: 110mm; PILE NOT EXPOSED",
+  "AT MID-POINT; DEPTH: 40mm; PILE EXPOSED",
+  "MIDPOINT; SCOUR DEPTH 0mm; PILE NOT EXPOSED",
+  "SCOUR AT MIDPOINT OF MEMBER A1-B2; DEPTH: 150mm; PILE NOT EXPOSED",
 ];
 
 console.log("=== RUNNING RSCOR MIGRATION PARSER TEST ===\n");

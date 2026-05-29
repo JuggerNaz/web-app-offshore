@@ -4874,17 +4874,24 @@ export async function POST(request: NextRequest) {
             if (typCode.toUpperCase() === 'RSCOR') {
               let scourComments = findingsVal || '';
 
-              // 1) Extract scour location — supports Leg name OR Node number
-              //    e.g. "SCOUR AT LEG: A1", "AT LEG A1", "LOCATION: A1", "AT NODE: 101A", "NODE: 203B"
-              const locRegex = /(?:scour\s+)?(?:at\s+)?(?:leg|node|location)\s*[:\-]?\s*([A-Za-z0-9\-\/]+)/i;
-              const locMatch = scourComments.match(locRegex);
-              if (locMatch) {
-                // Determine if it was a Node or Leg reference
-                const matchedKeyword = locMatch[0].toLowerCase();
-                const isNode = matchedKeyword.includes('node');
-                const prefix = isNode ? 'At Node' : 'At Leg';
-                inspectionDataObj.scour_location = `${prefix}: ${locMatch[1].toUpperCase()}`;
-                scourComments = scourComments.replace(locMatch[0], '');
+              // 1) Extract scour location — supports Leg name, Node number, or Midpoint
+              //    e.g. "SCOUR AT LEG: A1", "AT LEG A1", "LOCATION: A1", "AT NODE: 101A", "NODE: 203B", "AT MIDPOINT", "MID-POINT"
+              const midRegex = /(?:scour\s+)?(?:at\s+)?mid\-?point/i;
+              const midMatch = scourComments.match(midRegex);
+              if (midMatch) {
+                inspectionDataObj.scour_location = 'At Midpoint';
+                scourComments = scourComments.replace(midMatch[0], '');
+              } else {
+                const locRegex = /(?:scour\s+)?(?:at\s+)?(?:leg|node|location)\s*[:\-]?\s*([A-Za-z0-9\-\/]+)/i;
+                const locMatch = scourComments.match(locRegex);
+                if (locMatch) {
+                  // Determine if it was a Node or Leg reference
+                  const matchedKeyword = locMatch[0].toLowerCase();
+                  const isNode = matchedKeyword.includes('node');
+                  const prefix = isNode ? 'At Node' : 'At Leg';
+                  inspectionDataObj.scour_location = `${prefix}: ${locMatch[1].toUpperCase()}`;
+                  scourComments = scourComments.replace(locMatch[0], '');
+                }
               }
 
               // 2) Extract scour depth (e.g. "SCOUR DEPTH: 200mm", "SCOUR DEPTH 200 mm", "DEPTH: 200mm", "DEPTH 200")
@@ -4935,6 +4942,207 @@ export async function POST(request: NextRequest) {
                 findingsVal = scourComments;
                 inspectionDataObj.findings = scourComments;
                 inspectionDataObj.finding = scourComments;
+              }
+            }
+
+            // 2d. Perform ROV Riser Structural Integrity (RRISI) comment & QID parsing
+            if (typCode.toUpperCase() === 'RRISI') {
+              let riserComments = findingsVal || '';
+
+              // 1) Determine Riser Part (riser_item)
+              const legacyQId = legacyCompId ? oracleCompIdToQId.get(legacyCompId) : null;
+              const qidStr = legacyQId ? String(legacyQId).trim().toUpperCase() : '';
+              let basePart = 'Riser'; // default fallback
+              if (qidStr.startsWith('R')) {
+                basePart = 'Riser';
+              } else if (qidStr.startsWith('J')) {
+                basePart = 'J-Tube';
+              } else if (qidStr.startsWith('I')) {
+                basePart = 'I-Tube';
+              }
+
+              let riserPart = basePart;
+              const hasRiserBend = /riser\s*bend/i.test(riserComments);
+              const hasPipeline = /pipeline/i.test(riserComments);
+
+              // CRITICAL FIX: hasRiserBend MUST take precedence over hasPipeline
+              // (prevents a comment with "pipeline" at the end overriding a clear "RISER BEND" label at the beginning!)
+              if (hasRiserBend) {
+                if (basePart === 'Riser') {
+                  riserPart = 'Riser Bend';
+                } else if (basePart === 'J-Tube') {
+                  riserPart = 'J-Tube Bend';
+                } else if (basePart === 'I-Tube') {
+                  riserPart = 'I-Tube Bend';
+                }
+              } else if (hasPipeline) {
+                riserPart = 'Pipeline';
+              }
+              
+              inspectionDataObj.riser_item = riserPart;
+
+              // Cut "RISER BEND" or "Pipeline" from comments if matched to clean findings
+              if (riserPart === 'Pipeline') {
+                riserComments = riserComments.replace(/pipeline/i, '');
+              } else if (riserPart.includes('Bend')) {
+                riserComments = riserComments.replace(/riser\s*bend/i, '');
+              }
+
+              // 2) Extract suspension height (e.g. "Riser bend was suspended approximately 0.5m...")
+              const suspRegex = /(?:suspended|suspen[st]ion(?:\s+(?:height|gap|of))?)(?:.{0,50}?)(?<![a-zA-Z])([0-9]+(?:\.[0-9]+)?)\s*(m|cm|mm|ft|in)?\b/i;
+              const suspMatch = riserComments.match(suspRegex);
+              if (suspMatch) {
+                const suspVal = parseFloat(suspMatch[1]);
+                if (!isNaN(suspVal)) {
+                  inspectionDataObj.suspention_height = suspVal;
+                  inspectionDataObj.suspention_height_unit = (suspMatch[2] || 'm').toLowerCase();
+                }
+                riserComments = riserComments.replace(suspMatch[0], '');
+              }
+
+              // 3) Extract distance from member (e.g. "Distance between riser bend and the leg A1 is approximately 100mm...")
+              const distRegex = /distance(?:.{0,80}?)(?<![a-zA-Z])([0-9]+(?:\.[0-9]+)?)\s*(m|cm|mm|ft|in)?\b/i;
+              const distMatch = riserComments.match(distRegex);
+              if (distMatch) {
+                const distVal = parseFloat(distMatch[1]);
+                if (!isNaN(distVal)) {
+                  inspectionDataObj.distance_from_member = distVal;
+                  inspectionDataObj.distance_from_member_unit = (distMatch[2] || 'm').toLowerCase();
+                }
+                riserComments = riserComments.replace(distMatch[0], '');
+              }
+
+              // 4) Clamp-specific parsing if component type is CL
+              if (compCode === 'CL') {
+                // a) Extract clamp type — supports explicit "RISER CLAMP TYPE:-J", "TYPE;J;" or "TYPE: J;" or regular "Clamp type:"
+                const typeMatch = riserComments.match(/(?:riser\s+)?(?:clamp\s+)?type\s*[;:\-]+\s*([A-Za-z])\b/i);
+                let clampTypeVal = '';
+                let clampMatchedText = '';
+
+                if (typeMatch) {
+                  const letter = typeMatch[1].toUpperCase();
+                  clampMatchedText = typeMatch[0];
+
+                  const riserClampTypeOption = `riser clamp type ${letter.toLowerCase()}`;
+                  let letterName = '';
+                  if (letter === 'R') {
+                    letterName = 'Riser Clamp';
+                  } else if (letter === 'J') {
+                    letterName = 'J-Tube Clamp';
+                  } else if (letter === 'I') {
+                    letterName = 'I-Tube Clamp';
+                  } else if (letter === 'N') {
+                    letterName = 'Neoprene Clamp';
+                  } else if (letter === 'G') {
+                    letterName = 'Guide Clamp';
+                  } else if (letter === 'S') {
+                    letterName = 'Structural Clamp';
+                  } else if (letter === 'M') {
+                    letterName = 'Monel Clamp';
+                  }
+
+                  if (libDescMap.has(riserClampTypeOption)) {
+                    clampTypeVal = libDescMap.get(riserClampTypeOption) || '';
+                  } else if (letterName && libDescMap.has(letterName.toLowerCase())) {
+                    clampTypeVal = libDescMap.get(letterName.toLowerCase()) || '';
+                  } else {
+                    clampTypeVal = `RISER CLAMP TYPE ${letter}`;
+                  }
+                } else {
+                  const clampTypeRegex = /clamp\s+type\s*[:\-]?\s*([A-Za-z0-9\-\s]+?)(?:[;.,\n]|$)/i;
+                  const clampTypeMatch = riserComments.match(clampTypeRegex);
+                  if (clampTypeMatch) {
+                    clampTypeVal = clampTypeMatch[1].trim();
+                    clampMatchedText = clampTypeMatch[0];
+                  } else {
+                    const commonClampTypes = ['riser clamp', 'neoprene clamp', 'guide clamp', 'structural clamp', 'monel clamp', 'saddle clamp', 'flat bar clamp', 'half shell clamp', 'half shell'];
+                    for (const ct of commonClampTypes) {
+                      const reg = new RegExp(`\\b${ct}\\b`, 'i');
+                      const match = riserComments.match(reg);
+                      if (match) {
+                        clampTypeVal = ct;
+                        clampMatchedText = match[0];
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                if (clampTypeVal) {
+                  let finalClampType = clampTypeVal;
+                  const lowerClampType = clampTypeVal.toLowerCase();
+                  if (libDescMap.has(lowerClampType)) {
+                    finalClampType = libDescMap.get(lowerClampType) || clampTypeVal;
+                  } else {
+                    finalClampType = clampTypeVal.split(' ')
+                      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                      .join(' ');
+                  }
+                  inspectionDataObj.clamp_type = finalClampType;
+                  riserComments = riserComments.replace(clampMatchedText, '');
+                }
+
+                // b) Check movement detected
+                const noMovementRegex = /(?:no\s+movement|no\s+slippage|no\s+slip|no\s+displacement|no\s+rotation)/i;
+                const movementRegex = /(?:movement\s+(?:detected|observed|present)|clamp\s+(?:has\s+)?(?:moved|slipped)|slippage|displacement\s+detected)/i;
+
+                if (noMovementRegex.test(riserComments)) {
+                  inspectionDataObj.movement_detected = false;
+                  const match = riserComments.match(noMovementRegex);
+                  if (match) riserComments = riserComments.replace(match[0], '');
+                } else if (movementRegex.test(riserComments)) {
+                  inspectionDataObj.movement_detected = true;
+                  const match = riserComments.match(movementRegex);
+                  if (match) riserComments = riserComments.replace(match[0], '');
+                }
+
+                // c) Extract max gap
+                const gapRegex = /(?:max\s+)?gap(?:.{0,20}?)(?<![a-zA-Z])([0-9]+(?:\.[0-9]+)?)\s*(mm|cm|m|in|ft)?\b/i;
+                const gapMatch = riserComments.match(gapRegex);
+                if (gapMatch) {
+                  const gapVal = parseFloat(gapMatch[1]);
+                  if (!isNaN(gapVal)) {
+                    inspectionDataObj.max_gap = gapVal;
+                    inspectionDataObj.max_gap_unit = (gapMatch[2] || 'mm').toLowerCase();
+                  }
+                  riserComments = riserComments.replace(gapMatch[0], '');
+                }
+
+                // d) Extract missing bolts/nuts
+                let missingCount = null;
+                let missingMatchText = '';
+                const boltPatternA = /(?:missing\s+)?([0-9]+)\s*(?:missing\s+)?(?:bolt|nut|stud)s?(?:\s+missing)?\b/i;
+                const boltPatternB = /(?:missing\s+)(?:bolt|nut|stud)s?\s*[:\-]?\s*([0-9]+)\b/i;
+
+                const matchB = riserComments.match(boltPatternB);
+                if (matchB) {
+                  missingCount = parseInt(matchB[1]);
+                  missingMatchText = matchB[0];
+                } else {
+                  const matchA = riserComments.match(boltPatternA);
+                  if (matchA) {
+                    missingCount = parseInt(matchA[1]);
+                    missingMatchText = matchA[0];
+                  }
+                }
+                if (missingCount !== null && !isNaN(missingCount)) {
+                  inspectionDataObj.missing_bolts_nuts = missingCount;
+                  riserComments = riserComments.replace(missingMatchText, '');
+                }
+              }
+
+              // Clean up remaining comments
+              riserComments = riserComments
+                .replace(/[;,.]\s*[;,.]/g, ';')
+                .replace(/^\s*[;,.\-:\s]+/, '')
+                .replace(/\s*[;,.\-:\s]+$/, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+              if (riserComments !== findingsVal) {
+                findingsVal = riserComments;
+                inspectionDataObj.findings = riserComments;
+                inspectionDataObj.finding = riserComments;
               }
             }
 
