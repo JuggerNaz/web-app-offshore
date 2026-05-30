@@ -521,6 +521,7 @@ interface MigrationPayload {
   mappings: Record<string, { oracleCol: string; pgCol: string }[]>;
   selectedInspNo?: string;
   legacyAttachmentPath?: string;
+  componentsOnly?: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -528,7 +529,7 @@ export async function POST(request: NextRequest) {
   const logs: string[] = [];
   try {
     const payload: MigrationPayload = await request.json();
-    const { config, structureId, mappings, selectedInspNo, legacyAttachmentPath } = payload;
+    const { config, structureId, mappings, selectedInspNo, legacyAttachmentPath, componentsOnly } = payload;
     let resolvedStructureId = Number(structureId);
     let structureTitle = "";
 
@@ -577,7 +578,7 @@ export async function POST(request: NextRequest) {
 
     // Initialize default states for UI matching
     report["STRUCTURE"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [], filesCopied: 0 };
-    ["STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC", "JOBPACK", "LOGS", "VIDEO", "INSP_ROV", "INSP_DIVING", "ANOMALY", "INSP_ATTACHMENT"].forEach(k => {
+    ["STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "INSP_ROV", "INSP_DIVING", "ANOMALY", "INSP_ATTACHMENT"].forEach(k => {
       report[k] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [], filesCopied: 0 };
     });
 
@@ -919,7 +920,7 @@ export async function POST(request: NextRequest) {
       "STRUCTURE", "STRUCTURE_PLATFORM", "STRUCTURE_PIPELINE",
       "ATTACHMENT", "COMMENT",
       "JOBPACK", "JOBPACK_SOW", "U_SOW",
-      "LOGS", "LOGS_ROV", "LOGS_DIVE",
+      "LOGS_JOBS", "LOGS_MOVEMENTS", "LOGS_ROV", "LOGS_DIVE",
       "VIDEO", "ANOMALY", "U_ASSOC", "INSP_ATTACHMENT"
     ];
     const componentCodes = Object.keys(mappings).filter(k =>
@@ -1413,7 +1414,7 @@ export async function POST(request: NextRequest) {
     // =========================================================================
     // RELATIONAL INSPECTION MIGRATION PIPELINE (Phases 1 to 6)
     // =========================================================================
-    if (structureSuccess) {
+    if (structureSuccess && !componentsOnly) {
       try {
         logs.push(`================================================================`);
         logs.push(`Starting Relational Inspection Migration Pipeline (Phases 1 - 6)`);
@@ -2295,7 +2296,8 @@ export async function POST(request: NextRequest) {
         // --------------------------------------------------        // ---------------------------------------------------------------------
         // Phase 2: Migrate Jobs & Movements from Oracle LOGS
         // ---------------------------------------------------------------------
-        report["LOGS"].status = "failed";
+        report["LOGS_JOBS"].status = "failed";
+        report["LOGS_MOVEMENTS"].status = "failed";
         logs.push(`Phase 2: Migrating Jobs & Movements from Oracle LOGS...`);
 
         const rovJobsCache = new Map<string, number>();
@@ -2373,8 +2375,6 @@ export async function POST(request: NextRequest) {
             }
 
             if (rows && rows.length > 0) {
-              report["LOGS"].oracleRows = rows.length;
-
               const rovGroups = new Map<string, any[]>();
               const diveGroups = new Map<string, any[]>();
 
@@ -2435,6 +2435,9 @@ export async function POST(request: NextRequest) {
                   diveGroups.get(key)!.push(packedObj);
                 }
               });
+
+              report["LOGS_JOBS"].oracleRows = rovGroups.size + diveGroups.size;
+              report["LOGS_MOVEMENTS"].oracleRows = rows.length;
 
               let rovJobsCount = 0;
               let rovMovementsCount = 0;
@@ -2511,7 +2514,7 @@ export async function POST(request: NextRequest) {
 
                 if (jobErr) {
                   logs.push(`ERROR creating ROV Job for deployment ${uniqueDeploymentNo}: ${jobErr.message}`);
-                  report["LOGS"].errors.push(jobErr.message);
+                  report["LOGS_JOBS"].errors.push(jobErr.message);
                   continue;
                 }
 
@@ -2545,6 +2548,7 @@ export async function POST(request: NextRequest) {
                   const { error: mvErr } = await (supabase.from as any)("insp_rov_movements").insert(movements);
                   if (mvErr) {
                     logs.push(`WARNING: inserting ROV Movements failed: ${mvErr.message}`);
+                    report["LOGS_MOVEMENTS"].errors.push(mvErr.message);
                   } else {
                     rovMovementsCount += movements.length;
                   }
@@ -2622,7 +2626,7 @@ export async function POST(request: NextRequest) {
 
                 if (jobErr) {
                   logs.push(`ERROR creating Dive Job for dive ${uniqueDiveNo}: ${jobErr.message}`);
-                  report["LOGS"].errors.push(jobErr.message);
+                  report["LOGS_JOBS"].errors.push(jobErr.message);
                   continue;
                 }
 
@@ -2656,6 +2660,7 @@ export async function POST(request: NextRequest) {
                   const { error: mvErr } = await (supabase.from as any)("insp_dive_movements").insert(movements);
                   if (mvErr) {
                     logs.push(`WARNING: inserting Dive Movements failed: ${mvErr.message}`);
+                    report["LOGS_MOVEMENTS"].errors.push(mvErr.message);
                   } else {
                     diveMovementsCount += movements.length;
                   }
@@ -2663,19 +2668,30 @@ export async function POST(request: NextRequest) {
               }
 
               logs.push(`Successfully migrated ${rovJobsCount} ROV Jobs & ${diveJobsCount} Diving Jobs.`);
-              report["LOGS"].status = "success";
-              report["LOGS"].migratedRows = rovJobsCount + diveJobsCount;
+              logs.push(`Successfully migrated ${rovMovementsCount} ROV Movements & ${diveMovementsCount} Dive Movements.`);
+
+              report["LOGS_JOBS"].status = report["LOGS_JOBS"].errors.length > 0 ? "failed" : "success";
+              report["LOGS_JOBS"].migratedRows = rovJobsCount + diveJobsCount;
+
+              report["LOGS_MOVEMENTS"].status = report["LOGS_MOVEMENTS"].errors.length > 0 ? "failed" : "success";
+              report["LOGS_MOVEMENTS"].migratedRows = rovMovementsCount + diveMovementsCount;
             } else {
               logs.push(`No logs found in Oracle 'LOGS' table for Structure ID ${structureId}.`);
-              report["LOGS"].status = "success";
+              report["LOGS_JOBS"].status = "success";
+              report["LOGS_MOVEMENTS"].status = "success";
             }
           } else {
             logs.push(`Oracle 'LOGS' table not present. Skipped LOGS migration.`);
-            report["LOGS"].status = "skipped";
+            report["LOGS_JOBS"].status = "skipped";
+            report["LOGS_MOVEMENTS"].status = "skipped";
           }
         } catch (logsErr: any) {
           logs.push(`ERROR in Phase 2 logs migration block: ${logsErr.message}`);
           console.error("Phase 2 LOGS migration failed:", logsErr);
+          report["LOGS_JOBS"].status = "failed";
+          report["LOGS_JOBS"].errors.push(logsErr.message);
+          report["LOGS_MOVEMENTS"].status = "failed";
+          report["LOGS_MOVEMENTS"].errors.push(logsErr.message);
         }
 
         // ---------------------------------------------------------------------
@@ -3812,14 +3828,29 @@ export async function POST(request: NextRequest) {
                   if (typeRes.rows) {
                     const metaNames = typeRes.metaData.map((m: any) => m.name.toUpperCase());
                     for (const row of typeRes.rows as any[]) {
-                      const inspIdIdx = metaNames.indexOf('INSP_ID');
-                      if (inspIdIdx === -1) continue;
-                      const inspId = Number(row[inspIdIdx]);
+                      // Extract INSP_ID dynamically (handle both Array and Object row formats)
+                      let inspIdVal = null;
+                      if (Array.isArray(row)) {
+                        const inspIdIdx = metaNames.indexOf('INSP_ID');
+                        if (inspIdIdx !== -1) {
+                          inspIdVal = row[inspIdIdx];
+                        }
+                      } else if (row && typeof row === 'object') {
+                        inspIdVal = row.INSP_ID !== undefined ? row.INSP_ID : row.insp_id;
+                      }
+
+                      const inspId = Number(inspIdVal);
                       if (!inspId) continue;
 
                       const mappedData: any = {};
                       metaNames.forEach((colName: string, idx: number) => {
-                        const val = row[idx];
+                        let val = null;
+                        if (Array.isArray(row)) {
+                          val = row[idx];
+                        } else if (row && typeof row === 'object') {
+                          val = row[colName] !== undefined ? row[colName] : row[colName.toLowerCase()];
+                        }
+
                         if (val !== undefined && val !== null) {
                           const lowerColName = colName.toLowerCase();
                           mappedData[lowerColName] = val;
@@ -3841,12 +3872,18 @@ export async function POST(request: NextRequest) {
                       if (mapKey && mappings[mapKey]) {
                         mappings[mapKey].forEach((m: any) => {
                           const cName = String(m.oracleCol).toUpperCase();
-                          const valIdx = metaNames.indexOf(cName);
-                          if (valIdx > -1) {
-                            const val = row[valIdx];
-                            if (val !== undefined && val !== null) {
-                              mappedData[m.pgCol] = val;
+                          let val = null;
+                          if (Array.isArray(row)) {
+                            const valIdx = metaNames.indexOf(cName);
+                            if (valIdx > -1) {
+                              val = row[valIdx];
                             }
+                          } else if (row && typeof row === 'object') {
+                            val = row[cName] !== undefined ? row[cName] : row[cName.toLowerCase()];
+                          }
+
+                          if (val !== undefined && val !== null) {
+                            mappedData[m.pgCol] = val;
                           }
                         });
                       }
@@ -4412,24 +4449,41 @@ export async function POST(request: NextRequest) {
             // Extract type specific data early
             const mappedTypeData = typeDataByInspId[legacyInspId] || {};
 
-            const legacyTapeNo = String(
-              rowObj.TAPE_NO || 
-              (tapeNoIdx > -1 ? rowObj[qCols[tapeNoIdx]] : "") || 
-              mappedTypeData.tape_id || 
-              mappedTypeData.TAPE_NO || 
-              ""
-            ).trim();
+            const getValidStrVal = (...vals: any[]) => {
+              for (const val of vals) {
+                if (val !== undefined && val !== null) {
+                  const str = String(val).trim();
+                  const lower = str.toLowerCase();
+                  if (str !== "" && lower !== "0" && lower !== "null" && lower !== "undefined" && lower !== "none") {
+                    return str;
+                  }
+                }
+              }
+              return "";
+            };
 
-            let legacyDiveNo = String(
-              rowObj.DIVE_NO || 
-              (diveNoIdx > -1 ? rowObj[qCols[diveNoIdx]] : "") || 
-              mappedTypeData.dive_job_id || 
-              mappedTypeData.rov_job_id || 
-              mappedTypeData.DIVE_NO || 
-              ""
-            ).trim();
+            const legacyTapeNo = getValidStrVal(
+              mappedTypeData.tape_id,
+              mappedTypeData.TAPE_NO,
+              mappedTypeData.tapeNo,
+              mappedTypeData.TAPENO,
+              rowObj.TAPE_NO,
+              tapeNoIdx > -1 ? rowObj[qCols[tapeNoIdx]] : null
+            );
 
-            if (!legacyDiveNo || legacyDiveNo.toLowerCase() === "null" || legacyDiveNo === "0") {
+            let legacyDiveNo = getValidStrVal(
+              mappedTypeData.dive_job_id,
+              mappedTypeData.rov_job_id,
+              mappedTypeData.DIVE_NO,
+              mappedTypeData.dive_no,
+              mappedTypeData.DIVE_JOB_ID,
+              mappedTypeData.diveNo,
+              mappedTypeData.DIVENO,
+              rowObj.DIVE_NO,
+              diveNoIdx > -1 ? rowObj[qCols[diveNoIdx]] : null
+            );
+
+            if (!legacyDiveNo) {
               const upperTape = legacyTapeNo.toUpperCase();
               const upperInsp = legacyInspNo.toUpperCase();
               if (legacyTapeNo && tapeToDiveMap.has(upperTape)) {
@@ -4801,6 +4855,204 @@ export async function POST(request: NextRequest) {
             if (anodeDetails.depletion) {
               inspectionDataObj.anode_depletion = anodeDetails.depletion;
               inspectionDataObj.depletion = anodeDetails.depletion;
+            }
+
+            // 2e. Perform CP Calibration (CPCLB) Mapping
+            if (typCode.toUpperCase() === 'CPCLB') {
+              inspectionDataObj.calib_equipment_type = combinedData.equip !== undefined && combinedData.equip !== null ? String(combinedData.equip).trim() : null;
+              inspectionDataObj.serial_number = combinedData.eq_id !== undefined && combinedData.eq_id !== null ? String(combinedData.eq_id).trim() : null;
+              inspectionDataObj.calib_block = combinedData.clb_block !== undefined && combinedData.clb_block !== null ? String(combinedData.clb_block).trim() : null;
+
+              // Voltages (auto-negate values)
+              const toNegativeStr = (val: any) => {
+                if (val === "" || val === null || val === undefined) return null;
+                const num = Number(val);
+                if (isNaN(num)) return String(val).trim();
+                return String(num > 0 ? -num : num);
+              };
+
+              inspectionDataObj.pre_dive_cp_rdg = toNegativeStr(combinedData.pre_dive);
+              inspectionDataObj.in_water1 = toNegativeStr(combinedData.in_water1);
+              inspectionDataObj.in_water2 = toNegativeStr(combinedData.in_water2);
+              inspectionDataObj.in_water3 = toNegativeStr(combinedData.in_water3);
+              inspectionDataObj.post_dive_cp_rdg = toNegativeStr(combinedData.post_dive);
+            }
+
+            // 2f. Perform Cathodic Protection Survey (CPSURV) Mapping
+            if (typCode.toUpperCase() === 'CPSURV') {
+              const toNegativeStr = (val: any) => {
+                if (val === "" || val === null || val === undefined) return null;
+                const num = Number(val);
+                if (isNaN(num)) return String(val).trim();
+                return String(num > 0 ? -num : num);
+              };
+
+              inspectionDataObj.cp_rdg = toNegativeStr(combinedData.cp_out ?? combinedData.cp_in ?? combinedData.cp_rdg);
+              inspectionDataObj.surface_condition = combinedData.surf_cond !== undefined && combinedData.surf_cond !== null ? String(combinedData.surf_cond).trim() : null;
+              inspectionDataObj.cleaning_method = combinedData.clean_met !== undefined && combinedData.clean_met !== null ? String(combinedData.clean_met).trim() : null;
+            }
+
+            // 2g. Perform Splash Zone Inspection (SZONE) Mapping
+            if (typCode.toUpperCase() === 'SZONE') {
+              const toNegativeStr = (val: any) => {
+                if (val === "" || val === null || val === undefined) return null;
+                const num = Number(val);
+                if (isNaN(num)) return String(val).trim();
+                return String(num > 0 ? -num : num);
+              };
+
+              inspectionDataObj.cp_rdg = toNegativeStr(combinedData.cp_rdg);
+              inspectionDataObj.ut_3_o_clock = combinedData.c03 !== undefined && combinedData.c03 !== null ? Number(combinedData.c03) : null;
+              inspectionDataObj.ut_6_o_clock = combinedData.c06 !== undefined && combinedData.c06 !== null ? Number(combinedData.c06) : null;
+              inspectionDataObj.ut_9_o_clock = combinedData.c09 !== undefined && combinedData.c09 !== null ? Number(combinedData.c09) : null;
+              inspectionDataObj.ut_12_o_clock = combinedData.c12 !== undefined && combinedData.c12 !== null ? Number(combinedData.c12) : null;
+              inspectionDataObj.nominal_thickness = combinedData.nom_thk !== undefined && combinedData.nom_thk !== null ? Number(combinedData.nom_thk) : null;
+              inspectionDataObj.coating_coverage_percent = combinedData.coat_coverage !== undefined && combinedData.coat_coverage !== null ? Number(combinedData.coat_coverage) : null;
+            }
+
+            // 2h. Perform Marine Growth Removal (MGROW) Mapping
+            if (typCode.toUpperCase() === 'MGROW') {
+              // Thickness clock positions
+              inspectionDataObj.mgi_hard_thickness_at_12 = combinedData.hard_thk12 !== undefined && combinedData.hard_thk12 !== null ? Number(combinedData.hard_thk12) : null;
+              inspectionDataObj.mgi_hard_thickness_at_3 = combinedData.hard_thk3 !== undefined && combinedData.hard_thk3 !== null ? Number(combinedData.hard_thk3) : null;
+              inspectionDataObj.mgi_hard_thickness_at_6 = combinedData.hard_thk6 !== undefined && combinedData.hard_thk6 !== null ? Number(combinedData.hard_thk6) : null;
+              inspectionDataObj.mgi_hard_thickness_at_9 = combinedData.hard_thk9 !== undefined && combinedData.hard_thk9 !== null ? Number(combinedData.hard_thk9) : null;
+
+              inspectionDataObj.mgi_soft_thickness_at_12 = combinedData.soft_thk12 !== undefined && combinedData.soft_thk12 !== null ? Number(combinedData.soft_thk12) : null;
+              inspectionDataObj.mgi_soft_thickness_at_3 = combinedData.soft_thk3 !== undefined && combinedData.soft_thk3 !== null ? Number(combinedData.soft_thk3) : null;
+              inspectionDataObj.mgi_soft_thickness_at_6 = combinedData.soft_thk6 !== undefined && combinedData.soft_thk6 !== null ? Number(combinedData.soft_thk6) : null;
+              inspectionDataObj.mgi_soft_thickness_at_9 = combinedData.soft_thk9 !== undefined && combinedData.soft_thk9 !== null ? Number(combinedData.soft_thk9) : null;
+
+              // Circumferential Measurements
+              inspectionDataObj.circumferential_measurement_5m_above = combinedData.circum_pfive !== undefined && combinedData.circum_pfive !== null ? Number(combinedData.circum_pfive) : null;
+              inspectionDataObj.circumferential_measurement_0m = combinedData.circum_zero !== undefined && combinedData.circum_zero !== null ? Number(combinedData.circum_zero) : null;
+              inspectionDataObj.circumferential_measurement_5m_below = combinedData.circum_nfive !== undefined && combinedData.circum_nfive !== null ? Number(combinedData.circum_nfive) : null;
+
+              // Dimensions and metrics
+              inspectionDataObj.effective_thickness = combinedData.eff_thk !== undefined && combinedData.eff_thk !== null ? Number(combinedData.eff_thk) : null;
+              inspectionDataObj.nominal_diameter = combinedData.nom_dia !== undefined && combinedData.nom_dia !== null ? Number(combinedData.nom_dia) : null;
+              
+              // Booleans mapping (handle 1 / 0 / null)
+              const toBool = (val: any) => {
+                if (val === undefined || val === null) return false;
+                if (typeof val === 'boolean') return val;
+                const num = Number(val);
+                return num === 1;
+              };
+
+              inspectionDataObj.hard_circum = toBool(combinedData.hard_circum);
+              inspectionDataObj.soft_circum = toBool(combinedData.soft_circum);
+              inspectionDataObj.mgi_hard_growth = combinedData.hard_growth !== undefined && combinedData.hard_growth !== null ? Number(combinedData.hard_growth) : null;
+              inspectionDataObj.mgi_soft_growth = combinedData.soft_growth !== undefined && combinedData.soft_growth !== null ? Number(combinedData.soft_growth) : null;
+              inspectionDataObj.growth_circum = combinedData.growth_circum !== undefined && combinedData.growth_circum !== null ? Number(combinedData.growth_circum) : null;
+              inspectionDataObj.coating_damage = toBool(combinedData.coating_damage);
+              inspectionDataObj.mgi_profile = combinedData.mg_profile !== undefined && combinedData.mg_profile !== null ? String(combinedData.mg_profile).trim() : null;
+            }
+
+            // 2j. Perform Cleaning (CLEAN) Mapping
+            if (typCode.toUpperCase() === 'CLEAN') {
+              inspectionDataObj.cleaning_method = combinedData.clean_met !== undefined && combinedData.clean_met !== null ? String(combinedData.clean_met).trim() : (combinedData.clean_methd !== undefined && combinedData.clean_methd !== null ? String(combinedData.clean_methd).trim() : null);
+              inspectionDataObj.surface_condition = combinedData.surf_cond !== undefined && combinedData.surf_cond !== null ? String(combinedData.surf_cond).trim() : null;
+              inspectionDataObj.surface_condition_evaluation = combinedData.surface !== undefined && combinedData.surface !== null ? String(combinedData.surface).trim() : null;
+              inspectionDataObj.cleaning_pressure = combinedData.clean_press !== undefined && combinedData.clean_press !== null ? Number(combinedData.clean_press) : null;
+              inspectionDataObj.cleaning_pressure_unit = isImperial ? 'psi' : 'bar';
+            }
+
+            // 2i. Perform Selected Anode Inspection (PL_AN) Mapping
+            if (typCode.toUpperCase() === 'PL_AN') {
+              const toNegativeStr = (val: any) => {
+                if (val === "" || val === null || val === undefined) return null;
+                const num = Number(val);
+                if (isNaN(num)) return String(val).trim();
+                return String(num > 0 ? -num : num);
+              };
+
+              // Voltages (Auto-negate values)
+              inspectionDataObj.member_cp = toNegativeStr(combinedData.memb_cp);
+              inspectionDataObj.anode_cp = toNegativeStr(combinedData.cp_rdg);
+              inspectionDataObj.topstub_cp = toNegativeStr(combinedData.topstub_cp);
+              inspectionDataObj.bottomstub_cp = toNegativeStr(combinedData.botstub_cp);
+
+              // Dimensions & Depletion
+              inspectionDataObj.anode_type = combinedData.type !== undefined && combinedData.type !== null ? String(combinedData.type).trim() : null;
+              inspectionDataObj.anode_length = combinedData.length !== undefined && combinedData.length !== null ? Number(combinedData.length) : null;
+              inspectionDataObj.anode_depletion_percent = combinedData.depletion !== undefined && combinedData.depletion !== null ? Number(combinedData.depletion) : null;
+
+              // Pittings
+              inspectionDataObj.max_pitting_depth = combinedData.max_pit !== undefined && combinedData.max_pit !== null ? Number(combinedData.max_pit) : null;
+              inspectionDataObj.avg_pitting_depth = combinedData.avg_pit !== undefined && combinedData.avg_pit !== null ? Number(combinedData.avg_pit) : null;
+              inspectionDataObj.max_pitting_diameter = combinedData.max_dia_pit !== undefined && combinedData.max_dia_pit !== null ? Number(combinedData.max_dia_pit) : null;
+              inspectionDataObj.avg_pitting_diameter = combinedData.avg_dia_pit !== undefined && combinedData.avg_dia_pit !== null ? Number(combinedData.avg_dia_pit) : null;
+
+              // Circumference
+              inspectionDataObj.circumference_c1 = combinedData.circ_c1 !== undefined && combinedData.circ_c1 !== null ? Number(combinedData.circ_c1) : null;
+              inspectionDataObj.circumference_c2 = combinedData.circ_c2 !== undefined && combinedData.circ_c2 !== null ? Number(combinedData.circ_c2) : null;
+              inspectionDataObj.circumference_c3 = combinedData.circ_c3 !== undefined && combinedData.circ_c3 !== null ? Number(combinedData.circ_c3) : null;
+
+              // Secured boolean
+              const toBool = (val: any) => {
+                if (val === undefined || val === null) return false;
+                if (typeof val === 'boolean') return val;
+                const num = Number(val);
+                return num === 1;
+              };
+              inspectionDataObj.anode_secured_to_structure = toBool(combinedData.connected);
+            }
+
+            // 2a. Perform Bolted Support Inspection (BSINS) Mapping
+            if (typCode.toUpperCase() === 'BSINS') {
+              // Map Member Fields
+              inspectionDataObj.no_bolts_pres_memb = typeof combinedData.no_bolts_pres_memb === 'number' ? combinedData.no_bolts_pres_memb : (combinedData.NO_BOLTS_PRES_MEMB !== undefined && combinedData.NO_BOLTS_PRES_MEMB !== null ? Number(combinedData.NO_BOLTS_PRES_MEMB) : null);
+              inspectionDataObj.no_bolts_loose_memb = typeof combinedData.no_bolts_loose_memb === 'number' ? combinedData.no_bolts_loose_memb : (combinedData.NO_BOLTS_LOSE_MEMB !== undefined && combinedData.NO_BOLTS_LOSE_MEMB !== null ? Number(combinedData.NO_BOLTS_LOSE_MEMB) : null);
+              inspectionDataObj.no_bolts_miss_memb = typeof combinedData.no_bolts_miss_memb === 'number' ? combinedData.no_bolts_miss_memb : (combinedData.NO_BOLTS_MIS_MEMB !== undefined && combinedData.NO_BOLTS_MIS_MEMB !== null ? Number(combinedData.NO_BOLTS_MIS_MEMB) : null);
+              
+              inspectionDataObj.max_gap_top_member = typeof combinedData.max_gap_top_member === 'number' ? combinedData.max_gap_top_member : (combinedData.GAP_TOP_MEMB !== undefined && combinedData.GAP_TOP_MEMB !== null ? Number(combinedData.GAP_TOP_MEMB) : null);
+              inspectionDataObj.max_gap_bottom_member = typeof combinedData.max_gap_bottom_member === 'number' ? combinedData.max_gap_bottom_member : (combinedData.GAP_BOT_MEMB !== undefined && combinedData.GAP_BOT_MEMB !== null ? Number(combinedData.GAP_BOT_MEMB) : null);
+              inspectionDataObj.max_flange_misalign_member = typeof combinedData.max_flange_misalign_member === 'number' ? combinedData.max_flange_misalign_member : (combinedData.FLNG_MEMB !== undefined && combinedData.FLNG_MEMB !== null ? Number(combinedData.FLNG_MEMB) : null);
+              
+              inspectionDataObj.member_clamp_cp = typeof combinedData.member_clamp_cp === 'number' ? combinedData.member_clamp_cp : (combinedData.MEMB_CLMP_CP !== undefined && combinedData.MEMB_CLMP_CP !== null ? Number(combinedData.MEMB_CLMP_CP) : null);
+              inspectionDataObj.member_cp = typeof combinedData.member_cp === 'number' ? combinedData.member_cp : (combinedData.MEMB_CP !== undefined && combinedData.MEMB_CP !== null ? Number(combinedData.MEMB_CP) : null);
+              inspectionDataObj.member_cp_2 = typeof combinedData.member_cp_2 === 'number' ? combinedData.member_cp_2 : null; // CP 2 doesn't exist in Oracle BSINS
+
+              // Units for member fields
+              inspectionDataObj.max_gap_top_member_unit = "mm";
+              inspectionDataObj.max_gap_bottom_member_unit = "mm";
+              inspectionDataObj.max_flange_misalign_member_unit = "mm";
+
+              // Map Brace Fields
+              inspectionDataObj.no_bolts_pres_brace = typeof combinedData.no_bolts_pres_brace === 'number' ? combinedData.no_bolts_pres_brace : (combinedData.NO_BOLTS_PRES_COMP !== undefined && combinedData.NO_BOLTS_PRES_COMP !== null ? Number(combinedData.NO_BOLTS_PRES_COMP) : null);
+              inspectionDataObj.no_bolts_loose_brace = typeof combinedData.no_bolts_loose_brace === 'number' ? combinedData.no_bolts_loose_brace : (combinedData.NO_BOLTS_LOSE_COMP !== undefined && combinedData.NO_BOLTS_LOSE_COMP !== null ? Number(combinedData.NO_BOLTS_LOSE_COMP) : null);
+              inspectionDataObj.no_bolts_miss_brace = typeof combinedData.no_bolts_miss_brace === 'number' ? combinedData.no_bolts_miss_brace : (combinedData.NO_BOLTS_MIS_COMP !== undefined && combinedData.NO_BOLTS_MIS_COMP !== null ? Number(combinedData.NO_BOLTS_MIS_COMP) : null);
+              
+              inspectionDataObj.max_gap_top_brace = typeof combinedData.max_gap_top_brace === 'number' ? combinedData.max_gap_top_brace : (combinedData.GAP_TOP_COMP !== undefined && combinedData.GAP_TOP_COMP !== null ? Number(combinedData.GAP_TOP_COMP) : null);
+              inspectionDataObj.max_gap_bottom_brace = typeof combinedData.max_gap_bottom_brace === 'number' ? combinedData.max_gap_bottom_brace : (combinedData.GAP_BOT_COMP !== undefined && combinedData.GAP_BOT_COMP !== null ? Number(combinedData.GAP_BOT_COMP) : null);
+              inspectionDataObj.max_flange_misalign_brace = typeof combinedData.max_flange_misalign_brace === 'number' ? combinedData.max_flange_misalign_brace : (combinedData.FLNG_COMP !== undefined && combinedData.FLNG_COMP !== null ? Number(combinedData.FLNG_COMP) : null);
+
+              // Units for brace fields
+              inspectionDataObj.max_gap_top_brace_unit = "mm";
+              inspectionDataObj.max_gap_bottom_brace_unit = "mm";
+              inspectionDataObj.max_flange_misalign_brace_unit = "mm";
+
+              // Map Appurtenance Fields
+              inspectionDataObj.appurtenance_clamp_type = combinedData.appurtenance_clamp_type || combinedData.RSR_CLMP_TYPE || "—";
+              inspectionDataObj.appurtenance_cp = typeof combinedData.appurtenance_cp === 'number' ? combinedData.appurtenance_cp : (combinedData.RISER_CP !== undefined && combinedData.RISER_CP !== null ? Number(combinedData.RISER_CP) : null);
+              inspectionDataObj.appurtenance_clamp_cp = typeof combinedData.appurtenance_clamp_cp === 'number' ? combinedData.appurtenance_clamp_cp : (combinedData.RISER_CLMP_CP !== undefined && combinedData.RISER_CLMP_CP !== null ? Number(combinedData.RISER_CLMP_CP) : null);
+              inspectionDataObj.stub_cp = typeof combinedData.stub_cp === 'number' ? combinedData.stub_cp : (combinedData.STUB_CP !== undefined && combinedData.STUB_CP !== null ? Number(combinedData.STUB_CP) : null);
+
+              // Map General Fields (Boolean Conversion)
+              const toBool = (val: any) => {
+                if (val === undefined || val === null) return false;
+                if (typeof val === 'boolean') return val;
+                const num = Number(val);
+                return num === 1;
+              };
+
+              inspectionDataObj.clamp_coating_satisfactory = toBool(combinedData.clamp_coating_satisfactory !== undefined ? combinedData.clamp_coating_satisfactory : combinedData.CLMP_COATING);
+              inspectionDataObj.all_bolts_double_nutted = toBool(combinedData.all_bolts_double_nutted !== undefined ? combinedData.all_bolts_double_nutted : combinedData.BOLTS_NUTTED);
+              inspectionDataObj.liner_present_member_end = toBool(combinedData.liner_present_member_end !== undefined ? combinedData.liner_present_member_end : combinedData.LINER_MEMB);
+              inspectionDataObj.earthing_wire_or_bolt_present = toBool(combinedData.earthing_wire_or_bolt_present !== undefined ? combinedData.earthing_wire_or_bolt_present : combinedData.EARTHWIRE_BOLT);
+              inspectionDataObj.liner_present_component_end = toBool(combinedData.liner_present_component_end !== undefined ? combinedData.liner_present_component_end : combinedData.LINER_COMP);
+              inspectionDataObj.washers_present_all_bolts = toBool(combinedData.washers_present_all_bolts !== undefined ? combinedData.washers_present_all_bolts : combinedData.WASHER_PRES);
             }
 
             // 2b. Perform Flooded Member Detection (RFMD) Mapping
@@ -5855,6 +6107,10 @@ export async function POST(request: NextRequest) {
         logs.push(`CRITICAL ERROR inside Relational Migration Pipeline: ${pipelineErr.message}`);
         console.error("[Migration Relational Pipeline Fail]:", pipelineErr);
       }
+    } else if (structureSuccess && componentsOnly) {
+      logs.push(`================================================================`);
+      logs.push(`Skipped Relational Inspection Migration Pipeline (Components Only Option Selected)`);
+      logs.push(`================================================================`);
     }
 
     return NextResponse.json({

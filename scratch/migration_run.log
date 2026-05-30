@@ -2,7 +2,7 @@ Status Code: 200
 Success: true
 Error: undefined
 
-Logs (90 lines):
+Logs (119 lines):
 [LOG] WARNING: No active DATABASE_URL found in environment or .env.local. Skipping automatic RLS bypass.
 [LOG] Started migration for Structure ID: 1061
 [LOG] Structure Unit Type determined as: METRIC
@@ -26,37 +26,38 @@ Logs (90 lines):
 [LOG] WARNING: SOW scope load skipped: ORA-00904: "COMP_ID": invalid identifier
 [LOG] Phase 2: Migrating Jobs & Movements from Oracle LOGS...
 [LOG] Filtered LOGS rows to 109 record(s) matching selected INSPNO 00000003454.
-[LOG] Created ROV Job ID: 2328 (deployment 144R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2329 (deployment 145R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2330 (deployment 146R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2331 (deployment 147R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2332 (deployment 148R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2333 (deployment 149R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2334 (deployment 150R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2335 (deployment 151R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2336 (deployment 152R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2337 (deployment 153R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2338 (deployment 154R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2339 (deployment 155R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2340 (deployment 156R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1922 (dive 190D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1923 (dive 191D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1924 (dive 192D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1925 (dive 193D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1926 (dive 194D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1927 (dive 195D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1928 (dive 196D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1929 (dive 197D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1930 (dive 198D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1931 (dive 202D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1932 (dive 203D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1933 (dive 204D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1934 (dive 205D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1935 (dive 208D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1936 (dive 209D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1937 (dive 210D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 1938 (dive 211D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2900 (deployment 144R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2901 (deployment 145R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2902 (deployment 146R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2903 (deployment 147R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2904 (deployment 148R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2905 (deployment 149R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2906 (deployment 150R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2907 (deployment 151R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2908 (deployment 152R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2909 (deployment 153R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2910 (deployment 154R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2911 (deployment 155R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 2912 (deployment 156R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2684 (dive 190D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2685 (dive 191D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2686 (dive 192D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2687 (dive 193D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2688 (dive 194D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2689 (dive 195D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2690 (dive 196D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2691 (dive 197D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2692 (dive 198D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2693 (dive 202D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2694 (dive 203D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2695 (dive 204D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2696 (dive 205D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2697 (dive 208D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2698 (dive 209D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2699 (dive 210D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2700 (dive 211D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
 [LOG] Successfully migrated 13 ROV Jobs & 17 Diving Jobs.
+[LOG] Successfully migrated 39 ROV Movements & 69 Dive Movements.
 [LOG] Phase 3: Migrating Video Tapes & Video Logs...
 [LOG] Migrating unique ROV tapes parsed from 'PLATGI'...
 [LOG] Pre-fetching all Diving tape log rows from 'VIDEO'...
@@ -65,7 +66,7 @@ Logs (90 lines):
 [LOG] Phase 4: Migrating Inspection Records...
 [LOG] Loaded 996 component ID to Q_ID mapping(s) from Oracle ALLCOMPID.
 [LOG] Pre-populating component ID cache from existing PostgreSQL structure_components...
-[LOG] Loaded 996 component mapping(s) and 995 Q_ID mapping(s) from PostgreSQL.
+[LOG] Loaded 995 component mapping(s) and 994 Q_ID mapping(s) from PostgreSQL.
 [LOG] Fetching primary inspections from Oracle 'PLATGI' (ROV Platform)...
 [LOG] Filtered primary inspections to 605 rows for INSPNO 00000003454.
 [LOG] Successfully migrated 605 ROV primary inspection records into PostgreSQL!
@@ -89,7 +90,35 @@ Logs (90 lines):
 [LOG] Successfully migrated 14 anomalies and updated parent inspection statuses!
 [LOG] Phase 6: Migrating Inspection specific attachments...
 [LOG] Filtered legacy attachments to 27 record(s) matching selected INSPNO 00000003454.
-[LOG] ERROR bulk-inserting inspection attachments: new row violates row-level security policy for table "attachment"
+[LOG] Loaded active storage provider for attachments: "Backblaze"
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JTA ASBUILT1.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\Grabbed Frame 7 edit.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\missing anode A1-A2 a.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JTA ASBUILT.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\Grabbed Frame 5 edit.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\missing anode A1-A2.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21_86.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21_109.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21_114.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21_103.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21_63.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21_295 edit.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JTA A012R.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\Grabbed Frame 1 edit.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\Grabbed Frame 4 edit.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JTA A001.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21_263.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21_187.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21_223.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JTA A011.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JTA_165.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JTA A007.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JTA A007R.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\VDM N3510-N4002.jpg.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JT-A A014_1.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JT-A A014_2.JPG.
+[LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JT-A A014_3.jpg.
+[LOG] Successfully migrated 27 inspection attachments!
 [LOG] ================================================================
 [LOG] Relational Inspection Migration Pipeline completed successfully!
 [LOG] ================================================================
@@ -100,61 +129,78 @@ Report:
     "status": "skipped",
     "oracleRows": 0,
     "migratedRows": 0,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
   "STR_ELV": {
     "status": "skipped",
     "oracleRows": 0,
     "migratedRows": 0,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
   "STR_LEVEL": {
     "status": "skipped",
     "oracleRows": 0,
     "migratedRows": 0,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
   "STR_FACES": {
     "status": "skipped",
     "oracleRows": 0,
     "migratedRows": 0,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
   "ATTACHMENT": {
     "status": "skipped",
     "oracleRows": 0,
     "migratedRows": 0,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
   "COMMENT": {
     "status": "skipped",
     "oracleRows": 0,
     "migratedRows": 0,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
   "U_ASSOC": {
     "status": "skipped",
     "oracleRows": 0,
     "migratedRows": 0,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
   "JOBPACK": {
     "status": "success",
     "oracleRows": 1,
     "migratedRows": 1,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
-  "LOGS": {
+  "LOGS_JOBS": {
+    "status": "success",
+    "oracleRows": 30,
+    "migratedRows": 30,
+    "errors": [],
+    "filesCopied": 0
+  },
+  "LOGS_MOVEMENTS": {
     "status": "success",
     "oracleRows": 109,
-    "migratedRows": 30,
-    "errors": []
+    "migratedRows": 108,
+    "errors": [],
+    "filesCopied": 0
   },
   "VIDEO": {
     "status": "success",
     "oracleRows": 0,
     "migratedRows": 25,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
   "INSP_ROV": {
     "status": "success",
@@ -172,15 +218,15 @@ Report:
     "status": "success",
     "oracleRows": 14,
     "migratedRows": 14,
-    "errors": []
+    "errors": [],
+    "filesCopied": 0
   },
   "INSP_ATTACHMENT": {
-    "status": "failed",
+    "status": "success",
     "oracleRows": 27,
-    "migratedRows": 0,
-    "errors": [
-      "new row violates row-level security policy for table \"attachment\""
-    ]
+    "migratedRows": 27,
+    "errors": [],
+    "filesCopied": 0
   },
   "U_SOW": {
     "status": "success",

@@ -1241,6 +1241,20 @@
                     "$ref": "mgi_soft_thickness_at_9"
                 },
                 {
+                    "name": "mgi_hard_growth",
+                    "label": "MGI Hard Growth",
+                    "type": "number",
+                    "unitCategory": "PERCENTAGE",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_growth",
+                    "label": "MGI Soft Growth",
+                    "type": "number",
+                    "unitCategory": "PERCENTAGE",
+                    "required": true
+                },
+                {
                     "name": "circumferential_measurement_5m_above",
                     "label": "Circumferential Measurement 5m above",
                     "type": "number",
@@ -1277,15 +1291,22 @@
                     "defaultImperial": "in"
                 },
                 {
-                    "name": "hard_mgi",
+                    "name": "hard_circum",
                     "label": "Hard MGI",
                     "type": "boolean",
                     "required": true
                 },
                 {
-                    "name": "soft_mgi",
+                    "name": "soft_circum",
                     "label": "Soft MGI",
                     "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "growth_circum",
+                    "label": "Growth Circum %",
+                    "type": "number",
+                    "unitCategory": "PERCENTAGE",
                     "required": true
                 },
                 {
@@ -1390,7 +1411,7 @@
             ]
         },
         {
-            "code": "FLOODZONE",
+            "code": "FLOOD",
             "name": "Flooded Member Inspection",
             "methods": [
                 "DIVING"

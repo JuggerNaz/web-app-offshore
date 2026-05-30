@@ -169,8 +169,8 @@ export const generateDivingMGIReport = async (
                 if (v === null || v === undefined) return undefined;
                 return String(v).replace('%', '').trim();
             };
-            const hCov = cleanCov(d.marine_growth_hard) ?? d.mgi_hard_coverage ?? mgData.h;
-            const sCov = cleanCov(d.marine_growth_soft) ?? d.mgi_soft_coverage ?? mgData.s;
+            const hCov = cleanCov(d.mgi_hard_growth) ?? cleanCov(d.marine_growth_hard) ?? d.mgi_hard_coverage ?? mgData.h;
+            const sCov = cleanCov(d.mgi_soft_growth) ?? cleanCov(d.marine_growth_soft) ?? d.mgi_soft_coverage ?? mgData.s;
 
             // Circumference
             const cAbove = parseFloat(d.circumferential_measurement_5m_above) || 0;

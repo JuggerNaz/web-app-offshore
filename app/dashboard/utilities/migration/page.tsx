@@ -38,6 +38,7 @@ export default function MigrationDashboard() {
   const [jobpacks, setJobpacks] = useState<any[]>([]);
   const [isLoadingJobpacks, setIsLoadingJobpacks] = useState(false);
   const [selectedJobpack, setSelectedJobpack] = useState<any | null>(null);
+  const [componentsOnly, setComponentsOnly] = useState(false);
   const [inspectionSummary, setInspectionSummary] = useState<any | null>(null);
   const [isLoadingInspectionSummary, setIsLoadingInspectionSummary] = useState(false);
 
@@ -455,8 +456,8 @@ export default function MigrationDashboard() {
 
   const handleExecuteMigration = async () => {
     if (!selectedStructureId) return;
-    if (!selectedJobpack) {
-      toast.error("Please select an Active Job Pack from the sidebar to migrate.");
+    if (!componentsOnly && !selectedJobpack) {
+      toast.error("Please select an Active Job Pack from the sidebar or select the 'Migrate Components Only' option.");
       return;
     }
     
@@ -511,8 +512,9 @@ export default function MigrationDashboard() {
           config,
           structureId: selectedStructureId,
           mappings: payloadMappings,
-          selectedInspNo: selectedJobpack.INSPNO || selectedJobpack.inspno,
-          legacyAttachmentPath: config.legacyAttachmentPath
+          selectedInspNo: componentsOnly ? undefined : (selectedJobpack?.INSPNO || selectedJobpack?.inspno),
+          legacyAttachmentPath: config.legacyAttachmentPath,
+          componentsOnly
         })
       });
       const data = await safeParseJson(res);
@@ -1338,7 +1340,7 @@ export default function MigrationDashboard() {
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                        {(() => {
-                                         const isComp = !["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC", "ATTACHMENT", "COMMENT"].includes(key.toUpperCase());
+                                         const isComp = !["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC", "ATTACHMENT", "COMMENT", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "ANOMALY", "INSP_ATTACHMENT"].includes(key.toUpperCase());
                                          if (isComp) {
                                            // Dynamic Status-driven color codes
                                            let colorClass = "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200/40 dark:border-indigo-900/30";
@@ -1487,14 +1489,28 @@ export default function MigrationDashboard() {
                         <CardDescription className="text-[10px] uppercase font-bold text-slate-500 mt-0.5">FROM ORACLE allcompid VIEW</CardDescription>
                       </div>
                       {summary.length > 0 && (
-                        <Button 
-                          onClick={handleExecuteMigration}
-                          disabled={isMigrating}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-wider text-xs rounded-lg shadow-md h-8 px-4 transition-all"
-                        >
-                          {isMigrating ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Play className="w-3.5 h-3.5 mr-1.5" />}
-                          {isMigrating ? "Migrating..." : "Start Migration"}
-                        </Button>
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="componentsOnly"
+                              checked={componentsOnly}
+                              onChange={e => setComponentsOnly(e.target.checked)}
+                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                            />
+                            <Label htmlFor="componentsOnly" className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+                              Migrate Components Only
+                            </Label>
+                          </div>
+                          <Button 
+                            onClick={handleExecuteMigration}
+                            disabled={isMigrating}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-wider text-xs rounded-lg shadow-md h-8 px-4 transition-all"
+                          >
+                            {isMigrating ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Play className="w-3.5 h-3.5 mr-1.5" />}
+                            {isMigrating ? "Migrating..." : "Start Migration"}
+                          </Button>
+                        </div>
                       )}
                     </CardHeader>
                     <CardContent className="p-0">

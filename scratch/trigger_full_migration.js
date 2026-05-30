@@ -28,7 +28,7 @@ async function main() {
 
   console.log("Triggering migration execute and saving full log output...");
   try {
-    const res = await fetch("http://[::1]:3000/api/migration/execute", {
+    const res = await fetch("http://127.0.0.1:3000/api/migration/execute", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
