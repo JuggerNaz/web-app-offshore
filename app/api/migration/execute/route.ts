@@ -3581,6 +3581,89 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Pre-fetch all CP additional readings from CPGRID
+        const cpgridCache = new Map<string, { reading: number; location: string }[]>();
+        try {
+          const cpgridCols = await getOracleTableColumns(oracleConn, 'CPGRID');
+          if (cpgridCols.size > 0 && cpgridCols.has('STR_ID')) {
+            logs.push(`Pre-fetching all CP additional readings from 'CPGRID' for structure ID ${structureId}...`);
+            const cpgridRes = await oracleConn.execute(`
+              SELECT INSPNO, INSP_ID, REF_NAME, CP_VALUE FROM CPGRID WHERE STR_ID = :strId
+            `, { strId: structureId });
+
+            if (cpgridRes.rows) {
+              for (const r of cpgridRes.rows as any[]) {
+                const rObj = Array.isArray(r) ? {
+                  INSPNO: r[0],
+                  INSP_ID: r[1],
+                  REF_NAME: r[2],
+                  CP_VALUE: r[3]
+                } : r;
+
+                const inspNo = String(rObj.INSPNO || '').trim();
+                const inspId = Number(rObj.INSP_ID);
+                const refName = String(rObj.REF_NAME || '').trim();
+                const cpVal = rObj.CP_VALUE !== null && rObj.CP_VALUE !== undefined ? Number(rObj.CP_VALUE) : null;
+
+                if (inspNo && inspId && refName && cpVal !== null) {
+                  const key = `${inspNo}_${inspId}`;
+                  if (!cpgridCache.has(key)) {
+                    cpgridCache.set(key, []);
+                  }
+                  // Auto-negate CP value
+                  const negatedCp = cpVal > 0 ? -cpVal : cpVal;
+                  cpgridCache.get(key)!.push({ reading: negatedCp, location: refName });
+                }
+              }
+              logs.push(`Loaded ${cpgridCache.size} CP additional readings groups from CPGRID.`);
+            }
+          }
+        } catch (err: any) {
+          logs.push(`WARNING: Pre-fetching CPGRID failed: ${err.message}`);
+        }
+
+        // Pre-fetch all UT additional readings from WTGRID
+        const wtgridCache = new Map<string, { reading: number; location: string }[]>();
+        try {
+          const wtgridCols = await getOracleTableColumns(oracleConn, 'WTGRID');
+          if (wtgridCols.size > 0 && wtgridCols.has('STR_ID')) {
+            logs.push(`Pre-fetching all UT additional readings from 'WTGRID' for structure ID ${structureId}...`);
+            const wtgridRes = await oracleConn.execute(`
+              SELECT INSPNO, INSP_ID, REF_NAME, POSITION, READ_THICK FROM WTGRID WHERE STR_ID = :strId
+            `, { strId: structureId });
+
+            if (wtgridRes.rows) {
+              for (const r of wtgridRes.rows as any[]) {
+                const rObj = Array.isArray(r) ? {
+                  INSPNO: r[0],
+                  INSP_ID: r[1],
+                  REF_NAME: r[2],
+                  POSITION: r[3],
+                  READ_THICK: r[4]
+                } : r;
+
+                const inspNo = String(rObj.INSPNO || '').trim();
+                const inspId = Number(rObj.INSP_ID);
+                const refName = String(rObj.REF_NAME || '').trim();
+                const position = String(rObj.POSITION || '').trim();
+                const readThick = rObj.READ_THICK !== null && rObj.READ_THICK !== undefined ? Number(rObj.READ_THICK) : null;
+
+                if (inspNo && inspId && readThick !== null) {
+                  const key = `${inspNo}_${inspId}`;
+                  if (!wtgridCache.has(key)) {
+                    wtgridCache.set(key, []);
+                  }
+                  const location = [refName, position].filter(Boolean).join(' ');
+                  wtgridCache.get(key)!.push({ reading: readThick, location });
+                }
+              }
+              logs.push(`Loaded ${wtgridCache.size} UT additional readings groups from WTGRID.`);
+            }
+          }
+        } catch (err: any) {
+          logs.push(`WARNING: Pre-fetching WTGRID failed: ${err.message}`);
+        }
+
         const migrateInspectionsForType = async (isRov: boolean) => {
           const reportKey = isRov ? "INSP_ROV" : "INSP_DIVING";
           report[reportKey] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [] };
@@ -3942,6 +4025,16 @@ export async function POST(request: NextRequest) {
 
             if (softMatch) softMg = mapRangeStringToBucket(softMatch[1]) || null;
             if (hardMatch) hardMg = mapRangeStringToBucket(hardMatch[1]) || null;
+
+            // Pattern 1b: Percentage followed by Hard/Soft e.g. "60% Hard", "80%H", "40% soft", "60%S"
+            if (!hardMg) {
+              const hardPctMatch = lowerComment.match(/(\d+(?:-\d+)?)\s*%\s*(?:hard|h)\b/i);
+              if (hardPctMatch) hardMg = mapRangeStringToBucket(hardPctMatch[1]) || null;
+            }
+            if (!softMg) {
+              const softPctMatch = lowerComment.match(/(\d+(?:-\d+)?)\s*%\s*(?:soft|s)\b/i);
+              if (softPctMatch) softMg = mapRangeStringToBucket(softPctMatch[1]) || null;
+            }
 
             // Pattern 2: Combined pattern e.g. "80-100% COVERAGE OF HARD AND SOFT GROWTH"
             // or "60-80% HARD AND SOFT MARINE GROWTH", "40% COVERAGE OF HARD & SOFT"
@@ -5001,6 +5094,13 @@ export async function POST(request: NextRequest) {
 
             // 2a. Perform Bolted Support Inspection (BSINS) Mapping
             if (typCode.toUpperCase() === 'BSINS') {
+              const toNegNum = (val: any) => {
+                if (val === null || val === undefined || String(val).trim() === "") return null;
+                const num = Number(val);
+                if (isNaN(num)) return null;
+                return num > 0 ? -num : num;
+              };
+
               // Map Member Fields
               inspectionDataObj.no_bolts_pres_memb = typeof combinedData.no_bolts_pres_memb === 'number' ? combinedData.no_bolts_pres_memb : (combinedData.NO_BOLTS_PRES_MEMB !== undefined && combinedData.NO_BOLTS_PRES_MEMB !== null ? Number(combinedData.NO_BOLTS_PRES_MEMB) : null);
               inspectionDataObj.no_bolts_loose_memb = typeof combinedData.no_bolts_loose_memb === 'number' ? combinedData.no_bolts_loose_memb : (combinedData.NO_BOLTS_LOSE_MEMB !== undefined && combinedData.NO_BOLTS_LOSE_MEMB !== null ? Number(combinedData.NO_BOLTS_LOSE_MEMB) : null);
@@ -5010,9 +5110,9 @@ export async function POST(request: NextRequest) {
               inspectionDataObj.max_gap_bottom_member = typeof combinedData.max_gap_bottom_member === 'number' ? combinedData.max_gap_bottom_member : (combinedData.GAP_BOT_MEMB !== undefined && combinedData.GAP_BOT_MEMB !== null ? Number(combinedData.GAP_BOT_MEMB) : null);
               inspectionDataObj.max_flange_misalign_member = typeof combinedData.max_flange_misalign_member === 'number' ? combinedData.max_flange_misalign_member : (combinedData.FLNG_MEMB !== undefined && combinedData.FLNG_MEMB !== null ? Number(combinedData.FLNG_MEMB) : null);
               
-              inspectionDataObj.member_clamp_cp = typeof combinedData.member_clamp_cp === 'number' ? combinedData.member_clamp_cp : (combinedData.MEMB_CLMP_CP !== undefined && combinedData.MEMB_CLMP_CP !== null ? Number(combinedData.MEMB_CLMP_CP) : null);
-              inspectionDataObj.member_cp = typeof combinedData.member_cp === 'number' ? combinedData.member_cp : (combinedData.MEMB_CP !== undefined && combinedData.MEMB_CP !== null ? Number(combinedData.MEMB_CP) : null);
-              inspectionDataObj.member_cp_2 = typeof combinedData.member_cp_2 === 'number' ? combinedData.member_cp_2 : null; // CP 2 doesn't exist in Oracle BSINS
+              inspectionDataObj.member_clamp_cp = toNegNum(combinedData.member_clamp_cp ?? combinedData.MEMB_CLMP_CP);
+              inspectionDataObj.member_cp = toNegNum(combinedData.member_cp ?? combinedData.MEMB_CP);
+              inspectionDataObj.member_cp_2 = toNegNum(combinedData.member_cp_2 ?? combinedData.MEMB_CP_2 ?? combinedData.MEMB_CP2);
 
               // Units for member fields
               inspectionDataObj.max_gap_top_member_unit = "mm";
@@ -5035,16 +5135,16 @@ export async function POST(request: NextRequest) {
 
               // Map Appurtenance Fields
               inspectionDataObj.appurtenance_clamp_type = combinedData.appurtenance_clamp_type || combinedData.RSR_CLMP_TYPE || "—";
-              inspectionDataObj.appurtenance_cp = typeof combinedData.appurtenance_cp === 'number' ? combinedData.appurtenance_cp : (combinedData.RISER_CP !== undefined && combinedData.RISER_CP !== null ? Number(combinedData.RISER_CP) : null);
-              inspectionDataObj.appurtenance_clamp_cp = typeof combinedData.appurtenance_clamp_cp === 'number' ? combinedData.appurtenance_clamp_cp : (combinedData.RISER_CLMP_CP !== undefined && combinedData.RISER_CLMP_CP !== null ? Number(combinedData.RISER_CLMP_CP) : null);
-              inspectionDataObj.stub_cp = typeof combinedData.stub_cp === 'number' ? combinedData.stub_cp : (combinedData.STUB_CP !== undefined && combinedData.STUB_CP !== null ? Number(combinedData.STUB_CP) : null);
+              inspectionDataObj.appurtenance_cp = toNegNum(combinedData.appurtenance_cp ?? combinedData.RISER_CP);
+              inspectionDataObj.appurtenance_clamp_cp = toNegNum(combinedData.appurtenance_clamp_cp ?? combinedData.RISER_CLMP_CP);
+              inspectionDataObj.stub_cp = toNegNum(combinedData.stub_cp ?? combinedData.STUB_CP);
 
               // Map General Fields (Boolean Conversion)
               const toBool = (val: any) => {
                 if (val === undefined || val === null) return false;
                 if (typeof val === 'boolean') return val;
-                const num = Number(val);
-                return num === 1;
+                const valStr = String(val).trim().toLowerCase();
+                return val === 1 || val === true || valStr === '1' || valStr === 'true' || valStr === 'y' || valStr === 'yes';
               };
 
               inspectionDataObj.clamp_coating_satisfactory = toBool(combinedData.clamp_coating_satisfactory !== undefined ? combinedData.clamp_coating_satisfactory : combinedData.CLMP_COATING);
@@ -5053,6 +5153,129 @@ export async function POST(request: NextRequest) {
               inspectionDataObj.earthing_wire_or_bolt_present = toBool(combinedData.earthing_wire_or_bolt_present !== undefined ? combinedData.earthing_wire_or_bolt_present : combinedData.EARTHWIRE_BOLT);
               inspectionDataObj.liner_present_component_end = toBool(combinedData.liner_present_component_end !== undefined ? combinedData.liner_present_component_end : combinedData.LINER_COMP);
               inspectionDataObj.washers_present_all_bolts = toBool(combinedData.washers_present_all_bolts !== undefined ? combinedData.washers_present_all_bolts : combinedData.WASHER_PRES);
+            }
+
+            // 2k. Perform General Visual Inspection (GVINS) Mapping
+            if (typCode.toUpperCase() === 'GVINS') {
+              const mgVal = combinedData.marine_grow !== undefined && combinedData.marine_grow !== null ? Number(combinedData.marine_grow) : null;
+              if (mgVal !== null && !isNaN(mgVal)) {
+                const bucket = mapPercentToRange(mgVal);
+                inspectionDataObj.marine_growth_soft = bucket;
+                inspectionDataObj.marine_growth_hard = bucket;
+              }
+            }
+
+            // 2l. Perform Riser Survey (RISER) Mapping
+            if (typCode.toUpperCase() === 'RISER') {
+              // 1) Direct metrics
+              inspectionDataObj.wall_thickness = combinedData.wall_thk !== undefined && combinedData.wall_thk !== null ? Number(combinedData.wall_thk) : null;
+              inspectionDataObj.riserbend_elevation = combinedData.elev_bottm !== undefined && combinedData.elev_bottm !== null ? Number(combinedData.elev_bottm) : null;
+              inspectionDataObj.span_height = combinedData.bottm_ht !== undefined && combinedData.bottm_ht !== null ? Number(combinedData.bottm_ht) : null;
+
+              // 2) CP readings (auto-negate values, prioritize cp_rdg from Oracle column)
+              const cpRdg = combinedData.cp_rdg !== undefined && combinedData.cp_rdg !== null ? Number(combinedData.cp_rdg) : null;
+              const cpIn = combinedData.cp_in !== undefined && combinedData.cp_in !== null ? Number(combinedData.cp_in) : null;
+              const cpOut = combinedData.cp_out !== undefined && combinedData.cp_out !== null ? Number(combinedData.cp_out) : null;
+              
+              if (cpRdg !== null) {
+                inspectionDataObj.cp_rdg = cpRdg > 0 ? -cpRdg : cpRdg;
+              } else if (cpOut !== null) {
+                inspectionDataObj.cp_rdg = cpOut > 0 ? -cpOut : cpOut;
+              } else if (cpIn !== null) {
+                inspectionDataObj.cp_rdg = cpIn > 0 ? -cpIn : cpIn;
+              }
+
+              // 3) Populate cp_rdg_additional repeater
+              const additionalCps = [];
+              if (cpIn !== null) {
+                additionalCps.push({ reading: cpIn > 0 ? -cpIn : cpIn, location: "CP In" });
+              }
+              if (cpOut !== null) {
+                additionalCps.push({ reading: cpOut > 0 ? -cpOut : cpOut, location: "CP Out" });
+              }
+              if (cpRdg !== null && cpRdg !== cpIn && cpRdg !== cpOut) {
+                additionalCps.push({ reading: cpRdg > 0 ? -cpRdg : cpRdg, location: "CP Rdg" });
+              }
+              if (additionalCps.length > 0) {
+                inspectionDataObj.cp_rdg_additional = additionalCps;
+              }
+
+              // 4) Dedicated Marine Growth (MG) parser for RISER table
+              const mgRaw = String(combinedData.mg || '').trim();
+              if (mgRaw) {
+                const lowerMg = mgRaw.toLowerCase();
+                let softMg: string | null = null;
+                let hardMg: string | null = null;
+
+                // Extract specific separate percentages (e.g. "60% Hard 40% Soft", "80%H 60%S")
+                const hardMatch = lowerMg.match(/(\d+(?:-\d+)?)\s*%\s*(?:hard|hmg|h)\b/i);
+                const softMatch = lowerMg.match(/(\d+(?:-\d+)?)\s*%\s*(?:soft|smg|s)\b/i);
+
+                if (hardMatch) hardMg = mapRangeStringToBucket(hardMatch[1]);
+                if (softMatch) softMg = mapRangeStringToBucket(softMatch[1]);
+
+                // Fallback: check word-first patterns (e.g. "hard 30% soft 10%")
+                if (!hardMg) {
+                  const hardWordMatch = lowerMg.match(/(?:hard|hmg|h)\s*(?:growth|mg)?\s*:?\s*(\d+(?:-\d+)?)\s*%/i);
+                  if (hardWordMatch) hardMg = mapRangeStringToBucket(hardWordMatch[1]);
+                }
+                if (!softMg) {
+                  const softWordMatch = lowerMg.match(/(?:soft|smg|s)\s*(?:growth|mg)?\s*:?\s*(\d+(?:-\d+)?)\s*%/i);
+                  if (softWordMatch) softMg = mapRangeStringToBucket(softWordMatch[1]);
+                }
+
+                // Fallback: check combined patterns (e.g. "60% to 80% hard and soft")
+                if (!hardMg && !softMg) {
+                  const bothMatch = lowerMg.match(/(\d+(?:-\d+)?)\s*%\s*(?:to\s+(\d+)\s*%)?\s*(?:of\s+)?(?:hard\s+(?:and|&)\s+soft|soft\s+(?:and|&)\s+hard|soft\s*&\s*hard|hard\s*&\s*soft|hard\s+and\s+soft)\b/i);
+                  if (bothMatch) {
+                    const val = bothMatch[2] ? `${bothMatch[1]}-${bothMatch[2]}` : bothMatch[1];
+                    const bucket = mapRangeStringToBucket(val);
+                    if (bucket) {
+                      softMg = bucket;
+                      hardMg = bucket;
+                    }
+                  }
+                }
+
+                // Fallback: single type mention with single percentage (e.g. "80% soft growths", "60% Hard")
+                if (!hardMg && !softMg) {
+                  const singleTypeMatch = lowerMg.match(/(\d+(?:-\d+)?)\s*%\s*(?:of\s+)?(?:soft\s+growth|soft|hard\s+growth|hard|hmg|smg)\b/i);
+                  if (singleTypeMatch) {
+                    const val = singleTypeMatch[1];
+                    const bucket = mapRangeStringToBucket(val);
+                    if (bucket) {
+                      if (lowerMg.includes("hard") || lowerMg.includes("hmg") || lowerMg.includes(" h")) {
+                        hardMg = bucket;
+                      } else if (lowerMg.includes("soft") || lowerMg.includes("smg") || lowerMg.includes(" s")) {
+                        softMg = bucket;
+                      }
+                    }
+                  }
+                }
+
+                // Fallback: generic percentage (e.g. "80%", "100", "0-20%")
+                if (!hardMg && !softMg) {
+                  const genericMatch = lowerMg.match(/^(\d+(?:-\d+)?)\s*%?$/);
+                  if (genericMatch) {
+                    const bucket = mapRangeStringToBucket(genericMatch[1]);
+                    if (bucket) {
+                      softMg = bucket;
+                      hardMg = bucket;
+                    }
+                  } else {
+                    const num = Number(mgRaw);
+                    if (!isNaN(num) && num >= 0 && num <= 100) {
+                      const bucket = mapPercentToRange(num);
+                      softMg = bucket;
+                      hardMg = bucket;
+                    }
+                  }
+                }
+
+                // Populate parsed values to PostgreSQL record object
+                if (softMg) inspectionDataObj.marine_growth_soft = softMg;
+                if (hardMg) inspectionDataObj.marine_growth_hard = hardMg;
+              }
             }
 
             // 2b. Perform Flooded Member Detection (RFMD) Mapping
@@ -5625,6 +5848,49 @@ export async function POST(request: NextRequest) {
               }
             }
 
+            // CP additional readings from CPGRID
+            const cpgridKey = `${legacyInspNo}_${legacyInspId}`;
+            if (cpgridCache.has(cpgridKey)) {
+              let existingCps = inspectionDataObj.cp_rdg_additional;
+              if (!Array.isArray(existingCps)) {
+                existingCps = [];
+              }
+              const cpGridReadings = cpgridCache.get(cpgridKey) || [];
+              cpGridReadings.forEach(gridRdg => {
+                const isDup = existingCps.some((existing: any) => 
+                  existing.location === gridRdg.location && 
+                  Math.abs((existing.reading || 0) - gridRdg.reading) < 0.01
+                );
+                if (!isDup) {
+                  existingCps.push(gridRdg);
+                }
+              });
+              if (existingCps.length > 0) {
+                inspectionDataObj.cp_rdg_additional = existingCps;
+              }
+            }
+
+            // UT additional readings from WTGRID
+            if (wtgridCache.has(cpgridKey)) {
+              let existingUts = inspectionDataObj.ut_readings_additional;
+              if (!Array.isArray(existingUts)) {
+                existingUts = [];
+              }
+              const wtGridReadings = wtgridCache.get(cpgridKey) || [];
+              wtGridReadings.forEach(gridRdg => {
+                const isDup = existingUts.some((existing: any) => 
+                  existing.location === gridRdg.location && 
+                  Math.abs((existing.reading || 0) - gridRdg.reading) < 0.01
+                );
+                if (!isDup) {
+                  existingUts.push(gridRdg);
+                }
+              });
+              if (existingUts.length > 0) {
+                inspectionDataObj.ut_readings_additional = existingUts;
+              }
+            }
+
             recordsToInsert.push({
               dive_job_id: diveJobId,
               rov_job_id: rovJobId,
@@ -5721,12 +5987,17 @@ export async function POST(request: NextRequest) {
           if (defectCols.has('DFT_REF_NO')) qCols.push('DFT_REF_NO');
           else if (defectCols.has('REF_NO')) qCols.push('REF_NO as DFT_REF_NO');
           
-          if (defectCols.has('DFT_CODE_TYP')) qCols.push('DFT_CODE_TYP');
+          // Anomaly Code (AMLY_COD)
+          if (defectCols.has('DFT_CODE_TYPE')) qCols.push('DFT_CODE_TYPE');
+          else if (defectCols.has('DFT_CODE_TYP')) qCols.push('DFT_CODE_TYP as DFT_CODE_TYPE');
           
+          // Anomaly Findings / Defect Type (AMLY_FND)
+          if (defectCols.has('DEFECT_CODE')) qCols.push('DEFECT_CODE');
+          else if (defectCols.has('CODE')) qCols.push('CODE as DEFECT_CODE');
+          
+          // Priority (AMLY_TYP)
           if (defectCols.has('DEFECT_TYPE')) qCols.push('DEFECT_TYPE');
-          else if (defectCols.has('CODE')) qCols.push('CODE as DEFECT_TYPE');
-          
-          if (defectCols.has('CATEGORY')) qCols.push('CATEGORY');
+          else if (defectCols.has('CATEGORY')) qCols.push('CATEGORY as DEFECT_TYPE');
           
           if (defectCols.has('DEFECT_DESC')) qCols.push('DEFECT_DESC');
           else if (defectCols.has('DESCR')) qCols.push('DESCR as DEFECT_DESC');
@@ -5789,20 +6060,22 @@ export async function POST(request: NextRequest) {
               // 1. anomaly_ref_no from DFT_REF_NO
               const anomalyRefNo = rObj.DFT_REF_NO ? String(rObj.DFT_REF_NO).trim() : `ANOM-${oInspId}`;
 
-              // 2. defect_type_code from DFT_CODE_TYP (look up description in u_lib_list)
-              const dftCodeTypRaw = rObj.DFT_CODE_TYP ? String(rObj.DFT_CODE_TYP).trim() : '';
+              // 2. defect_type_code from DFT_CODE_TYPE (look up description in u_lib_list)
+              const dftCodeTypRaw = rObj.DFT_CODE_TYPE ? String(rObj.DFT_CODE_TYPE).trim() : '';
               const defectTypeCode = libIdToDescMap.get(dftCodeTypRaw.toLowerCase()) || dftCodeTypRaw || 'GEN';
 
-              // 3. priority_code & defect_category_code from DEFECT_TYPE (look up description in u_lib_list)
-              const defectTypeRaw = rObj.DEFECT_TYPE ? String(rObj.DEFECT_TYPE).trim() : '';
-              const defectTypeDesc = libIdToDescMap.get(defectTypeRaw.toLowerCase()) || defectTypeRaw || 'C';
-              const priorityCode = defectTypeDesc;
-              const defectCategoryCode = defectTypeDesc;
+              // 3. defect_category_code from DEFECT_CODE (look up description in u_lib_list)
+              const defectCodeRaw = rObj.DEFECT_CODE ? String(rObj.DEFECT_CODE).trim() : '';
+              const defectCategoryCode = libIdToDescMap.get(defectCodeRaw.toLowerCase()) || defectCodeRaw || '';
 
-              // 4. defect_description from DEFECT_DESC
+              // 4. priority_code & priority from DEFECT_TYPE (look up description in u_lib_list)
+              const defectTypeRaw = rObj.DEFECT_TYPE ? String(rObj.DEFECT_TYPE).trim() : '';
+              const priorityCode = libIdToDescMap.get(defectTypeRaw.toLowerCase()) || defectTypeRaw || 'NONE';
+
+              // 5. defect_description from DEFECT_DESC
               const defectDescription = rObj.DEFECT_DESC ? String(rObj.DEFECT_DESC).trim() : 'Legacy defect details missing';
 
-              // 5. Rectified / Status checking
+              // 6. Rectified / Status checking
               const rectifidVal = rObj.RECTIFID !== undefined && rObj.RECTIFID !== null ? Number(rObj.RECTIFID) : null;
               
               let status = 'OPEN';
@@ -5819,7 +6092,7 @@ export async function POST(request: NextRequest) {
                 }
               }
 
-              // 6. approv_by -> reviewed_by and eval_by -> approved_by
+              // 7. approv_by -> reviewed_by and eval_by -> approved_by
               const reviewedBy = rObj.APPROV_BY ? String(rObj.APPROV_BY).trim() : null;
               const approvedBy = rObj.EVAL_BY ? String(rObj.EVAL_BY).trim() : null;
 
@@ -5835,6 +6108,7 @@ export async function POST(request: NextRequest) {
                 status,
                 is_rectified: isRectified,
                 rectified_remarks: rectifiedRemarks,
+                follow_up_notes: rectifiedRemarks, // Populate follow_up_notes for dialog UI compatibility
                 rectified_date: rectifiedDate,
                 reviewed_by: reviewedBy,
                 approved_by: approvedBy,
