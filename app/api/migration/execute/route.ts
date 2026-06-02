@@ -337,7 +337,10 @@ async function setRlsStatus(disable: boolean, logs: string[]): Promise<boolean> 
       'u_sow',
       'inspection_type',
       'structure_components',
-      'comment'
+      'comment',
+      'u_lib_mast',
+      'u_lib_list',
+      'u_lib_combo'
     ];
 
     for (const table of tables) {
@@ -572,6 +575,201 @@ export async function POST(request: NextRequest) {
     }
 
     oracleConn = await getOracleConnection(config);
+
+    // =========================================================================
+    // BEFORE ANY OTHER MIGRATION: Migrate Library Tables (u_lib_mast, u_lib_list, u_lib_combo)
+    // =========================================================================
+    logs.push("Starting Library tables migration (u_lib_mast -> u_lib_list -> u_lib_combo)...");
+    
+    // 1. u_lib_mast
+    try {
+      const mastResult = await oracleConn.execute(`SELECT * FROM U_LIB_MAST`);
+      const mastRows = mastResult.rows || [];
+      logs.push(`Fetched ${mastRows.length} master library records from Oracle (U_LIB_MAST).`);
+      
+      if (mastRows.length > 0) {
+        const mastRecords = mastRows.map((r: any) => ({
+          lib_code: String(r.LIB_CODE || "").trim(),
+          lib_name: String(r.LIB_NAME || "").trim(),
+          comment: r.COMMENT ? String(r.COMMENT).trim() : null,
+          hidden_item: r.HIDDEN_ITEM ? String(r.HIDDEN_ITEM).trim() : 'N'
+        }));
+        
+        // Deduplicate records to avoid duplicate key violations in single batch
+        const uniqueMastRecords: any[] = [];
+        const seenMastKeys = new Set<string>();
+        for (const record of mastRecords) {
+          const key = record.lib_code;
+          if (!seenMastKeys.has(key)) {
+            seenMastKeys.add(key);
+            uniqueMastRecords.push(record);
+          }
+        }
+
+        const { error: mastErr } = await supabase
+          .from('u_lib_mast')
+          .upsert(uniqueMastRecords, { onConflict: 'lib_code' });
+          
+        if (mastErr) {
+          logs.push(`ERROR migrating u_lib_mast: ${mastErr.message}`);
+        } else {
+          logs.push(`Successfully migrated ${uniqueMastRecords.length} records to u_lib_mast.`);
+        }
+      }
+    } catch (err: any) {
+      logs.push(`ERROR fetching/migrating U_LIB_MAST: ${err.message}`);
+    }
+
+    // 2. u_lib_list
+    try {
+      const listResult = await oracleConn.execute(`SELECT * FROM U_LIB_LIST`);
+      const listRows = listResult.rows || [];
+      logs.push(`Fetched ${listRows.length} library list records from Oracle (U_LIB_LIST).`);
+      
+      if (listRows.length > 0) {
+        const listRecords = listRows.map((r: any) => {
+          let crDate = null;
+          if (r.CR_DATE) {
+            if (r.CR_DATE instanceof Date) {
+              crDate = r.CR_DATE.toISOString();
+            } else {
+              const parsed = Date.parse(String(r.CR_DATE));
+              if (!isNaN(parsed)) {
+                crDate = new Date(parsed).toISOString();
+              } else {
+                crDate = cleanOracleDate(String(r.CR_DATE));
+              }
+            }
+          }
+          return {
+            lib_code: String(r.LIB_CODE || "").trim(),
+            lib_id: String(r.LIB_ID || "").trim(),
+            lib_desc: r.LIB_DESC ? String(r.LIB_DESC).trim() : null,
+            workunit: r.WORKUNIT ? String(r.WORKUNIT).trim() : null,
+            cr_user: r.CR_USER ? String(r.CR_USER).trim() : null,
+            cr_date: crDate,
+            lib_delete: r.LIB_DELETE !== undefined && r.LIB_DELETE !== null ? Number(r.LIB_DELETE) : 0,
+            lib_com: r.LIB_COM ? String(r.LIB_COM).trim() : null,
+            hidden_item: r.HIDDEN_ITEM ? String(r.HIDDEN_ITEM).trim() : null
+          };
+        });
+
+        // Deduplicate records to avoid "ON CONFLICT DO UPDATE command cannot affect row a second time"
+        const uniqueListRecords: any[] = [];
+        const seenListKeys = new Set<string>();
+        for (const record of listRecords) {
+          const key = `${record.lib_code}::${record.lib_id}`;
+          if (!seenListKeys.has(key)) {
+            seenListKeys.add(key);
+            uniqueListRecords.push(record);
+          }
+        }
+        
+        // Upsert in batches of 1000 to be safe
+        const batchSize = 1000;
+        let successCount = 0;
+        for (let i = 0; i < uniqueListRecords.length; i += batchSize) {
+          const batch = uniqueListRecords.slice(i, i + batchSize);
+          const { error: listErr } = await supabase
+            .from('u_lib_list')
+            .upsert(batch, { onConflict: 'lib_code,lib_id' });
+            
+          if (listErr) {
+            logs.push(`ERROR migrating u_lib_list batch starting at index ${i}: ${listErr.message}`);
+          } else {
+            successCount += batch.length;
+          }
+        }
+        logs.push(`Successfully migrated ${successCount}/${uniqueListRecords.length} records to u_lib_list.`);
+
+        // Re-populate and sync local maps with newly migrated records so later phases have complete mappings
+        uniqueListRecords.forEach((item: any) => {
+          if (item.lib_desc) {
+            libDescMap.set(item.lib_desc.toLowerCase().trim(), item.lib_desc.trim());
+            if (item.lib_code === 'ANOD_TYP') {
+              anodeTypeLib.set(item.lib_desc.toLowerCase().trim(), item.lib_desc.trim());
+              if (item.lib_id) {
+                anodeTypeLib.set(item.lib_id.toLowerCase().trim(), item.lib_desc.trim());
+              }
+            }
+          }
+          if (item.lib_id && item.lib_desc) {
+            libIdToDescMap.set(item.lib_id.toLowerCase().trim(), item.lib_desc.trim());
+          }
+        });
+        logs.push(`Updated library lookup maps with ${uniqueListRecords.length} migrated keys.`);
+      }
+    } catch (err: any) {
+      logs.push(`ERROR fetching/migrating U_LIB_LIST: ${err.message}`);
+    }
+
+    // 3. u_lib_combo
+    try {
+      const comboResult = await oracleConn.execute(`SELECT * FROM U_LIB_COMBO`);
+      const comboRows = comboResult.rows || [];
+      logs.push(`Fetched ${comboRows.length} library combo records from Oracle (U_LIB_COMBO).`);
+      
+      if (comboRows.length > 0) {
+        const comboRecords = comboRows.map((r: any) => {
+          let crDate = null;
+          if (r.CR_DATE) {
+            if (r.CR_DATE instanceof Date) {
+              crDate = r.CR_DATE.toISOString();
+            } else {
+              const parsed = Date.parse(String(r.CR_DATE));
+              if (!isNaN(parsed)) {
+                crDate = new Date(parsed).toISOString();
+              } else {
+                crDate = cleanOracleDate(String(r.CR_DATE));
+              }
+            }
+          }
+          return {
+            lib_code: String(r.LIB_CODE || "").trim(),
+            code_1: String(r.CODE_1 || "").trim(),
+            code_2: String(r.CODE_2 || "").trim(),
+            workunit: r.WORKUNIT ? String(r.WORKUNIT).trim() : null,
+            cr_user: r.CR_USER ? String(r.CR_USER).trim() : null,
+            cr_date: crDate,
+            lib_delete: r.LIB_DELETE !== undefined && r.LIB_DELETE !== null ? Number(r.LIB_DELETE) : 0,
+            lib_com: r.LIB_COM ? String(r.LIB_COM).trim() : null,
+            hidden_item: r.HIDDEN_ITEM ? String(r.HIDDEN_ITEM).trim() : 'N'
+          };
+        });
+
+        // Deduplicate records to avoid duplicate key violations in single batch
+        const uniqueComboRecords: any[] = [];
+        const seenComboKeys = new Set<string>();
+        for (const record of comboRecords) {
+          const key = `${record.lib_code}::${record.code_1}::${record.code_2}`;
+          if (!seenComboKeys.has(key)) {
+            seenComboKeys.add(key);
+            uniqueComboRecords.push(record);
+          }
+        }
+        
+        // Upsert in batches of 1000 to be safe
+        const batchSize = 1000;
+        let successCount = 0;
+        for (let i = 0; i < uniqueComboRecords.length; i += batchSize) {
+          const batch = uniqueComboRecords.slice(i, i + batchSize);
+          const { error: comboErr } = await supabase
+            .from('u_lib_combo')
+            .upsert(batch, { onConflict: 'lib_code,code_1,code_2' });
+            
+          if (comboErr) {
+            logs.push(`ERROR migrating u_lib_combo batch starting at index ${i}: ${comboErr.message}`);
+          } else {
+            successCount += batch.length;
+          }
+        }
+        logs.push(`Successfully migrated ${successCount}/${uniqueComboRecords.length} records to u_lib_combo.`);
+      }
+    } catch (err: any) {
+      logs.push(`ERROR fetching/migrating U_LIB_COMBO: ${err.message}`);
+    }
+    logs.push("Completed Library tables migration.");
+
     const report: Record<string, { status: "success" | "failed" | "skipped"; oracleRows: number; migratedRows: number; errors: string[]; filesCopied?: number }> = {};
     const tapeToDiveMap = new Map<string, string>();
     const inspNoToDiveMap = new Map<string, string>();
@@ -6371,6 +6569,156 @@ export async function POST(request: NextRequest) {
         } else {
           logs.push(`No legacy attachments matching migrated inspections found.`);
           report["INSP_ATTACHMENT"].status = "skipped";
+        }
+
+        // ---------------------------------------------------------------------
+        // Phase 7: Synchronize SOW Items Statuses (u_sow_items)
+        // ---------------------------------------------------------------------
+        logs.push(`Phase 7: Synchronizing Scope of Work (u_sow_items) statuses...`);
+        try {
+          // Fetch all SOWs for this migrated structure
+          const { data: sows, error: sowFetchErr } = await (supabase as any)
+            .from('u_sow')
+            .select('id, jobpack_id, report_number')
+            .eq('structure_id', resolvedStructureId);
+
+          if (sowFetchErr) {
+            logs.push(`WARNING: Fetching SOWs for status sync failed: ${sowFetchErr.message}`);
+          } else if (sows && sows.length > 0) {
+            let totalUpdatedSowItems = 0;
+            for (const sow of sows) {
+              // Get all SOW items belonging to this SOW
+              const { data: sowItems, error: sowItemsErr } = await (supabase as any)
+                .from('u_sow_items')
+                .select('id, component_id, inspection_type_id, inspection_code, report_number, elevation_required, elevation_data')
+                .eq('sow_id', sow.id);
+
+              if (sowItemsErr) {
+                logs.push(`WARNING: Fetching SOW items for SOW ID ${sow.id} failed: ${sowItemsErr.message}`);
+                continue;
+              }
+
+              if (sowItems && sowItems.length > 0) {
+                for (const item of sowItems) {
+                  // Resolve matching inspection records in Postgres
+                  const reportNo = item.report_number || sow.report_number;
+                  
+                  let recordsQuery = (supabase as any)
+                    .from('insp_records')
+                    .select('id, status, elevation')
+                    .eq('component_id', item.component_id)
+                    .eq('inspection_type_id', item.inspection_type_id);
+                    
+                  if (reportNo) {
+                    recordsQuery = recordsQuery.eq('sow_report_no', reportNo);
+                  }
+                  
+                  const { data: matchingRecords, error: recordsErr } = await recordsQuery;
+
+                  if (recordsErr) {
+                    console.error(`[SOW Post-Migration Sync] Error fetching records for item ${item.id}:`, recordsErr);
+                    continue;
+                  }
+
+                  let finalStatus: 'pending' | 'completed' | 'incomplete' = 'pending';
+                  let updatedFields: any = {
+                    updated_at: new Date().toISOString(),
+                    updated_by: 'migration',
+                  };
+
+                  if (matchingRecords && matchingRecords.length > 0) {
+                    // Update inspection count
+                    updatedFields.inspection_count = matchingRecords.length;
+                    
+                    // Fetch latest inspection date
+                    const { data: latestDateRecord } = await (supabase as any)
+                      .from('insp_records')
+                      .select('inspection_date')
+                      .eq('component_id', item.component_id)
+                      .eq('inspection_type_id', item.inspection_type_id)
+                      .order('inspection_date', { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+                      
+                    if (latestDateRecord && latestDateRecord.inspection_date) {
+                      updatedFields.last_inspection_date = latestDateRecord.inspection_date;
+                    }
+
+                    // 3a. Handle Elevation-bound SOW Item
+                    if (
+                      item.elevation_required &&
+                      item.elevation_data &&
+                      Array.isArray(item.elevation_data)
+                    ) {
+                      const updatedElevationData = item.elevation_data.map((elev: any) => {
+                        const start = parseFloat(elev.start);
+                        const end = parseFloat(elev.end);
+                        
+                        // Find matching records in this elevation range
+                        const elevMatching = matchingRecords.filter((rec: any) => {
+                          const elevVal = rec.elevation !== null && rec.elevation !== undefined ? parseFloat(String(rec.elevation)) : NaN;
+                          return !isNaN(elevVal) && elevVal >= Math.min(start, end) && elevVal <= Math.max(start, end);
+                        });
+
+                        let elevStatus = 'pending';
+                        if (elevMatching.length > 0) {
+                          const anyIncomplete = elevMatching.some((r: any) => r.status === 'INCOMPLETE');
+                          elevStatus = anyIncomplete ? 'incomplete' : 'completed';
+                        }
+                        return { ...elev, status: elevStatus };
+                      });
+
+                      updatedFields.elevation_data = updatedElevationData;
+
+                      // Recalculate SOW Item overall status
+                      const allDone = updatedElevationData.every((e: any) => e.status === 'completed');
+                      const anyIncomplete = updatedElevationData.some((e: any) => e.status === 'incomplete');
+                      const allPending = updatedElevationData.every((e: any) => e.status === 'pending');
+
+                      if (allDone) finalStatus = 'completed';
+                      else if (allPending) finalStatus = 'pending';
+                      else finalStatus = 'incomplete';
+                    } else {
+                      // 3b. Handle Standard SOW Item
+                      const hasIncomplete = matchingRecords.some((r: any) => r.status === 'INCOMPLETE');
+                      finalStatus = hasIncomplete ? 'incomplete' : 'completed';
+                    }
+                  } else {
+                    // Reset to pending if no inspection records exist for this scope item
+                    updatedFields.inspection_count = 0;
+                    updatedFields.last_inspection_date = null;
+                    if (
+                      item.elevation_required &&
+                      item.elevation_data &&
+                      Array.isArray(item.elevation_data)
+                    ) {
+                      updatedFields.elevation_data = item.elevation_data.map((elev: any) => ({ ...elev, status: 'pending' }));
+                    }
+                  }
+
+                  updatedFields.status = finalStatus;
+
+                  // Update SOW Item status in PostgreSQL
+                  const { error: updateErr } = await (supabase as any)
+                    .from('u_sow_items')
+                    .update(updatedFields)
+                    .eq('id', item.id);
+
+                  if (updateErr) {
+                    console.error(`[SOW Post-Migration Sync] Update failed for item ${item.id}:`, updateErr);
+                  } else {
+                    totalUpdatedSowItems++;
+                  }
+                }
+              }
+            }
+            logs.push(`Successfully synchronized status for ${totalUpdatedSowItems} SOW item(s) in PostgreSQL!`);
+          } else {
+            logs.push(`No Scope of Work (u_sow) indexes found for status synchronization.`);
+          }
+        } catch (sowSyncErr: any) {
+          logs.push(`WARNING: SOW status synchronization failed: ${sowSyncErr.message}`);
+          console.error("[SOW Sync post-migration Fail]:", sowSyncErr);
         }
 
         logs.push(`================================================================`);

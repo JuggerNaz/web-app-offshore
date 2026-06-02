@@ -61,6 +61,7 @@ interface ReportWizardDialogProps {
         generateSZONEReport: () => void;
         generateCPCLBReport: () => void;
         generateCPReport: () => void;
+        generateRSWNIReport: () => void;
         generateUTCLBReport: () => void;
         generateAnodeReport: () => void;
         generateDivingAnodeReport: () => void;
@@ -205,6 +206,7 @@ export function ReportWizardDialog({
             // ── INSPECTION REPORTS (ROV) ───────────────────────────────────────────
             { id: 'rgvi', code: 'RGVI', name: 'General Visual (GVI)', description: 'Full visual assessment of structural integrity and coatings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['RGVI']) },
             { id: 'cp_rov', code: 'CP', name: 'CP Survey Report', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
+            { id: 'rswni_rov', code: 'RSWNI', name: 'ROV Selected Node Report', description: 'Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSWNIReport, available: hasRecords(['RSWNI', 'SWNI']) },
             { id: 'anode_rov', code: 'ANODE', name: 'Anode Survey', description: 'Detailed depletion measurements and attachment status.', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeReport, available: currentRecords.some(r => (r.structure_components?.code || '').toUpperCase() === 'AN' || (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE') },
             { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: true },
             { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey', description: 'Flooded Member Detection using ultrasonic or gamma methods.', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD']) },

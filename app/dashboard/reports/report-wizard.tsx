@@ -124,6 +124,7 @@ export const REPORT_TEMPLATES = {
         { id: "rov-scour-report", name: "ROV Scour Survey Report", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-report", name: "ROV Anode Inspection Report", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "ROV CP Survey Report",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-selected-node-report", name: "ROV Selected Node Report", icon: FileText, description: "Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rgvi-report",  name: "ROV GVI Report (RGVI)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcasn-report", name: "ROV Caisson Survey Report",    icon: FileBarChart, description: "Portrait Caisson Survey report — grouped by Caisson with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcond-report", name: "ROV Conductor Survey Report",  icon: FileBarChart, description: "Portrait Conductor Survey report — grouped by Conductor (CD) with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
@@ -214,7 +215,9 @@ const TOC_SECTIONS = [
       { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" },
       { id: "rov-seabed-report", name: "ROV Seabed Survey Report", mode: "ROV" }
   ]},
-  { id: 12, name: "Specified Node Inspection", templates: [] },
+  { id: 12, name: "Specified Node Inspection", templates: [
+      { id: "rov-selected-node-report", name: "ROV Selected Node Report (RSWNI)", mode: "ROV" }
+  ] },
   { id: 13, name: "Additional Wall Thickness Inspection", templates: [
       { id: "utwt-report", name: "ROV UT Thickness Report", mode: "ROV" },
       { id: "diving-utclb-report", name: "Diving UT Calibration Report", mode: "Diving" }
@@ -2069,6 +2072,77 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("Anode Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Selected Node Report
+        if (currentTemplateId === "rov-selected-node-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId  = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId);
+
+            if (error) throw error;
+
+            // Filter to records that belong to RSWNI + optional SOW/jobpack scoping
+            const swniRecords = records?.filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                
+                const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                const isRSWNI = typeCode === 'RSWNI' || typeCode === 'SWNI';
+                return sowMatches && jobPackMatches && isRSWNI;
+            });
+
+            if (!swniRecords || swniRecords.length === 0) {
+                alert(`No RSWNI node records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            // Contractor logo
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack),
+            };
+
+            try {
+                const { generateROVSelectedNodeReport } = await import("@/utils/report-generators/rov-selected-node-report");
+                return await generateROVSelectedNodeReport(
+                    swniRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("Selected Node Report Generator Error:", error);
                 throw error;
             }
         }

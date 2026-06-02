@@ -173,7 +173,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                         }).sort(sortFn).map((c: any) => {
                                             const isSelected = selectedComp?.id === c.id;
                                             return (
-                                            <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-100'}`}>
+                                                <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-100'}`}>
                                                     <div className="flex justify-between font-bold">
                                                         <div className="flex items-center gap-2">
                                                             <span className="flex-1 truncate">{c.name}</span>
@@ -191,23 +191,33 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                         <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
                                                     )}
                                                     <div className="flex flex-wrap gap-1 mt-1.5">
-                                                        {(c.taskStatuses || []).map((ts: any, idx: number) => {
-                                                            const s = ts.status || 'pending';
-                                                            const hasAnom = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === ts.code || r.inspection_type_code === ts.code) && r.component_id === c.id);
-                                                            return (
-                                                                <span 
-                                                                    key={idx} 
-                                                                    onClick={(e) => { 
-                                                                        e.stopPropagation(); 
-                                                                        if (handleTaskChange) handleTaskChange(ts.code); 
-                                                                    }}
-                                                                    className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-all ${isSelected ? 'bg-white/20 text-blue-100 hover:bg-white/30' : 'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'}`}
-                                                                >
-                                                                    <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500' : s === 'completed' ? 'bg-green-500' : 'bg-slate-400'}`} />
-                                                                    {ts.code}
-                                                                </span>
-                                                            );
-                                                        })}
+                                                        {(c.taskStatuses || [])
+                                                            .filter((ts: any) => {
+                                                                const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
+                                                                if (!it) return true;
+                                                                const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                                const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                                if (inspMethod === "DIVING" && isDiving) return true;
+                                                                if (inspMethod === "ROV" && isRov) return true;
+                                                                return false;
+                                                            })
+                                                            .map((ts: any, idx: number) => {
+                                                                const s = ts.status || 'pending';
+                                                                const hasAnom = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === ts.code || r.inspection_type_code === ts.code) && r.component_id === c.id);
+                                                                return (
+                                                                    <span 
+                                                                        key={idx} 
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation(); 
+                                                                            if (handleTaskChange) handleTaskChange(ts.code); 
+                                                                        }}
+                                                                        className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-all ${isSelected ? 'bg-white/20 text-blue-100 hover:bg-white/30' : 'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'}`}
+                                                                    >
+                                                                        <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500' : s === 'completed' ? 'bg-green-500' : 'bg-slate-400'}`} />
+                                                                        {ts.code}
+                                                                    </span>
+                                                                );
+                                                            })}
                                                         <span 
                                                             onClick={(e) => { 
                                                                 e.stopPropagation(); 

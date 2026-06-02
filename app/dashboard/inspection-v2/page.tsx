@@ -162,11 +162,13 @@ export default function InspectionLanding() {
                 const structureIds: number[] = [];
                 data.forEach((jp: any) => {
                     const structures = (jp.metadata as any)?.structures || [];
-                    structures.forEach((s: any) => {
-                        if (s.id && typeof s.id === 'number') {
-                            structureIds.push(s.id);
-                        }
-                    });
+                    if (Array.isArray(structures)) {
+                        structures.forEach((s: any) => {
+                            if (s.id && typeof s.id === 'number') {
+                                structureIds.push(s.id);
+                            }
+                        });
+                    }
                 });
 
                 const uniqueStructureIds = Array.from(new Set(structureIds));
@@ -189,12 +191,14 @@ export default function InspectionLanding() {
 
                 const formatted = data.map((jp: any) => {
                     const structures = (jp.metadata as any)?.structures || [];
-                    const structureList = structures
-                        .map((s: any) => ({
-                            id: s.id,
-                            name: structureMap.get(s.id) || s.title || s.code || s.name || ""
-                        }))
-                        .filter((s: Structure) => s.name !== "");
+                    const structureList = Array.isArray(structures)
+                        ? structures
+                            .map((s: any) => ({
+                                id: s.id,
+                                name: structureMap.get(s.id) || s.title || s.code || s.name || ""
+                            }))
+                            .filter((s: Structure) => s.name !== "")
+                        : [];
 
                     const structureNames = structureList
                         .map((s: Structure) => s.name)

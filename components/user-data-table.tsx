@@ -86,8 +86,20 @@ export function UserDataTable() {
         try {
             setLoading(true);
             
-            // Get current user and their local metadata (instantly available from session)
-            const { data: { user: authUser } } = await supabase.auth.getUser();
+            // Get current user and their local metadata (try session first to avoid navigator locks)
+            let authUser = null;
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                authUser = session?.user || null;
+            } catch (sessionErr) {}
+
+            if (!authUser) {
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    authUser = user;
+                } catch (userErr) {}
+            }
+
             if (authUser) {
                 setCurrentUserId(authUser.id);
                 setLocalMetadata(authUser.user_metadata);

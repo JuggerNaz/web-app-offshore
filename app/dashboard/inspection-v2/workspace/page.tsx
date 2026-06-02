@@ -1383,6 +1383,8 @@ function V10PreviewLayout() {
     setAnodePreviewOpen,
     cpPreviewOpen,
     setCpPreviewOpen,
+    rswniPreviewOpen,
+    setRswniPreviewOpen,
     rgviPreviewOpen,
     setRgviPreviewOpen,
     rcasnPreviewOpen,
@@ -1461,6 +1463,8 @@ function V10PreviewLayout() {
     generateAnodeReportBlob,
     generateCPReport,
     generateCPReportBlob,
+    generateRSWNIReport,
+    generateRSWNIReportBlob,
     generateRGVIReport,
     generateRGVIReportBlob,
     generateRCASNReport,
@@ -6732,6 +6736,7 @@ function V10PreviewLayout() {
         generateITISIReport={() => setItisiPreviewOpen(true)}
         generateAnodeReport={() => setAnodePreviewOpen(true)}
         generateCPReport={() => setCpPreviewOpen(true)}
+        generateRSWNIReport={() => setRswniPreviewOpen(true)}
         generateRGVIReport={() => setRgviPreviewOpen(true)}
         generateGVINSReport={() => setGvinsPreviewOpen(true)}
         generateSZONEReport={() => setSzonePreviewOpen(true)}
@@ -7244,6 +7249,7 @@ function V10PreviewLayout() {
           rscorPreviewOpen,
           anodePreviewOpen,
           cpPreviewOpen,
+          rswniPreviewOpen,
           rgviPreviewOpen,
           rcondSketchPreviewOpen,
           showRemovalConfirm,
@@ -7320,6 +7326,7 @@ function V10PreviewLayout() {
           setRscorPreviewOpen,
           setAnodePreviewOpen,
           setCpPreviewOpen,
+          setRswniPreviewOpen,
           setRgviPreviewOpen,
           setRcondSketchPreviewOpen,
           setShowRemovalConfirm,
@@ -7383,6 +7390,8 @@ function V10PreviewLayout() {
           generateITISIReportBlob,
           generateAnodeReportBlob,
           generateCPReportBlob,
+          generateRSWNIReport,
+          generateRSWNIReportBlob,
           generateRGVIReportBlob,
           generateRCASNReportBlob,
           generateRCASNSketchReportBlob,

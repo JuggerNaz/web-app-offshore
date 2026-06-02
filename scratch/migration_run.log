@@ -2,8 +2,17 @@ Status Code: 200
 Success: true
 Error: undefined
 
-Logs (119 lines):
+Logs (134 lines):
 [LOG] WARNING: No active DATABASE_URL found in environment or .env.local. Skipping automatic RLS bypass.
+[LOG] Starting Library tables migration (u_lib_mast -> u_lib_list -> u_lib_combo)...
+[LOG] Fetched 273 master library records from Oracle (U_LIB_MAST).
+[LOG] Successfully migrated 273 records to u_lib_mast.
+[LOG] Fetched 3343 library list records from Oracle (U_LIB_LIST).
+[LOG] Successfully migrated 3321/3321 records to u_lib_list.
+[LOG] Updated library lookup maps with 3321 migrated keys.
+[LOG] Fetched 584 library combo records from Oracle (U_LIB_COMBO).
+[LOG] Successfully migrated 584/584 records to u_lib_combo.
+[LOG] Completed Library tables migration.
 [LOG] Started migration for Structure ID: 1061
 [LOG] Structure Unit Type determined as: METRIC
 [LOG] Legacy Structure Name resolved as: "D21JT-A"
@@ -26,36 +35,36 @@ Logs (119 lines):
 [LOG] WARNING: SOW scope load skipped: ORA-00904: "COMP_ID": invalid identifier
 [LOG] Phase 2: Migrating Jobs & Movements from Oracle LOGS...
 [LOG] Filtered LOGS rows to 109 record(s) matching selected INSPNO 00000003454.
-[LOG] Created ROV Job ID: 2939 (deployment 144R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2940 (deployment 145R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2941 (deployment 146R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2942 (deployment 147R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2943 (deployment 148R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2944 (deployment 149R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2945 (deployment 150R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2946 (deployment 151R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2947 (deployment 152R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2948 (deployment 153R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2949 (deployment 154R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2950 (deployment 155R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created ROV Job ID: 2951 (deployment 156R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2738 (dive 190D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2739 (dive 191D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2740 (dive 192D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2741 (dive 193D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2742 (dive 194D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2743 (dive 195D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2744 (dive 196D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2745 (dive 197D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2746 (dive 198D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2747 (dive 202D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2748 (dive 203D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2749 (dive 204D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2750 (dive 205D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2751 (dive 208D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2752 (dive 209D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2753 (dive 210D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
-[LOG] Created Diving Job ID: 2754 (dive 211D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3082 (deployment 144R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3083 (deployment 145R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3084 (deployment 146R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3085 (deployment 147R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3086 (deployment 148R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3087 (deployment 149R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3088 (deployment 150R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3089 (deployment 151R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3090 (deployment 152R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3091 (deployment 153R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3092 (deployment 154R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3093 (deployment 155R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created ROV Job ID: 3094 (deployment 156R) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2935 (dive 190D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2936 (dive 191D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2937 (dive 192D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2938 (dive 193D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2939 (dive 194D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2940 (dive 195D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2941 (dive 196D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2942 (dive 197D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2943 (dive 198D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2944 (dive 202D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2945 (dive 203D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2946 (dive 204D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2947 (dive 205D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2948 (dive 208D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2949 (dive 209D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2950 (dive 210D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
+[LOG] Created Diving Job ID: 2951 (dive 211D) with structure_id: 1061, jobpack_id: 610, sow_report_no: 14061
 [LOG] Successfully migrated 13 ROV Jobs & 17 Diving Jobs.
 [LOG] Successfully migrated 39 ROV Movements & 69 Dive Movements.
 [LOG] Phase 3: Migrating Video Tapes & Video Logs...
@@ -67,6 +76,10 @@ Logs (119 lines):
 [LOG] Loaded 996 component ID to Q_ID mapping(s) from Oracle ALLCOMPID.
 [LOG] Pre-populating component ID cache from existing PostgreSQL structure_components...
 [LOG] Loaded 995 component mapping(s) and 994 Q_ID mapping(s) from PostgreSQL.
+[LOG] Pre-fetching all CP additional readings from 'CPGRID' for structure ID 1061...
+[LOG] Loaded 0 CP additional readings groups from CPGRID.
+[LOG] Pre-fetching all UT additional readings from 'WTGRID' for structure ID 1061...
+[LOG] Loaded 0 UT additional readings groups from WTGRID.
 [LOG] Fetching primary inspections from Oracle 'PLATGI' (ROV Platform)...
 [LOG] Filtered primary inspections to 605 rows for INSPNO 00000003454.
 [LOG] Successfully migrated 605 ROV primary inspection records into PostgreSQL!
@@ -119,6 +132,8 @@ Logs (119 lines):
 [LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JT-A A014_2.JPG.
 [LOG] Physical copy skipped: File not found or inaccessible in any attempted locations: Z:\IDAMS-OFFSHORE\Attach\D21JT-A A014_3.jpg.
 [LOG] Successfully migrated 27 inspection attachments!
+[LOG] Phase 7: Synchronizing Scope of Work (u_sow_items) statuses...
+[LOG] WARNING: Fetching SOWs for status sync failed: column u_sow.report_number does not exist
 [LOG] ================================================================
 [LOG] Relational Inspection Migration Pipeline completed successfully!
 [LOG] ================================================================

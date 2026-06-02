@@ -12,6 +12,7 @@ import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-repo
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
+import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-selected-node-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
@@ -52,6 +53,7 @@ export function useWorkspaceReports(
     const [itisiPreviewOpen, setItisiPreviewOpen] = useState(false);
     const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
     const [cpPreviewOpen, setCpPreviewOpen] = useState(false);
+    const [rswniPreviewOpen, setRswniPreviewOpen] = useState(false);
     const [rgviPreviewOpen, setRgviPreviewOpen] = useState(false);
     const [rcasnPreviewOpen, setRcasnPreviewOpen] = useState(false);
     const [rcasnSketchPreviewOpen, setRcasnSketchPreviewOpen] = useState(false);
@@ -708,6 +710,34 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.lib_path || '';
         }
         return await generateROVCPReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+    };
+
+    const generateRSWNIReport = async () => {
+        const records = currentRecords.filter(r => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === 'RSWNI' || code === 'SWNI';
+        });
+        if (records.length === 0) {
+            toast.error("No RSWNI Selected Node records found to generate report");
+            return;
+        }
+        setRswniPreviewOpen(true);
+    };
+
+    const generateRSWNIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === 'RSWNI' || code === 'SWNI';
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+        return await generateROVSelectedNodeReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
     const generateRGVIReport = async () => {
@@ -1405,6 +1435,10 @@ export function useWorkspaceReports(
             await generateCPReport();
             return;
         }
+        if (typeCode === 'RSWNI' || typeCode === 'SWNI') {
+            await generateRSWNIReport();
+            return;
+        }
         if (typeCode === 'RCASN' || typeCode === 'CAISSON') {
             await generateRCASNReport();
             return;
@@ -1510,6 +1544,7 @@ export function useWorkspaceReports(
         itisiPreviewOpen, setItisiPreviewOpen,
         anodePreviewOpen, setAnodePreviewOpen,
         cpPreviewOpen, setCpPreviewOpen,
+        rswniPreviewOpen, setRswniPreviewOpen,
         rgviPreviewOpen, setRgviPreviewOpen,
         rcasnPreviewOpen, setRcasnPreviewOpen,
         rcasnSketchPreviewOpen, setRcasnSketchPreviewOpen,
@@ -1563,6 +1598,8 @@ export function useWorkspaceReports(
         generateAnodeReportBlob,
         generateCPReport,
         generateCPReportBlob,
+        generateRSWNIReport,
+        generateRSWNIReportBlob,
         generateRGVIReport,
         generateRGVIReportBlob,
         generateRCASNReport,

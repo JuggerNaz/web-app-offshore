@@ -47,6 +47,7 @@ interface InspectionHeaderProps {
     generateAnodeReport: () => void;
     generateDivingAnodeReport: () => void;
     generateCPReport: () => void;
+    generateRSWNIReport: () => void;
     generateRGVIReport: () => void;
     generateGVINSReport: () => void;
     generateRCASNReport: () => void;
@@ -92,6 +93,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateAnodeReport,
     generateDivingAnodeReport,
     generateCPReport,
+    generateRSWNIReport,
     generateRGVIReport,
     generateGVINSReport,
     generateRCASNReport,

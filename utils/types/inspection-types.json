@@ -2392,6 +2392,12 @@
                     "$ref": "marine_growth_hard"
                 },
                 {
+                    "$ref": "component_condition"
+                },
+                {
+                    "$ref": "coating_condition"
+                },
+                {
                     "$ref": "cp_rdg"
                 },
                 {

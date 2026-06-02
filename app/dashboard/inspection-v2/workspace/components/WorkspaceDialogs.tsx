@@ -51,6 +51,7 @@ import { getReportHeaderData } from "@/utils/company-settings";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
+import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-selected-node-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
@@ -109,6 +110,7 @@ interface WorkspaceDialogsProps {
         rscorPreviewOpen: boolean;
         anodePreviewOpen: boolean;
         cpPreviewOpen: boolean;
+        rswniPreviewOpen: boolean;
         rgviPreviewOpen: boolean;
         rcondSketchPreviewOpen: boolean;
         showRemovalConfirm: boolean;
@@ -190,6 +192,7 @@ interface WorkspaceDialogsProps {
         setRscorPreviewOpen: (open: boolean) => void;
         setAnodePreviewOpen: (open: boolean) => void;
         setCpPreviewOpen: (open: boolean) => void;
+        setRswniPreviewOpen: (open: boolean) => void;
         setRgviPreviewOpen: (open: boolean) => void;
         setRcondSketchPreviewOpen: (open: boolean) => void;
         setShowRemovalConfirm: (open: boolean) => void;
@@ -260,6 +263,8 @@ interface WorkspaceDialogsProps {
         generateITISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRSWNIReport: () => void;
+        generateRSWNIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRGVIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCASNReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCASNSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -347,6 +352,7 @@ export function WorkspaceDialogs({
         rscorPreviewOpen,
         anodePreviewOpen,
         cpPreviewOpen,
+        rswniPreviewOpen,
         rgviPreviewOpen,
         rcondSketchPreviewOpen,
         showRemovalConfirm,
@@ -422,6 +428,7 @@ export function WorkspaceDialogs({
         setRscorPreviewOpen,
         setAnodePreviewOpen,
         setCpPreviewOpen,
+        setRswniPreviewOpen,
         setRgviPreviewOpen,
         setRcondSketchPreviewOpen,
         setShowRemovalConfirm,
@@ -1310,6 +1317,65 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                open={rswniPreviewOpen}
+                onOpenChange={setRswniPreviewOpen}
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const swniRecords = (allRecords || []).filter((r: any) => {
+                        const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                        return typeCode === 'RSWNI' || typeCode === 'SWNI';
+                    });
+
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    return await generateROVSelectedNodeReport(
+                        swniRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                            showSignatures
+                        }
+                    );
+                }}
+                title="ROV Selected Node Report"
+                fileName={`ROV_Selected_Node_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
                 open={rgviPreviewOpen}
                 onOpenChange={setRgviPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -2171,6 +2237,7 @@ export function WorkspaceDialogs({
                     generateUTWTKReport: () => setUtwtkPreviewOpen(true),
                     generateSZONEReport: () => setSzonePreviewOpen(true),
                     generateCPReport: () => setters.setCpPreviewOpen(true),
+                    generateRSWNIReport: () => setters.setRswniPreviewOpen(true),
                     generateCPCLBReport: () => setters.setCpclbPreviewOpen(true),
                     generateUTCLBReport: () => setters.setUtclbPreviewOpen(true),
                     generateAnodeReport: () => setters.setAnodePreviewOpen(true),
@@ -2211,6 +2278,8 @@ export function WorkspaceDialogs({
                             case 'UTWTK': setUtwtkPreviewOpen(true); break;
                             case 'SZONE': setSzonePreviewOpen(true); break;
                             case 'CP': setters.setCpPreviewOpen(true); break;
+                            case 'RSWNI':
+                            case 'SWNI': setters.setRswniPreviewOpen(true); break;
                             case 'CPCLB': setters.setCpclbPreviewOpen(true); break;
                             case 'UTCLB': setters.setUtclbPreviewOpen(true); break;
                             case 'ANODE': setters.setAnodePreviewOpen(true); break;
