@@ -19,10 +19,10 @@ export async function POST(request: NextRequest) {
 
         if (sowError) throw sowError;
 
-        // 2. Fetch all inspection records for this structure
+        // 2. Fetch all inspection records for this structure (including sow_report_no)
         const { data: records, error: recError } = await (supabase as any)
             .from("insp_records")
-            .select("component_id, inspection_type_id, inspection_type_code, status, elevation")
+            .select("component_id, inspection_type_id, inspection_type_code, status, elevation, sow_report_no")
             .eq("structure_id", structure_id);
 
         if (recError) throw recError;
@@ -83,11 +83,19 @@ export async function POST(request: NextRequest) {
 
             if (newStatus !== item.status) statusChanged = true;
 
+            // Align report_number with actual inspection records if currently null
+            let newReportNumber = item.report_number;
+            if (!item.report_number && itemRecords.length > 0) {
+                newReportNumber = itemRecords[0].sow_report_no || null;
+                if (newReportNumber !== item.report_number) statusChanged = true;
+            }
+
             if (statusChanged) {
                 updates.push({
                     id: item.id,
                     status: newStatus,
                     elevation_data: newElevationData,
+                    report_number: newReportNumber,
                     updated_at: new Date().toISOString()
                 });
             }
@@ -98,7 +106,12 @@ export async function POST(request: NextRequest) {
             for (const up of updates) {
                 await (supabase as any)
                     .from("u_sow_items")
-                    .update({ status: up.status, elevation_data: up.elevation_data, updated_at: up.updated_at })
+                    .update({ 
+                        status: up.status, 
+                        elevation_data: up.elevation_data, 
+                        report_number: up.report_number,
+                        updated_at: up.updated_at 
+                    })
                     .eq("id", up.id);
             }
         }
@@ -146,6 +159,7 @@ export async function POST(request: NextRequest) {
                 if (comp && type) {
                     const hasIncomplete = (group || []).some((r: any) => r.status === 'INCOMPLETE');
                     const status = hasIncomplete ? 'incomplete' : 'completed';
+                    const recordReportNo = group[0]?.sow_report_no || null;
 
                     missingItems.push({
                         sow_id,
@@ -156,6 +170,7 @@ export async function POST(request: NextRequest) {
                         inspection_code: type.code,
                         inspection_name: type.name,
                         status,
+                        report_number: recordReportNo,
                         created_by: 'Correction Tool',
                         updated_at: new Date().toISOString()
                     });

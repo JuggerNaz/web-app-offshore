@@ -43,6 +43,27 @@ interface MigrationReportPreviewProps {
     serviceName?: string;
     user?: string;
   };
+  oracleCompany?: {
+    comp_name: string;
+    depart_name: string;
+    iconfile?: string;
+    serial_no?: string;
+    version?: string;
+  } | null;
+  oraclePreference?: {
+    def_unit: string;
+    def_fp: string;
+    def_fpunit: string;
+    def_x: string;
+    def_y: string;
+    def_date?: string;
+    workunit?: string;
+    def_fpformat?: string;
+    def_xyunit?: string;
+    appl_mode?: string;
+    mgrow_profile?: string;
+    def_deptunit?: string;
+  } | null;
   migrationReport: Record<string, { 
     status: "success" | "failed" | "skipped"; 
     oracleRows: number; 
@@ -107,12 +128,80 @@ const getComponentFullName = (key: string): string => {
   return COMPONENT_FULL_NAMES[upperKey] || "";
 };
 
+export const getTableMappingNames = (key: string, structureType: "PLATFORM" | "PIPELINE" = "PLATFORM") => {
+  const isPlat = structureType === "PLATFORM";
+  const upperKey = key.toUpperCase();
+  
+  switch (upperKey) {
+    case "STRUCTURE":
+      return {
+        oracle: isPlat ? "PLATFORM" : "U_PIPELINE",
+        pg: isPlat ? "platform" : "u_pipeline"
+      };
+    case "JOBPACK":
+      return { oracle: "WORKPL", pg: "jobpack" };
+    case "U_SOW":
+      return { oracle: "U_SOW", pg: "u_sow" };
+    case "LOGS_JOBS":
+      return { oracle: "LOGS", pg: isPlat ? "insp_rov_jobs" : "insp_dive_jobs" };
+    case "LOGS_MOVEMENTS":
+      return { oracle: "LOGS", pg: isPlat ? "insp_rov_movements" : "insp_dive_movements" };
+    case "VIDEO":
+      return { oracle: isPlat ? "PLATG/PLATGI" : "video", pg: "insp_video_logs" };
+    case "ANOMALY":
+      return { oracle: "U_DEFECT", pg: "insp_anomalies" };
+    case "ATTACHMENT":
+      return { oracle: "U_ATTACH_1", pg: "attachment" };
+    case "COMMENT":
+      return { oracle: "THECOMMENTS", pg: "comment" };
+    case "U_ASSOC":
+      return { oracle: "U_ASSOC", pg: "structure_components" };
+    case "STR_ELV":
+      return { oracle: "STR_ELV", pg: "str_elv" };
+    case "STR_LEVEL":
+      return { oracle: "STR_LEVEL", pg: "str_level" };
+    case "STR_FACES":
+      return { oracle: "STR_FACES", pg: "str_faces" };
+    case "INSP_ATTACHMENT":
+      return { oracle: "U_ATTACH_1", pg: "insp_attachments" };
+    case "U_LIB_MAST":
+      return { oracle: "U_LIB_MAST", pg: "u_lib_mast" };
+    case "U_LIB_LIST":
+      return { oracle: "U_LIB_LIST", pg: "u_lib_list" };
+    case "U_LIB_COMBO":
+      return { oracle: "U_LIB_COMBO", pg: "u_lib_combo" };
+    default:
+      if (upperKey.startsWith("INSP_ROV_")) {
+        return { oracle: "PLATGI", pg: "insp_records" };
+      } else if (upperKey.startsWith("INSP_DIV_")) {
+        const divCode = upperKey.replace("INSP_DIV_", "");
+        return { oracle: divCode, pg: "insp_records" };
+      } else if (upperKey.startsWith("INSP_ROV")) {
+        return { oracle: "PLATGI", pg: "insp_records" };
+      } else if (upperKey.startsWith("INSP_DIVING")) {
+        return { oracle: "ALLINSPID", pg: "insp_records" };
+      } else {
+        // Component types (e.g. BAN)
+        let specTable = `${upperKey}_COMP`;
+        if (upperKey === 'AN') {
+          specTable = isPlat ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+        }
+        return {
+          oracle: `ALLCOMPID + ${specTable}`,
+          pg: "structure_components"
+        };
+      }
+  }
+};
+
 export default function MigrationReportPreview({
   isOpen,
   onClose,
   selectedStructureId,
   selectedStructure,
   oracleConfig,
+  oracleCompany,
+  oraclePreference,
   migrationReport,
   migrationLogs,
   unmappedComponents = [],
@@ -195,6 +284,30 @@ export default function MigrationReportPreview({
   } else if (totalPgRows === 0 && totalOracleRows > 0) {
     migrationStatus = "FAILED";
   }
+
+  const libKeys = ["U_LIB_MAST", "U_LIB_LIST", "U_LIB_COMBO"];
+  const systemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
+  const jobInspectionKeys = [
+    "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
+    "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT"
+  ];
+
+  const groupedReport = (() => {
+    const reportEntries = Object.entries(migrationReport);
+    const libItems = reportEntries.filter(([key]) => libKeys.includes(key));
+    const systemItems = reportEntries.filter(([key]) => systemKeys.includes(key));
+    const jobInspItems = reportEntries.filter(([key]) => jobInspectionKeys.includes(key));
+    const componentItems = reportEntries.filter(([key]) => 
+      !libKeys.includes(key) && !systemKeys.includes(key) && !jobInspectionKeys.includes(key)
+    );
+
+    return [
+      { section: "Library Configuration Section", items: libItems },
+      { section: "Structure & Framework Section", items: systemItems },
+      { section: "Offshore Component Section", items: componentItems },
+      { section: "Inspection, Jobs & Anomalies Section", items: jobInspItems }
+    ].filter(g => g.items.length > 0);
+  })();
 
 
 
@@ -356,12 +469,52 @@ export default function MigrationReportPreview({
       doc.setFillColor(barColor[0], barColor[1], barColor[2]);
       doc.rect(18, 100.5, 174 * (overallAccuracy / 100), 2.2, "F");
 
+      // Oracle Company and Preferences info box in PDF
+      let companyPreferenceY = 110;
+      if (oracleCompany || oraclePreference) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, companyPreferenceY, 180, 22, "F");
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(15, companyPreferenceY, 180, 22, "D");
+
+        if (oracleCompany) {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(6.5);
+          doc.setTextColor(79, 70, 229);
+          doc.text("ORACLE COMPANY DETAILS (U_COMPANY)", 18, companyPreferenceY + 4);
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(5.5);
+          doc.setTextColor(51, 65, 85);
+          doc.text(`Company Name: ${oracleCompany.comp_name}`, 18, companyPreferenceY + 8);
+          doc.text(`Department:    ${oracleCompany.depart_name}`, 18, companyPreferenceY + 12);
+          doc.text(`Serial Number: ${oracleCompany.serial_no || "N/A"}`, 18, companyPreferenceY + 16);
+          doc.text(`DB Version:    ${oracleCompany.version || "N/A"}`, 18, companyPreferenceY + 20);
+        }
+
+        if (oraclePreference) {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(6.5);
+          doc.setTextColor(5, 150, 105);
+          doc.text("ORACLE PREFERENCE DETAILS", 110, companyPreferenceY + 4);
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(5.5);
+          doc.setTextColor(51, 65, 85);
+          doc.text(`Unit standard: ${oraclePreference.def_unit} (${oraclePreference.def_xyunit || "m"})`, 110, companyPreferenceY + 8);
+          doc.text(`DB User Name:  ${oracleConfig.user || "N/A"}`, 110, companyPreferenceY + 13);
+          doc.text(`App Mode:      ${oraclePreference.appl_mode || "N/A"}`, 110, companyPreferenceY + 18);
+        }
+        companyPreferenceY += 26;
+      }
+
       // --- Table Breakdown ---
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(30, 41, 59);
-      doc.text("DETAILED DATA TRANSLATION BREAKDOWN", 15, 112);
+      doc.text("DETAILED DATA TRANSLATION BREAKDOWN", 15, companyPreferenceY);
 
+      const structType = selectedStructure?.PTYPE === "PIPE" ? "PIPELINE" : "PLATFORM";
       const tableRows = Object.entries(migrationReport).map(([key, item]) => {
         const percent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
         let statusText = "SUCCESSFUL";
@@ -371,11 +524,15 @@ export default function MigrationReportPreview({
         const compName = getComponentFullName(key);
         let nameCell = compName ? `${key} (${compName})` : key;
         if (item.filesCopied !== undefined && item.filesCopied !== null && item.filesCopied > 0) {
-          nameCell += ` [${item.filesCopied} Files Copied]`;
+          nameCell += ` [${item.filesCopied} Files]`;
         }
+
+        const mapNames = getTableMappingNames(key, structType);
 
         return [
           nameCell,
+          mapNames.oracle,
+          mapNames.pg,
           item.oracleRows.toString(),
           item.migratedRows.toString(),
           `${percent}%`,
@@ -384,8 +541,8 @@ export default function MigrationReportPreview({
       });
 
       autoTable(doc, {
-        startY: 116,
-        head: [["Entity Table Name", "Oracle Count", "Postgres Count", "Accuracy", "Process Status"]],
+        startY: companyPreferenceY + 4,
+        head: [["Entity Table Name", "Oracle Table", "Postgres Table", "Oracle Count", "Postgres Count", "Accuracy", "Process Status"]],
         body: tableRows,
         theme: "striped",
         headStyles: {
@@ -399,11 +556,13 @@ export default function MigrationReportPreview({
           textColor: [51, 65, 85]
         },
         columnStyles: {
-          0: { cellWidth: 70 },
-          1: { halign: "right", cellWidth: 25 },
-          2: { halign: "right", cellWidth: 25 },
-          3: { halign: "right", cellWidth: 25 },
-          4: { halign: "center", cellWidth: 35 }
+          0: { cellWidth: 40 },
+          1: { cellWidth: 30 },
+          2: { cellWidth: 30 },
+          3: { halign: "right", cellWidth: 20 },
+          4: { halign: "right", cellWidth: 20 },
+          5: { halign: "right", cellWidth: 15 },
+          6: { halign: "center", cellWidth: 25 }
         },
         margin: { left: 15, right: 15 }
       });
@@ -458,10 +617,10 @@ export default function MigrationReportPreview({
 
       // Itemized Copied Records Manifest
       const manifestItems: string[] = [];
-      const structType = selectedStructure?.PTYPE === "PIPE" ? "Pipeline" : "Platform";
+      const structureTypeName = selectedStructure?.PTYPE === "PIPE" ? "Pipeline" : "Platform";
 
       if (migrationReport["STRUCTURE"]?.status === "success") {
-        manifestItems.push(`${structType} structure master records successfully translated and upserted into PostgreSQL target table.`);
+        manifestItems.push(`${structureTypeName} structure master records successfully translated and upserted into PostgreSQL target table.`);
       }
       
       ["STR_ELV", "STR_LEVEL", "STR_FACES"].forEach(key => {
@@ -576,6 +735,77 @@ export default function MigrationReportPreview({
         });
 
         finalY += 2;
+      }
+
+      // U_ASSOC Rejected Association Details in PDF
+      const assocReport = migrationReport["U_ASSOC"] as any;
+      if (assocReport?.rejectedDetails && assocReport.rejectedDetails.length > 0) {
+        if (finalY > 220) {
+          doc.addPage();
+          finalY = 20;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(217, 119, 6); // Amber-600
+        doc.text("REJECTED COMPONENT ASSOCIATIONS (U_ASSOC)", 15, finalY);
+
+        finalY += 4;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`${assocReport.totalRejected || assocReport.rejectedDetails.length} record(s) could not be mapped — component not yet migrated to PostgreSQL.`, 15, finalY);
+        finalY += 5;
+
+        // Table header
+        doc.setFillColor(255, 251, 235); // Amber-50
+        doc.rect(15, finalY, 180, 6, "F");
+        doc.setDrawColor(253, 230, 138); // Amber-200
+        doc.rect(15, finalY, 180, 6, "D");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(5.5);
+        doc.setTextColor(146, 64, 14); // Amber-800
+        doc.text("#", 17, finalY + 4);
+        doc.text("ORACLE COMP_ID", 25, finalY + 4);
+        doc.text("ORACLE ASSOC_COMPID", 65, finalY + 4);
+        doc.text("REASON", 110, finalY + 4);
+        finalY += 7;
+
+        // Table rows (limit to fit page)
+        const maxRows = Math.min(assocReport.rejectedDetails.length, 50);
+        doc.setFont("courier", "normal");
+        doc.setFontSize(5.5);
+
+        for (let i = 0; i < maxRows; i++) {
+          if (finalY > 265) {
+            doc.addPage();
+            finalY = 20;
+          }
+          const rd = assocReport.rejectedDetails[i];
+          const bgColor = i % 2 === 0 ? [255, 255, 255] : [255, 251, 235];
+          doc.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
+          doc.rect(15, finalY - 2.5, 180, 5, "F");
+
+          doc.setTextColor(100, 116, 139);
+          doc.text(String(i + 1), 17, finalY);
+          doc.setTextColor(30, 41, 59);
+          doc.text(String(rd.oracleCompId), 25, finalY);
+          doc.text(String(rd.oracleAssocCompId), 65, finalY);
+          doc.setTextColor(146, 64, 14);
+          const reasonLines = doc.splitTextToSize(rd.reason, 82);
+          doc.text(reasonLines[0], 110, finalY);
+          finalY += 5;
+        }
+
+        if (assocReport.rejectedDetails.length > maxRows) {
+          doc.setFont("helvetica", "italic");
+          doc.setFontSize(6);
+          doc.setTextColor(100, 116, 139);
+          doc.text(`... and ${assocReport.rejectedDetails.length - maxRows} more rejected records (see dashboard for full list)`, 17, finalY);
+          finalY += 5;
+        }
+
+        finalY += 3;
       }
 
       // Process Step & Log Reports
@@ -746,6 +976,8 @@ export default function MigrationReportPreview({
       structureId: selectedStructureId,
       structureTitle: selectedStructure?.TITLE,
       generatedAt: generationDate,
+      company: oracleCompany,
+      preference: oraclePreference,
       summary: {
         totalOracleRows,
         totalPgRows,
@@ -776,6 +1008,10 @@ Asset Class: ${selectedStructure?.PTYPE === "PIPE" ? "Pipeline Structure" : "Pla
 Unit Standard: ${selectedStructure?.DEF_UNIT || "METRIC"}
 Generated On: ${generationDate}
 Verified By: ${inspectorName}
+
+ORACLE SYSTEM SETTINGS:
+Company: ${oracleCompany ? `${oracleCompany.comp_name} (${oracleCompany.depart_name})` : "N/A"}
+Preferences: ${oraclePreference ? `Unit: ${oraclePreference.def_unit}, DB User: ${oracleConfig.user || "N/A"}, App Mode: ${oraclePreference.appl_mode || "N/A"}` : "N/A"}
 
 EXECUTIVE METRICS:
 - Oracle Source Records: ${totalOracleRows}
@@ -811,6 +1047,10 @@ Report Code: MIG-${selectedStructureId}-${new Date().getFullYear()}
 Structure: ${selectedStructure?.TITLE || "Platform ID " + selectedStructureId} (ID: ${selectedStructureId})
 Generated On: ${generationDate}
 Status: ${migrationStatus}
+
+Oracle System Details:
+Company: ${oracleCompany ? `${oracleCompany.comp_name} (${oracleCompany.depart_name})` : "N/A"}
+Preferences: ${oraclePreference ? `Unit: ${oraclePreference.def_unit}, DB User: ${oracleConfig.user || "N/A"}, App Mode: ${oraclePreference.appl_mode || "N/A"}` : "N/A"}
 
 Key Metrics:
 - Oracle Records: ${totalOracleRows}
@@ -1215,6 +1455,41 @@ ${inspectorName}
                     </div>
                   </div>
                 </div>
+
+                {/* Oracle Company & Database Preferences Section */}
+                {(oracleCompany || oraclePreference) && (
+                  <div className={`mt-6 p-4 rounded-xl border grid grid-cols-1 md:grid-cols-2 gap-6 ${
+                    selectedTheme === "inksaver" ? "border-black border-2" : "bg-slate-50/50 border-slate-100"
+                  }`}>
+                    {oracleCompany && (
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block border-b border-slate-200/60 pb-1 flex items-center gap-1.5">
+                          <Server className="w-3.5 h-3.5" />
+                          Oracle Company Details (u_company)
+                        </span>
+                        <div className="space-y-1.5 text-xs text-slate-700">
+                          <div className="flex gap-1.5"><span className="font-extrabold text-[9.5px] text-slate-400 w-24 shrink-0">Company Name:</span><span className="font-bold text-slate-800">{oracleCompany.comp_name}</span></div>
+                          <div className="flex gap-1.5"><span className="font-extrabold text-[9.5px] text-slate-400 w-24 shrink-0">Department:</span><span className="font-medium text-slate-700">{oracleCompany.depart_name}</span></div>
+                          <div className="flex gap-1.5"><span className="font-extrabold text-[9.5px] text-slate-400 w-24 shrink-0">Serial No:</span><span className="font-mono text-slate-700 font-bold">{oracleCompany.serial_no || "N/A"}</span></div>
+                          <div className="flex gap-1.5"><span className="font-extrabold text-[9.5px] text-slate-400 w-24 shrink-0">Version:</span><span className="font-bold text-slate-800">{oracleCompany.version || "N/A"}</span></div>
+                        </div>
+                      </div>
+                    )}
+                    {oraclePreference && (
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block border-b border-slate-200/60 pb-1 flex items-center gap-1.5">
+                          <Database className="w-3.5 h-3.5" />
+                          Legacy Database Preferences
+                        </span>
+                        <div className="space-y-1.5 text-xs text-slate-700">
+                          <div className="flex gap-1.5"><span className="font-extrabold text-[9.5px] text-slate-400 w-24 shrink-0">Def Unit:</span><span className="font-bold text-slate-800">{oraclePreference.def_unit} ({oraclePreference.def_xyunit || "m"})</span></div>
+                          <div className="flex gap-1.5"><span className="font-extrabold text-[9.5px] text-slate-400 w-24 shrink-0">DB User Name:</span><span className="font-bold text-slate-800">{oracleConfig.user || "N/A"}</span></div>
+                          <div className="flex gap-1.5"><span className="font-extrabold text-[9.5px] text-slate-400 w-24 shrink-0">App Mode:</span><span className="font-bold text-slate-800 uppercase">{oraclePreference.appl_mode || "N/A"}</span></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* --- EXECUTIVE SUMMARY SECTION --- */}
@@ -1300,6 +1575,8 @@ ${inspectorName}
                       selectedTheme === "inksaver" ? "bg-slate-100 border-b-2 border-black" : "bg-slate-50/50 border-slate-100"
                     }`}>
                       <th className="px-4 py-3">Entity Table Name</th>
+                      <th className="px-4 py-3">Oracle Source</th>
+                      <th className="px-4 py-3">Postgres Target</th>
                       <th className="px-4 py-3 text-right">Oracle Count</th>
                       <th className="px-4 py-3 text-right">Postgres Count</th>
                       <th className="px-4 py-3 text-right">Accuracy %</th>
@@ -1307,57 +1584,107 @@ ${inspectorName}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                    {Object.entries(migrationReport).map(([key, item]) => {
-                      const percent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
-                      const isError = item.errors.length > 0;
-                      
-                      let statusText = "SUCCESSFUL";
-                      if (item.status === "skipped") {
-                        statusText = "SKIPPED";
-                      } else if (isError || item.status === "failed") {
-                        statusText = "FAILED";
-                      }
+                    {groupedReport.map((group, groupIdx) => {
+                      const groupOracle = group.items.reduce((sum, [_, item]) => sum + item.oracleRows, 0);
+                      const groupPg = group.items.reduce((sum, [_, item]) => sum + item.migratedRows, 0);
+                      const groupPercent = groupOracle === 0 ? 100 : Math.min(100, Math.round((groupPg / groupOracle) * 100));
 
                       return (
-                        <tr key={key} className={`hover:bg-slate-50/20 transition-colors ${
-                          isError && selectedTheme !== "inksaver" ? "bg-rose-50/20" : ""
-                        }`}>
-                          <td className="px-4 py-3 text-slate-900">
-                            <span className="font-mono font-bold">{key}</span>
-                            {getComponentFullName(key) && (
-                              <span className="text-[10px] text-slate-500 font-bold ml-2 uppercase tracking-wide">
-                                ({getComponentFullName(key)})
+                        <React.Fragment key={groupIdx}>
+                          {/* Section Header Row */}
+                          <tr className="bg-slate-100/40 dark:bg-slate-800/40 border-y border-slate-200 dark:border-slate-800">
+                            <td colSpan={7} className="px-4 py-2 font-black text-[10px] text-indigo-700 dark:text-indigo-400 uppercase tracking-widest">
+                              {group.section}
+                            </td>
+                          </tr>
+                          
+                          {/* Individual Rows */}
+                          {group.items.map(([key, item]) => {
+                            const percent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
+                            const isError = item.errors.length > 0;
+                            
+                            let statusText = "SUCCESSFUL";
+                            if (item.status === "skipped") {
+                              statusText = "SKIPPED";
+                            } else if (isError || item.status === "failed") {
+                              statusText = "FAILED";
+                            }
+
+                            const mapNames = getTableMappingNames(key, selectedStructure?.PTYPE === "PIPE" ? "PIPELINE" : "PLATFORM");
+
+                            return (
+                              <tr key={key} className={`hover:bg-slate-50/20 transition-colors ${
+                                isError && selectedTheme !== "inksaver" ? "bg-rose-50/20" : ""
+                              }`}>
+                                <td className="px-4 py-3 pl-8 text-slate-900">
+                                  <span className="font-mono font-bold">{key}</span>
+                                  {getComponentFullName(key) && (
+                                    <span className="text-[10px] text-slate-500 font-bold ml-2 uppercase tracking-wide">
+                                      ({getComponentFullName(key)})
+                                    </span>
+                                  )}
+                                  {item.filesCopied !== undefined && item.filesCopied !== null && item.filesCopied > 0 && (
+                                    <span className="text-[8px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-black uppercase tracking-wider ml-3 inline-flex items-center gap-1 select-none">
+                                      {item.filesCopied} Files Copied
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 font-mono text-[10px] text-slate-500">{mapNames.oracle}</td>
+                                <td className="px-4 py-3 font-mono text-[10px] text-slate-500">{mapNames.pg}</td>
+                                <td className="px-4 py-3 text-right font-mono text-slate-500">{item.oracleRows}</td>
+                                <td className="px-4 py-3 text-right font-mono text-slate-900">{item.migratedRows}</td>
+                                <td className="px-4 py-3 text-right font-mono font-bold">
+                                  <span className={
+                                    percent >= 95 ? "text-emerald-600" : percent >= 75 ? "text-indigo-600" : "text-rose-500"
+                                  }>
+                                    {percent}%
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right font-bold text-[10px]">
+                                  <span className={`px-2 py-0.5 rounded uppercase ${
+                                    statusText === "SUCCESSFUL" 
+                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-100" 
+                                      : statusText === "SKIPPED" 
+                                        ? "bg-slate-50 text-slate-500 border border-slate-200" 
+                                        : "bg-rose-50 text-rose-700 border border-rose-100"
+                                  }`}>
+                                    {statusText}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          
+                          {/* Section Subtotal Row */}
+                          <tr className="bg-slate-50/50 dark:bg-slate-900/10 font-bold border-b border-slate-200 dark:border-slate-800 text-[11px]">
+                            <td className="px-4 py-2 pl-6 text-slate-600 dark:text-slate-400 italic uppercase">
+                              Subtotal ({group.section.replace(" Section", "")})
+                            </td>
+                            <td colSpan={2} />
+                            <td className="px-4 py-2 text-right font-mono text-slate-500">{groupOracle}</td>
+                            <td className="px-4 py-2 text-right font-mono text-slate-900">{groupPg}</td>
+                            <td className="px-4 py-2 text-right font-mono" colSpan={2}>
+                              <span className={groupPercent >= 95 ? "text-emerald-600" : groupPercent >= 75 ? "text-indigo-600" : "text-rose-500"}>
+                                {groupPercent}% Accuracy
                               </span>
-                            )}
-                            {item.filesCopied !== undefined && item.filesCopied !== null && (
-                              <span className="text-[8px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-black uppercase tracking-wider ml-3 inline-flex items-center gap-1 select-none">
-                                {item.filesCopied} Files Copied
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-slate-500">{item.oracleRows}</td>
-                          <td className="px-4 py-3 text-right font-mono text-slate-900">{item.migratedRows}</td>
-                          <td className="px-4 py-3 text-right font-mono font-bold">
-                            <span className={
-                              percent >= 95 ? "text-emerald-600" : percent >= 75 ? "text-indigo-600" : "text-rose-500"
-                            }>
-                              {percent}%
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right font-bold text-[10px]">
-                            <span className={`px-2 py-0.5 rounded uppercase ${
-                              statusText === "SUCCESSFUL" 
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-100" 
-                                : statusText === "SKIPPED" 
-                                  ? "bg-slate-50 text-slate-500 border border-slate-200" 
-                                  : "bg-rose-50 text-rose-700 border border-rose-100"
-                            }`}>
-                              {statusText}
-                            </span>
-                          </td>
-                        </tr>
+                            </td>
+                          </tr>
+                        </React.Fragment>
                       );
                     })}
+                    
+                    {/* GRAND TOTAL ROW */}
+                    <tr className="bg-indigo-50/30 dark:bg-indigo-950/20 font-black border-t-2 border-slate-300 dark:border-slate-700 text-xs">
+                      <td className="px-4 py-3 uppercase tracking-wider text-indigo-800 dark:text-indigo-400">
+                        GRAND TOTAL RECORDS SUMMARY
+                      </td>
+                      <td colSpan={2} />
+                      <td className="px-4 py-3 text-right font-mono text-slate-700 dark:text-slate-300">{totalOracleRows}</td>
+                      <td className="px-4 py-3 text-right font-mono text-indigo-700 dark:text-indigo-400">{totalPgRows}</td>
+                      <td className="px-4 py-3 text-right font-mono text-emerald-600" colSpan={2}>
+                        {overallAccuracy}% Overall Success Rate
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>

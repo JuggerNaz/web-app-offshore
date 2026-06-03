@@ -8,9 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Database, Server, RefreshCw, ArrowRight, Play, Settings2, FileText, CheckCircle2, Plus, Trash2, Save, Sparkles, Printer, ChevronUp, ChevronDown, Eye, FolderOpen, Cloud, Network } from "lucide-react";
+import { Database, Server, RefreshCw, ArrowRight, Play, Settings2, FileText, CheckCircle2, Plus, Trash2, Save, Sparkles, Printer, AlertTriangle, ChevronUp, ChevronDown, Eye, FolderOpen, Cloud, Network, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import MigrationReportPreview from "@/components/migration/migration-report-preview";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import MigrationReportPreview, { getTableMappingNames } from "@/components/migration/migration-report-preview";
 
 export default function MigrationDashboard() {
   const [config, setConfig] = useState({
@@ -34,6 +41,9 @@ export default function MigrationDashboard() {
   const [selectedStructureId, setSelectedStructureId] = useState<string>("");
   
   const [summary, setSummary] = useState<any[]>([]);
+  const [libraries, setLibraries] = useState<any[]>([]);
+  const [framework, setFramework] = useState<any[]>([]);
+  const [inspectionJobs, setInspectionJobs] = useState<any[]>([]);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [jobpacks, setJobpacks] = useState<any[]>([]);
   const [isLoadingJobpacks, setIsLoadingJobpacks] = useState(false);
@@ -41,11 +51,56 @@ export default function MigrationDashboard() {
   const [componentsOnly, setComponentsOnly] = useState(false);
   const [inspectionSummary, setInspectionSummary] = useState<any | null>(null);
   const [isLoadingInspectionSummary, setIsLoadingInspectionSummary] = useState(false);
+  const [oracleCompany, setOracleCompany] = useState<any | null>(null);
+  const [oraclePreference, setOraclePreference] = useState<any | null>(null);
 
   const [activeTab, setActiveTab] = useState("connection");
   const [mappingStructureType, setMappingStructureType] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
   
   const [oracleColumnsCache, setOracleColumnsCache] = useState<Record<string, string[]>>({});
+
+  const [missingModalData, setMissingModalData] = useState<{
+    tableName: string;
+    missingInPostgres: { key: string; label: string }[];
+    missingInOracle: { key: string; label: string }[];
+    isLoading: boolean;
+  } | null>(null);
+
+  const fetchMissingItems = async (code: string) => {
+    if (!selectedStructureId) {
+      toast.error("Please select a structure first.");
+      return;
+    }
+    setMissingModalData({
+      tableName: code,
+      missingInPostgres: [],
+      missingInOracle: [],
+      isLoading: true
+    });
+
+    try {
+      const res = await fetch(`/api/migration/summary/${selectedStructureId}/missing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, ...config })
+      });
+      const data = await safeParseJson(res);
+      if (res.ok) {
+        setMissingModalData({
+          tableName: code,
+          missingInPostgres: data.missingInPostgres || [],
+          missingInOracle: data.missingInOracle || [],
+          isLoading: false
+        });
+      } else {
+        toast.error(data.error || "Failed to fetch missing items list");
+        setMissingModalData(null);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "An error occurred fetching missing items");
+      setMissingModalData(null);
+    }
+  };
 
   const safeParseJson = async (res: Response) => {
     const contentType = res.headers.get("content-type") || "";
@@ -462,42 +517,16 @@ export default function MigrationDashboard() {
     }
     
     setMigrationReport(null);
-    const stages = [
-      "Establishing tunnels & initializing Oracle client...",
-      "Migrating primary Structure metadata...",
-      "Copying Elevation levels (STR_ELV)...",
-      "Copying Faces and Levels data layers...",
-      "Mapping and migrating all Component groups...",
-      "Rebuilding legacy component-to-component associations...",
-      "Processing and uploading media attachments...",
-      "Copying and linking legacy comments logs...",
-      "Finalizing database transaction commits..."
-    ];
-    
-    let currentStage = 0;
+    setMigrationLogs(["Starting migration process..."]);
     setMigrationProgress({
       current: 1,
-      total: stages.length,
-      label: stages[0],
+      total: 9,
+      label: "Establishing tunnels & initializing Oracle client...",
       percent: 5
     });
     
-    const interval = setInterval(() => {
-      if (currentStage < stages.length - 2) {
-        currentStage++;
-        const percent = Math.round((currentStage / stages.length) * 85);
-        setMigrationProgress({
-          current: currentStage + 1,
-          total: stages.length,
-          label: stages[currentStage],
-          percent
-        });
-      }
-    }, 2800);
-    
     try {
       setIsMigrating(true);
-      setMigrationLogs(["Starting migration process..."]);
       
       // Adapt payload with dynamically populated STRUCTURE mapping
       const payloadMappings = {
@@ -517,36 +546,74 @@ export default function MigrationDashboard() {
           componentsOnly
         })
       });
-      const data = await safeParseJson(res);
-      
-      clearInterval(interval);
-      
-      if (res.ok) {
-        setMigrationProgress({
-          current: stages.length,
-          total: stages.length,
-          label: "Migration completed successfully!",
-          percent: 100
-        });
-        toast.success(data.message || "Migration completed!");
-        setMigrationLogs(data.logs || []);
-        if (data.report) {
-          setMigrationReport(data.report);
+
+      if (!res.ok) {
+        let errText = "Migration execution failed";
+        try {
+          const errData = await res.json();
+          errText = errData.error || errText;
+        } catch {}
+        throw new Error(errText);
+      }
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line);
+              if (event.type === "log") {
+                setMigrationLogs(prev => [...prev, event.message]);
+              } else if (event.type === "progress") {
+                setMigrationProgress({
+                  current: event.current,
+                  total: event.total,
+                  label: event.label,
+                  percent: event.percent
+                });
+              } else if (event.type === "table_report") {
+                setMigrationReport(prev => ({
+                  ...prev,
+                  [event.table]: {
+                    status: event.status,
+                    oracleRows: event.oracleRows,
+                    migratedRows: event.migratedRows,
+                    errors: event.errors,
+                    filesCopied: event.filesCopied
+                  }
+                }));
+              } else if (event.type === "complete") {
+                setMigrationProgress({
+                  current: 9,
+                  total: 9,
+                  label: "Migration completed successfully!",
+                  percent: 100
+                });
+                toast.success(event.message || "Migration completed!");
+                setMigrationReport(event.report);
+              } else if (event.type === "error") {
+                toast.error(event.message || "Migration failed");
+              }
+            } catch (e) {
+              console.error("Failed to parse streaming line:", line, e);
+            }
+          }
         }
-      } else {
-        setMigrationProgress(null);
-        toast.error(
-          <div className="flex flex-col gap-1">
-            <span className="font-bold">{data.error || "Migration failed"}</span>
-            {data.details && <span className="text-xs opacity-90 font-mono break-all">{data.details}</span>}
-          </div>,
-          { duration: 10000 }
-        );
       }
     } catch (err: any) {
-      clearInterval(interval);
       setMigrationProgress(null);
-      toast.error("An error occurred during migration");
+      toast.error(err.message || "An error occurred during migration");
       setMigrationLogs(prev => [...prev, `ERROR: ${err.message}`]);
     } finally {
       setIsMigrating(false);
@@ -639,8 +706,13 @@ export default function MigrationDashboard() {
     setMigrationReport(null);
     setMigrationProgress(null);
     setJobpacks([]);
+    setLibraries([]);
+    setFramework([]);
+    setInspectionJobs([]);
     setSelectedJobpack(null);
     setInspectionSummary(null);
+    setOracleCompany(null);
+    setOraclePreference(null);
 
     setSelectedStructureId(strId);
     
@@ -655,6 +727,10 @@ export default function MigrationDashboard() {
       const data = await safeParseJson(res);
       if (res.ok) {
         setSummary(data.data || []);
+        setLibraries(data.libraries || []);
+        setFramework(data.framework || []);
+        setOracleCompany(data.company || null);
+        setOraclePreference(data.preference || null);
       } else {
         toast.error(
           <div className="flex flex-col gap-1">
@@ -719,6 +795,7 @@ export default function MigrationDashboard() {
       const data = await safeParseJson(res);
       if (res.ok) {
         setInspectionSummary(data.data);
+        setInspectionJobs(data.jobs || []);
       } else {
         toast.error(
           <div className="flex flex-col gap-1">
@@ -1312,171 +1389,268 @@ export default function MigrationDashboard() {
                           );
                         })()}
 
-                        {/* Breakdown List */}
-                        <div className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden">
-                          <div className="bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 flex justify-between">
-                            <span>Target Entity Table</span>
-                            <div className="flex gap-12 mr-4">
-                              <span className="w-14 text-right">Oracle</span>
-                              <span className="w-14 text-right">Postgres</span>
-                              <span className="w-24 text-right">Accuracy</span>
-                              <span className="w-16 text-right">Status</span>
-                            </div>
-                          </div>
-                          <div className="divide-y divide-slate-100 dark:divide-slate-800/60 max-h-60 overflow-y-auto">
-                            {Object.entries(migrationReport).map(([key, item]) => {
-                              const hasErrors = item.errors && item.errors.length > 0;
-                              const itemPercent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
-                              return (
-                                <div 
-                                  key={key} 
-                                  onClick={() => hasErrors && toggleRecordExpansion(key)}
-                                  className={`p-4 flex flex-col gap-2 transition-colors ${
-                                    hasErrors 
-                                      ? "cursor-pointer hover:bg-rose-50/10 dark:hover:bg-rose-950/5" 
-                                      : "hover:bg-slate-50/20 dark:hover:bg-slate-900/20"
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                       {(() => {
-                                         const isComp = !["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC", "ATTACHMENT", "COMMENT", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "ANOMALY", "INSP_ATTACHMENT"].includes(key.toUpperCase());
-                                         if (isComp) {
-                                           // Dynamic Status-driven color codes
-                                           let colorClass = "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200/40 dark:border-indigo-900/30";
-                                           let label = "Component";
-                                           
-                                           if (item.status === "success" && itemPercent === 100) {
-                                             colorClass = "bg-emerald-50 dark:bg-emerald-950/35 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30";
-                                             label = "Migrated";
-                                           } else if (hasErrors || item.status === "failed") {
-                                             colorClass = "bg-rose-50 dark:bg-rose-950/35 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-900/30";
-                                             label = "Error";
-                                           } else if (item.status === "skipped") {
-                                             colorClass = "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700";
-                                             label = "Skipped";
-                                           } else if (itemPercent > 0 && itemPercent < 100) {
-                                             colorClass = "bg-amber-50 dark:bg-amber-950/35 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/30 animate-pulse";
-                                             label = "Partial";
-                                           }
-                                           
-                                           return (
-                                             <div className="flex items-center gap-1.5">
-                                               <span className={`text-[10px] font-black border px-2 py-0.5 rounded-md uppercase tracking-wider ${colorClass}`}>
-                                                 {key}
-                                               </span>
-                                               <span className={`text-[8px] font-black uppercase tracking-widest px-1 rounded ${
-                                                 item.status === "success" && itemPercent === 100 ? "bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400" :
-                                                 hasErrors || item.status === "failed" ? "bg-rose-50/50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400" :
-                                                 item.status === "skipped" ? "bg-slate-100/50 dark:bg-slate-800/40 text-slate-500" :
-                                                 "bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400"
-                                               }`}>
-                                                 {label}
-                                               </span>
-                                             </div>
-                                           );
-                                         } else {
-                                           return (
-                                             <div className="flex items-center gap-1.5">
-                                               <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                                                 {key}
-                                               </span>
-                                               <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-100/50 dark:bg-slate-800/40 px-1 rounded">
-                                                 System
-                                               </span>
-                                             </div>
-                                           );
-                                         }
-                                       })()}
-                                      {item.filesCopied !== undefined && item.filesCopied !== null && (
-                                        <span className="text-[8px] bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 px-1.5 py-0.5 rounded font-black uppercase select-none flex items-center gap-1">
-                                          <FolderOpen className="w-2.5 h-2.5" />
-                                          {item.filesCopied} File{item.filesCopied !== 1 ? 's' : ''} Copied
-                                        </span>
-                                      )}
-                                      {hasErrors && (
-                                        <span className="text-[8px] bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 select-none">
-                                          {item.errors.length} Error{item.errors.length > 1 ? 's' : ''}
-                                          {expandedRecords[key] ? <ChevronUp className="w-2.5 h-2.5 ml-0.5 shrink-0" /> : <ChevronDown className="w-2.5 h-2.5 ml-0.5 shrink-0" />}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-12 mr-4 text-xs font-bold">
-                                      <span className="w-14 text-right font-mono text-slate-500">{item.oracleRows}</span>
-                                      <span className="w-14 text-right font-mono text-indigo-600 dark:text-indigo-400">{item.migratedRows}</span>
-                                      <div className="w-24 flex flex-col items-end gap-1.5">
-                                        <span className={`font-mono font-black text-[10px] ${
-                                          itemPercent >= 90 ? "text-emerald-600 dark:text-emerald-500" :
-                                          itemPercent >= 60 ? "text-indigo-600 dark:text-indigo-500" :
-                                          itemPercent >= 30 ? "text-amber-500 dark:text-amber-400" : "text-rose-500 dark:text-rose-400"
-                                        }`}>{itemPercent}%</span>
-                                        <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1 overflow-hidden border border-slate-200/20 dark:border-slate-800/40">
-                                          <div 
-                                            className={`h-1 rounded-full bg-gradient-to-r ${
-                                              itemPercent >= 90 ? "from-emerald-500 to-teal-500" :
-                                              itemPercent >= 60 ? "from-indigo-500 to-blue-500" :
-                                              itemPercent >= 30 ? "from-amber-500 to-orange-500 animate-pulse" : "from-rose-500 to-red-500 animate-pulse"
-                                            }`}
-                                            style={{ width: `${itemPercent}%` }}
-                                          />
-                                        </div>
-                                      </div>
-                                      <span className="w-16 flex justify-end">
-                                        {item.status === "success" && (
-                                          <span className="text-[8px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40 px-2 py-0.5 rounded font-black uppercase">
-                                            Success
-                                          </span>
-                                        )}
-                                        {item.status === "failed" && (
-                                          <span className="text-[8px] bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/40 px-2 py-0.5 rounded font-black uppercase">
-                                            Failed
-                                          </span>
-                                        )}
-                                        {item.status === "skipped" && (
-                                          <span className="text-[8px] bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded font-black uppercase">
-                                            Skipped
-                                          </span>
-                                        )}
-                                      </span>
-                                    </div>
+                        {/* Breakdown List grouped by Section */}
+                        <div className="space-y-4">
+                          {(() => {
+                            const libKeys = ["U_LIB_MAST", "U_LIB_LIST", "U_LIB_COMBO"];
+                            const systemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
+                            const jobInspectionKeys = [
+                              "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
+                              "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT"
+                            ];
+
+                            const reportEntries = Object.entries(migrationReport);
+                            const libItems = reportEntries.filter(([key]) => libKeys.includes(key));
+                            const systemItems = reportEntries.filter(([key]) => systemKeys.includes(key));
+                            const jobInspItems = reportEntries.filter(([key]) => jobInspectionKeys.includes(key));
+                            const componentItems = reportEntries.filter(([key]) => 
+                              !libKeys.includes(key) && !systemKeys.includes(key) && !jobInspectionKeys.includes(key)
+                            );
+
+                            const sections = [
+                              { title: "1. Reference Libraries", items: libItems },
+                              { title: "2. Structural Framework & Levels", items: systemItems },
+                              { title: "3. Offshore Assets & Components", items: componentItems },
+                              { title: "4. Relational SOW, Jobs & Logs", items: jobInspItems }
+                            ].filter(s => s.items.length > 0);
+
+                            return sections.map((section, secIdx) => (
+                              <div key={secIdx} className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                                <div className="bg-slate-50/70 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 px-4 py-2.5 flex justify-between items-center">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                                    {section.title}
+                                  </span>
+                                  <div className="flex gap-12 mr-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                    <span className="w-14 text-right">Oracle</span>
+                                    <span className="w-14 text-right">Postgres</span>
+                                    <span className="w-24 text-right">Accuracy</span>
+<span className="w-16 text-right">Status</span>
                                   </div>
-                                  {hasErrors && expandedRecords[key] && (
-                                    <div className="mt-2 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
-                                      {item.errors.map((err, idx) => {
-                                        const diag = getFriendlyErrorDetails(err);
-                                        return (
-                                          <div key={idx} className="p-3.5 bg-rose-50/30 dark:bg-rose-950/10 border border-rose-100/40 dark:border-rose-950/30 rounded-xl space-y-2.5 shadow-sm text-left">
-                                            <div className="flex items-center gap-1.5">
-                                              <span className={`w-1.5 h-1.5 rounded-full ${diag.severity === 'high' ? 'bg-rose-500 animate-pulse' : 'bg-amber-500'}`} />
-                                              <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-400">
-                                                {diag.title}
-                                              </span>
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] pl-3 border-l border-rose-200 dark:border-rose-900/35">
-                                              <div className="space-y-0.5">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Failure Reason</span>
-                                                <p className="text-slate-700 dark:text-slate-300 font-bold leading-relaxed break-words">{diag.why}</p>
-                                              </div>
-                                              <div className="space-y-0.5">
-                                                <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-500 uppercase tracking-widest">Rectification Action</span>
-                                                <p className="text-emerald-700 dark:text-emerald-400 font-bold leading-relaxed">{diag.rectify}</p>
-                                              </div>
-                                            </div>
-                                            
-                                            <div className="pt-2 pl-3 border-t border-rose-100/30 dark:border-rose-950/30">
-                                              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Raw Database Error Log</span>
-                                              <p className="font-mono text-[9px] text-slate-500 dark:text-slate-400 break-all select-all leading-tight mt-1 bg-slate-900/5 dark:bg-slate-900/30 p-2 rounded border border-slate-200/40 dark:border-slate-800/40">{err}</p>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
                                 </div>
-                              );
-                            })}
-                          </div>
+                                <div className="divide-y divide-slate-100 dark:divide-slate-800/60 max-h-60 overflow-y-auto">
+                                  {section.items.map(([key, item]) => {
+                                    const hasErrors = item.errors && item.errors.length > 0;
+                                    const rejectedRecords = item.oracleRows - item.migratedRows;
+                                    const itemPercent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
+                                    
+                                    const selectedStructure = structures.find((s: any) => String(s.STR_ID) === selectedStructureId);
+                                    const structType = selectedStructure?.PTYPE === "PIPE" ? "PIPELINE" : "PLATFORM";
+                                    const mapNames = getTableMappingNames(key, structType);
+                                    
+                                    return (
+                                      <div 
+                                        key={key} 
+                                        onClick={() => (hasErrors || rejectedRecords > 0) && toggleRecordExpansion(key)}
+                                        className={`p-4 flex flex-col gap-2 transition-colors ${
+                                          (hasErrors || rejectedRecords > 0)
+                                            ? "cursor-pointer hover:bg-rose-50/10 dark:hover:bg-rose-950/5" 
+                                            : "hover:bg-slate-50/20 dark:hover:bg-slate-900/20"
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex flex-col gap-1.5">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                               {(() => {
+                                                 const isComp = !["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC", "ATTACHMENT", "COMMENT", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "ANOMALY", "INSP_ATTACHMENT"].includes(key.toUpperCase());
+                                                 if (isComp) {
+                                                   let colorClass = "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200/40 dark:border-indigo-900/30";
+                                                   let label = "Component";
+                                                   
+                                                   if (item.status === "success" && itemPercent === 100) {
+                                                     colorClass = "bg-emerald-50 dark:bg-emerald-950/35 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30";
+                                                     label = "Migrated";
+                                                   } else if (hasErrors || item.status === "failed") {
+                                                     colorClass = "bg-rose-50 dark:bg-rose-950/35 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-900/30";
+                                                     label = "Error";
+                                                   } else if (item.status === "skipped") {
+                                                     colorClass = "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700";
+                                                     label = "Skipped";
+                                                   } else if (itemPercent > 0 && itemPercent < 100) {
+                                                     colorClass = "bg-amber-50 dark:bg-amber-950/35 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/30 animate-pulse";
+                                                     label = "Partial";
+                                                   }
+                                                   
+                                                   return (
+                                                     <div className="flex items-center gap-1.5">
+                                                       <span className={`text-[10px] font-black border px-2 py-0.5 rounded-md uppercase tracking-wider ${colorClass}`}>
+                                                         {key}
+                                                       </span>
+                                                       <span className={`text-[8px] font-black uppercase tracking-widest px-1 rounded ${
+                                                         item.status === "success" && itemPercent === 100 ? "bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400" :
+                                                         hasErrors || item.status === "failed" ? "bg-rose-50/50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400" :
+                                                         item.status === "skipped" ? "bg-slate-100/50 dark:bg-slate-800/40 text-slate-500" :
+                                                         "bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400"
+                                                       }`}>
+                                                         {label}
+                                                       </span>
+                                                     </div>
+                                                   );
+                                                 } else {
+                                                   return (
+                                                     <div className="flex items-center gap-1.5">
+                                                       <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                                         {key}
+                                                       </span>
+                                                       <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-100/50 dark:bg-slate-800/40 px-1 rounded">
+                                                         System
+                                                       </span>
+                                                     </div>
+                                                   );
+                                                 }
+                                               })()}
+                                            {item.filesCopied !== undefined && item.filesCopied !== null && (
+                                              <span className="text-[8px] bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 px-1.5 py-0.5 rounded font-black uppercase select-none flex items-center gap-1">
+                                                <FolderOpen className="w-2.5 h-2.5" />
+                                                {item.filesCopied} File{item.filesCopied !== 1 ? 's' : ''} Copied
+                                              </span>
+                                            )}
+                                            {rejectedRecords > 0 && (
+                                              <span className="text-[8px] bg-amber-50 dark:bg-amber-950/35 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 select-none animate-pulse">
+                                                <AlertTriangle className="w-2.5 h-2.5" />
+                                                {rejectedRecords} Rejected Record{rejectedRecords > 1 ? 's' : ''}
+                                              </span>
+                                            )}
+                                            {hasErrors && (
+                                              <span className="text-[8px] bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 select-none">
+                                                {item.errors.length} Exception{item.errors.length > 1 ? 's' : ''}
+                                                {expandedRecords[key] ? <ChevronUp className="w-2.5 h-2.5 ml-0.5 shrink-0" /> : <ChevronDown className="w-2.5 h-2.5 ml-0.5 shrink-0" />}
+                                              </span>
+                                            )}
+                                          </div>
+                                          
+                                          <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono select-none flex items-center gap-1">
+                                            <span>Oracle:</span>
+                                            <span className="font-bold text-slate-500 dark:text-slate-400 bg-slate-100/60 dark:bg-slate-800/40 px-1 rounded">{mapNames.oracle}</span>
+                                            <ArrowRight className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                            <span>Postgres:</span>
+                                            <span className="font-bold text-slate-500 dark:text-slate-400 bg-slate-100/60 dark:bg-slate-800/40 px-1 rounded">{mapNames.pg}</span>
+                                          </div>
+                                          </div>
+                                          <div className="flex items-center gap-12 mr-4 text-xs font-bold">
+                                            <span className="w-14 text-right font-mono text-slate-500">{item.oracleRows}</span>
+                                            <span className="w-14 text-right font-mono text-indigo-600 dark:text-indigo-400">{item.migratedRows}</span>
+                                            <div className="w-24 flex flex-col items-end gap-1.5">
+                                              <span className={`font-mono font-black text-[10px] ${
+                                                itemPercent >= 90 ? "text-emerald-600 dark:text-emerald-500" :
+                                                itemPercent >= 60 ? "text-indigo-600 dark:text-indigo-500" :
+                                                itemPercent >= 30 ? "text-amber-500 dark:text-amber-400" : "text-rose-500 dark:text-rose-400"
+                                              }`}>{itemPercent}%</span>
+                                              <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1 overflow-hidden border border-slate-200/20 dark:border-slate-800/40">
+                                                <div 
+                                                  className={`h-1 rounded-full bg-gradient-to-r ${
+                                                    itemPercent >= 90 ? "from-emerald-500 to-teal-500" :
+                                                    itemPercent >= 60 ? "from-indigo-500 to-blue-500" :
+                                                    itemPercent >= 30 ? "from-amber-500 to-orange-500 animate-pulse" : "from-rose-500 to-red-500 animate-pulse"
+                                                  }`}
+                                                  style={{ width: `${itemPercent}%` }}
+                                                />
+                                              </div>
+                                            </div>
+                                            <span className="w-16 flex justify-end">
+                                              {item.status === "success" && (
+                                                <span className="text-[8px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40 px-2 py-0.5 rounded font-black uppercase">
+                                                  Success
+                                                </span>
+                                              )}
+                                              {item.status === "failed" && (
+                                                <span className="text-[8px] bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/40 px-2 py-0.5 rounded font-black uppercase">
+                                                  Failed
+                                                </span>
+                                              )}
+                                              {item.status === "skipped" && (
+                                                <span className="text-[8px] bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded font-black uppercase">
+                                                  Skipped
+                                                </span>
+                                              )}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        {expandedRecords[key] && (
+                                          <div className="mt-2 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
+                                            {rejectedRecords > 0 && (
+                                              <>
+                                              <div className="p-3 bg-amber-50/40 dark:bg-amber-950/10 border border-amber-200/50 dark:border-amber-900/20 rounded-xl space-y-1">
+                                                <div className="flex items-center gap-1.5">
+                                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-500" />
+                                                  <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-400">Rejected Records Alert</span>
+                                                </div>
+                                                <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed pl-5 font-medium">
+                                                  Database integrity filters rejected <strong>{rejectedRecords} record{rejectedRecords > 1 ? 's' : ''}</strong> from being translated. 
+                                                  This commonly occurs due to foreign key integrity checks (e.g. referencing component type which is unmapped) or duplicate row keys in Oracle. 
+                                                  Review the exceptions below to resolve.
+                                                </p>
+                                              </div>
+                                              {(item as any).rejectedDetails && (item as any).rejectedDetails.length > 0 && (
+                                                <div className="p-3 bg-amber-50/20 dark:bg-amber-950/5 border border-amber-200/30 dark:border-amber-900/15 rounded-xl space-y-2">
+                                                  <div className="flex items-center justify-between">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">
+                                                      Unmapped Association Details ({(item as any).totalRejected || (item as any).rejectedDetails.length} total{(item as any).totalRejected > 200 ? ', showing first 200' : ''})
+                                                    </span>
+                                                  </div>
+                                                  <div className="max-h-52 overflow-y-auto border border-amber-200/30 dark:border-amber-900/20 rounded-lg">
+                                                    <table className="w-full text-[9px]">
+                                                      <thead className="sticky top-0 bg-amber-100/70 dark:bg-amber-950/30 border-b border-amber-200/40 dark:border-amber-900/25">
+                                                        <tr>
+                                                          <th className="text-left py-1.5 px-2 font-black uppercase tracking-widest text-amber-800 dark:text-amber-400">#</th>
+                                                          <th className="text-left py-1.5 px-2 font-black uppercase tracking-widest text-amber-800 dark:text-amber-400">Oracle COMP_ID</th>
+                                                          <th className="text-left py-1.5 px-2 font-black uppercase tracking-widest text-amber-800 dark:text-amber-400">Oracle ASSOC_COMPID</th>
+                                                          <th className="text-left py-1.5 px-2 font-black uppercase tracking-widest text-amber-800 dark:text-amber-400">Reason</th>
+                                                        </tr>
+                                                      </thead>
+                                                      <tbody className="divide-y divide-amber-100/30 dark:divide-amber-900/15">
+                                                        {((item as any).rejectedDetails as { oracleCompId: number; oracleAssocCompId: number; reason: string }[]).map((rd, rdIdx) => (
+                                                          <tr key={rdIdx} className="hover:bg-amber-50/40 dark:hover:bg-amber-950/10 transition-colors">
+                                                            <td className="py-1 px-2 font-mono text-slate-400">{rdIdx + 1}</td>
+                                                            <td className="py-1 px-2 font-mono font-bold text-slate-700 dark:text-slate-300">{rd.oracleCompId}</td>
+                                                            <td className="py-1 px-2 font-mono font-bold text-slate-700 dark:text-slate-300">{rd.oracleAssocCompId}</td>
+                                                            <td className="py-1 px-2 text-amber-700 dark:text-amber-400 font-medium break-words">{rd.reason}</td>
+                                                          </tr>
+                                                        ))}
+                                                      </tbody>
+                                                    </table>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              </>
+                                            )}
+                                            {hasErrors && item.errors.map((err, idx) => {
+                                              const diag = getFriendlyErrorDetails(err);
+                                              return (
+                                                <div key={idx} className="p-3.5 bg-rose-50/30 dark:bg-rose-950/10 border border-rose-100/40 dark:border-rose-950/30 rounded-xl space-y-2.5 shadow-sm text-left">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${diag.severity === 'high' ? 'bg-rose-500 animate-pulse' : 'bg-amber-500'}`} />
+                                                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-400">
+                                                      {diag.title}
+                                                    </span>
+                                                  </div>
+                                                  
+                                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] pl-3 border-l border-rose-200 dark:border-rose-900/35">
+                                                    <div className="space-y-0.5">
+                                                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Failure Reason</span>
+                                                      <p className="text-slate-700 dark:text-slate-300 font-bold leading-relaxed break-words">{diag.why}</p>
+                                                    </div>
+                                                    <div className="space-y-0.5">
+                                                      <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-500 uppercase tracking-widest">Rectification Action</span>
+                                                      <p className="text-emerald-700 dark:text-emerald-400 font-bold leading-relaxed">{diag.rectify}</p>
+                                                    </div>
+                                                  </div>
+                                                  
+                                                  <div className="pt-2 pl-3 border-t border-rose-100/30 dark:border-rose-950/30">
+                                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Raw Database Error Log</span>
+                                                    <p className="font-mono text-[9px] text-slate-500 dark:text-slate-400 break-all select-all leading-tight mt-1 bg-slate-900/5 dark:bg-slate-900/30 p-2 rounded border border-slate-200/40 dark:border-slate-800/40">{err}</p>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ));
+                          })()}
                         </div>
                       </CardContent>
                     </Card>
@@ -1528,87 +1702,299 @@ export default function MigrationDashboard() {
                           <span className="text-xs font-bold uppercase tracking-widest">Loading Summary...</span>
                         </div>
                       ) : summary.length > 0 ? (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse">
-                            <thead>
-                              <tr className="bg-slate-50/50 dark:bg-slate-900/20 border-b border-slate-100 dark:border-slate-800">
-                                <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Component Code</th>
-                                <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Row Count</th>
-                                <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Mapping Status</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                               {summary.map((row: any, idx) => {
-                                 const isMapped = !!mappings[row.CODE];
-                                 const reportItem = migrationReport ? migrationReport[row.CODE] : null;
-                                 
-                                 // Dynamic Status determinations
-                                 let statusText = "Ready to Map";
-                                 let statusColorClass = "text-slate-500 bg-slate-50 border-slate-200 dark:bg-slate-900/30 dark:border-slate-800 dark:text-slate-400";
-                                 let codeBadgeClass = "bg-slate-50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800";
-                                 
-                                 if (isMapped) {
-                                   statusText = "Mapped & Ready";
-                                   statusColorClass = "text-indigo-700 bg-indigo-50 border-indigo-200/50 dark:bg-indigo-950/20 dark:border-indigo-900/30 dark:text-indigo-400";
-                                   codeBadgeClass = "bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 border-indigo-200/40 dark:border-indigo-900/30";
-                                 }
-                                 
-                                 if (reportItem) {
-                                   const itemPercent = reportItem.oracleRows === 0 ? 100 : Math.min(100, Math.round((reportItem.migratedRows / reportItem.oracleRows) * 100));
-                                   if (reportItem.status === "success" && itemPercent === 100) {
-                                     statusText = "Migrated (100%)";
-                                     statusColorClass = "text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-400";
-                                     codeBadgeClass = "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200/40 dark:border-emerald-900/30";
-                                   } else if (reportItem.status === "skipped") {
-                                     statusText = "Skipped";
-                                     statusColorClass = "text-slate-500 bg-slate-100 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400";
-                                     codeBadgeClass = "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700";
-                                   } else if (reportItem.errors && reportItem.errors.length > 0) {
-                                     statusText = "Failed (Errors)";
-                                     statusColorClass = "text-rose-700 bg-rose-50 border-rose-200 dark:bg-rose-950/20 dark:border-rose-900/30 dark:text-rose-400";
-                                     codeBadgeClass = "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border-rose-200/40 dark:border-rose-900/30";
-                                   } else {
-                                     statusText = `Partial (${itemPercent}%)`;
-                                     statusColorClass = "text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-500";
-                                     codeBadgeClass = "bg-amber-50 dark:bg-amber-950/35 text-amber-700 dark:text-amber-400 border-amber-200/40 dark:border-amber-900/30";
-                                   }
-                                 }
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 p-6 bg-slate-50/30 dark:bg-slate-900/10">
+                          
+                          {/* 1. Reference Libraries Preflight */}
+                          {libraries.length > 0 && (
+                            <Card className="border-slate-200 dark:border-slate-800 shadow-sm col-span-1 overflow-hidden">
+                              <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 py-3">
+                                <div>
+                                  <CardTitle className="text-xs font-black uppercase text-indigo-700 dark:text-indigo-400">1. Reference Libraries Preflight</CardTitle>
+                                  <CardDescription className="text-[9px] uppercase font-bold text-slate-500 mt-0.5">Global lookups and casing configurations</CardDescription>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="p-0">
+                                <table className="w-full text-left border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-100/50 dark:bg-slate-900/10 border-b border-slate-200 dark:border-slate-800">
+                                      <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider">Table</th>
+                                      <th className="px-2 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Oracle</th>
+                                      <th className="px-2 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Postgres</th>
+                                      <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Sync Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+                                    {libraries.map((lib: any) => {
+                                      const isSynced = lib.row_count === lib.pg_row_count;
+                                      return (
+                                        <tr key={lib.code} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
+                                          <td className="px-4 py-2.5">
+                                            <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{lib.code}</span>
+                                          </td>
+                                          <td className="px-2 py-2.5 text-right font-mono font-bold text-slate-500">{lib.row_count}</td>
+                                          <td className="px-2 py-2.5 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{lib.pg_row_count}</td>
+                                          <td className="px-4 py-2.5 text-right font-bold text-[8px]">
+                                            <span 
+                                              onClick={() => !isSynced && fetchMissingItems(lib.code)}
+                                              className={`px-2 py-0.5 border rounded uppercase tracking-wider transition-colors ${
+                                                isSynced
+                                                  ? "text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-400"
+                                                  : "text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-400 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                                              }`}
+                                            >
+                                              {isSynced ? "100% Synced" : `${lib.row_count - lib.pg_row_count} Missing`}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </CardContent>
+                            </Card>
+                          )}
 
-                                 return (
-                                   <tr key={idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                                     <td className="px-4 py-3 flex items-center gap-2">
-                                       <span className={`text-xs font-black border px-2.5 py-1 rounded-md uppercase tracking-wider ${codeBadgeClass}`}>
-                                         {row.CODE}
-                                       </span>
-                                       {row.NAME && (
-                                         <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase truncate" title={row.NAME}>
-                                           ({row.NAME})
-                                         </span>
-                                       )}
-                                     </td>
-                                     <td className="px-4 py-3">
-                                       <span className="text-sm font-black text-slate-800 dark:text-slate-200">{row.ROW_COUNT}</span>
-                                     </td>
-                                     <td className="px-4 py-3">
-                                       <div className="flex items-center">
-                                         <span className={`text-[9px] font-black border px-2 py-0.5 rounded uppercase tracking-wider ${statusColorClass}`}>
-                                           {statusText}
-                                         </span>
-                                       </div>
-                                     </td>
-                                   </tr>
-                                 );
-                               })}
-                            </tbody>
-                            <tfoot className="bg-slate-50 dark:bg-slate-900/80 border-t-2 border-slate-200 dark:border-slate-700">
-                              <tr>
-                                <td className="px-4 py-3 text-xs font-black uppercase text-slate-700 dark:text-slate-300">Total Components</td>
-                                <td className="px-4 py-3 text-sm font-black text-indigo-700 dark:text-indigo-400" colSpan={2}>
-                                  {summary.reduce((acc, row) => acc + Number(row.ROW_COUNT), 0)}
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
+                          {/* 2. System Framework & Structure Preflight */}
+                          {framework.length > 0 && (
+                            <Card className="border-slate-200 dark:border-slate-800 shadow-sm col-span-1 overflow-hidden">
+                              <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 py-3">
+                                <div>
+                                  <CardTitle className="text-xs font-black uppercase text-indigo-700 dark:text-indigo-400">2. System Framework Preflight</CardTitle>
+                                  <CardDescription className="text-[9px] uppercase font-bold text-slate-500 mt-0.5">Asset hierarchies and coordinate elevations</CardDescription>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="p-0">
+                                <table className="w-full text-left border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-100/50 dark:bg-slate-900/10 border-b border-slate-200 dark:border-slate-800">
+                                      <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider">Framework Table</th>
+                                      <th className="px-2 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Oracle</th>
+                                      <th className="px-2 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Postgres</th>
+                                      <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Sync Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+                                    {framework.map((fw: any) => {
+                                      const isSynced = fw.row_count === fw.pg_row_count;
+                                      return (
+                                        <tr key={fw.code} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
+                                          <td className="px-4 py-2.5">
+                                            <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{fw.code}</span>
+                                            <span className="text-[8px] text-slate-500 ml-1.5 font-bold">({fw.name})</span>
+                                          </td>
+                                          <td className="px-2 py-2.5 text-right font-mono font-bold text-slate-500">{fw.row_count}</td>
+                                          <td className="px-2 py-2.5 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{fw.pg_row_count}</td>
+                                          <td className="px-4 py-2.5 text-right font-bold text-[8px]">
+                                            <span 
+                                              onClick={() => !isSynced && fw.row_count > 0 && fetchMissingItems(fw.code)}
+                                              className={`px-2 py-0.5 border rounded uppercase tracking-wider transition-colors ${
+                                                isSynced
+                                                  ? "text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-400"
+                                                  : fw.row_count === 0 ? "text-slate-400 bg-slate-50 border-slate-200 dark:bg-slate-900/30 dark:border-slate-800" : "text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-400 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                                              }`}
+                                            >
+                                              {isSynced ? "100% Synced" : fw.row_count === 0 ? "No Data" : `${fw.row_count - fw.pg_row_count} Missing`}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </CardContent>
+                            </Card>
+                          )}
+
+                          {/* 3. Mapped Component List Preflight */}
+                          {(() => {
+                            const mappedRows = summary.filter((r: any) => !!mappings[r.CODE]);
+                            const totalOracleMappedCount = mappedRows.reduce((sum, r) => sum + Number(r.ROW_COUNT), 0);
+                            const totalPgMappedCount = mappedRows.reduce((sum, r) => sum + Number(r.PG_ROW_COUNT || 0), 0);
+                            return (
+                              <Card className="border-indigo-100 dark:border-indigo-900/40 shadow-sm bg-indigo-50/5 dark:bg-slate-950/20 col-span-1 overflow-hidden">
+                                <CardHeader className="bg-indigo-50/20 dark:bg-indigo-950/10 border-b border-indigo-100/50 dark:border-indigo-900/20 py-3 flex flex-row items-center justify-between">
+                                  <div>
+                                    <CardTitle className="text-xs font-black uppercase text-indigo-700 dark:text-indigo-400">3. Mapped Components Preflight</CardTitle>
+                                    <CardDescription className="text-[9px] uppercase font-bold text-slate-500 mt-0.5">Asset component types to be transferred</CardDescription>
+                                  </div>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                  {mappedRows.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs italic">
+                                      No mapped components. Configure mappings in the tab above.
+                                    </div>
+                                  ) : (
+                                    <table className="w-full text-left border-collapse">
+                                      <thead>
+                                        <tr className="bg-slate-100/30 dark:bg-slate-900/5 border-b border-slate-200 dark:border-slate-800">
+                                          <th className="px-4 py-2 text-[9px] font-black text-slate-500 uppercase tracking-wider">Component Code</th>
+                                          <th className="px-2 py-2 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Oracle</th>
+                                          <th className="px-2 py-2 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Postgres</th>
+                                          <th className="px-4 py-2 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Sync Status</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+                                        {mappedRows.map((row: any, idx) => {
+                                          const isSynced = row.ROW_COUNT === row.PG_ROW_COUNT;
+                                          return (
+                                            <tr key={idx} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
+                                              <td className="px-4 py-2.5 flex items-center gap-2">
+                                                <span className="text-[10px] font-black border px-2 py-0.5 rounded-md uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200/40 dark:border-indigo-900/30 shrink-0">
+                                                  {row.CODE}
+                                                </span>
+                                              </td>
+                                              <td className="px-2 py-2.5 text-right font-mono font-bold text-slate-500">{row.ROW_COUNT}</td>
+                                              <td className="px-2 py-2.5 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{row.PG_ROW_COUNT || 0}</td>
+                                              <td className="px-4 py-2.5 text-right font-bold text-[8px]">
+                                                <span 
+                                                  onClick={() => !isSynced && fetchMissingItems(row.CODE)}
+                                                  className={`px-2 py-0.5 border rounded uppercase tracking-wider transition-colors ${
+                                                    isSynced
+                                                      ? "text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-400"
+                                                      : "text-indigo-700 bg-indigo-50 border-indigo-200 dark:bg-indigo-950/20 dark:border-indigo-900/30 dark:text-indigo-500 cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/40"
+                                                  }`}
+                                                >
+                                                  {isSynced ? "100% Synced" : `${row.ROW_COUNT - (row.PG_ROW_COUNT || 0)} Missing`}
+                                                </span>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                      <tfoot className="bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800">
+                                        <tr>
+                                          <td className="px-4 py-2.5 text-[9px] font-black uppercase text-slate-600 dark:text-slate-400">Total Components</td>
+                                          <td className="px-2 py-2.5 text-right font-mono font-black text-slate-500">{totalOracleMappedCount}</td>
+                                          <td className="px-2 py-2.5 text-right font-mono font-black text-indigo-600 dark:text-indigo-400">{totalPgMappedCount}</td>
+                                          <td className="px-4 py-2.5 text-right font-mono font-black text-indigo-700 dark:text-indigo-400">
+                                            {totalOracleMappedCount === totalPgMappedCount ? "100%" : `${Math.round((totalPgMappedCount / totalOracleMappedCount) * 100)}%`}
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            );
+                          })()}
+
+                          {/* 4. Scope of Work & Inspections Preflight */}
+                          <Card className="border-slate-200 dark:border-slate-800 shadow-sm col-span-1 overflow-hidden">
+                            <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 py-3">
+                              <div>
+                                <CardTitle className="text-xs font-black uppercase text-indigo-700 dark:text-indigo-400">4. SOW & Inspections Preflight</CardTitle>
+                                  <CardDescription className="text-[9px] uppercase font-bold text-slate-500 mt-0.5">Scope of work, logs, and anomaly sheets</CardDescription>
+                              </div>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                              {!selectedJobpack ? (
+                                <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs italic space-y-2">
+                                  <AlertTriangle className="w-5 h-5 text-amber-500 mx-auto opacity-70" />
+                                  <p>Select an active Job Pack from the sidebar to populate inspections baseline counts.</p>
+                                </div>
+                              ) : inspectionJobs.length === 0 ? (
+                                <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs italic">
+                                  No inspection tables mapped for this Job Pack.
+                                </div>
+                              ) : (
+                                <table className="w-full text-left border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-100/50 dark:bg-slate-900/10 border-b border-slate-200 dark:border-slate-800">
+                                      <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider">Job / SOW Table</th>
+                                      <th className="px-2 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Oracle</th>
+                                      <th className="px-2 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Postgres</th>
+                                      <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Sync Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+                                    {inspectionJobs.map((job: any) => {
+                                      const isSynced = job.row_count === job.pg_row_count;
+                                      return (
+                                        <tr key={job.code} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
+                                          <td className="px-4 py-2.5">
+                                            <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{job.code}</span>
+                                            <span className="text-[8px] text-slate-500 ml-1.5 font-bold">({job.name})</span>
+                                          </td>
+                                          <td className="px-2 py-2.5 text-right font-mono font-bold text-slate-500">{job.row_count}</td>
+                                          <td className="px-2 py-2.5 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{job.pg_row_count}</td>
+                                          <td className="px-4 py-2.5 text-right font-bold text-[8px]">
+                                            <span 
+                                              onClick={() => !isSynced && job.row_count > 0 && fetchMissingItems(job.code)}
+                                              className={`px-2 py-0.5 border rounded uppercase tracking-wider transition-colors ${
+                                                isSynced
+                                                  ? "text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-400"
+                                                  : job.row_count === 0 ? "text-slate-400 bg-slate-50 border-slate-200 dark:bg-slate-900/30 dark:border-slate-800" : "text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-400 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                                              }`}
+                                            >
+                                              {isSynced ? "100% Synced" : job.row_count === 0 ? "No Data" : `${job.row_count - job.pg_row_count} Missing`}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              )}
+                            </CardContent>
+                          </Card>
+
+                          {/* Unmapped Component List Preflight */}
+                          {(() => {
+                            const unmappedRows = summary.filter((r: any) => !mappings[r.CODE]);
+                            const totalUnmappedCount = unmappedRows.reduce((sum, r) => sum + Number(r.ROW_COUNT), 0);
+                            return (
+                              <Card className="border-slate-200 dark:border-slate-800 shadow-sm bg-slate-50/5 col-span-1 xl:col-span-2 overflow-hidden">
+                                <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 py-3 flex flex-row items-center justify-between">
+                                  <div>
+                                    <CardTitle className="text-xs font-black uppercase text-slate-600 dark:text-slate-400">Skipped / Unmapped Component Types Preflight</CardTitle>
+                                    <CardDescription className="text-[9px] uppercase font-bold text-slate-500 mt-0.5">Asset component types skipped during transfer (No field mappings)</CardDescription>
+                                  </div>
+                                  <div className="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-black uppercase px-2.5 py-1 rounded-md tracking-wider shrink-0">
+                                    {totalUnmappedCount} rows skipped
+                                  </div>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                  {unmappedRows.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs italic">
+                                      No unmapped components. All component types are fully mapped!
+                                    </div>
+                                  ) : (
+                                    <table className="w-full text-left border-collapse">
+                                      <thead>
+                                        <tr className="bg-slate-100/30 dark:bg-slate-900/5 border-b border-slate-200 dark:border-slate-800">
+                                          <th className="px-4 py-2 text-[9px] font-black text-slate-500 uppercase tracking-wider">Component Code</th>
+                                          <th className="px-4 py-2 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Row Count</th>
+                                          <th className="px-4 py-2 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Status</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+                                        {unmappedRows.map((row: any, idx) => (
+                                          <tr key={idx} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
+                                            <td className="px-4 py-2.5 flex items-center gap-2">
+                                              <span className="text-[10px] font-black border px-2 py-0.5 rounded-md uppercase tracking-wider bg-slate-50 dark:bg-slate-900/40 text-slate-550 dark:text-slate-400 border-slate-200 dark:border-slate-800 shrink-0">
+                                                {row.CODE}
+                                              </span>
+                                              {row.NAME && (
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase truncate max-w-[200px]" title={row.NAME}>
+                                                  ({row.NAME})
+                                                </span>
+                                              )}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-500">{row.ROW_COUNT}</td>
+                                            <td className="px-4 py-2.5 text-right font-bold text-[9px]">
+                                              <span className="px-2 py-0.5 border border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-800/40 text-slate-500 uppercase tracking-wider rounded">
+                                                Skipped
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            );
+                          })()}
                         </div>
                       ) : (
                         <div className="p-12 flex flex-col items-center justify-center text-slate-400 text-center">
@@ -2276,6 +2662,81 @@ export default function MigrationDashboard() {
           </div>
         </Tabs>
         
+        {missingModalData && (
+          <Dialog open={true} onOpenChange={() => setMissingModalData(null)}>
+            <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-950">
+              <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
+                <DialogTitle className="text-sm font-black uppercase text-indigo-700 dark:text-indigo-400 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  Missing Records Detail: {missingModalData.tableName}
+                </DialogTitle>
+                <DialogDescription className="text-[10px] uppercase font-bold text-slate-500 mt-1">
+                  Comparing rows between Oracle and Postgres databases
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex-1 overflow-y-auto py-4 space-y-4">
+                {missingModalData.isLoading ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-500">
+                    <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Fetching comparison diff...</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Missing in Postgres (Oracle has it, Postgres does not) */}
+                    <div className="border border-slate-100 dark:border-slate-800/80 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-900/10 flex flex-col h-80">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400 pb-2 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
+                        <span>Missing in Postgres</span>
+                        <span className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200/50 dark:border-rose-900/30 px-1.5 py-0.5 rounded text-[8px] font-bold">
+                          {missingModalData.missingInPostgres.length} Total
+                        </span>
+                      </span>
+                      <div className="flex-1 overflow-y-auto pt-2 space-y-1.5 text-xs">
+                        {missingModalData.missingInPostgres.length === 0 ? (
+                          <div className="text-center py-12 text-slate-400 italic">No missing records</div>
+                        ) : (
+                          missingModalData.missingInPostgres.map((item, idx) => (
+                            <div key={idx} className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-800/60 font-mono text-[10px] break-all">
+                              {item.label}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Missing in Oracle (Postgres has it, Oracle does not) */}
+                    <div className="border border-slate-100 dark:border-slate-800/80 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-900/10 flex flex-col h-80">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 pb-2 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
+                        <span>Extra in Postgres (Not in Oracle)</span>
+                        <span className="bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/50 dark:border-indigo-900/30 px-1.5 py-0.5 rounded text-[8px] font-bold">
+                          {missingModalData.missingInOracle.length} Total
+                        </span>
+                      </span>
+                      <div className="flex-1 overflow-y-auto pt-2 space-y-1.5 text-xs">
+                        {missingModalData.missingInOracle.length === 0 ? (
+                          <div className="text-center py-12 text-slate-400 italic">No extra records</div>
+                        ) : (
+                          missingModalData.missingInOracle.map((item, idx) => (
+                            <div key={idx} className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-800/60 font-mono text-[10px] break-all">
+                              {item.label}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-100 dark:border-slate-800 pt-3 flex justify-end shrink-0">
+                <Button size="sm" variant="outline" onClick={() => setMissingModalData(null)}>
+                  Close
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
         <MigrationReportPreview
           isOpen={isReportOpen}
           onClose={() => setIsReportOpen(false)}
@@ -2286,6 +2747,8 @@ export default function MigrationDashboard() {
             serviceName: config.serviceName,
             user: config.user
           }}
+          oracleCompany={oracleCompany}
+          oraclePreference={oraclePreference}
           migrationReport={migrationReport}
           migrationLogs={migrationLogs}
           triggerPrintOnOpen={shouldAutoPrintReport}

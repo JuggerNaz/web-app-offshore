@@ -49,11 +49,15 @@ async function getOracleTableColumns(oracleConn: any, tableName: string): Promis
 
 function cleanOracleDate(str: string): string {
   const s = str.trim().toUpperCase();
-  if (!s) return new Date().toISOString().split('T')[0];
+  if (!s) {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
 
   const parsed = Date.parse(s);
   if (!isNaN(parsed)) {
-    return new Date(parsed).toISOString().split('T')[0];
+    const d = new Date(parsed);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
   const match = s.match(/^(\d{1,2})[-/]([A-Z]{2,3})(?:[-/](\d{2,4}))?$/);
@@ -98,7 +102,70 @@ function cleanOracleDate(str: string): string {
     return `${year}-${month}-${day}`;
   }
 
-  return new Date().toISOString().split('T')[0];
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatLocalISOString(dateVal: any): string {
+  if (!dateVal) return "";
+  if (dateVal instanceof Date) {
+    const yyyy = dateVal.getFullYear();
+    const mm = String(dateVal.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateVal.getDate()).padStart(2, '0');
+    const hh = String(dateVal.getHours()).padStart(2, '0');
+    const min = String(dateVal.getMinutes()).padStart(2, '0');
+    const sec = String(dateVal.getSeconds()).padStart(2, '0');
+    const ms = String(dateVal.getMilliseconds()).padStart(3, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}.${ms}`;
+  }
+  
+  const str = String(dateVal).trim();
+  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T ](\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?)?/);
+  if (isoMatch) {
+    const yyyy = isoMatch[1];
+    const mm = isoMatch[2].padStart(2, '0');
+    const dd = isoMatch[3].padStart(2, '0');
+    const hh = (isoMatch[4] || "00").padStart(2, '0');
+    const min = (isoMatch[5] || "00").padStart(2, '0');
+    const sec = (isoMatch[6] || "00").padStart(2, '0');
+    const ms = (isoMatch[7] || "000").padEnd(3, '0').slice(0, 3);
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}.${ms}`;
+  }
+
+  const parsed = Date.parse(str);
+  if (isNaN(parsed)) {
+    return str;
+  }
+  const d = new Date(parsed);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const sec = String(d.getSeconds()).padStart(2, '0');
+  const ms = String(d.getMilliseconds()).padStart(3, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}.${ms}`;
+}
+
+function formatLocalDateOnly(dateVal: any): string | null {
+  if (!dateVal) return null;
+  if (dateVal instanceof Date) {
+    const yyyy = dateVal.getFullYear();
+    const mm = String(dateVal.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateVal.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const str = String(dateVal).trim();
+  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+  }
+  const parsed = Date.parse(str);
+  if (isNaN(parsed)) {
+    return cleanOracleDate(str);
+  }
+  const d = new Date(parsed);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function getObjProperty(obj: any, propName: string): any {
@@ -122,11 +189,15 @@ function parseDivingChapter(inspCond: string): string | null {
 }
 
 function combineDateTime(dateVal: any, timeVal: any): string {
-  if (!dateVal) return new Date().toISOString();
+  if (!dateVal) {
+    const d = new Date();
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `${dateStr}T${formatTimeOnly(timeVal)}`;
+  }
 
   let dateStr = "";
   if (dateVal instanceof Date) {
-    dateStr = dateVal.toISOString().split('T')[0];
+    dateStr = `${dateVal.getFullYear()}-${String(dateVal.getMonth() + 1).padStart(2, '0')}-${String(dateVal.getDate()).padStart(2, '0')}`;
   } else {
     const str = String(dateVal).trim();
     const datePartOnly = str.split('T')[0].split(' ')[0].trim();
@@ -143,7 +214,7 @@ function combineDateTime(dateVal: any, timeVal: any): string {
   }
 
   const timeStr = formatTimeOnly(timeVal);
-  return `${dateStr}T${timeStr}Z`;
+  return `${dateStr}T${timeStr}`;
 }
 
 function formatTimeOnly(timeVal: any): string {
@@ -440,6 +511,10 @@ function isBooleanColumn(pgCol: string): boolean {
 }
 
 function coerceValue(pgCol: string, val: any): any {
+  if (val instanceof Date) {
+    return formatLocalISOString(val);
+  }
+
   if (isBooleanColumn(pgCol)) {
     if (val === null || val === undefined) {
       return false; // Default to false (represents 0 or NO) as requested
@@ -528,58 +603,133 @@ interface MigrationPayload {
 }
 
 export async function POST(request: NextRequest) {
-  let oracleConn: any;
-  const logs: string[] = [];
-  try {
-    const payload: MigrationPayload = await request.json();
-    const { config, structureId, mappings, selectedInspNo, legacyAttachmentPath, componentsOnly } = payload;
-    let resolvedStructureId = Number(structureId);
-    let structureTitle = "";
+  const encoder = new TextEncoder();
+  const transformStream = new TransformStream();
+  const writer = transformStream.writable.getWriter();
 
-    if (!config || !structureId || !mappings) {
-      return NextResponse.json({ error: "Missing required payload parameters" }, { status: 400 });
-    }
-
-    // Automatically DISABLE Row Level Security (RLS) for dynamic unauthenticated migration execution
-    await setRlsStatus(true, logs);
-
-    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabase = useAdmin ? createAdminClient() : createClient();
-
-    // Fetch all library items from u_lib_list in PostgreSQL for casing and description mapping
-    const libDescMap = new Map<string, string>();
-    const libIdToDescMap = new Map<string, string>();
-    const anodeTypeLib = new Map<string, string>();
+  const writeStreamEvent = async (event: any) => {
     try {
-      const { data: libList } = await supabase
-        .from('u_lib_list')
-        .select('lib_id, lib_desc, lib_code');
-      if (libList) {
-        libList.forEach((item: any) => {
-          if (item.lib_desc) {
-            libDescMap.set(item.lib_desc.toLowerCase().trim(), item.lib_desc.trim());
-            if (item.lib_code === 'ANOD_TYP') {
-              anodeTypeLib.set(item.lib_desc.toLowerCase().trim(), item.lib_desc.trim());
-              if (item.lib_id) {
-                anodeTypeLib.set(item.lib_id.toLowerCase().trim(), item.lib_desc.trim());
-              }
-            }
-          }
-          if (item.lib_id && item.lib_desc) {
-            libIdToDescMap.set(item.lib_id.toLowerCase().trim(), item.lib_desc.trim());
-          }
-        });
-      }
-    } catch (libErr: any) {
-      logs.push(`WARNING: Failed to fetch library items from u_lib_list: ${libErr.message}`);
+      await writer.write(encoder.encode(JSON.stringify(event) + "\n"));
+    } catch (err) {
+      console.error("Failed to write to stream:", err);
     }
+  };
 
-    oracleConn = await getOracleConnection(config);
+  // Read and validate payload synchronously
+  let payload: MigrationPayload;
+  try {
+    payload = await request.json();
+  } catch (err: any) {
+    return NextResponse.json({ error: "Invalid payload format" }, { status: 400 });
+  }
 
-    // =========================================================================
-    // BEFORE ANY OTHER MIGRATION: Migrate Library Tables (u_lib_mast, u_lib_list, u_lib_combo)
-    // =========================================================================
-    logs.push("Starting Library tables migration (u_lib_mast -> u_lib_list -> u_lib_combo)...");
+  const { config, structureId, mappings, selectedInspNo, legacyAttachmentPath, componentsOnly } = payload;
+  if (!config || !structureId || !mappings) {
+    return NextResponse.json({ error: "Missing required payload parameters" }, { status: 400 });
+  }
+
+  // Run the migration asynchronously
+  (async () => {
+    let oracleConn: any;
+    const logs: string[] = [];
+    const rawReport: Record<string, any> = {};
+
+    // Override logs.push to automatically stream log lines in real time!
+    const originalPush = logs.push.bind(logs);
+    logs.push = (...items: string[]) => {
+      items.forEach(item => {
+        writeStreamEvent({ type: "log", message: item }).catch(console.error);
+      });
+      return originalPush(...items);
+    };
+
+    // Override report assignments to stream report updates in real time!
+    const report = new Proxy(rawReport, {
+      set(target, prop: string, value) {
+        target[prop] = value;
+        writeStreamEvent({
+          type: "table_report",
+          table: prop,
+          status: value.status,
+          oracleRows: value.oracleRows,
+          migratedRows: value.migratedRows,
+          errors: value.errors,
+          filesCopied: value.filesCopied
+        }).catch(console.error);
+        return true;
+      }
+    });
+
+    try {
+      let resolvedStructureId = Number(structureId);
+      let structureTitle = "";
+
+      // Automatically DISABLE Row Level Security (RLS) for dynamic unauthenticated migration execution
+      await setRlsStatus(true, logs);
+
+      const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const supabase = useAdmin ? createAdminClient() : createClient();
+
+      // Fetch all library items from u_lib_list in PostgreSQL for casing and description mapping
+      const libDescMap = new Map<string, string>();
+      const libIdToDescMap = new Map<string, string>();
+      const anodeTypeLib = new Map<string, string>();
+      try {
+        let page = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+        while (hasMore) {
+          const { data: libList, error: libErr } = await supabase
+            .from('u_lib_list')
+            .select('lib_id, lib_desc, lib_code')
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+          
+          if (libErr) throw libErr;
+          
+          if (libList && libList.length > 0) {
+            libList.forEach((item: any) => {
+              if (item.lib_desc) {
+                libDescMap.set(item.lib_desc.toLowerCase().trim(), item.lib_desc.trim());
+                if (item.lib_code === 'ANOD_TYP') {
+                  anodeTypeLib.set(item.lib_desc.toLowerCase().trim(), item.lib_desc.trim());
+                  if (item.lib_id) {
+                    anodeTypeLib.set(item.lib_id.toLowerCase().trim(), item.lib_desc.trim());
+                  }
+                }
+              }
+              if (item.lib_id && item.lib_desc) {
+                libIdToDescMap.set(item.lib_id.toLowerCase().trim(), item.lib_desc.trim());
+              }
+            });
+            if (libList.length < pageSize) {
+              hasMore = false;
+            } else {
+              page++;
+            }
+          } else {
+            hasMore = false;
+          }
+        }
+      } catch (libErr: any) {
+        logs.push(`WARNING: Failed to fetch library items from u_lib_list: ${libErr.message}`);
+      }
+
+      oracleConn = await getOracleConnection(config);
+
+      // Initialize default states for UI matching
+      report["STRUCTURE"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [], filesCopied: 0 };
+      report["U_LIB_MAST"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
+      report["U_LIB_LIST"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
+      report["U_LIB_COMBO"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
+      ["STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "INSP_ROV", "INSP_DIVING", "ANOMALY", "INSP_ATTACHMENT"].forEach(k => {
+        report[k] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [], filesCopied: 0 };
+      });
+
+      // =========================================================================
+      // BEFORE ANY OTHER MIGRATION: Migrate Library Tables (u_lib_mast, u_lib_list, u_lib_combo)
+      // =========================================================================
+      await writeStreamEvent({ type: "progress", current: 1, total: 9, label: "Initializing references & reference libraries...", percent: 5 });
+      logs.push("Starting Library tables migration (u_lib_mast -> u_lib_list -> u_lib_combo)...");
     
     // 1. u_lib_mast
     try {
@@ -612,12 +762,17 @@ export async function POST(request: NextRequest) {
           
         if (mastErr) {
           logs.push(`ERROR migrating u_lib_mast: ${mastErr.message}`);
+          report["U_LIB_MAST"] = { status: "failed", oracleRows: mastRows.length, migratedRows: 0, errors: [mastErr.message] };
         } else {
           logs.push(`Successfully migrated ${uniqueMastRecords.length} records to u_lib_mast.`);
+          report["U_LIB_MAST"] = { status: "success", oracleRows: mastRows.length, migratedRows: uniqueMastRecords.length, errors: [] };
         }
+      } else {
+        report["U_LIB_MAST"] = { status: "success", oracleRows: 0, migratedRows: 0, errors: [] };
       }
     } catch (err: any) {
       logs.push(`ERROR fetching/migrating U_LIB_MAST: ${err.message}`);
+      report["U_LIB_MAST"] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [err.message] };
     }
 
     // 2. u_lib_list
@@ -630,16 +785,7 @@ export async function POST(request: NextRequest) {
         const listRecords = listRows.map((r: any) => {
           let crDate = null;
           if (r.CR_DATE) {
-            if (r.CR_DATE instanceof Date) {
-              crDate = r.CR_DATE.toISOString();
-            } else {
-              const parsed = Date.parse(String(r.CR_DATE));
-              if (!isNaN(parsed)) {
-                crDate = new Date(parsed).toISOString();
-              } else {
-                crDate = cleanOracleDate(String(r.CR_DATE));
-              }
-            }
+            crDate = formatLocalISOString(r.CR_DATE) || null;
           }
           return {
             lib_code: String(r.LIB_CODE || "").trim(),
@@ -668,6 +814,7 @@ export async function POST(request: NextRequest) {
         // Upsert in batches of 1000 to be safe
         const batchSize = 1000;
         let successCount = 0;
+        const listErrors: string[] = [];
         for (let i = 0; i < uniqueListRecords.length; i += batchSize) {
           const batch = uniqueListRecords.slice(i, i + batchSize);
           const { error: listErr } = await supabase
@@ -676,11 +823,18 @@ export async function POST(request: NextRequest) {
             
           if (listErr) {
             logs.push(`ERROR migrating u_lib_list batch starting at index ${i}: ${listErr.message}`);
+            listErrors.push(listErr.message);
           } else {
             successCount += batch.length;
           }
         }
         logs.push(`Successfully migrated ${successCount}/${uniqueListRecords.length} records to u_lib_list.`);
+        report["U_LIB_LIST"] = {
+          status: listErrors.length > 0 ? "failed" : "success",
+          oracleRows: listRows.length,
+          migratedRows: successCount,
+          errors: listErrors
+        };
 
         // Re-populate and sync local maps with newly migrated records so later phases have complete mappings
         uniqueListRecords.forEach((item: any) => {
@@ -698,9 +852,12 @@ export async function POST(request: NextRequest) {
           }
         });
         logs.push(`Updated library lookup maps with ${uniqueListRecords.length} migrated keys.`);
+      } else {
+        report["U_LIB_LIST"] = { status: "success", oracleRows: 0, migratedRows: 0, errors: [] };
       }
     } catch (err: any) {
       logs.push(`ERROR fetching/migrating U_LIB_LIST: ${err.message}`);
+      report["U_LIB_LIST"] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [err.message] };
     }
 
     // 3. u_lib_combo
@@ -713,16 +870,7 @@ export async function POST(request: NextRequest) {
         const comboRecords = comboRows.map((r: any) => {
           let crDate = null;
           if (r.CR_DATE) {
-            if (r.CR_DATE instanceof Date) {
-              crDate = r.CR_DATE.toISOString();
-            } else {
-              const parsed = Date.parse(String(r.CR_DATE));
-              if (!isNaN(parsed)) {
-                crDate = new Date(parsed).toISOString();
-              } else {
-                crDate = cleanOracleDate(String(r.CR_DATE));
-              }
-            }
+            crDate = formatLocalISOString(r.CR_DATE) || null;
           }
           return {
             lib_code: String(r.LIB_CODE || "").trim(),
@@ -751,6 +899,7 @@ export async function POST(request: NextRequest) {
         // Upsert in batches of 1000 to be safe
         const batchSize = 1000;
         let successCount = 0;
+        const comboErrors: string[] = [];
         for (let i = 0; i < uniqueComboRecords.length; i += batchSize) {
           const batch = uniqueComboRecords.slice(i, i + batchSize);
           const { error: comboErr } = await supabase
@@ -759,26 +908,29 @@ export async function POST(request: NextRequest) {
             
           if (comboErr) {
             logs.push(`ERROR migrating u_lib_combo batch starting at index ${i}: ${comboErr.message}`);
+            comboErrors.push(comboErr.message);
           } else {
             successCount += batch.length;
           }
         }
         logs.push(`Successfully migrated ${successCount}/${uniqueComboRecords.length} records to u_lib_combo.`);
+        report["U_LIB_COMBO"] = {
+          status: comboErrors.length > 0 ? "failed" : "success",
+          oracleRows: comboRows.length,
+          migratedRows: successCount,
+          errors: comboErrors
+        };
+      } else {
+        report["U_LIB_COMBO"] = { status: "success", oracleRows: 0, migratedRows: 0, errors: [] };
       }
     } catch (err: any) {
       logs.push(`ERROR fetching/migrating U_LIB_COMBO: ${err.message}`);
+      report["U_LIB_COMBO"] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [err.message] };
     }
     logs.push("Completed Library tables migration.");
 
-    const report: Record<string, { status: "success" | "failed" | "skipped"; oracleRows: number; migratedRows: number; errors: string[]; filesCopied?: number }> = {};
     const tapeToDiveMap = new Map<string, string>();
     const inspNoToDiveMap = new Map<string, string>();
-
-    // Initialize default states for UI matching
-    report["STRUCTURE"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [], filesCopied: 0 };
-    ["STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "INSP_ROV", "INSP_DIVING", "ANOMALY", "INSP_ATTACHMENT"].forEach(k => {
-      report[k] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [], filesCopied: 0 };
-    });
 
     logs.push(`Started migration for Structure ID: ${structureId}`);
 
@@ -834,6 +986,7 @@ export async function POST(request: NextRequest) {
     let structureSuccess = true; // Default to true if skipped
 
     // --- 1. MIGRATE STRUCTURE ---
+    await writeStreamEvent({ type: "progress", current: 2, total: 9, label: "Migrating primary Structure master...", percent: 15 });
     const strMappings = mappings["STRUCTURE"] || [];
     if (strMappings.length > 0) {
       structureSuccess = false; // must succeed if mapped
@@ -871,10 +1024,7 @@ export async function POST(request: NextRequest) {
 
                 // Prevent timezone recognition issues
                 if (typeof val === 'string' && val.toLowerCase().includes('gmt')) {
-                  const parsedDate = new Date(val);
-                  if (!isNaN(parsedDate.getTime())) {
-                    val = parsedDate.toISOString();
-                  }
+                  val = formatLocalISOString(val);
                 }
 
                 val = coerceValue(mapping.pgCol, val);
@@ -1025,6 +1175,7 @@ export async function POST(request: NextRequest) {
     const compTypeCache = new Map<number, string>();
 
     // --- 1.5 MIGRATE STRUCTURAL CHILD TABLES ---
+    await writeStreamEvent({ type: "progress", current: 3, total: 9, label: "Copying structural elevations & levels...", percent: 25 });
     const structuralTables = ["STR_ELV", "STR_LEVEL", "STR_FACES"];
     if (structureSuccess) {
       for (const childTable of structuralTables) {
@@ -1056,8 +1207,7 @@ export async function POST(request: NextRequest) {
                     if (mapping.oracleCol && mapping.pgCol && oracleData[mapping.oracleCol] !== undefined) {
                       let val = oracleData[mapping.oracleCol];
                       if (typeof val === 'string' && val.toLowerCase().includes('gmt')) {
-                        const parsedDate = new Date(val);
-                        if (!isNaN(parsedDate.getTime())) val = parsedDate.toISOString();
+                        val = formatLocalISOString(val);
                       }
                       
                       if (mapping.pgCol.endsWith("clk_pos")) {
@@ -1147,6 +1297,7 @@ export async function POST(request: NextRequest) {
         logs.push(`WARNING: Could not fetch existing components: ${err.message}`);
       }
 
+      await writeStreamEvent({ type: "progress", current: 4, total: 9, label: "Processing mapped components...", percent: 40 });
       for (const code of componentCodes) {
         const compMappings = mappings[code] || [];
         if (compMappings.length === 0) continue;
@@ -1172,6 +1323,9 @@ export async function POST(request: NextRequest) {
             FROM ALLCOMPID c
             LEFT JOIN ${specTableName} s ON c.COMP_ID = s.COMP_ID
             WHERE c.STR_ID = :strId AND c.CODE = :code
+              AND NOT (NVL(c.DEL, 0) = 1 AND NOT EXISTS (
+                SELECT 1 FROM allinspid i WHERE i.COMP_ID = c.COMP_ID AND i.STR_ID = c.STR_ID
+              ))
           `;
 
           try {
@@ -1182,7 +1336,15 @@ export async function POST(request: NextRequest) {
               rows = result.rows as any[];
             } catch (joinErr: any) {
               logs.push(`WARNING: Left join with ${specTableName} failed (${joinErr.message}). Retrying query on ALLCOMPID only...`);
-              const fallbackQuery = `SELECT ${Array.from(queryCols).join(', ')} FROM ALLCOMPID WHERE STR_ID = :strId AND CODE = :code`;
+              const fallbackCols = Array.from(queryCols).map(col => `c.${col}`);
+              const fallbackQuery = `
+                SELECT ${fallbackCols.join(', ')} 
+                FROM ALLCOMPID c 
+                WHERE c.STR_ID = :strId AND c.CODE = :code
+                  AND NOT (NVL(c.DEL, 0) = 1 AND NOT EXISTS (
+                    SELECT 1 FROM allinspid i WHERE i.COMP_ID = c.COMP_ID AND i.STR_ID = c.STR_ID
+                  ))
+              `;
               try {
                 result = await oracleConn.execute(fallbackQuery, { strId: structureId, code: code });
                 rows = result.rows as any[];
@@ -1206,8 +1368,7 @@ export async function POST(request: NextRequest) {
                   if (mapping.oracleCol && mapping.pgCol && oracleData[mapping.oracleCol] !== undefined) {
                     let val = oracleData[mapping.oracleCol];
                     if (typeof val === 'string' && val.toLowerCase().includes('gmt')) {
-                      const parsedDate = new Date(val);
-                      if (!isNaN(parsedDate.getTime())) val = parsedDate.toISOString();
+                      val = formatLocalISOString(val);
                     }
                     if (mapping.pgCol.endsWith("clk_pos")) {
                       // Map Oracle 0-12 (or null/empty) to proper spaced string representation
@@ -1316,18 +1477,84 @@ export async function POST(request: NextRequest) {
       }
 
       // --- 2.5 MIGRATE COMPONENT ASSOCIATIONS (U_ASSOC) ---
-      if (structureSuccess && compIdMap.size > 0) {
+      if (structureSuccess) {
+        await writeStreamEvent({ type: "progress", current: 5, total: 9, label: "Resolving component associations...", percent: 60 });
         logs.push("Processing component associations (U_ASSOC)...");
         report["U_ASSOC"].status = "failed";
 
+        // Pre-populate compIdMap, compTypeCache, and qIdMap with ALL existing components for this structure from PostgreSQL
+        // to ensure that associations between already migrated components (across all types/runs) are linked!
         try {
-          const assocQuery = `SELECT COMP_ID, ASSOC_COMPID FROM U_ASSOC WHERE STR_ID = :strId`;
+          let page = 0;
+          const pageSize = 1000;
+          let hasMore = true;
+          while (hasMore) {
+            const { data: existingComps, error } = await supabase
+              .from('structure_components')
+              .select('id, comp_id, q_id, code')
+              .eq('structure_id', resolvedStructureId)
+              .range(page * pageSize, (page + 1) * pageSize - 1);
+            
+            if (error) throw error;
+            
+            if (!existingComps || existingComps.length === 0) {
+              hasMore = false;
+            } else {
+              existingComps.forEach((comp: any) => {
+                if (comp.comp_id) {
+                  const compIdNum = Number(comp.comp_id);
+                  const pgIdNum = Number(comp.id);
+                  compIdMap.set(compIdNum, pgIdNum);
+                  compTypeCache.set(compIdNum, String(comp.code || '').trim());
+                  if (comp.q_id) {
+                    qIdMap.set(String(comp.q_id).trim().toUpperCase(), pgIdNum);
+                  }
+                }
+              });
+              if (existingComps.length < pageSize) {
+                hasMore = false;
+              } else {
+                page++;
+              }
+            }
+          }
+          logs.push(`Loaded ${compIdMap.size} component mappings from PostgreSQL for hierarchy association linking.`);
+        } catch (err: any) {
+          logs.push(`WARNING: Loading component mappings for U_ASSOC failed: ${err.message}`);
+        }
+
+        if (compIdMap.size === 0) {
+          logs.push("No components found in PostgreSQL to associate. Skipping U_ASSOC.");
+          report["U_ASSOC"].status = "success";
+        } else {
+          try {
+          const assocQuery = `
+            SELECT a.COMP_ID, a.ASSOC_COMPID 
+            FROM U_ASSOC a 
+            WHERE a.STR_ID = :strId
+              AND a.COMP_ID IN (
+                SELECT c1.COMP_ID FROM ALLCOMPID c1 
+                WHERE c1.STR_ID = :strId
+                  AND NOT (NVL(c1.DEL, 0) = 1 AND NOT EXISTS (
+                    SELECT 1 FROM allinspid i1 WHERE i1.COMP_ID = c1.COMP_ID AND i1.STR_ID = c1.STR_ID
+                  ))
+              )
+              AND a.ASSOC_COMPID IN (
+                SELECT c2.COMP_ID FROM ALLCOMPID c2 
+                WHERE c2.STR_ID = :strId
+                  AND NOT (NVL(c2.DEL, 0) = 1 AND NOT EXISTS (
+                    SELECT 1 FROM allinspid i2 WHERE i2.COMP_ID = c2.COMP_ID AND i2.STR_ID = c2.STR_ID
+                  ))
+              )
+          `;
           const assocResult = await oracleConn.execute(assocQuery, { strId: structureId });
           const assocRows = assocResult.rows as any[];
 
           if (assocRows && assocRows.length > 0) {
             report["U_ASSOC"].oracleRows = assocRows.length;
             const parentToAssoc = new Map<number, number>();
+            const rejectedDetails: { oracleCompId: number; oracleAssocCompId: number; reason: string }[] = [];
+
             assocRows.forEach(row => {
               const oracleCompId = row.COMP_ID !== undefined ? Number(row.COMP_ID) : null;
               const oracleAssocId = row.ASSOC_COMPID !== undefined ? Number(row.ASSOC_COMPID) : null;
@@ -1338,9 +1565,33 @@ export async function POST(request: NextRequest) {
 
                 if (pgCompId && pgAssocCompId) {
                   parentToAssoc.set(pgCompId, pgAssocCompId);
+                } else {
+                  // Track which side(s) are unmapped
+                  const reasons: string[] = [];
+                  if (!pgCompId) reasons.push(`COMP_ID ${oracleCompId} not found in Postgres`);
+                  if (!pgAssocCompId) reasons.push(`ASSOC_COMPID ${oracleAssocId} not found in Postgres`);
+                  rejectedDetails.push({
+                    oracleCompId,
+                    oracleAssocCompId: oracleAssocId,
+                    reason: reasons.join('; ')
+                  });
                 }
+              } else {
+                // Null or zero IDs
+                rejectedDetails.push({
+                  oracleCompId: oracleCompId || 0,
+                  oracleAssocCompId: oracleAssocId || 0,
+                  reason: 'COMP_ID or ASSOC_COMPID is null/zero in Oracle'
+                });
               }
             });
+
+            // Attach rejection details to the report (limit to first 200 for payload size)
+            if (rejectedDetails.length > 0) {
+              logs.push(`WARNING: ${rejectedDetails.length} U_ASSOC record(s) could not be mapped (component not yet migrated to Postgres).`);
+              (report["U_ASSOC"] as any).rejectedDetails = rejectedDetails.slice(0, 200);
+              (report["U_ASSOC"] as any).totalRejected = rejectedDetails.length;
+            }
 
             if (parentToAssoc.size > 0) {
               logs.push(`Found ${parentToAssoc.size} valid component-to-component associations to link.`);
@@ -1400,11 +1651,13 @@ export async function POST(request: NextRequest) {
           report["U_ASSOC"].errors.push(assocErr.message);
         }
       }
+      }
     } else {
       logs.push("Skipped components migration because structure migration failed.");
     }
 
     // --- 3. MIGRATE ATTACHMENTS & COMMENTS ---
+    await writeStreamEvent({ type: "progress", current: 6, total: 9, label: "Migrating component file attachments...", percent: 70 });
     const mediaTables = ["ATTACHMENT", "COMMENT"];
     if (structureSuccess) {
       for (const childTable of mediaTables) {
@@ -1516,8 +1769,7 @@ export async function POST(request: NextRequest) {
                     if (mapping.oracleCol && mapping.pgCol && oracleData[mapping.oracleCol] !== undefined) {
                       let val = oracleData[mapping.oracleCol];
                       if (typeof val === 'string' && val.toLowerCase().includes('gmt')) {
-                        const parsedDate = new Date(val);
-                        if (!isNaN(parsedDate.getTime())) val = parsedDate.toISOString();
+                        val = formatLocalISOString(val);
                       }
 
                       // Custom Hook: convert raw extension to fully resolved standard MIME type!
@@ -1613,6 +1865,7 @@ export async function POST(request: NextRequest) {
     // RELATIONAL INSPECTION MIGRATION PIPELINE (Phases 1 to 6)
     // =========================================================================
     if (structureSuccess && !componentsOnly) {
+      await writeStreamEvent({ type: "progress", current: 7, total: 9, label: "Migrating active SOW, video tapes, and logs...", percent: 80 });
       try {
         logs.push(`================================================================`);
         logs.push(`Starting Relational Inspection Migration Pipeline (Phases 1 - 6)`);
@@ -1946,12 +2199,35 @@ export async function POST(request: NextRequest) {
             const jobpackName = String(getMappedVal("title") || wp.JOBNAME || "").trim() || `Job Pack ${oracleInspNo}`;
             const vessel = String(getMappedVal("vessel_name") || jv.V_NAME || wp.VESSEL || "").trim();
             const dateStart = getMappedVal("start_date") || getMappedVal("vessel_date_of_start") || jv.START_DATE || wp.ISTART || null;
+            const formattedDateStart = formatLocalDateOnly(dateStart);
             const contrac = String(getMappedVal("contractor") || wp.CONTRAC || "").trim();
             const jobTypeVal = String(getMappedVal("job_type") || jobType || "").trim();
             const repPrefixVal = String(getMappedVal("sow_report_no") || repPrefix || "").trim();
-            if (repPrefixVal) {
-              jobpackDefaultPrefixMap.set(oracleInspNo, repPrefixVal);
+            
+            let jobpackStartYear = "UNKNOWN";
+            if (formattedDateStart) {
+              jobpackStartYear = formattedDateStart.split('-')[0];
             }
+            if (jobpackStartYear === "UNKNOWN") {
+              const taskstrCrDate = inspNoCrDateMap.get(oracleInspNo);
+              if (taskstrCrDate) {
+                if (taskstrCrDate instanceof Date) {
+                  jobpackStartYear = String(taskstrCrDate.getFullYear());
+                } else {
+                  const parsed = Date.parse(String(taskstrCrDate));
+                  if (!isNaN(parsed)) {
+                    jobpackStartYear = String(new Date(parsed).getFullYear());
+                  }
+                }
+              }
+            }
+            if (jobpackStartYear === "UNKNOWN") {
+              jobpackStartYear = String(new Date().getFullYear());
+            }
+
+            const jobpackHasNoReportNo = !repPrefixVal || repPrefixVal.toUpperCase() === "UNKNOWN" || repPrefixVal.toUpperCase() === "UNKNOW";
+            const jobpackResolvedRepPrefix = jobpackHasNoReportNo ? jobpackStartYear : repPrefixVal;
+            jobpackDefaultPrefixMap.set(oracleInspNo, jobpackResolvedRepPrefix);
 
             // Upsert Postgres jobpack by either oracleInspNo or case-insensitive jobpack name
             let existingJp = null;
@@ -2290,12 +2566,12 @@ export async function POST(request: NextRequest) {
                 oracleInspNo,
                 vessel: vessel || existingMetadata.vessel,
                 contrac: contrac || existingMetadata.contrac,
-                date_start: dateStart || existingMetadata.date_start,
+                date_start: formattedDateStart || existingMetadata.date_start,
                 rep_prefix: repPrefixVal || existingMetadata.rep_prefix,
                 job_type: jobTypeVal || existingMetadata.job_type,
                 plantype: wp.PLANTYPE || existingMetadata.plantype || '',
                 tasktype: wp.TASKTYPE || existingMetadata.tasktype || '',
-                istart: dateStart || existingMetadata.istart,
+                istart: formattedDateStart || existingMetadata.istart,
                 structures: existingStructures,
                 inspections: existingInspections
               }
@@ -2334,28 +2610,45 @@ export async function POST(request: NextRequest) {
 
             // Upsert Postgres u_sow
 
+            let startYear = "UNKNOWN";
+            if (formattedDateStart) {
+              startYear = formattedDateStart.split('-')[0];
+            }
+            if (startYear === "UNKNOWN") {
+              const taskstrCrDate = inspNoCrDateMap.get(oracleInspNo);
+              if (taskstrCrDate) {
+                if (taskstrCrDate instanceof Date) {
+                  startYear = String(taskstrCrDate.getFullYear());
+                } else {
+                  const parsed = Date.parse(String(taskstrCrDate));
+                  if (!isNaN(parsed)) {
+                    startYear = String(new Date(parsed).getFullYear());
+                  }
+                }
+              }
+            }
+            if (startYear === "UNKNOWN") {
+              startYear = String(new Date().getFullYear());
+            }
+
             const { data: existingSow } = await (supabase.from as any)("u_sow")
               .select("id")
               .eq("jobpack_id", pgJpId)
               .eq("structure_id", resolvedStructureId)
               .maybeSingle();
 
-            const reportNumbers = repPrefixVal || jobTypeVal ? [{
-              number: repPrefixVal || "UNKNOWN",
+            const hasNoReportNo = !repPrefixVal || repPrefixVal.toUpperCase() === "UNKNOWN" || repPrefixVal.toUpperCase() === "UNKNOW";
+            const resolvedRepPrefix = hasNoReportNo ? startYear : repPrefixVal;
+
+            const reportNumbers = [{
+              number: resolvedRepPrefix,
               job_type: jobTypeVal || "UNKNOWN"
-            }] : [];
+            }];
 
             let parsedCrDate: string | undefined = undefined;
             const taskstrCrDate = inspNoCrDateMap.get(oracleInspNo);
             if (taskstrCrDate) {
-              if (taskstrCrDate instanceof Date) {
-                parsedCrDate = taskstrCrDate.toISOString();
-              } else {
-                const parsed = Date.parse(String(taskstrCrDate));
-                if (!isNaN(parsed)) {
-                  parsedCrDate = new Date(parsed).toISOString();
-                }
-              }
+              parsedCrDate = formatLocalISOString(taskstrCrDate) || undefined;
             }
 
             const sowPayload = {
@@ -2406,10 +2699,16 @@ export async function POST(request: NextRequest) {
         try {
           const sowCols = await getOracleTableColumns(oracleConn, 'sow_insp');
           if (sowCols.size > 0) {
-            const queryCols = ['INSPNO', 'COMP_ID', 'REP_PREFIX'];
-            // Prefer REP_NO / REPORT_NO (actual report number) over REP_PREFIX if available
+            const queryCols = ['INSPNO', 'REP_PREFIX'];
+            const hasCompId = sowCols.has('COMP_ID') || sowCols.has('COMPONENT_ID');
+            if (sowCols.has('COMP_ID')) queryCols.push('COMP_ID');
+            else if (sowCols.has('COMPONENT_ID')) queryCols.push('COMPONENT_ID as COMP_ID');
+
+            const hasRepNo = sowCols.has('REP_NO') || sowCols.has('REPORT_NO');
             if (sowCols.has('REP_NO')) queryCols.push('REP_NO');
             else if (sowCols.has('REPORT_NO')) queryCols.push('REPORT_NO as REP_NO');
+
+            const hasCode = sowCols.has('CODE') || sowCols.has('INSP_TYPE');
             if (sowCols.has('CODE')) queryCols.push('CODE');
             else if (sowCols.has('INSP_TYPE')) queryCols.push('INSP_TYPE as CODE');
 
@@ -2429,17 +2728,20 @@ export async function POST(request: NextRequest) {
 
             if (sowResult.rows) {
               sowResult.rows.forEach((row: any) => {
-                const hasRepNo = sowCols.has('REP_NO') || sowCols.has('REPORT_NO');
-                const rowObj = Array.isArray(row) ? {
-                  INSPNO: row[0],
-                  COMP_ID: row[1],
-                  REP_PREFIX: row[2],
-                  REP_NO: hasRepNo ? row[3] : null,
-                  CODE: hasRepNo ? row[4] : row[3]
-                } : row;
+                let rowObj: any = {};
+                if (Array.isArray(row)) {
+                  rowObj.INSPNO = row[0];
+                  rowObj.REP_PREFIX = row[1];
+                  let nextIdx = 2;
+                  if (hasCompId) { rowObj.COMP_ID = row[nextIdx]; nextIdx++; }
+                  if (hasRepNo) { rowObj.REP_NO = row[nextIdx]; nextIdx++; }
+                  if (hasCode) { rowObj.CODE = row[nextIdx]; nextIdx++; }
+                } else {
+                  rowObj = row;
+                }
 
                 const inspNo = String(rowObj.INSPNO || "").trim();
-                const compId = Number(rowObj.COMP_ID);
+                const compId = rowObj.COMP_ID ? Number(rowObj.COMP_ID) : null;
                 // Use actual report number (REP_NO) if available, else fall back to REP_PREFIX
                 const repNo = String(rowObj.REP_NO || rowObj.REP_PREFIX || "").trim();
                 const code = String(rowObj.CODE || "").trim().toUpperCase();
@@ -3077,7 +3379,7 @@ export async function POST(request: NextRequest) {
                         rov_operator: 'FALLBACK',
                         rov_supervisor: 'FALLBACK',
                         report_coordinator: 'FALLBACK',
-                        deployment_date: new Date().toISOString().split('T')[0],
+                        deployment_date: formatLocalDateOnly(new Date()),
                         start_time: '00:00:00',
                         end_time: '00:00:00',
                         status: 'COMPLETED',
@@ -3224,13 +3526,10 @@ export async function POST(request: NextRequest) {
                   const counterVal = counterValRaw !== undefined && counterValRaw !== null ? Number(counterValRaw) : null;
 
                   // Parse cr_date cleanly
-                  let parsedCrDate = new Date().toISOString();
+                  let parsedCrDate = formatLocalISOString(new Date());
                   const crDateVal = getObjProperty(row, 'CR_DATE');
                   if (crDateVal) {
-                    const parsed = Date.parse(crDateVal);
-                    if (!isNaN(parsed)) {
-                      parsedCrDate = new Date(parsed).toISOString();
-                    }
+                    parsedCrDate = formatLocalISOString(crDateVal) || parsedCrDate;
                   }
 
                   return {
@@ -3367,7 +3666,7 @@ export async function POST(request: NextRequest) {
                       diver_name: 'FALLBACK',
                       dive_supervisor: 'FALLBACK',
                       report_coordinator: 'FALLBACK',
-                      dive_date: new Date().toISOString().split('T')[0],
+                      dive_date: formatLocalDateOnly(new Date()),
                       start_time: '00:00:00',
                       end_time: '00:00:00',
                       status: 'COMPLETED',
@@ -3524,13 +3823,10 @@ export async function POST(request: NextRequest) {
                 }
 
                 // Parse cr_date cleanly
-                let parsedCrDate = new Date().toISOString();
+                let parsedCrDate = formatLocalISOString(new Date());
                 const crDateVal = getObjProperty(row, 'CR_DATE');
                 if (crDateVal) {
-                  const parsed = Date.parse(crDateVal);
-                  if (!isNaN(parsed)) {
-                    parsedCrDate = new Date(parsed).toISOString();
-                  }
+                  parsedCrDate = formatLocalISOString(crDateVal) || parsedCrDate;
                 }
 
                 return {
@@ -3645,8 +3941,21 @@ export async function POST(request: NextRequest) {
               if (allcompCols.has('DESCRIPTION')) acSelect.push('DESCRIPTION');
               else if (allcompCols.has('DESCR')) acSelect.push('DESCR as DESCRIPTION');
 
+              const acSelectPrefixed = acSelect.map(col => {
+                const cleanCol = col.trim();
+                if (cleanCol.toUpperCase().includes(' AS ')) {
+                  const parts = cleanCol.split(/\s+as\s+/i);
+                  return `c.${parts[0].trim()} as ${parts[1].trim()}`;
+                }
+                return `c.${cleanCol}`;
+              });
               const acResult = await oracleConn.execute(
-                `SELECT ${acSelect.join(', ')} FROM ALLCOMPID WHERE STR_ID = :strId`,
+                `SELECT ${acSelectPrefixed.join(', ')} 
+                 FROM ALLCOMPID c 
+                 WHERE c.STR_ID = :strId
+                   AND NOT (NVL(c.DEL, 0) = 1 AND NOT EXISTS (
+                     SELECT 1 FROM allinspid i WHERE i.COMP_ID = c.COMP_ID AND i.STR_ID = c.STR_ID
+                   ))`,
                 { strId: structureId }
               );
 
@@ -4034,7 +4343,12 @@ export async function POST(request: NextRequest) {
                 const fieldMappings = mappings[mapKey];
                 if (!fieldMappings || fieldMappings.length === 0) continue;
                 
-                const oracleColsToFetch = Array.from(new Set(fieldMappings.map((m: any) => String(m.oracleCol).toUpperCase())));
+                // Filter columns to only fetch those that exist in the Oracle PLATGI schema
+                const oracleColsToFetch = Array.from(new Set(
+                  fieldMappings
+                    .map((m: any) => String(m.oracleCol).toUpperCase())
+                    .filter((col: string) => platgiCols.has(col))
+                ));
                 if (!oracleColsToFetch.includes('INSP_ID')) {
                   oracleColsToFetch.push('INSP_ID');
                 }
@@ -4140,8 +4454,14 @@ export async function POST(request: NextRequest) {
                           // Auto-resolve specific common fields
                           if (colName === 'DIVE_NO') mappedData.dive_job_id = val;
                           if (colName === 'TAPE_NO') mappedData.tape_id = val;
-                          if (colName === 'INSP_DATE') mappedData.inspection_date = val;
-                          if (colName === 'INSP_TIME') mappedData.inspection_time = val;
+                          
+                          if (typeCode === 'NAVIG') {
+                            if (colName === 'I_DATE') mappedData.inspection_date = val;
+                            if (colName === 'TIME') mappedData.inspection_time = val;
+                          } else {
+                            if (colName === 'INSP_DATE') mappedData.inspection_date = val;
+                            if (colName === 'INSP_TIME') mappedData.inspection_time = val;
+                          }
                         }
                       });
 
@@ -4855,7 +5175,7 @@ export async function POST(request: NextRequest) {
                   rov_operator: 'FALLBACK',
                   rov_supervisor: 'FALLBACK',
                   report_coordinator: 'FALLBACK',
-                  deployment_date: new Date().toISOString().split('T')[0],
+                  deployment_date: formatLocalDateOnly(new Date()),
                   start_time: '00:00:00',
                   end_time: '00:00:00',
                   status: 'COMPLETED',
@@ -4880,7 +5200,7 @@ export async function POST(request: NextRequest) {
                   diver_name: 'FALLBACK',
                   dive_supervisor: 'FALLBACK',
                   report_coordinator: 'FALLBACK',
-                  dive_date: new Date().toISOString().split('T')[0],
+                  dive_date: formatLocalDateOnly(new Date()),
                   start_time: '00:00:00',
                   end_time: '00:00:00',
                   status: 'COMPLETED',
@@ -4922,7 +5242,7 @@ export async function POST(request: NextRequest) {
                       diver_name: 'DEFAULT FALLBACK',
                       dive_supervisor: 'DEFAULT FALLBACK',
                       report_coordinator: 'DEFAULT FALLBACK',
-                      dive_date: new Date().toISOString().split('T')[0],
+                      dive_date: formatLocalDateOnly(new Date()),
                       start_time: '00:00:00',
                       end_time: '00:00:00',
                       status: 'COMPLETED',
@@ -4965,7 +5285,7 @@ export async function POST(request: NextRequest) {
                       rov_operator: 'DEFAULT FALLBACK',
                       rov_supervisor: 'DEFAULT FALLBACK',
                       report_coordinator: 'DEFAULT FALLBACK',
-                      deployment_date: new Date().toISOString().split('T')[0],
+                      deployment_date: formatLocalDateOnly(new Date()),
                       start_time: '00:00:00',
                       end_time: '00:00:00',
                       status: 'COMPLETED',
@@ -4994,8 +5314,8 @@ export async function POST(request: NextRequest) {
 
             const sowReportNo = getSowReportNo(legacyInspNo, legacyCompId, typCode.toUpperCase());
 
-            const rowDateVal = rowObj.INSP_DATE || rowObj.I_DATE || rowObj.LOG_DATE || mappedTypeData.inspection_date || mappedTypeData.INSP_DATE;
-            const rowTimeVal = rowObj.INSP_TIME || rowObj.I_TIME || rowObj.LOG_TIME || mappedTypeData.inspection_time || mappedTypeData.INSP_TIME;
+            const rowDateVal = rowObj.INSP_DATE || rowObj.I_DATE || rowObj.i_date || rowObj.I_Date || rowObj.LOG_DATE || mappedTypeData.inspection_date || mappedTypeData.INSP_DATE || mappedTypeData.I_DATE || mappedTypeData.i_date || mappedTypeData.I_Date;
+            const rowTimeVal = rowObj.INSP_TIME || rowObj.I_TIME || rowObj.i_time || rowObj.I_Time || rowObj.TIME || rowObj.time || rowObj.LOG_TIME || mappedTypeData.inspection_time || mappedTypeData.INSP_TIME || mappedTypeData.I_TIME || mappedTypeData.i_time || mappedTypeData.TIME || mappedTypeData.time;
             const dateStr = combineDateTime(rowDateVal, rowTimeVal);
             const timeStr = formatTimeOnly(rowTimeVal);
 
@@ -6424,7 +6744,7 @@ export async function POST(request: NextRequest) {
                 source_type: 'INSPECTION',
                 name: rObj.TITLE ? String(rObj.TITLE).trim() : (rObj.A_FILENAME ? String(rObj.A_FILENAME).trim() : `Legacy_File_${rObj.ATTACH_ID}`),
                 path: rObj.A_PATH ? String(rObj.A_PATH).trim() : '',
-                created_at: rObj.CR_DATE ? new Date(rObj.CR_DATE).toISOString() : new Date().toISOString(),
+                created_at: rObj.CR_DATE ? (formatLocalISOString(rObj.CR_DATE) || formatLocalISOString(new Date())) : formatLocalISOString(new Date()),
                 meta: {
                   title: rObj.TITLE ? String(rObj.TITLE).trim() : '',
                   description: rObj.DETAILS ? String(rObj.DETAILS).trim() : '',
@@ -6579,7 +6899,7 @@ export async function POST(request: NextRequest) {
           // Fetch all SOWs for this migrated structure
           const { data: sows, error: sowFetchErr } = await (supabase as any)
             .from('u_sow')
-            .select('id, jobpack_id, report_number')
+            .select('id, jobpack_id, report_numbers')
             .eq('structure_id', resolvedStructureId);
 
           if (sowFetchErr) {
@@ -6587,6 +6907,9 @@ export async function POST(request: NextRequest) {
           } else if (sows && sows.length > 0) {
             let totalUpdatedSowItems = 0;
             for (const sow of sows) {
+              const reportsArr = sow.report_numbers || [];
+              const fallbackReportNo = Array.isArray(reportsArr) && reportsArr.length > 0 ? reportsArr[0]?.number : undefined;
+
               // Get all SOW items belonging to this SOW
               const { data: sowItems, error: sowItemsErr } = await (supabase as any)
                 .from('u_sow_items')
@@ -6601,11 +6924,11 @@ export async function POST(request: NextRequest) {
               if (sowItems && sowItems.length > 0) {
                 for (const item of sowItems) {
                   // Resolve matching inspection records in Postgres
-                  const reportNo = item.report_number || sow.report_number;
+                  const reportNo = item.report_number || fallbackReportNo;
                   
                   let recordsQuery = (supabase as any)
                     .from('insp_records')
-                    .select('id, status, elevation')
+                    .select('insp_id, status, elevation')
                     .eq('component_id', item.component_id)
                     .eq('inspection_type_id', item.inspection_type_id);
                     
@@ -6735,31 +7058,47 @@ export async function POST(request: NextRequest) {
       logs.push(`================================================================`);
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Migration execution completed",
-      logs,
-      report
-    });
+      await writeStreamEvent({
+        type: "complete",
+        success: true,
+        message: "Migration execution completed",
+        logs,
+        report: rawReport
+      });
 
-  } catch (error: any) {
-    console.error("[Migration Execute Error]:", error);
-    return NextResponse.json({
-      error: "Migration failed",
-      details: error.message
-    }, { status: 500 });
-  } finally {
-    // Re-enable Row Level Security (RLS) at the very end to keep the database secure
-    await setRlsStatus(false, logs);
+    } catch (error: any) {
+      console.error("[Migration Execute Error]:", error);
+      await writeStreamEvent({
+        type: "error",
+        message: "Migration failed",
+        details: error.message
+      });
+    } finally {
+      // Re-enable Row Level Security (RLS) at the very end to keep the database secure
+      await setRlsStatus(false, logs);
 
-    if (oracleConn) {
-      try {
-        await oracleConn.close();
-      } catch (err) {
-        console.error("Error closing Oracle connection:", err);
+      if (oracleConn) {
+        try {
+          await oracleConn.close();
+        } catch (err) {
+          console.error("Error closing Oracle connection:", err);
+        }
       }
+
+      // Close the stream writer
+      try {
+        await writer.close();
+      } catch (e) {}
     }
-  }
+  })();
+
+  return new Response(transformStream.readable, {
+    headers: {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 }
 
 // cache-bust: trigger compilation reload

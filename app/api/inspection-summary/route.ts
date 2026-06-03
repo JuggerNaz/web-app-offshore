@@ -58,11 +58,9 @@ export async function GET(request: NextRequest) {
                 .select(`
                     status, 
                     component_id, 
+                    component_qid,
                     component_type, 
-                    report_number, 
-                    structure_components:component_id(
-                        id, q_id, code, metadata
-                    )
+                    report_number
                 `)
                 .eq("sow_id", Number(resolvedSowId));
             
@@ -475,7 +473,7 @@ export async function GET(request: NextRequest) {
 
         // Scope (Total) is based on ALL items in the SOW (the whole platform's scope)
         allSowItems.forEach((item: any) => {
-            const comp = item.structure_components || item.component || {};
+            const comp = { q_id: item.component_qid, code: item.component_type };
             const qid = (comp?.q_id || "").toUpperCase();
             if (!qid && !item.component_id) return;
 

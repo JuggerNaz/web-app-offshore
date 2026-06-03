@@ -153,6 +153,30 @@ export const POST = withAuth(
         }
       }
 
+      // Helper to format Date objects or string dates as local YYYY-MM-DD
+      const formatLocalDateOnly = (dateVal: any): string | null => {
+        if (!dateVal) return null;
+        if (dateVal instanceof Date) {
+          const yyyy = dateVal.getFullYear();
+          const mm = String(dateVal.getMonth() + 1).padStart(2, '0');
+          const dd = String(dateVal.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}`;
+        }
+        const str = String(dateVal).trim();
+        if (!str) return null;
+        
+        // If already in YYYY-MM-DD format
+        const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        if (isoMatch) {
+          return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+        }
+        
+        const parsed = Date.parse(str);
+        if (isNaN(parsed)) return str;
+        const d = new Date(parsed);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
+
       // Enrich jobpacks with HAS_ROV and HAS_DIVING flags
       const enrichedJobpacks = jobpacks.map((jp: any) => {
         const inspno = String(jp.INSPNO || jp.inspno || "");
@@ -164,8 +188,13 @@ export const POST = withAuth(
         // Diving rule: any other inspection type (excluding 4 ignored ones) has more than 1 record
         const hasDiving = Object.values(data.divingCounts).some(count => count > 1);
 
+        const rawStartDate = jp.START_DATE || jp.start_date || jp.ISTART || jp.istart;
+        const rawVesselStartDate = jp.VESSEL_START_DATE || jp.vessel_start_date;
+
         return {
           ...jp,
+          START_DATE: formatLocalDateOnly(rawStartDate),
+          VESSEL_START_DATE: formatLocalDateOnly(rawVesselStartDate),
           HAS_ROV: hasRov,
           HAS_DIVING: hasDiving
         };

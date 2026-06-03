@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOracleConnection, OracleConnectionConfig } from "@/utils/oracle-db";
 import { withAuth } from "@/utils/with-auth";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 
 /**
  * POST /api/migration/inspection-summary
@@ -22,6 +23,9 @@ export const POST = withAuth(
       }
 
       const structType = structureType || "PLATFORM";
+
+      const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const supabase = useAdmin ? createAdminClient() : createClient();
 
       connection = await getOracleConnection(config);
 
@@ -278,6 +282,160 @@ export const POST = withAuth(
         console.warn("Query video count failed:", err.message);
       }
 
+      // Query Oracle counts for additional SOW, Anomalies and attachments
+      let sowCount = 0;
+      let anomalyCount = 0;
+      let compAttachCount = 0;
+      let inspAttachCount = 0;
+
+      try {
+        const result = await connection.execute(
+          `SELECT COUNT(*) AS CNT FROM U_SOW WHERE INSPNO = :inspNo`,
+          { inspNo: String(inspno) }
+        );
+        sowCount = result.rows?.[0]?.CNT || result.rows?.[0]?.[0] || 0;
+      } catch (e) {}
+
+      try {
+        const result = await connection.execute(
+          `SELECT COUNT(*) AS CNT FROM ANOMALY WHERE STR_ID = :strId AND INSPNO = :inspNo`,
+          { strId: str_id, inspNo: String(inspno) }
+        );
+        anomalyCount = result.rows?.[0]?.CNT || result.rows?.[0]?.[0] || 0;
+      } catch (e) {}
+
+      try {
+        // component attachments (where COMP_ID is not null and INSPNO is null)
+        const result = await connection.execute(
+          `SELECT COUNT(*) AS CNT FROM U_ATTACH_1 WHERE STR_ID = :strId AND COMP_ID > 0 AND INSPNO IS NULL`,
+          { strId: str_id }
+        );
+        compAttachCount = result.rows?.[0]?.CNT || result.rows?.[0]?.[0] || 0;
+      } catch (e) {}
+
+      try {
+        // inspection attachments (where INSPNO matches)
+        const result = await connection.execute(
+          `SELECT COUNT(*) AS CNT FROM U_ATTACH_1 WHERE STR_ID = :strId AND INSPNO = :inspNo`,
+          { strId: str_id, inspNo: String(inspno) }
+        );
+        inspAttachCount = result.rows?.[0]?.CNT || result.rows?.[0]?.[0] || 0;
+      } catch (e) {}
+
+      // Fetch existing Postgres inspection related counts
+      let pgJobpackCount = 0;
+      let pgSowCount = 0;
+      let pgLogsJobsCount = 0;
+      let pgLogsMovementsCount = 0;
+      let pgVideoCount = 0;
+      let pgInspRovCount = 0;
+      let pgInspDivingCount = 0;
+      let pgAnomalyCount = 0;
+      let pgCompAttachCount = 0;
+      let pgInspAttachCount = 0;
+
+      try {
+        const { count } = await (supabase as any).from('jobpack').select('*', { count: 'exact', head: true }).eq('jobpack_id', Number(inspno));
+        pgJobpackCount = count || 0;
+      } catch (e) {}
+
+      try {
+        const { count } = await (supabase as any).from('u_sow').select('*', { count: 'exact', head: true }).eq('jobpack_id', Number(inspno));
+        pgSowCount = count || 0;
+      } catch (e) {}
+
+      try {
+        // Jobs count: sum of rov and dive jobs for this jobpack
+        const { count: rovJobs } = await (supabase as any).from('insp_rov_jobs').select('*', { count: 'exact', head: true }).eq('jobpack_id', Number(inspno));
+        const { count: diveJobs } = await (supabase as any).from('insp_dive_jobs').select('*', { count: 'exact', head: true }).eq('jobpack_id', Number(inspno));
+        pgLogsJobsCount = (rovJobs || 0) + (diveJobs || 0);
+
+        // Fetch parent job IDs to count movements
+        const { data: rJobs } = await (supabase as any).from('insp_rov_jobs').select('id').eq('jobpack_id', Number(inspno));
+        const { data: dJobs } = await (supabase as any).from('insp_dive_jobs').select('id').eq('jobpack_id', Number(inspno));
+        
+        const rovJobIds = rJobs?.map((j: any) => j.id) || [];
+        const diveJobIds = dJobs?.map((j: any) => j.id) || [];
+
+        let rovMovs = 0;
+        let diveMovs = 0;
+
+        if (rovJobIds.length > 0) {
+          const { count } = await (supabase as any).from('insp_rov_movements').select('*', { count: 'exact', head: true }).in('rov_job_id', rovJobIds);
+          rovMovs = count || 0;
+        }
+        if (diveJobIds.length > 0) {
+          const { count } = await (supabase as any).from('insp_dive_movements').select('*', { count: 'exact', head: true }).in('dive_job_id', diveJobIds);
+          diveMovs = count || 0;
+        }
+        pgLogsMovementsCount = rovMovs + diveMovs;
+      } catch (e) {}
+
+      try {
+        const { count } = await (supabase as any).from('insp_video_tapes').select('*', { count: 'exact', head: true }).eq('jobpack_id', Number(inspno));
+        pgVideoCount = count || 0;
+      } catch (e) {}
+
+      try {
+        // Query pg inspection records count by type
+        // ROV platform GI records in public.insp_video_logs or public.insp_records
+        // Diver inspections in public.insp_records where type matches diving sub-types
+        // Let's query public.insp_records directly for this jobpack!
+        const { data: recs } = await (supabase as any).from('insp_records')
+          .select('id, metadata')
+          .eq('jobpack_id', Number(inspno));
+        
+        if (recs) {
+          recs.forEach((r: any) => {
+            const hasRovTag = r.metadata?.rov_operator || r.metadata?.deployment_no || r.metadata?.rov_supervisor;
+            if (hasRovTag) {
+              pgInspRovCount++;
+            } else {
+              pgInspDivingCount++;
+            }
+          });
+        }
+      } catch (e) {}
+
+      try {
+        const { count } = await (supabase as any).from('insp_anomalies').select('*', { count: 'exact', head: true })
+          .eq('jobpack_id', Number(inspno));
+        pgAnomalyCount = count || 0;
+      } catch (e) {}
+
+      try {
+        // Query component attachments (source_type = 'component')
+        // We can approximate by querying all component IDs for this structure
+        const { data: pgComps } = await (supabase as any).from('structure_components').select('id').eq('structure_id', Number(str_id));
+        const pgCompIds = pgComps?.map((c: any) => c.id) || [];
+        if (pgCompIds.length > 0) {
+          const { count } = await (supabase as any).from('attachment').select('*', { count: 'exact', head: true })
+            .eq('source_type', 'component')
+            .in('source_id', pgCompIds);
+          pgCompAttachCount = count || 0;
+        }
+      } catch (e) {}
+
+      try {
+        // Query inspection attachments for records in this jobpack
+        const { data: recs } = await (supabase as any).from('insp_records')
+          .select('id')
+          .eq('jobpack_id', Number(inspno));
+        const recIds = recs?.map((r: any) => r.id) || [];
+        if (recIds.length > 0) {
+          const { count } = await (supabase as any).from('attachment').select('*', { count: 'exact', head: true })
+            .eq('source_type', 'inspection_record')
+            .in('source_id', recIds);
+          pgInspAttachCount = count || 0;
+        }
+      } catch (e) {}
+
+      // Calculate total Oracle counts
+      const totalRovCount = rovInspections.reduce((sum: number, r: any) => sum + r.count, 0);
+      const totalDivingCount = divingInspections.reduce((sum: number, r: any) => sum + r.count, 0);
+      const totalJobsCount = logsCount + platgVideoCount; // approximate log entry triggers
+      const totalMovementsCount = logsCount + platgVideoCount; // approximate logs
+
       return NextResponse.json({
         success: true,
         data: {
@@ -286,7 +444,19 @@ export const POST = withAuth(
           logsCount,
           platgVideoCount,
           videoCount
-        }
+        },
+        jobs: [
+          { code: "JOBPACK", name: "Job Pack Master (jobpack)", row_count: 1, pg_row_count: pgJobpackCount },
+          { code: "U_SOW", name: "Scope of Work (u_sow)", row_count: Number(sowCount), pg_row_count: pgSowCount },
+          { code: "LOGS_JOBS", name: "Job Logs (ROV/Diving Jobs)", row_count: Number(totalJobsCount), pg_row_count: pgLogsJobsCount },
+          { code: "LOGS_MOVEMENTS", name: "Movement Logs (ROV/Diving)", row_count: Number(totalMovementsCount), pg_row_count: pgLogsMovementsCount },
+          { code: "VIDEO", name: "Video Tapes (insp_video_tapes)", row_count: Number(videoCount), pg_row_count: pgVideoCount },
+          { code: "INSP_ROV", name: "ROV Inspections (insp_records)", row_count: Number(totalRovCount), pg_row_count: pgInspRovCount },
+          { code: "INSP_DIVING", name: "Diving Inspections (insp_records)", row_count: Number(totalDivingCount), pg_row_count: pgInspDivingCount },
+          { code: "ANOMALY", name: "Anomalies (insp_anomalies)", row_count: Number(anomalyCount), pg_row_count: pgAnomalyCount },
+          { code: "ATTACHMENT", name: "Component Attachments (attachment)", row_count: Number(compAttachCount), pg_row_count: pgCompAttachCount },
+          { code: "INSP_ATTACHMENT", name: "Inspection Attachments (attachment)", row_count: Number(inspAttachCount), pg_row_count: pgInspAttachCount }
+        ]
       });
 
     } catch (error: any) {
@@ -306,3 +476,4 @@ export const POST = withAuth(
     }
   }
 );
+

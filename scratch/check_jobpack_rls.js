@@ -17,17 +17,15 @@ const supabase = createClient(
 );
 
 async function checkRLS() {
-  try {
-    console.log("Checking if we can select jobpack as anon...");
-    const { data: anonData, error: anonError } = await supabase
-      .from("jobpack")
-      .select("id")
-      .limit(1);
-    
-    console.log("Anon select:", { dataCount: anonData?.length, error: anonError });
-    
-  } catch (err) {
-    console.error("Error:", err);
+  console.log("Checking if RLS is enabled for jobpack table...");
+  const { data, error } = await supabase.rpc('check_rls_enabled', { table_name_input: 'jobpack' });
+  
+  if (error) {
+    console.log("RPC check_rls_enabled failed:", error);
+    // Let's try to query pg_tables or pg_class using a custom RPC if we have one
+    // Or we can check if there are other check scripts.
+  } else {
+    console.log("jobpack RLS Enabled:", data);
   }
 }
 

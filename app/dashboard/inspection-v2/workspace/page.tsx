@@ -3044,7 +3044,9 @@ function V10PreviewLayout() {
           headerData.sowReportNo !== "N/A" &&
           headerData.sowReportNo !== "Unknown Report"
         ) {
-          recTapesQuery = recTapesQuery.eq("sow_report_no", headerData.sowReportNo);
+          recTapesQuery = recTapesQuery.or(
+            `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
+          );
         }
 
         const { data: recTapes } = await recTapesQuery;
@@ -3156,7 +3158,9 @@ function V10PreviewLayout() {
         headerData.sowReportNo !== "N/A" &&
         headerData.sowReportNo !== "Unknown Report"
       ) {
-        inspsQuery = inspsQuery.eq("sow_report_no", headerData.sowReportNo);
+        inspsQuery = inspsQuery.or(
+          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
+        );
       }
 
       // 3 & 4. Fetch Logs and Inspection Records in parallel to reduce network roundtrips
@@ -3307,7 +3311,9 @@ function V10PreviewLayout() {
         headerData.sowReportNo !== "N/A" &&
         headerData.sowReportNo !== "Unknown Report"
       ) {
-        query = query.eq("sow_report_no", headerData.sowReportNo);
+        query = query.or(
+          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
+        );
       }
 
       const { data, error } = await query.order("cr_date", { ascending: false });
@@ -3887,7 +3893,9 @@ function V10PreviewLayout() {
         headerData.sowReportNo !== "N/A" &&
         headerData.sowReportNo !== "Unknown Report"
       ) {
-        calibQuery = calibQuery.eq("sow_report_no", headerData.sowReportNo);
+        calibQuery = calibQuery.or(
+          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
+        );
       }
 
       const { data, error } = await calibQuery
