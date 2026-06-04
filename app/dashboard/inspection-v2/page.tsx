@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -68,22 +68,28 @@ export default function InspectionLanding() {
     const selectedStructureData = structures.find((s) => s.id.toString() === selectedStructure);
     const selectedSOWData = sowReports.find((s) => `${s.sow_id}-${s.item_no}` === selectedSOW);
 
-    const filteredJobPacks = jobPacks.filter((jp) => {
-        const search = searchJP.toLowerCase();
-        return (
-            jp.jobpack_no?.toLowerCase().includes(search) ||
-            jp.jobpack_title?.toLowerCase().includes(search) ||
-            jp.structure_name?.toLowerCase().includes(search)
+    const filteredJobPacks = useMemo(() => {
+        return jobPacks.filter((jp) => {
+            const search = searchJP.toLowerCase();
+            return (
+                jp.jobpack_no?.toLowerCase().includes(search) ||
+                jp.jobpack_title?.toLowerCase().includes(search) ||
+                jp.structure_name?.toLowerCase().includes(search)
+            );
+        });
+    }, [jobPacks, searchJP]);
+
+    const filteredStructures = useMemo(() => {
+        return structures.filter((s) =>
+            s.name.toLowerCase().includes(searchStruct.toLowerCase())
         );
-    });
+    }, [structures, searchStruct]);
 
-    const filteredStructures = structures.filter((s) =>
-        s.name.toLowerCase().includes(searchStruct.toLowerCase())
-    );
-
-    const filteredSOWs = sowReports.filter((s) =>
-        s.report_number.toLowerCase().includes(searchSOW.toLowerCase())
-    );
+    const filteredSOWs = useMemo(() => {
+        return sowReports.filter((s) =>
+            s.report_number.toLowerCase().includes(searchSOW.toLowerCase())
+        );
+    }, [sowReports, searchSOW]);
 
     // Group filtered jobpacks by year
     const jobPacksByYear: Record<string, JobPack[]> = {};

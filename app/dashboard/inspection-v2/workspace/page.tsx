@@ -1535,7 +1535,7 @@ function V10PreviewLayout() {
         console.log("[SOW Sync] Resolving missing sowId...");
         const { data: existingSow } = await supabase
           .from("u_sow")
-          .select("id, report_number")
+          .select("id, report_numbers")
           .eq("jobpack_id", Number(jobPackId))
           .eq("structure_id", Number(structureId))
           .limit(1)
@@ -1543,11 +1543,16 @@ function V10PreviewLayout() {
 
         if (existingSow) {
           activeSowId = existingSow.id;
-          if (!activeReportNo || activeReportNo === "N/A")
-            activeReportNo = existingSow.report_number;
+          if (!activeReportNo || activeReportNo === "N/A") {
+            const firstReport = existingSow.report_numbers?.[0];
+            activeReportNo = firstReport ? firstReport.number : null;
+          }
         } else {
           const userRes = await supabase.auth.getUser();
           const userId = userRes.data.user?.id || "system";
+          const resolvedReport = activeReportNo && activeReportNo !== "N/A"
+            ? activeReportNo
+            : `SOW-${new Date().getFullYear()}`;
           const { data: newSow } = await supabase
             .from("u_sow")
             .insert({
@@ -1555,10 +1560,7 @@ function V10PreviewLayout() {
               structure_id: Number(structureId),
               structure_type: headerData.structureType === "pipeline" ? "PIPELINE" : "PLATFORM",
               structure_title: headerData.platformName,
-              report_number:
-                activeReportNo && activeReportNo !== "N/A"
-                  ? activeReportNo
-                  : `SOW-${new Date().getFullYear()}`,
+              report_numbers: [{ number: resolvedReport, job_type: jtParam || "UNKNOWN" }],
               total_items: 0,
               completed_items: 0,
               incomplete_items: 0,
@@ -1805,9 +1807,122 @@ function V10PreviewLayout() {
     [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData, jobPackId, structureId]
   );
 
+  // Resolver effect to convert name parameters into ID parameters
+  useEffect(() => {
+    async function resolveParams() {
+      if (!jobPackId || !structureId) return;
+
+      const isJpNaN = isNaN(Number(jobPackId));
+      const isStrNaN = isNaN(Number(structureId));
+
+      // If both are already numbers, no need to resolve
+      if (!isJpNaN && !isStrNaN) return;
+
+      let resolvedJobPackId = jobPackId;
+      let resolvedStructureId = structureId;
+      let resolvedSowId = sowIdFull;
+      let resolvedSowReport = targetReportNumber;
+      let resolvedJobType = searchParams.get("jobType") || "";
+
+      // 1. Resolve Jobpack Name to ID
+      if (isJpNaN) {
+        const { data: jpExact } = await supabase
+          .from("jobpack")
+          .select("id")
+          .eq("name", jobPackId)
+          .maybeSingle();
+
+        if (jpExact) {
+          resolvedJobPackId = String(jpExact.id);
+        } else {
+          const prefix = jobPackId.substring(0, 4);
+          const { data: candidates } = await supabase
+            .from("jobpack")
+            .select("id, name")
+            .ilike("name", `${prefix}%`);
+
+          if (candidates) {
+            const normalize = (s: string) => s.toUpperCase().replace(/0/g, 'O').replace(/\s+/g, '');
+            const targetNorm = normalize(jobPackId);
+            const matched = candidates.find(c => normalize(c.name) === targetNorm);
+            if (matched) {
+              resolvedJobPackId = String(matched.id);
+            }
+          }
+        }
+      }
+
+      // 2. Resolve Structure Title to ID
+      if (isStrNaN) {
+        const { data: platData } = await supabase
+          .from("platform" as any)
+          .select("plat_id")
+          .eq("title", structureId)
+          .maybeSingle() as any;
+
+        if (platData) {
+          resolvedStructureId = String(platData.plat_id);
+        } else {
+          const { data: pipeData } = await supabase
+            .from("u_pipeline" as any)
+            .select("pipe_id")
+            .eq("title", structureId)
+            .maybeSingle() as any;
+
+          if (pipeData) {
+            resolvedStructureId = String(pipeData.pipe_id);
+          }
+        }
+      }
+
+      // 3. Resolve SOW Report and Job Type if combined (e.g. "2010 / MAJOR")
+      if (targetReportNumber && targetReportNumber.includes("/")) {
+        const parts = targetReportNumber.split("/");
+        resolvedSowReport = parts[0].trim();
+        resolvedJobType = parts[1].trim();
+      }
+
+      // 4. Resolve SOW ID using the resolved jobpack & structure
+      if (resolvedJobPackId && resolvedStructureId && !resolvedSowId) {
+        const { data: sowData } = await supabase
+          .from("u_sow")
+          .select("id")
+          .eq("jobpack_id", Number(resolvedJobPackId))
+          .eq("structure_id", Number(resolvedStructureId))
+          .maybeSingle();
+
+        if (sowData) {
+          resolvedSowId = String(sowData.id);
+        }
+      }
+
+      // 5. Update URL search parameters if anything changed
+      if (
+        resolvedJobPackId !== jobPackId ||
+        resolvedStructureId !== structureId ||
+        resolvedSowId !== sowIdFull ||
+        resolvedSowReport !== targetReportNumber ||
+        resolvedJobType !== searchParams.get("jobType")
+      ) {
+        const params = new URLSearchParams(window.location.search);
+        if (resolvedJobPackId) params.set("jobpack", resolvedJobPackId);
+        if (resolvedStructureId) params.set("structure", resolvedStructureId);
+        if (resolvedSowId) params.set("sow", resolvedSowId);
+        if (resolvedSowReport) params.set("sowReport", resolvedSowReport);
+        if (resolvedJobType) params.set("jobType", resolvedJobType);
+
+        console.log("[Resolver] Redirecting with resolved parameters:", params.toString());
+        router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
+      }
+    }
+
+    resolveParams();
+  }, [jobPackId, structureId, sowIdFull, targetReportNumber, supabase, router, searchParams]);
+
   useEffect(() => {
     async function fetchHeaderInfo() {
       if (!jobPackId || !structureId) return;
+      if (isNaN(Number(jobPackId)) || isNaN(Number(structureId))) return;
 
       const currentParams = new URLSearchParams(window.location.search);
       let jobpackName = jpParam || `JP-${jobPackId}`;
@@ -1816,43 +1931,50 @@ function V10PreviewLayout() {
       let waterDepth = 0;
 
       try {
-        // Fetch Jobpack Name
-        if (!jpParam) {
-          const { data: jpData } = await supabase
-            .from("jobpack")
-            .select("name")
-            .eq("id", Number(jobPackId))
-            .single();
-          if (jpData?.name) {
-            jobpackName = jpData.name;
-            if (!currentParams.get("jpName")) {
-              currentParams.set("jpName", jpData.name);
-              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
-            }
+        // Fetch Jobpack Name, Structure Type, Vessel Metadata, Platform, Pipeline, SOW, and SOW items in PARALLEL
+        const [jpResult, strTypeResult, jpMetaResult, platResult, pipeResult, sowResult, sowItemsResult] = await Promise.all([
+          // Jobpack name
+          !jpParam
+            ? supabase.from("jobpack").select("name").eq("id", Number(jobPackId)).single()
+            : Promise.resolve({ data: null }),
+          // Structure type
+          supabase.from("structure").select("str_type").eq("str_id", Number(structureId)).single(),
+          // Vessel from Jobpack metadata
+          supabase.from("jobpack").select("metadata").eq("id", Number(jobPackId)).single(),
+          // Platform details
+          supabase.from("platform" as any).select("title, depth").eq("plat_id", Number(structureId)).maybeSingle() as any,
+          // Pipeline details
+          supabase.from("u_pipeline" as any).select("pipeline_name, water_depth").eq("pipe_id", Number(structureId)).maybeSingle() as any,
+          // SOW resolution (only if sowId is not present)
+          !sowId
+            ? supabase.from("u_sow").select("id, report_numbers").eq("jobpack_id", Number(jobPackId)).eq("structure_id", Number(structureId))
+            : Promise.resolve({ data: null }),
+          // SOW items resolution (only if sowId is present)
+          (sowId && !sowParam)
+            ? supabase.from("u_sow_items").select("report_number").eq("sow_id", sowId).not("report_number", "is", null).limit(1)
+            : Promise.resolve({ data: null }),
+        ]);
+
+        // Process Jobpack Name
+        if (jpResult.data?.name) {
+          jobpackName = jpResult.data.name;
+          if (!currentParams.get("jpName")) {
+            currentParams.set("jpName", jpResult.data.name);
+            router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
           }
         }
 
-        // Fetch Structure Type for data acquisition
+        // Process Structure Type
         let detectedStructureType: "platform" | "pipeline" = "platform";
-        const { data: strTypeData } = await supabase
-          .from("structure")
-          .select("str_type")
-          .eq("str_id", Number(structureId))
-          .single();
-        if (strTypeData?.str_type) {
-          detectedStructureType = strTypeData.str_type.toLowerCase().includes("pipeline")
+        if (strTypeResult.data?.str_type) {
+          detectedStructureType = strTypeResult.data.str_type.toLowerCase().includes("pipeline")
             ? "pipeline"
             : "platform";
         }
 
-        // Always fetch from platform table — it has 'title' (name) and 'depth' (water depth)
+        // Process structure-specific details
         if (detectedStructureType === "platform") {
-          const { data: platData } = (await supabase
-            .from("platform" as any)
-            .select("title, depth")
-            .eq("plat_id", Number(structureId))
-            .maybeSingle()) as any;
-
+          const platData = platResult.data;
           if (platData) {
             setHeaderData((prev) => ({
               ...prev,
@@ -1868,13 +1990,7 @@ function V10PreviewLayout() {
             if (platData.depth) waterDepth = Number(platData.depth);
           }
         } else {
-          // Fetch from pipeline
-          const { data: pipeData } = (await supabase
-            .from("u_pipeline" as any)
-            .select("pipeline_name, water_depth")
-            .eq("pipe_id", Number(structureId))
-            .maybeSingle()) as any;
-
+          const pipeData = pipeResult.data;
           if (pipeData) {
             setHeaderData((prev) => ({
               ...prev,
@@ -1892,24 +2008,23 @@ function V10PreviewLayout() {
 
         // Resolve SOW ID and Report Number
         if (!sowId) {
-          // Try to resolve SOW by (Jobpack + Structure) AND Report Number (if available)
-          let sowQuery = supabase
-            .from("u_sow")
-            .select("id, report_number")
-            .eq("jobpack_id", Number(jobPackId))
-            .eq("structure_id", Number(structureId));
-
-          if (sowParam) {
-            sowQuery = sowQuery.eq("report_number", sowParam);
-          }
-
-          const { data: resolvedSow } = await sowQuery
-            .order("id", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+          const resolvedSows = sowResult.data;
+          const resolvedSow = resolvedSows?.[0];
 
           if (resolvedSow) {
-            if (resolvedSow.report_number) sowReportNo = resolvedSow.report_number;
+            // Find report number
+            let resolvedReportNo = "";
+            const currentReports = resolvedSow.report_numbers || [];
+            if (sowParam) {
+              const match = currentReports.find(
+                (r: any) => r.number === sowParam || r.REP_PREFIX === sowParam
+              );
+              if (match) resolvedReportNo = match.number || match.REP_PREFIX || "";
+            } else if (currentReports.length > 0) {
+              resolvedReportNo = currentReports[0].number || currentReports[0].REP_PREFIX || "";
+            }
+            if (resolvedReportNo) sowReportNo = resolvedReportNo;
+
             // Patch the URL so the workspace knows the sow going forward
             if (!currentParams.get("sow")) {
               currentParams.set("sow", String(resolvedSow.id));
@@ -1928,7 +2043,7 @@ function V10PreviewLayout() {
                 structure_id: Number(structureId),
                 structure_type: detectedStructureType === "pipeline" ? "PIPELINE" : "PLATFORM",
                 structure_title: platformName,
-                report_number: sowParam,
+                report_numbers: [{ number: sowParam, job_type: jtParam || "UNKNOWN" }],
                 total_items: 0,
                 completed_items: 0,
                 incomplete_items: 0,
@@ -1947,13 +2062,7 @@ function V10PreviewLayout() {
             }
           }
         } else if (!sowParam && sowId) {
-          const { data: sowItemData } = await supabase
-            .from("u_sow_items")
-            .select("report_number")
-            .eq("sow_id", sowId)
-            .not("report_number", "is", null)
-            .limit(1);
-
+          const sowItemData = sowItemsResult.data;
           if (sowItemData && sowItemData.length > 0) {
             sowReportNo = sowItemData[0].report_number;
           } else if (sowIdFull && sowIdFull.includes("-")) {
@@ -1968,15 +2077,10 @@ function V10PreviewLayout() {
           }
         }
 
-        // Fetch Vessel from Jobpack
+        // Process Vessel from Jobpack (already fetched in parallel above)
         let vessel = "N/A";
-        const { data: jpMetadata } = await supabase
-          .from("jobpack")
-          .select("metadata")
-          .eq("id", Number(jobPackId))
-          .single();
-        if (jpMetadata?.metadata) {
-          const meta = jpMetadata.metadata as any;
+        if (jpMetaResult.data?.metadata) {
+          const meta = jpMetaResult.data.metadata as any;
           if (
             meta.vessel_history &&
             Array.isArray(meta.vessel_history) &&
@@ -2954,12 +3058,72 @@ function V10PreviewLayout() {
       const movTable = inspMethod === "DIVING" ? "insp_dive_movements" : "insp_rov_movements";
       const movCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
 
-      // 1. Fetch Movements (with fallback for column names)
-      let movsRes = await supabase
+      // Construct inspsQuery first so we can fetch it in parallel
+      const inspCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+      let inspsQuery = supabase
+        .from("insp_records")
+        .select(
+          `
+                *,
+                inspection_type:inspection_type_id!left(id, code, name),
+                structure_components:component_id!left (
+                    id,
+                    q_id, 
+                    code,
+                    metadata
+                ),
+                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
+                insp_video_tapes:tape_id!left(tape_no),
+                insp_anomalies(*)
+            `,
+          { count: "exact" }
+        )
+        .eq("jobpack_id", parseInt(jobPackId || "0"))
+        .not(inspCol, "is", null)
+        .order("inspection_date", { ascending: false })
+        .order("inspection_time", { ascending: false });
+
+      if (recordSearchQuery) {
+        // When searching, we bypass pagination to allow the client-side Smart Filter 
+        // to scan a much larger set of records (up to 3000) globally.
+        inspsQuery = inspsQuery.limit(3000);
+      } else {
+        // Standard browsing uses pagination for performance
+        inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
+      }
+
+      if (structureId && !isNaN(Number(structureId))) {
+        inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
+      }
+      if (
+        headerData.sowReportNo &&
+        headerData.sowReportNo !== "N/A" &&
+        headerData.sowReportNo !== "Unknown Report"
+      ) {
+        inspsQuery = inspsQuery.or(
+          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
+        );
+      }
+
+      // Fetch Movements, Tapes, and Inspection Records in PARALLEL
+      const movementsPromise = supabase
         .from(movTable)
         .select("*")
         .eq(movCol, depId)
         .order(inspMethod === "DIVING" ? "timestamp" : "movement_time", { ascending: true });
+
+      const tapesPromise = supabase
+        .from("insp_video_tapes")
+        .select("*")
+        .eq(movCol, depId)
+        .order("tape_id", { ascending: false });
+
+      let [movsRes, tapesRes, inspsRes] = await Promise.all([
+        movementsPromise,
+        tapesPromise,
+        inspsQuery,
+      ]);
 
       // Fallback for Diving if 'timestamp' column is missing (migration inconsistency)
       if (movsRes.error && movsRes.error.code === "42703" && inspMethod === "DIVING") {
@@ -2970,13 +3134,6 @@ function V10PreviewLayout() {
           .eq(movCol, depId)
           .order("movement_time", { ascending: true });
       }
-
-      // 2. Fetch Tapes
-      const tapesRes = await supabase
-        .from("insp_video_tapes")
-        .select("*")
-        .eq(movCol, depId)
-        .order("tape_id", { ascending: false });
 
       const movs = movsRes.data;
       let tapes = tapesRes.data;
@@ -3111,69 +3268,20 @@ function V10PreviewLayout() {
         }
       } else {
         setTapeId(null);
-        setVidState("IDLE");
+      setVidState("IDLE");
         setVidTimer(0);
       }
 
       let allEv: any[] = [];
-      const inspCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-      let inspsQuery = supabase
-        .from("insp_records")
-        .select(
-          `
-                *,
-                inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (
-                    id,
-                    q_id, 
-                    code,
-                    metadata
-                ),
-                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
-                insp_video_tapes:tape_id!left(tape_no),
-                insp_anomalies(*)
-            `,
-          { count: "exact" }
-        )
-        .eq("jobpack_id", parseInt(jobPackId || "0"))
-        .not(inspCol, "is", null)
-        .order("inspection_date", { ascending: false })
-        .order("inspection_time", { ascending: false });
 
-      if (recordSearchQuery) {
-        // When searching, we bypass pagination to allow the client-side Smart Filter 
-        // to scan a much larger set of records (up to 3000) globally.
-        inspsQuery = inspsQuery.limit(3000);
-      } else {
-        // Standard browsing uses pagination for performance
-        inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
-      }
-
-      if (structureId && !isNaN(Number(structureId))) {
-        inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
-      }
-      if (
-        headerData.sowReportNo &&
-        headerData.sowReportNo !== "N/A" &&
-        headerData.sowReportNo !== "Unknown Report"
-      ) {
-        inspsQuery = inspsQuery.or(
-          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
-        );
-      }
-
-      // 3 & 4. Fetch Logs and Inspection Records in parallel to reduce network roundtrips
-      const [logsRes, inspsRes] = await Promise.all([
-        tapeIds.length > 0
-          ? supabase
-              .from("insp_video_logs")
-              .select("*")
-              .in("tape_id", tapeIds)
-              .order("event_time", { ascending: false })
-          : Promise.resolve({ data: [] }),
-        inspsQuery,
-      ]);
+      // Fetch Video Logs for all tapeIds
+      const logsRes = tapeIds.length > 0
+        ? await supabase
+            .from("insp_video_logs")
+            .select("*")
+            .in("tape_id", tapeIds)
+            .order("event_time", { ascending: false })
+        : { data: [] };
 
       const logs = logsRes.data;
       const insps = inspsRes.data;
@@ -3945,7 +4053,7 @@ function V10PreviewLayout() {
       setRequiredProps({});
       setRequiredRecordId(null);
 
-      if (!jobPackId) return;
+      if (!jobPackId || isNaN(Number(jobPackId))) return;
       const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
       const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
 
@@ -3966,35 +4074,7 @@ function V10PreviewLayout() {
         query = query.eq("structure_id", Number(structureId));
       }
 
-      // ADD SOW FILTERING (Include jobs with NO report number as they might be new)
-      if (
-        headerData.sowReportNo &&
-        headerData.sowReportNo !== "N/A" &&
-        headerData.sowReportNo !== "Unknown Report"
-      ) {
-        if (sowIdFull) {
-          query = query.or(
-            `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.eq."${sowIdFull}",sow_report_no.is.null`
-          );
-        } else {
-          query = query.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`);
-        }
-      }
-
-      const { data, error } = await query;
-      let results = data || [];
-      if (error) {
-        console.warn("[fetchDeps] Primary fetch error:", error.message);
-        results = [];
-      }
-
-      // REMOVED BAD FALLBACK (that was cross-pollinating jobs)
-
-      // DEEP FALLBACK & MERGE: Check if any inspection records exist for this jobpack/structure/sow
-      // that are NOT represented in the job table results. This happens if the job records were
-      // deleted/missing but the inspection records remain.
       const targetColumn = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-      const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
 
       let recQuery = supabase
         .from("insp_records")
@@ -4012,7 +4092,20 @@ function V10PreviewLayout() {
         recQuery = recQuery.eq("sow_report_no", headerData.sowReportNo);
       }
 
-      const { data: recJobs } = await recQuery;
+      // Execute primary deployment query and records fallback query in parallel
+      const [primaryRes, recJobsRes] = await Promise.all([
+        query,
+        recQuery,
+      ]);
+
+      let results = primaryRes.data || [];
+      if (primaryRes.error) {
+        console.warn("[fetchDeps] Primary fetch error:", primaryRes.error.message);
+        results = [];
+      }
+
+      const recJobs = recJobsRes.data;
+      const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
 
       if (recJobs && recJobs.length > 0) {
         const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]))).filter(
@@ -4060,6 +4153,7 @@ function V10PreviewLayout() {
         console.log(
           `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
         );
+        setIsReadyForComps(true);
       } else {
         console.warn("[fetchDeps] No deployment records found.");
         setDeployments([]);
@@ -4074,7 +4168,7 @@ function V10PreviewLayout() {
   // Replacement: useQuery for SOW and Component Data
   const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
     queryKey: ["sow-data", structureId, sowId, inspMethod],
-    enabled: !!(structureId && !isNaN(Number(structureId)) && isReadyForComps),
+    enabled: !!(structureId && !isNaN(Number(structureId))),
     queryFn: async () => {
       if (!structureId) return { assigned: [], unassigned: [], all: [] };
 
@@ -4326,8 +4420,15 @@ function V10PreviewLayout() {
 
   useEffect(() => {
     async function fetchInitialLists() {
-      // Fetch Inspection Types
-      const { data: typesData } = await supabase.from("inspection_type").select("*").order("name");
+      // Fetch Inspection Types and Anomaly Lists in PARALLEL
+      const [typesRes, codesRes, priosRes, fndsRes] = await Promise.all([
+        supabase.from("inspection_type").select("*").order("name"),
+        supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_COD").order("lib_desc"),
+        supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_TYP").order("lib_desc"),
+        supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_FND").order("lib_desc"),
+      ]);
+
+      const typesData = typesRes.data;
       if (typesData) {
         // Merge with JSON Registry
         const registryMap = new Map();
@@ -4360,27 +4461,9 @@ function V10PreviewLayout() {
         setAllInspectionTypes(mergedTypes.filter((it) => !discardedCodes.includes(it.code)));
       }
 
-      // Fetch Anomaly Lists from Library
-      const { data: codes } = await supabase
-        .from("u_lib_list")
-        .select("lib_id, lib_desc")
-        .eq("lib_code", "AMLY_COD")
-        .order("lib_desc");
-      if (codes) setDefectCodes(codes);
-
-      const { data: prios } = await supabase
-        .from("u_lib_list")
-        .select("lib_id, lib_desc")
-        .eq("lib_code", "AMLY_TYP")
-        .order("lib_desc");
-      if (prios) setPriorities(prios);
-
-      const { data: fnds } = await supabase
-        .from("u_lib_list")
-        .select("lib_id, lib_desc")
-        .eq("lib_code", "AMLY_FND")
-        .order("lib_desc");
-      if (fnds) setAllDefectTypes(fnds);
+      if (codesRes.data) setDefectCodes(codesRes.data);
+      if (priosRes.data) setPriorities(priosRes.data);
+      if (fndsRes.data) setAllDefectTypes(fndsRes.data);
     }
     fetchInitialLists();
   }, [supabase]);
@@ -6086,7 +6169,7 @@ function V10PreviewLayout() {
     if (!targetSowId && jobPackId && structureId) {
       const { data: existingSow } = await supabase
         .from("u_sow")
-        .select("id, report_number")
+        .select("id, report_numbers")
         .eq("jobpack_id", Number(jobPackId))
         .eq("structure_id", Number(structureId))
         .limit(1)
@@ -6094,8 +6177,12 @@ function V10PreviewLayout() {
 
       if (existingSow) {
         targetSowId = existingSow.id;
-        if (!sowReportNo) sowReportNo = existingSow.report_number;
+        if (!sowReportNo) {
+          const firstReport = existingSow.report_numbers?.[0];
+          sowReportNo = firstReport ? firstReport.number : null;
+        }
       } else {
+        const resolvedReport = sowReportNo || `SOW-${new Date().getFullYear()}`;
         const { data: newSow, error: newSowError } = await supabase
           .from("u_sow")
           .insert({
@@ -6103,7 +6190,7 @@ function V10PreviewLayout() {
             structure_id: Number(structureId),
             structure_type: headerData.structureType === "pipeline" ? "PIPELINE" : "PLATFORM",
             structure_title: headerData.platformName,
-            report_number: sowReportNo || `SOW-${new Date().getFullYear()}`,
+            report_numbers: [{ number: resolvedReport, job_type: jtParam || "UNKNOWN" }],
             total_items: 0,
             completed_items: 0,
             incomplete_items: 0,

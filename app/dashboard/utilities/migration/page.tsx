@@ -82,7 +82,12 @@ export default function MigrationDashboard() {
       const res = await fetch(`/api/migration/summary/${selectedStructureId}/missing`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, ...config })
+        body: JSON.stringify({ 
+          code, 
+          inspno: selectedJobpack?.INSPNO || selectedJobpack?.inspno,
+          structureType: mappingStructureType,
+          ...config 
+        })
       });
       const data = await safeParseJson(res);
       if (res.ok) {
@@ -1505,7 +1510,13 @@ export default function MigrationDashboard() {
                                               </span>
                                             )}
                                             {rejectedRecords > 0 && (
-                                              <span className="text-[8px] bg-amber-50 dark:bg-amber-950/35 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 select-none animate-pulse">
+                                              <span 
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  fetchMissingItems(key);
+                                                }}
+                                                className="text-[8px] bg-amber-50 dark:bg-amber-950/35 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 select-none animate-pulse cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                                              >
                                                 <AlertTriangle className="w-2.5 h-2.5" />
                                                 {rejectedRecords} Rejected Record{rejectedRecords > 1 ? 's' : ''}
                                               </span>
@@ -1579,6 +1590,17 @@ export default function MigrationDashboard() {
                                                   This commonly occurs due to foreign key integrity checks (e.g. referencing component type which is unmapped) or duplicate row keys in Oracle. 
                                                   Review the exceptions below to resolve.
                                                 </p>
+                                                <div className="pt-1.5 pl-5">
+                                                  <Button 
+                                                    size="sm" 
+                                                    variant="outline" 
+                                                    onClick={() => fetchMissingItems(key)}
+                                                    className="text-amber-700 border-amber-300 hover:bg-amber-100 dark:text-amber-400 dark:border-amber-900/50 dark:hover:bg-amber-950/30 text-[9px] font-black uppercase py-1 h-6 flex items-center gap-1"
+                                                  >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                    View Rejected Records Detail
+                                                  </Button>
+                                                </div>
                                               </div>
                                               {(item as any).rejectedDetails && (item as any).rejectedDetails.length > 0 && (
                                                 <div className="p-3 bg-amber-50/20 dark:bg-amber-950/5 border border-amber-200/30 dark:border-amber-900/15 rounded-xl space-y-2">

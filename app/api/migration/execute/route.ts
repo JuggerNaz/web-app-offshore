@@ -762,10 +762,10 @@ export async function POST(request: NextRequest) {
           
         if (mastErr) {
           logs.push(`ERROR migrating u_lib_mast: ${mastErr.message}`);
-          report["U_LIB_MAST"] = { status: "failed", oracleRows: mastRows.length, migratedRows: 0, errors: [mastErr.message] };
+          report["U_LIB_MAST"] = { status: "failed", oracleRows: uniqueMastRecords.length, migratedRows: 0, errors: [mastErr.message] };
         } else {
           logs.push(`Successfully migrated ${uniqueMastRecords.length} records to u_lib_mast.`);
-          report["U_LIB_MAST"] = { status: "success", oracleRows: mastRows.length, migratedRows: uniqueMastRecords.length, errors: [] };
+          report["U_LIB_MAST"] = { status: "success", oracleRows: uniqueMastRecords.length, migratedRows: uniqueMastRecords.length, errors: [] };
         }
       } else {
         report["U_LIB_MAST"] = { status: "success", oracleRows: 0, migratedRows: 0, errors: [] };
@@ -831,7 +831,7 @@ export async function POST(request: NextRequest) {
         logs.push(`Successfully migrated ${successCount}/${uniqueListRecords.length} records to u_lib_list.`);
         report["U_LIB_LIST"] = {
           status: listErrors.length > 0 ? "failed" : "success",
-          oracleRows: listRows.length,
+          oracleRows: uniqueListRecords.length,
           migratedRows: successCount,
           errors: listErrors
         };
@@ -916,7 +916,7 @@ export async function POST(request: NextRequest) {
         logs.push(`Successfully migrated ${successCount}/${uniqueComboRecords.length} records to u_lib_combo.`);
         report["U_LIB_COMBO"] = {
           status: comboErrors.length > 0 ? "failed" : "success",
-          oracleRows: comboRows.length,
+          oracleRows: uniqueComboRecords.length,
           migratedRows: successCount,
           errors: comboErrors
         };
@@ -2917,7 +2917,26 @@ export async function POST(request: NextRequest) {
                   tapeToDiveMap.set(tapeNo.toUpperCase(), diveNo);
                 }
 
-                if (!inspNo || !diveNo) return;
+                if (logType === 'VESSEL LOG' || logType === 'VESSEL' || logType.includes('VESSEL')) {
+                  // Silently filter out Vessel log and its details
+                  return;
+                }
+
+                if (!inspNo || !diveNo) {
+                  const detail = String(standardObj.LOG_DETAIL || "").trim();
+                  const msg = `Skipped movement record [${logType}] "${detail}" due to missing INSPNO or DIVE_NO (INSPNO: "${inspNo}", DIVE_NO: "${diveNo}")`;
+                  logs.push(msg);
+                  report["LOGS_MOVEMENTS"].errors.push(msg);
+                  return;
+                }
+
+                if (logType !== 'ROV LOG' && logType !== 'DIVER LOG' && logType !== 'BELL LOG') {
+                  const detail = String(standardObj.LOG_DETAIL || "").trim();
+                  const msg = `Skipped movement record "${detail}" due to unsupported LOG_TYPE: "${logType}"`;
+                  logs.push(msg);
+                  report["LOGS_MOVEMENTS"].errors.push(msg);
+                  return;
+                }
 
                 const key = `${inspNo}_${diveNo}`;
 
@@ -2937,7 +2956,13 @@ export async function POST(request: NextRequest) {
               });
 
               report["LOGS_JOBS"].oracleRows = rovGroups.size + diveGroups.size;
-              report["LOGS_MOVEMENTS"].oracleRows = rows.length;
+
+              // Count only the records that were actually eligible for migration
+              // (i.e. after filtering out vessel logs, records with missing keys, and unsupported types)
+              let eligibleMovementCount = 0;
+              for (const items of Array.from(rovGroups.values())) eligibleMovementCount += items.length;
+              for (const items of Array.from(diveGroups.values())) eligibleMovementCount += items.length;
+              report["LOGS_MOVEMENTS"].oracleRows = eligibleMovementCount;
 
               let rovJobsCount = 0;
               let rovMovementsCount = 0;
@@ -3204,6 +3229,7 @@ export async function POST(request: NextRequest) {
 
         let videoTapesCount = 0;
         let videoLogsCount = 0;
+        let oracleVideoTapesCount = 0;
 
         // 3a. Migrate ROV Tapes and Logs (from PLATGI)
         const platgiCols = await getOracleTableColumns(oracleConn, 'PLATGI');
@@ -3346,6 +3372,8 @@ export async function POST(request: NextRequest) {
               }
               rowsByChapter.get(ch)!.push(row);
             });
+
+            oracleVideoTapesCount += rowsByChapter.size;
 
             for (const [chapterNum, chapterRows] of Array.from(rowsByChapter.entries())) {
               // Find the first row in this chapter to resolve job ID
@@ -3640,6 +3668,8 @@ export async function POST(request: NextRequest) {
               if (!hasSelectedInsp) continue;
             }
 
+            oracleVideoTapesCount++;
+
             const jobKey = `${inspNo}_${diveNo}`;
             let resolvedJobId = diveJobsCache.get(jobKey) || null;
 
@@ -3858,6 +3888,7 @@ export async function POST(request: NextRequest) {
 
         logs.push(`Successfully migrated ${videoTapesCount} Video Tapes and ${videoLogsCount} Video Logs!`);
         report["VIDEO"].status = "success";
+        report["VIDEO"].oracleRows = oracleVideoTapesCount;
         report["VIDEO"].migratedRows = videoTapesCount;
 
         // ---------------------------------------------------------------------

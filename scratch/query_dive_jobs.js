@@ -21,11 +21,11 @@ async function run() {
     console.log("=== Querying Dive Jobs in Postgres ===");
     const { data: diveJobs, error: err1 } = await supabase
       .from('insp_dive_jobs')
-      .select('dive_job_id, dive_no, structure_id, jobpack_id');
+      .select('dive_job_id, dive_no, structure_id, jobpack_id, sow_report_no');
     
     if (err1) throw err1;
     console.log(`Found ${diveJobs.length} dive jobs:`);
-    console.log(diveJobs.map(j => ({ id: j.dive_job_id, no: j.dive_no, str: j.structure_id, jp: j.jobpack_id })));
+    console.log(diveJobs.map(j => ({ id: j.dive_job_id, no: j.dive_no, str: j.structure_id, jp: j.jobpack_id, sow: j.sow_report_no })));
 
     console.log("\n=== Querying CPCLB Records in Postgres ===");
     const { data: cpclbRecs, error: err2 } = await supabase

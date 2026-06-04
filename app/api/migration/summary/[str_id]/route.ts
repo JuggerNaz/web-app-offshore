@@ -68,19 +68,19 @@ export const POST = withAuth(
       let listCount = 0;
       let comboCount = 0;
       try {
-        const rMast = await connection.execute(`SELECT COUNT(*) as CNT FROM U_LIB_MAST`);
+        const rMast = await connection.execute(`SELECT COUNT(DISTINCT TRIM(LIB_CODE)) as CNT FROM U_LIB_MAST`);
         mastCount = rMast.rows?.[0]?.CNT || rMast.rows?.[0]?.[0] || 0;
       } catch (e: any) {
         console.warn("Failed to fetch U_LIB_MAST count:", e.message);
       }
       try {
-        const rList = await connection.execute(`SELECT COUNT(*) as CNT FROM U_LIB_LIST`);
+        const rList = await connection.execute(`SELECT COUNT(DISTINCT TRIM(LIB_CODE) || '::' || TRIM(LIB_ID)) as CNT FROM U_LIB_LIST`);
         listCount = rList.rows?.[0]?.CNT || rList.rows?.[0]?.[0] || 0;
       } catch (e: any) {
         console.warn("Failed to fetch U_LIB_LIST count:", e.message);
       }
       try {
-        const rCombo = await connection.execute(`SELECT COUNT(*) as CNT FROM U_LIB_COMBO`);
+        const rCombo = await connection.execute(`SELECT COUNT(DISTINCT TRIM(LIB_CODE) || '::' || TRIM(CODE_1) || '::' || TRIM(CODE_2)) as CNT FROM U_LIB_COMBO`);
         comboCount = rCombo.rows?.[0]?.CNT || rCombo.rows?.[0]?.[0] || 0;
       } catch (e: any) {
         console.warn("Failed to fetch U_LIB_COMBO count:", e.message);

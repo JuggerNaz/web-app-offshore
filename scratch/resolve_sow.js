@@ -11,16 +11,16 @@ const supabaseKey = supabaseKeyMatch ? supabaseKeyMatch[1].trim() : '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
-  console.log('Searching jobpacks...');
-
-  // Try different terms
-  const terms = ['UIMC10', 'SK0', 'PLAT1', 'UIMC', 'SK0/PLAT1'];
-  for (const term of terms) {
+  console.log('Testing .single() query with NaN...');
+  try {
     const { data, error } = await supabase
       .from('jobpack')
-      .select('id, name')
-      .ilike('name', `%${term}%`);
-    console.log(`Matching term '${term}':`, data);
+      .select('name')
+      .eq('id', NaN)
+      .single();
+    console.log('Single query completed:', data, error);
+  } catch (err) {
+    console.error('Single query threw an exception:', err);
   }
 }
 

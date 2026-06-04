@@ -11,17 +11,19 @@ const supabaseKey = supabaseKeyMatch ? supabaseKeyMatch[1].trim() : '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
-  console.log('Searching jobpacks...');
+  const { count, error } = await supabase
+    .from('insp_records')
+    .select('*', { count: 'exact', head: true })
+    .eq('structure_id', 260);
+  console.log('Total inspection records for structure=260:', count);
+  if (error) console.error(error);
 
-  // Try different terms
-  const terms = ['UIMC10', 'SK0', 'PLAT1', 'UIMC', 'SK0/PLAT1'];
-  for (const term of terms) {
-    const { data, error } = await supabase
-      .from('jobpack')
-      .select('id, name')
-      .ilike('name', `%${term}%`);
-    console.log(`Matching term '${term}':`, data);
-  }
+  const { data: samples } = await supabase
+    .from('insp_records')
+    .select('insp_id, jobpack_id, structure_id, sow_report_no, rov_job_id, dive_job_id')
+    .eq('structure_id', 260)
+    .limit(5);
+  console.log('Sample inspection records for structure=260:', samples);
 }
 
 run();
