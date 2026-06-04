@@ -18,6 +18,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import MigrationReportPreview, { getTableMappingNames } from "@/components/migration/migration-report-preview";
+import { createClient } from "@/utils/supabase/client";
+
 
 export default function MigrationDashboard() {
   const [config, setConfig] = useState({
@@ -53,6 +55,7 @@ export default function MigrationDashboard() {
   const [isLoadingInspectionSummary, setIsLoadingInspectionSummary] = useState(false);
   const [oracleCompany, setOracleCompany] = useState<any | null>(null);
   const [oraclePreference, setOraclePreference] = useState<any | null>(null);
+  const [dbComponents, setDbComponents] = useState<Record<string, string>>({});
 
   const [activeTab, setActiveTab] = useState("connection");
   const [mappingStructureType, setMappingStructureType] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
@@ -304,6 +307,26 @@ export default function MigrationDashboard() {
         headers: { "Content-Type": "application/json" }
       }).catch(err => console.warn("Auto disconnect call failed:", err));
     };
+  }, []);
+
+  // Load db components mapping
+  useEffect(() => {
+    async function loadDbComponents() {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase.from('components').select('code, name');
+        if (!error && data) {
+          const mapping: Record<string, string> = {};
+          data.forEach((c: any) => {
+            mapping[c.code.toUpperCase()] = c.name;
+          });
+          setDbComponents(mapping);
+        }
+      } catch (err) {
+        console.error("Failed to load components from database:", err);
+      }
+    }
+    loadDbComponents();
   }, []);
 
   // Auto-save database configuration locally when it changes
@@ -1397,7 +1420,7 @@ export default function MigrationDashboard() {
                         {/* Breakdown List grouped by Section */}
                         <div className="space-y-4">
                           {(() => {
-                            const libKeys = ["U_LIB_MAST", "U_LIB_LIST", "U_LIB_COMBO"];
+                            const libKeys = ["U_LIB_MAST", "U_LIB_LIST", "U_LIB_COMBO", "U_MGI_PROFILE"];
                             const systemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
                             const jobInspectionKeys = [
                               "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
@@ -1405,11 +1428,13 @@ export default function MigrationDashboard() {
                             ];
 
                             const reportEntries = Object.entries(migrationReport);
+                            const isJobInspKey = (key: string) =>
+                              jobInspectionKeys.includes(key) || key.startsWith("INSP_ROV_") || key.startsWith("INSP_DIVING_");
                             const libItems = reportEntries.filter(([key]) => libKeys.includes(key));
                             const systemItems = reportEntries.filter(([key]) => systemKeys.includes(key));
-                            const jobInspItems = reportEntries.filter(([key]) => jobInspectionKeys.includes(key));
+                            const jobInspItems = reportEntries.filter(([key]) => isJobInspKey(key));
                             const componentItems = reportEntries.filter(([key]) => 
-                              !libKeys.includes(key) && !systemKeys.includes(key) && !jobInspectionKeys.includes(key)
+                              !libKeys.includes(key) && !systemKeys.includes(key) && !isJobInspKey(key)
                             );
 
                             const sections = [
@@ -2786,6 +2811,7 @@ export default function MigrationDashboard() {
                 rowCount: Number(item.ROW_COUNT)
               }))
           }
+          dbComponents={dbComponents}
         />
       </div>
     </div>

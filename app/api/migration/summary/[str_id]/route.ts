@@ -63,10 +63,11 @@ export const POST = withAuth(
         summary = result.rows || [];
       }
 
-      // Fetch library counts from Oracle U_LIB_MAST, U_LIB_LIST, U_LIB_COMBO
+      // Fetch library counts from Oracle U_LIB_MAST, U_LIB_LIST, U_LIB_COMBO, U_MGI_PROFILE
       let mastCount = 0;
       let listCount = 0;
       let comboCount = 0;
+      let mgiProfileCount = 0;
       try {
         const rMast = await connection.execute(`SELECT COUNT(DISTINCT TRIM(LIB_CODE)) as CNT FROM U_LIB_MAST`);
         mastCount = rMast.rows?.[0]?.CNT || rMast.rows?.[0]?.[0] || 0;
@@ -85,11 +86,18 @@ export const POST = withAuth(
       } catch (e: any) {
         console.warn("Failed to fetch U_LIB_COMBO count:", e.message);
       }
+      try {
+        const rMgi = await connection.execute(`SELECT COUNT(*) as CNT FROM U_MGI_PROFILE`);
+        mgiProfileCount = rMgi.rows?.[0]?.CNT || rMgi.rows?.[0]?.[0] || 0;
+      } catch (e: any) {
+        console.warn("Failed to fetch U_MGI_PROFILE count:", e.message);
+      }
 
       // Fetch existing Postgres Library Counts
       let pgMastCount = 0;
       let pgListCount = 0;
       let pgComboCount = 0;
+      let pgMgiProfileCount = 0;
       try {
         const { count } = await supabase.from('u_lib_mast').select('*', { count: 'exact', head: true });
         pgMastCount = count || 0;
@@ -101,6 +109,10 @@ export const POST = withAuth(
       try {
         const { count } = await supabase.from('u_lib_combo').select('*', { count: 'exact', head: true });
         pgComboCount = count || 0;
+      } catch (e) {}
+      try {
+        const { count } = await supabase.from('mgi_profiles').select('*', { count: 'exact', head: true });
+        pgMgiProfileCount = count || 0;
       } catch (e) {}
 
       // Fetch Oracle counts for System Framework
@@ -266,7 +278,8 @@ export const POST = withAuth(
         libraries: [
           { code: "U_LIB_MAST", name: "Master Library (u_lib_mast)", row_count: Number(mastCount), pg_row_count: pgMastCount },
           { code: "U_LIB_LIST", name: "Library List (u_lib_list)", row_count: Number(listCount), pg_row_count: pgListCount },
-          { code: "U_LIB_COMBO", name: "Library Combo (u_lib_combo)", row_count: Number(comboCount), pg_row_count: pgComboCount }
+          { code: "U_LIB_COMBO", name: "Library Combo (u_lib_combo)", row_count: Number(comboCount), pg_row_count: pgComboCount },
+          { code: "U_MGI_PROFILE", name: "MGI Profiles (mgi_profiles)", row_count: Number(mgiProfileCount), pg_row_count: pgMgiProfileCount }
         ],
         framework: [
           { code: "STRUCTURE", name: "Structure Master", row_count: Number(strCount), pg_row_count: pgStrCount },

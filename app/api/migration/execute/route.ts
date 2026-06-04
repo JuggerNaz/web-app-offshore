@@ -177,6 +177,53 @@ function getObjProperty(obj: any, propName: string): any {
   return obj[propName];
 }
 
+function parseOracleMgiProfile(profileStr: string): any[] {
+  if (!profileStr) return [];
+  const parts = profileStr.split(';').map(p => p.trim()).filter(Boolean);
+  return parts.map(part => {
+    const hashIdx = part.indexOf('#');
+    if (hashIdx === -1) return null;
+    const elevStr = part.substring(0, hashIdx).trim();
+    const thickStr = part.substring(hashIdx + 1).trim();
+    const elev = Number(elevStr);
+    const thick = Number(thickStr);
+    if (isNaN(elev) || isNaN(thick)) return null;
+    
+    let from_elevation: string | number = elev;
+    if (elev === 0) {
+      from_elevation = "MSL";
+    } else if (elev === -1000) {
+      from_elevation = "Mudline";
+    }
+    
+    return {
+      from_elevation,
+      max_thickness: thick
+    };
+  }).filter(Boolean);
+}
+
+function getThresholdsSignature(thresholds: any[]): string {
+  const getNumericElevation = (val: any): number => {
+    if (val === "MSL") return 0;
+    if (val === "Mudline") return -1000;
+    const num = Number(val);
+    return isNaN(num) ? -99999 : num;
+  };
+  
+  const sorted = [...thresholds].sort((a, b) => {
+    const elA = getNumericElevation(a.from_elevation);
+    const elB = getNumericElevation(b.from_elevation);
+    return elB - elA;
+  });
+  
+  return JSON.stringify(sorted.map(t => ({
+    from_elevation: t.from_elevation,
+    max_thickness: Number(t.max_thickness)
+  })));
+}
+
+
 function parseDivingChapter(inspCond: string): string | null {
   if (!inspCond) return null;
   const match = inspCond.match(/chapter\s*(?:number|no)?\s*:?\s*(\d+)/i);
@@ -411,7 +458,9 @@ async function setRlsStatus(disable: boolean, logs: string[]): Promise<boolean> 
       'comment',
       'u_lib_mast',
       'u_lib_list',
-      'u_lib_combo'
+      'u_lib_combo',
+      'mgi_profiles',
+      'jobpack'
     ];
 
     for (const table of tables) {
@@ -721,6 +770,7 @@ export async function POST(request: NextRequest) {
       report["U_LIB_MAST"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
       report["U_LIB_LIST"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
       report["U_LIB_COMBO"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
+      report["U_MGI_PROFILE"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
       ["STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "INSP_ROV", "INSP_DIVING", "ANOMALY", "INSP_ATTACHMENT"].forEach(k => {
         report[k] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [], filesCopied: 0 };
       });
@@ -1956,6 +2006,7 @@ export async function POST(request: NextRequest) {
         const jpIdMap = new Map<string, number>(); // oracleInspNo -> postgresJobpackId
         const jobpackDefaultPrefixMap = new Map<string, string>(); // oracleInspNo -> default REP_PREFIX
         const jpsowMappings = mappings["JOBPACK_SOW"] || [];
+        const mgiProfileIdMap = new Map<string, number>(); // oracleInspNo -> pgProfileId
 
         // Step 1: Get all INSPNOs + JOB_TYPE + CR_DATE from taskstr (has STR_ID)
         const inspNos: string[] = [];
@@ -2132,6 +2183,64 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Step 4.5: Pre-fetch MGI profiles from Oracle (filtered by selected INSPNOs) and build signature cache from Postgres
+        logs.push(`Pre-fetching MGI profiles from Oracle U_MGI_PROFILE for selected INSPNO(s)...`);
+        const oracleMgiProfiles = new Map<string, string>();
+        let oracleMgiCount = 0;
+        try {
+          if (inspNos.length > 0) {
+            const { placeholders: mgiPh, binds: mgiBinds } = buildInClause(inspNos);
+            const mgiProfileResult = await oracleConn.execute(
+              `SELECT INSPNO, MGROW_PROFILE FROM U_MGI_PROFILE WHERE INSPNO IN (${mgiPh})`,
+              mgiBinds
+            );
+            if (mgiProfileResult.rows) {
+              oracleMgiCount = mgiProfileResult.rows.length;
+              for (const r of mgiProfileResult.rows as any[]) {
+                const inspno = String(r.INSPNO || r[0] || '').trim();
+                const profileStr = String(r.MGROW_PROFILE || r[1] || '').trim();
+                if (inspno && profileStr) {
+                  oracleMgiProfiles.set(inspno, profileStr);
+                }
+              }
+            }
+          }
+          logs.push(`Loaded ${oracleMgiProfiles.size} MGI profiles from Oracle (filtered by ${inspNos.length} INSPNO(s)).`);
+          if (report["U_MGI_PROFILE"]) {
+            report["U_MGI_PROFILE"].oracleRows = oracleMgiCount;
+            report["U_MGI_PROFILE"].status = "success";
+          }
+        } catch (err: any) {
+          logs.push(`WARNING: Fetching U_MGI_PROFILE failed: ${err.message}`);
+          if (report["U_MGI_PROFILE"]) {
+            report["U_MGI_PROFILE"].status = "failed";
+            report["U_MGI_PROFILE"].errors.push(err.message);
+          }
+        }
+
+        // Pre-load existing Postgres mgi_profiles and build signature-to-id cache
+        const pgMgiProfilesMap = new Map<string, number>();
+        try {
+          const { data: existingProfiles } = await supabase
+            .from('mgi_profiles')
+            .select('*')
+            .eq('is_archived', false);
+          
+          if (existingProfiles) {
+            for (const p of existingProfiles) {
+              const sig = getThresholdsSignature((p.thresholds || []) as any);
+              if (sig && sig !== '[]') {
+                pgMgiProfilesMap.set(sig, p.id);
+              }
+            }
+          }
+          logs.push(`Loaded ${pgMgiProfilesMap.size} existing active MGI profiles from Postgres.`);
+        } catch (err: any) {
+          logs.push(`WARNING: Fetching existing mgi_profiles failed: ${err.message}`);
+        }
+
+        let mgiMigratedCount = 0; // Track profiles actually inserted or updated during this migration
+
         // Step 5: Combine data and migrate to Postgres jobpack table
         report["JOBPACK"].oracleRows = inspNos.length;
         report["U_SOW"].oracleRows = inspNos.length;
@@ -2203,7 +2312,7 @@ export async function POST(request: NextRequest) {
             const contrac = String(getMappedVal("contractor") || wp.CONTRAC || "").trim();
             const jobTypeVal = String(getMappedVal("job_type") || jobType || "").trim();
             const repPrefixVal = String(getMappedVal("sow_report_no") || repPrefix || "").trim();
-            
+
             let jobpackStartYear = "UNKNOWN";
             if (formattedDateStart) {
               jobpackStartYear = formattedDateStart.split('-')[0];
@@ -2223,6 +2332,70 @@ export async function POST(request: NextRequest) {
             }
             if (jobpackStartYear === "UNKNOWN") {
               jobpackStartYear = String(new Date().getFullYear());
+            }
+
+            // Resolve and set MGI profile for this jobpack (upsert: update if exists, insert if new)
+            let pgMgiProfileId: number | null = null;
+            const mgiProfileStr = oracleMgiProfiles.get(oracleInspNo);
+            if (mgiProfileStr) {
+              const thresholds = parseOracleMgiProfile(mgiProfileStr);
+              if (thresholds.length > 0) {
+                const sig = getThresholdsSignature(thresholds);
+                const profileName = `${jobpackStartYear} MGI profile`;
+                const profileDesc = `Migrated from Oracle jobpack ${oracleInspNo} (Profile: ${mgiProfileStr})`;
+
+                if (pgMgiProfilesMap.has(sig)) {
+                  // Profile with same thresholds already exists — update its name/description
+                  pgMgiProfileId = pgMgiProfilesMap.get(sig)!;
+                  try {
+                    await supabase
+                      .from('mgi_profiles')
+                      .update({
+                        name: profileName,
+                        description: profileDesc,
+                        updated_by: 'migration'
+                      })
+                      .eq('id', pgMgiProfileId);
+                    logs.push(`Updated existing MGI Profile ID ${pgMgiProfileId} (thresholds match) for JP ${oracleInspNo}.`);
+                  } catch (updErr: any) {
+                    logs.push(`WARNING: Failed to update MGI Profile ID ${pgMgiProfileId}: ${updErr.message}`);
+                  }
+                  mgiMigratedCount++;
+                } else {
+                  // No matching profile — insert new
+                  logs.push(`Creating new MGI profile in Postgres for thresholds: ${mgiProfileStr}`);
+                  try {
+                    const { data: newProfile, error: insertProfileErr } = await supabase
+                      .from('mgi_profiles')
+                      .insert({
+                        name: profileName,
+                        description: profileDesc,
+                        thresholds,
+                        is_active: true,
+                        is_job_specific: false,
+                        is_archived: false,
+                        created_by: 'migration',
+                        updated_by: 'migration'
+                      })
+                      .select('id')
+                      .single();
+                    
+                    if (insertProfileErr) {
+                      logs.push(`ERROR creating MGI Profile for JP ${oracleInspNo}: ${insertProfileErr.message}`);
+                    } else if (newProfile) {
+                      pgMgiProfileId = Number(newProfile.id);
+                      pgMgiProfilesMap.set(sig, pgMgiProfileId);
+                      mgiMigratedCount++;
+                      logs.push(`Successfully created MGI Profile ID ${pgMgiProfileId} in Postgres.`);
+                    }
+                  } catch (err: any) {
+                    logs.push(`ERROR creating MGI Profile for JP ${oracleInspNo}: ${err.message}`);
+                  }
+                }
+              }
+            }
+            if (pgMgiProfileId) {
+              mgiProfileIdMap.set(oracleInspNo, pgMgiProfileId);
             }
 
             const jobpackHasNoReportNo = !repPrefixVal || repPrefixVal.toUpperCase() === "UNKNOWN" || repPrefixVal.toUpperCase() === "UNKNOW";
@@ -2561,6 +2734,7 @@ export async function POST(request: NextRequest) {
             const jpPayload = {
               name: jobpackName,
               status: wp.STATUS || 'OPEN',
+              mgi_profile_id: pgMgiProfileId,
               metadata: {
                 ...existingMetadata,
                 oracleInspNo,
@@ -2793,7 +2967,15 @@ export async function POST(request: NextRequest) {
           return jobpackDefaultPrefixMap.get(inspNo) || "";
         };
 
-        // --------------------------------------------------        // ---------------------------------------------------------------------
+        // Sync U_MGI_PROFILE report with actual migrated counts
+        if (report["U_MGI_PROFILE"]) {
+          report["U_MGI_PROFILE"].migratedRows = mgiMigratedCount;
+          if (mgiMigratedCount > 0) {
+            report["U_MGI_PROFILE"].status = "success";
+          }
+        }
+
+        // ---------------------------------------------------------------------
         // Phase 2: Migrate Jobs & Movements from Oracle LOGS
         // ---------------------------------------------------------------------
         report["LOGS_JOBS"].status = "failed";
@@ -6440,6 +6622,13 @@ export async function POST(request: NextRequest) {
               }
             }
 
+            if (typCode.toUpperCase() === 'MGROW' || typCode.toUpperCase() === 'RMGI') {
+              const mgiProfileId = mgiProfileIdMap.get(legacyInspNo);
+              if (mgiProfileId) {
+                inspectionDataObj._mgi_profile_id = mgiProfileId;
+              }
+            }
+
             recordsToInsert.push({
               dive_job_id: diveJobId,
               rov_job_id: rovJobId,
@@ -6927,148 +7116,250 @@ export async function POST(request: NextRequest) {
         // ---------------------------------------------------------------------
         logs.push(`Phase 7: Synchronizing Scope of Work (u_sow_items) statuses...`);
         try {
-          // Fetch all SOWs for this migrated structure
-          const { data: sows, error: sowFetchErr } = await (supabase as any)
-            .from('u_sow')
-            .select('id, jobpack_id, report_numbers')
+          // 1. Fetch all inspection records for this structure at once (optimized memory-based matching)
+          const { data: allRecords, error: allRecsErr } = await (supabase as any)
+            .from('insp_records')
+            .select('insp_id, component_id, inspection_type_id, inspection_type_code, status, elevation, sow_report_no, inspection_date')
             .eq('structure_id', resolvedStructureId);
 
-          if (sowFetchErr) {
-            logs.push(`WARNING: Fetching SOWs for status sync failed: ${sowFetchErr.message}`);
-          } else if (sows && sows.length > 0) {
-            let totalUpdatedSowItems = 0;
-            for (const sow of sows) {
-              const reportsArr = sow.report_numbers || [];
-              const fallbackReportNo = Array.isArray(reportsArr) && reportsArr.length > 0 ? reportsArr[0]?.number : undefined;
+          if (allRecsErr) {
+            logs.push(`WARNING: Fetching inspection records for SOW sync failed: ${allRecsErr.message}`);
+          } else {
+            // Fetch all SOWs for this migrated structure
+            const { data: sows, error: sowFetchErr } = await (supabase as any)
+              .from('u_sow')
+              .select('id, jobpack_id, report_numbers, structure_type')
+              .eq('structure_id', resolvedStructureId);
 
-              // Get all SOW items belonging to this SOW
-              const { data: sowItems, error: sowItemsErr } = await (supabase as any)
-                .from('u_sow_items')
-                .select('id, component_id, inspection_type_id, inspection_code, report_number, elevation_required, elevation_data')
-                .eq('sow_id', sow.id);
+            if (sowFetchErr) {
+              logs.push(`WARNING: Fetching SOWs for status sync failed: ${sowFetchErr.message}`);
+            } else if (sows && sows.length > 0) {
+              let totalUpdatedSowItems = 0;
+              let totalInsertedSowItems = 0;
 
-              if (sowItemsErr) {
-                logs.push(`WARNING: Fetching SOW items for SOW ID ${sow.id} failed: ${sowItemsErr.message}`);
-                continue;
-              }
+              for (const sow of sows) {
+                const reportsArr = sow.report_numbers || [];
+                const fallbackReportNo = Array.isArray(reportsArr) && reportsArr.length > 0 ? reportsArr[0]?.number : undefined;
 
-              if (sowItems && sowItems.length > 0) {
-                for (const item of sowItems) {
-                  // Resolve matching inspection records in Postgres
-                  const reportNo = item.report_number || fallbackReportNo;
-                  
-                  let recordsQuery = (supabase as any)
-                    .from('insp_records')
-                    .select('insp_id, status, elevation')
-                    .eq('component_id', item.component_id)
-                    .eq('inspection_type_id', item.inspection_type_id);
+                // Get all SOW items belonging to this SOW
+                const { data: sowItems, error: sowItemsErr } = await (supabase as any)
+                  .from('u_sow_items')
+                  .select('id, component_id, inspection_type_id, inspection_code, report_number, elevation_required, elevation_data, status')
+                  .eq('sow_id', sow.id);
+
+                if (sowItemsErr) {
+                  logs.push(`WARNING: Fetching SOW items for SOW ID ${sow.id} failed: ${sowItemsErr.message}`);
+                  continue;
+                }
+
+                // 2. Process and update existing SOW items
+                const existingItems = sowItems || [];
+                if (existingItems.length > 0) {
+                  for (const item of existingItems) {
+                    const reportNo = item.report_number || fallbackReportNo;
                     
-                  if (reportNo) {
-                    recordsQuery = recordsQuery.eq('sow_report_no', reportNo);
-                  }
-                  
-                  const { data: matchingRecords, error: recordsErr } = await recordsQuery;
+                    // Filter matching inspection records in memory
+                    const matchingRecords = (allRecords || []).filter((r: any) => 
+                      r.component_id === item.component_id && 
+                      (r.inspection_type_id === item.inspection_type_id || r.inspection_type_code === item.inspection_code) &&
+                      (!reportNo || r.sow_report_no === reportNo)
+                    );
 
-                  if (recordsErr) {
-                    console.error(`[SOW Post-Migration Sync] Error fetching records for item ${item.id}:`, recordsErr);
-                    continue;
-                  }
+                    let finalStatus: 'pending' | 'completed' | 'incomplete' = 'pending';
+                    let updatedFields: any = {
+                      updated_at: new Date().toISOString(),
+                      updated_by: 'migration',
+                    };
 
-                  let finalStatus: 'pending' | 'completed' | 'incomplete' = 'pending';
-                  let updatedFields: any = {
-                    updated_at: new Date().toISOString(),
-                    updated_by: 'migration',
-                  };
-
-                  if (matchingRecords && matchingRecords.length > 0) {
-                    // Update inspection count
-                    updatedFields.inspection_count = matchingRecords.length;
-                    
-                    // Fetch latest inspection date
-                    const { data: latestDateRecord } = await (supabase as any)
-                      .from('insp_records')
-                      .select('inspection_date')
-                      .eq('component_id', item.component_id)
-                      .eq('inspection_type_id', item.inspection_type_id)
-                      .order('inspection_date', { ascending: false })
-                      .limit(1)
-                      .maybeSingle();
+                    if (matchingRecords.length > 0) {
+                      updatedFields.inspection_count = matchingRecords.length;
                       
-                    if (latestDateRecord && latestDateRecord.inspection_date) {
-                      updatedFields.last_inspection_date = latestDateRecord.inspection_date;
-                    }
+                      // Find latest inspection date from matching records in memory
+                      const dates = matchingRecords
+                        .map((r: any) => r.inspection_date)
+                        .filter(Boolean)
+                        .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
+                      
+                      if (dates.length > 0) {
+                        updatedFields.last_inspection_date = dates[0];
+                      }
 
-                    // 3a. Handle Elevation-bound SOW Item
-                    if (
-                      item.elevation_required &&
-                      item.elevation_data &&
-                      Array.isArray(item.elevation_data)
-                    ) {
-                      const updatedElevationData = item.elevation_data.map((elev: any) => {
-                        const start = parseFloat(elev.start);
-                        const end = parseFloat(elev.end);
-                        
-                        // Find matching records in this elevation range
-                        const elevMatching = matchingRecords.filter((rec: any) => {
-                          const elevVal = rec.elevation !== null && rec.elevation !== undefined ? parseFloat(String(rec.elevation)) : NaN;
-                          return !isNaN(elevVal) && elevVal >= Math.min(start, end) && elevVal <= Math.max(start, end);
+                      // Handle Elevation-bound SOW Item
+                      if (
+                        item.elevation_required &&
+                        item.elevation_data &&
+                        Array.isArray(item.elevation_data)
+                      ) {
+                        const updatedElevationData = item.elevation_data.map((elev: any) => {
+                          const start = parseFloat(elev.start);
+                          const end = parseFloat(elev.end);
+                          
+                          const elevMatching = matchingRecords.filter((rec: any) => {
+                            const elevVal = rec.elevation !== null && rec.elevation !== undefined ? parseFloat(String(rec.elevation)) : NaN;
+                            return !isNaN(elevVal) && elevVal >= Math.min(start, end) && elevVal <= Math.max(start, end);
+                          });
+
+                          let elevStatus = 'pending';
+                          if (elevMatching.length > 0) {
+                            const anyIncomplete = elevMatching.some((r: any) => r.status === 'INCOMPLETE');
+                            elevStatus = anyIncomplete ? 'incomplete' : 'completed';
+                          }
+                          return { ...elev, status: elevStatus };
                         });
 
-                        let elevStatus = 'pending';
-                        if (elevMatching.length > 0) {
-                          const anyIncomplete = elevMatching.some((r: any) => r.status === 'INCOMPLETE');
-                          elevStatus = anyIncomplete ? 'incomplete' : 'completed';
-                        }
-                        return { ...elev, status: elevStatus };
-                      });
+                        updatedFields.elevation_data = updatedElevationData;
 
-                      updatedFields.elevation_data = updatedElevationData;
+                        const allDone = updatedElevationData.every((e: any) => e.status === 'completed');
+                        const anyIncomplete = updatedElevationData.some((e: any) => e.status === 'incomplete');
+                        const allPending = updatedElevationData.every((e: any) => e.status === 'pending');
 
-                      // Recalculate SOW Item overall status
-                      const allDone = updatedElevationData.every((e: any) => e.status === 'completed');
-                      const anyIncomplete = updatedElevationData.some((e: any) => e.status === 'incomplete');
-                      const allPending = updatedElevationData.every((e: any) => e.status === 'pending');
-
-                      if (allDone) finalStatus = 'completed';
-                      else if (allPending) finalStatus = 'pending';
-                      else finalStatus = 'incomplete';
+                        if (allDone) finalStatus = 'completed';
+                        else if (allPending) finalStatus = 'pending';
+                        else finalStatus = 'incomplete';
+                      } else {
+                        // Handle Standard SOW Item
+                        const hasIncomplete = matchingRecords.some((r: any) => r.status === 'INCOMPLETE');
+                        finalStatus = hasIncomplete ? 'incomplete' : 'completed';
+                      }
                     } else {
-                      // 3b. Handle Standard SOW Item
-                      const hasIncomplete = matchingRecords.some((r: any) => r.status === 'INCOMPLETE');
-                      finalStatus = hasIncomplete ? 'incomplete' : 'completed';
+                      updatedFields.inspection_count = 0;
+                      updatedFields.last_inspection_date = null;
+                      if (
+                        item.elevation_required &&
+                        item.elevation_data &&
+                        Array.isArray(item.elevation_data)
+                      ) {
+                        updatedFields.elevation_data = item.elevation_data.map((elev: any) => ({ ...elev, status: 'pending' }));
+                      }
                     }
-                  } else {
-                    // Reset to pending if no inspection records exist for this scope item
-                    updatedFields.inspection_count = 0;
-                    updatedFields.last_inspection_date = null;
-                    if (
-                      item.elevation_required &&
-                      item.elevation_data &&
-                      Array.isArray(item.elevation_data)
-                    ) {
-                      updatedFields.elevation_data = item.elevation_data.map((elev: any) => ({ ...elev, status: 'pending' }));
+
+                    updatedFields.status = finalStatus;
+
+                    const { error: updateErr } = await (supabase as any)
+                      .from('u_sow_items')
+                      .update(updatedFields)
+                      .eq('id', item.id);
+
+                    if (updateErr) {
+                      console.error(`[SOW Post-Migration Sync] Update failed for item ${item.id}:`, updateErr);
+                    } else {
+                      totalUpdatedSowItems++;
                     }
-                  }
-
-                  updatedFields.status = finalStatus;
-
-                  // Update SOW Item status in PostgreSQL
-                  const { error: updateErr } = await (supabase as any)
-                    .from('u_sow_items')
-                    .update(updatedFields)
-                    .eq('id', item.id);
-
-                  if (updateErr) {
-                    console.error(`[SOW Post-Migration Sync] Update failed for item ${item.id}:`, updateErr);
-                  } else {
-                    totalUpdatedSowItems++;
                   }
                 }
+
+                // 3. Identify and bulk insert missing SOW items
+                const existingKeys = new Set(existingItems.map((item: any) => `${item.component_id}:${item.inspection_type_id}`));
+                const recordGroups: Record<string, any[]> = {};
+                
+                for (const rec of (allRecords || [])) {
+                  if (!rec.component_id || !rec.inspection_type_id) continue;
+                  
+                  const key = `${rec.component_id}:${rec.inspection_type_id}`;
+                  if (!existingKeys.has(key)) {
+                    if (!recordGroups[key]) recordGroups[key] = [];
+                    recordGroups[key].push(rec);
+                  }
+                }
+
+                const missingKeys = Object.keys(recordGroups);
+                if (missingKeys.length > 0) {
+                  const compIds = missingKeys.map(k => parseInt(k.split(':')[0]));
+                  const typeIds = missingKeys.map(k => parseInt(k.split(':')[1]));
+
+                  // Fetch components details
+                  const { data: comps } = await (supabase as any)
+                    .from('structure_components')
+                    .select('id, q_id, code')
+                    .in('id', compIds);
+
+                  // Fetch inspection types details
+                  const { data: types } = await (supabase as any)
+                    .from('inspection_type')
+                    .select('id, code, name')
+                    .in('id', typeIds);
+
+                  const missingItemsToInsert: any[] = [];
+                  for (const [key, group] of Object.entries(recordGroups)) {
+                    const [compId, typeId] = key.split(':');
+                    const comp = (comps || []).find((c: any) => String(c.id) === compId);
+                    const type = (types || []).find((t: any) => String(t.id) === typeId);
+
+                    if (comp && type) {
+                      const hasIncomplete = (group || []).some((r: any) => r.status === 'INCOMPLETE');
+                      const status = hasIncomplete ? 'incomplete' : 'completed';
+                      const recordReportNo = group[0]?.sow_report_no || fallbackReportNo || null;
+
+                      // Find latest inspection date in the group
+                      const dates = group
+                        .map((r: any) => r.inspection_date)
+                        .filter(Boolean)
+                        .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
+                      const lastInspectionDate = dates.length > 0 ? dates[0] : null;
+
+                      missingItemsToInsert.push({
+                        sow_id: sow.id,
+                        component_id: parseInt(compId),
+                        component_qid: comp.q_id || `COMP-${compId}`,
+                        component_type: comp.code || null,
+                        inspection_type_id: parseInt(typeId),
+                        inspection_code: type.code,
+                        inspection_name: type.name,
+                        status,
+                        report_number: recordReportNo,
+                        inspection_count: group.length,
+                        last_inspection_date: lastInspectionDate,
+                        elevation_required: false,
+                        created_by: 'Migration Tool',
+                        updated_at: new Date().toISOString()
+                      });
+                    }
+                  }
+
+                  if (missingItemsToInsert.length > 0) {
+                    const { error: insErr } = await (supabase as any)
+                      .from('u_sow_items')
+                      .insert(missingItemsToInsert);
+
+                    if (insErr) {
+                      logs.push(`WARNING: Inserting ${missingItemsToInsert.length} missing SOW items failed: ${insErr.message}`);
+                    } else {
+                      totalInsertedSowItems += missingItemsToInsert.length;
+                      logs.push(`Inserted ${missingItemsToInsert.length} missing SOW item(s) for SOW ID ${sow.id}.`);
+                    }
+                  }
+                }
+
+                // 4. Recalculate totals and status for the parent u_sow record
+                const { data: allSowItemsNow } = await (supabase as any)
+                  .from('u_sow_items')
+                  .select('status')
+                  .eq('sow_id', sow.id);
+
+                if (allSowItemsNow) {
+                  const total = allSowItemsNow.length;
+                  const completed = allSowItemsNow.filter((i: any) => i.status === 'completed').length;
+                  const incomplete = allSowItemsNow.filter((i: any) => i.status === 'incomplete').length;
+                  const pending = allSowItemsNow.filter((i: any) => i.status === 'pending').length;
+
+                  await (supabase as any)
+                    .from('u_sow')
+                    .update({
+                      total_items: total,
+                      completed_items: completed,
+                      incomplete_items: incomplete,
+                      pending_items: pending,
+                      status: pending === total ? 'pending' : (completed === total ? 'completed' : 'incomplete'),
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', sow.id);
+                }
               }
+
+              logs.push(`Successfully synchronized: updated ${totalUpdatedSowItems} SOW item(s), inserted ${totalInsertedSowItems} SOW item(s) in PostgreSQL!`);
+            } else {
+              logs.push(`No Scope of Work (u_sow) indexes found for status synchronization.`);
             }
-            logs.push(`Successfully synchronized status for ${totalUpdatedSowItems} SOW item(s) in PostgreSQL!`);
-          } else {
-            logs.push(`No Scope of Work (u_sow) indexes found for status synchronization.`);
           }
         } catch (sowSyncErr: any) {
           logs.push(`WARNING: SOW status synchronization failed: ${sowSyncErr.message}`);

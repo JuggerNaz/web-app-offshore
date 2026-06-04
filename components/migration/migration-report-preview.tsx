@@ -74,6 +74,7 @@ interface MigrationReportPreviewProps {
   migrationLogs: string[];
   unmappedComponents?: Array<{ code: string; name?: string; rowCount: number }>;
   triggerPrintOnOpen?: boolean;
+  dbComponents?: Record<string, string>;
 }
 
 type ReportTheme = "modern" | "classic" | "inksaver";
@@ -87,45 +88,144 @@ const COMPONENT_FULL_NAMES: Record<string, string> = {
   "ATTACHMENT": "Attachments & Files",
   "COMMENT": "Comments & Logs",
   "U_ASSOC": "Hierarchy Mappings (User Associations)",
-  
-  // Offshore Structural Components
-  "BO": "Boat Landing",
-  "BR": "Bracing",
-  "GR": "Guard Rail",
-  "ND": "Node",
-  "PA": "Pad Eye",
-  "PT": "Protection",
-  "RL": "Railing",
-  "VS": "Vent Stack",
-  "WK": "Walkway",
-  "AN": "Anode",
-  "CL": "Clamp",
-  "CS": "Caisson",
-  "FA": "Face",
-  "FD": "Boat Fender",
-  "HD": "Horizontal Diagonal Member",
-  "HM": "Horizontal Member",
-  "IT": "Item",
-  "LA": "Ladder",
-  "LG": "Leg",
-  "PG": "Pile Guide",
-  "PL": "Pile",
-  "RS": "Riser",
-  "RG": "Riser Guard",
-  "SD": "Seabed",
-  "VD": "Vertical Diagonal Member",
-  "VM": "Vertical Member",
-  "WN": "Node Weld",
-  "WP": "Support Weld",
-  "BB": "Bolts / Bolting",
-  "CD": "Conductor",
-  "CF": "Conductor Fender",
-  "CG": "Conductor Guard"
-};
 
-const getComponentFullName = (key: string): string => {
-  const upperKey = key.toUpperCase();
-  return COMPONENT_FULL_NAMES[upperKey] || "";
+  // Library & Configuration Tables
+  "U_LIB_MAST": "Library Masters",
+  "U_LIB_LIST": "Library List Items",
+  "U_LIB_COMBO": "Library Combo Entries",
+  "U_MGI_PROFILE": "MGI Profile Configuration",
+
+  // Inspection & Job Tables
+  "JOBPACK": "Job Pack",
+  "U_SOW": "Scope of Work",
+  "LOGS_JOBS": "Inspection Jobs Log",
+  "LOGS_MOVEMENTS": "Inspection Movements Log",
+  "VIDEO": "Video Tapes & Logs",
+  "INSP_ROV": "ROV Primary Inspections",
+  "INSP_DIVING": "Diving Primary Inspections",
+  "ANOMALY": "Anomalies & Defects",
+  "INSP_ATTACHMENT": "Inspection Attachments",
+
+  // ROV Inspection Sub-Types
+  "INSP_ROV_RGVI": "ROV – General Visual",
+  "INSP_ROV_RFMD": "ROV – Flooded Member Detection",
+  "INSP_ROV_RSEAB": "ROV – Seabed Survey",
+  "INSP_ROV_RRISI": "ROV – Riser Inspection",
+  "INSP_ROV_RCOND": "ROV – Condition Assessment",
+  "INSP_ROV_RSCOR": "ROV – Marine Growth / Scour",
+  "INSP_ROV_RMGI": "ROV – MGI Thickness",
+  "INSP_ROV_RCPSU": "ROV – CP Survey",
+
+  // Diving Inspection Sub-Types
+  "INSP_DIVING_BSINS": "Diving – Bolt Survey",
+  "INSP_DIVING_CLEAN": "Diving – Cleaning",
+  "INSP_DIVING_CPCLB": "Diving – CP Calibration",
+  "INSP_DIVING_CPSURV": "Diving – CP Survey",
+  "INSP_DIVING_SZONE": "Diving – Splash Zone",
+  "INSP_DIVING_UTCLB": "Diving – UT Calibration",
+  "INSP_DIVING_UTWTK": "Diving – UT Wall Thickness",
+  "INSP_DIVING_MGROW": "Diving – MGI / Marine Growth",
+  "INSP_DIVING_PL_AN": "Diving – Pipeline Anode",
+  "INSP_DIVING_GVINS": "Diving – General Visual",
+  "INSP_DIVING_RISER": "Diving – Riser Inspection",
+  
+  // Offshore Structural Components (Synchronized with components database table)
+  "AD": "ADAPTOR",
+  "AN": "ANODE",
+  "BB": "BOAT BUMPER",
+  "BL": "BOATLANDING",
+  "BO": "BOLLARD FAIRLEAD",
+  "BP": "BOTTOM PLUGS",
+  "BR": "BRACKET SUPPORT",
+  "BU": "BUOY",
+  "CA": "ELECTRICAL CABLE",
+  "CD": "CONDUCTOR",
+  "CE": "CRATER",
+  "CF": "CONDUCTOR GUIDE FRAME",
+  "CG": "CONDUCTOR / CAISSON GUIDES",
+  "CH": "ANCHOR CHAINS",
+  "CL": "CLAMP",
+  "CR": "CRANE",
+  "CS": "CAISSON",
+  "CT": "CABLE TRAY",
+  "CU": "CONDUCTOR GUARD",
+  "DR": "DRILLING DERRICK",
+  "FA": "FACE",
+  "FB": "FLARE BOOM",
+  "FD": "BOAT FENDER",
+  "FH": "FLOATING HOSE",
+  "FL": "FLANGE",
+  "FV": "FLOOD VALVE",
+  "GP": "MARINE GROWTH PREVENTER",
+  "GR": "GRATING",
+  "GS": "GAS SEEPAGE",
+  "HB": "HOSE BREAKAWAY COUPLING",
+  "HC": "HATCH OR DOORWAY",
+  "HD": "HORIZONTAL DIAGONAL MEMBER",
+  "HE": "HELIPAD",
+  "HM": "HORIZONTAL MEMBER",
+  "HP": "HULL PLATE",
+  "HS": "HOSE / FLEXIBLE RISER",
+  "HU": "HULL",
+  "IA": "IMP. CURRENT ANODE",
+  "IT": "ITEM",
+  "LA": "LADDER",
+  "LD": "LOAD BEARING",
+  "LG": "LEG",
+  "LV": "LIFE BOAT DAVIT",
+  "MH": "MANHOLE",
+  "MN": "MOON POOL",
+  "MR": "MOORING LINE & HAWSER",
+  "ND": "STRUCTURAL NODE",
+  "NT": "SAFETY NETS",
+  "PA": "PADEYE",
+  "PC": "REPAIR CLAMP",
+  "PE": "CRANE PEDESTAL",
+  "PG": "PILE GUIDE",
+  "PL": "PILE",
+  "PM": "PIPELINE END MANIFOLD",
+  "PN": "PROPELLER NOZZLE",
+  "PP": "PIPELINE",
+  "PR": "PROPELLER",
+  "PT": "DECK PLATE",
+  "PV": "PIPELINE TAP VALVE",
+  "PW": "WELD / FIELD JOINT",
+  "RB": "RISER SUPPORT BEAM",
+  "RC": "REPAIR CONNECTOR",
+  "RD": "RUDDER",
+  "RE": "RIGGING & LIFTING",
+  "RG": "RISER GUARD",
+  "RL": "RAILING",
+  "RP": "ROPE GUARD",
+  "RS": "RISER",
+  "SB": "CONICAL STUB",
+  "SC": "SEACHEST",
+  "SD": "SEABED",
+  "SG": "CAISSON GUARD",
+  "SJ": "SWIVEL JOINT",
+  "SK": "SBM SKIRT",
+  "SL": "SHOCK CELL",
+  "SS": "SUPPORT STRUCTURE",
+  "ST": "SUPPORT STRUT",
+  "SW": "STRUCTURAL WELD",
+  "TK": "TANK",
+  "VD": "VERTICAL DIAG. MEMBER",
+  "VL": "VALVE",
+  "VM": "VERTICAL MEMBER",
+  "VS": "VESSEL",
+  "WA": "WALL OR FIRE WALL",
+  "WB": "BUTT WELD",
+  "WC": "CASTELLATION WELD",
+  "WD": "WATER DEPTH",
+  "WF": "WAVESTAFF",
+  "WH": "WELL HEAD OR CONDUCTOR",
+  "WK": "WALKWAYS & GANGWAY",
+  "WN": "NODE WELD",
+  "WP": "SUPPORT WELD",
+  "WR": "WIRE ROPE",
+  "WS": "SEAM WELD",
+  "YO": "YOKOHAMA BUOY",
+  "YP": "YOKE PLATE"
 };
 
 export const getTableMappingNames = (key: string, structureType: "PLATFORM" | "PIPELINE" = "PLATFORM") => {
@@ -170,6 +270,8 @@ export const getTableMappingNames = (key: string, structureType: "PLATFORM" | "P
       return { oracle: "U_LIB_LIST", pg: "u_lib_list" };
     case "U_LIB_COMBO":
       return { oracle: "U_LIB_COMBO", pg: "u_lib_combo" };
+    case "U_MGI_PROFILE":
+      return { oracle: "U_MGI_PROFILE", pg: "mgi_profiles" };
     default:
       if (upperKey.startsWith("INSP_ROV_")) {
         return { oracle: "PLATGI", pg: "insp_records" };
@@ -205,8 +307,16 @@ export default function MigrationReportPreview({
   migrationReport,
   migrationLogs,
   unmappedComponents = [],
-  triggerPrintOnOpen = false
+  triggerPrintOnOpen = false,
+  dbComponents = {}
 }: MigrationReportPreviewProps) {
+  const getComponentFullName = (key: string): string => {
+    const upperKey = key.toUpperCase();
+    if (dbComponents && dbComponents[upperKey]) {
+      return dbComponents[upperKey];
+    }
+    return COMPONENT_FULL_NAMES[upperKey] || "";
+  };
   // Customization States
   const [reportTitle, setReportTitle] = useState("Oracle to PostgreSQL Migration Audit Report");
   const [inspectorName, setInspectorName] = useState("Lead Asset Integrity Engineer");
@@ -285,7 +395,7 @@ export default function MigrationReportPreview({
     migrationStatus = "FAILED";
   }
 
-  const libKeys = ["U_LIB_MAST", "U_LIB_LIST", "U_LIB_COMBO"];
+  const libKeys = ["U_LIB_MAST", "U_LIB_LIST", "U_LIB_COMBO", "U_MGI_PROFILE"];
   const systemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
   const jobInspectionKeys = [
     "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
@@ -294,11 +404,13 @@ export default function MigrationReportPreview({
 
   const groupedReport = (() => {
     const reportEntries = Object.entries(migrationReport);
+    const isJobInspKey = (key: string) =>
+      jobInspectionKeys.includes(key) || key.startsWith("INSP_ROV_") || key.startsWith("INSP_DIVING_");
     const libItems = reportEntries.filter(([key]) => libKeys.includes(key));
     const systemItems = reportEntries.filter(([key]) => systemKeys.includes(key));
-    const jobInspItems = reportEntries.filter(([key]) => jobInspectionKeys.includes(key));
+    const jobInspItems = reportEntries.filter(([key]) => isJobInspKey(key));
     const componentItems = reportEntries.filter(([key]) => 
-      !libKeys.includes(key) && !systemKeys.includes(key) && !jobInspectionKeys.includes(key)
+      !libKeys.includes(key) && !systemKeys.includes(key) && !isJobInspKey(key)
     );
 
     return [

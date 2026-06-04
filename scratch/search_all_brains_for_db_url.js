@@ -13,12 +13,12 @@ function walk(dir) {
         } else {
           if (file.endsWith('.jsonl') || file.endsWith('.md') || file.endsWith('.json') || file.endsWith('.txt')) {
             const content = fs.readFileSync(fullPath, 'utf8');
-            if (content.includes('zpsmxtdqlpbdwfzctqzd') && content.includes('postgresql://') && !content.includes('YOUR_DATABASE_PASSWORD')) {
-              console.log('FOUND PASSWORD IN BRAIN FILE:', fullPath);
+            if (content.includes('zpsmxtdqlpbdwfzctqzd') && (content.includes('postgresql://') || content.includes('SERVICE_ROLE')) && !content.includes('YOUR_DATABASE_PASSWORD')) {
+              console.log('FOUND IN BRAIN FILE:', fullPath);
               const lines = content.split('\n');
               lines.forEach((l, idx) => {
-                if (l.includes('postgresql://') && !l.includes('YOUR_DATABASE_PASSWORD')) {
-                  console.log(`  Line ${idx+1}:`, l.substring(0, 300).trim());
+                if ((l.includes('postgresql://') || l.includes('SERVICE_ROLE')) && !l.includes('YOUR_DATABASE_PASSWORD')) {
+                  console.log(`  Line ${idx+1}:`, l.trim());
                 }
               });
             }
