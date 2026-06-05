@@ -3150,7 +3150,7 @@ function V10PreviewLayout() {
         .from(movTable)
         .select("*")
         .eq(movCol, depId)
-        .order(inspMethod === "DIVING" ? "timestamp" : "movement_time", { ascending: true });
+        .order("movement_time", { ascending: true });
 
       const tapesPromise = supabase
         .from("insp_video_tapes")
@@ -3164,16 +3164,6 @@ function V10PreviewLayout() {
         inspsQuery,
         allInspsQuery,
       ]);
-
-      // Fallback for Diving if 'timestamp' column is missing (migration inconsistency)
-      if (movsRes.error && movsRes.error.code === "42703" && inspMethod === "DIVING") {
-        console.warn("[Sync] 'timestamp' column missing on insp_dive_movements, trying 'movement_time'");
-        movsRes = await supabase
-          .from(movTable)
-          .select("*")
-          .eq(movCol, depId)
-          .order("movement_time", { ascending: true });
-      }
 
       const movs = movsRes.data;
       let tapes = tapesRes.data;
@@ -4830,10 +4820,9 @@ function V10PreviewLayout() {
     if (inspMethod === "DIVING") {
       const mappedAction = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.label === dbValue);
       payload.dive_job_id = activeDep.id;
-      payload.timestamp = new Date().toISOString();
-      payload.activity = dbValue;
-      payload.notes = "";
-      payload.location = mappedAction?.location || "N/A";
+      payload.movement_time = new Date().toISOString();
+      payload.movement_type = dbValue;
+      payload.remarks = mappedAction?.location ? `Location: ${mappedAction.location}` : "";
     } else {
       payload.rov_job_id = activeDep.id;
       payload.movement_time = new Date().toISOString();
@@ -4844,7 +4833,7 @@ function V10PreviewLayout() {
     const { error } = await supabase.from(mvtTable).insert(payload);
     if (!error) {
       setCurrentMovement(actionLabel);
-      const mvtTime = payload.timestamp || payload.movement_time;
+      const mvtTime = payload.movement_time;
       if (
         actionLabel.toLowerCase().includes("left surface") ||
         actionLabel.toLowerCase().includes("deployed") ||

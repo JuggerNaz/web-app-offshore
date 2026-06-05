@@ -4,10 +4,20 @@ import "jspdf-autotable";
 // Helper to load image for PDF
 const loadLogo = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
   return new Promise((resolve) => {
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      resolve(null);
+      return;
+    }
     const img = new Image();
     img.crossOrigin = "Anonymous";
-    img.src = url;
+    const timeout = setTimeout(() => {
+      console.warn(`Logo loading timed out (3s limit) in pdf-generator for URL: ${url}`);
+      img.onload = null;
+      img.onerror = null;
+      resolve(null);
+    }, 3000);
     img.onload = () => {
+      clearTimeout(timeout);
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
@@ -81,7 +91,12 @@ const loadLogo = (url: string): Promise<{ data: string; width: number; height: n
         resolve(null);
       }
     };
-    img.onerror = () => resolve(null);
+    img.onerror = () => {
+      clearTimeout(timeout);
+      console.warn(`Logo loading failed in pdf-generator for URL: ${url}`);
+      resolve(null);
+    };
+    img.src = url;
   });
 };
 
@@ -101,10 +116,20 @@ const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y:
 
 const loadImage = (url: string): Promise<string> => {
   return new Promise((resolve, reject) => {
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      reject(new Error("Empty or invalid image URL"));
+      return;
+    }
     const img = new Image();
     img.crossOrigin = "Anonymous";
-    img.src = url;
+    const timeout = setTimeout(() => {
+      console.warn(`Image loading timed out (5s limit) in pdf-generator for URL: ${url}`);
+      img.onload = null;
+      img.onerror = null;
+      reject(new Error("Image loading timed out"));
+    }, 5000);
     img.onload = () => {
+      clearTimeout(timeout);
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
@@ -116,7 +141,11 @@ const loadImage = (url: string): Promise<string> => {
         reject(new Error("Canvas context is null"));
       }
     };
-    img.onerror = (e) => reject(e);
+    img.onerror = (e) => {
+      clearTimeout(timeout);
+      reject(e);
+    };
+    img.src = url;
   });
 };
 

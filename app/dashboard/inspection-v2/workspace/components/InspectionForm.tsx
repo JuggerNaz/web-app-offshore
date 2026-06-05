@@ -933,6 +933,58 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                             })()}
                                                         </div>
                                                     );
+                                                } else if (type === 'ACFMC') {
+                                                    const validFields = otherFields.filter((f: any) => f && f.name);
+
+                                                    const renderCell = (name: string, label?: string) => {
+                                                        const p = validFields.find((f: any) => f.name === name);
+                                                        if (!p) return null;
+                                                        return (
+                                                            <div className="w-full min-w-0">
+                                                                {label && <label className="text-[9px] font-black uppercase text-slate-500 mb-0.5 block truncate" title={label}>{label}</label>}
+                                                                {renderInspectionField({ ...p, label: p.label }, 'primary')}
+                                                            </div>
+                                                        );
+                                                    };
+
+                                                    return (
+                                                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-[5%] duration-200">
+                                                            {/* Group 1: General Parameters */}
+                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm space-y-3">
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                                                                    {renderCell('acfmc_page', 'ACFM Page')}
+                                                                    {renderCell('probe_fl', 'Probe')}
+                                                                    {renderCell('probe_flow', 'Probe Flow')}
+                                                                    {renderCell('report', 'Report')}
+                                                                </div>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                                                                    {renderCell('chord_weld_brace', 'Chord / Weld / Brace')}
+                                                                    {renderCell('clk_pos', 'Clock Position')}
+                                                                    {renderCell('direction_travl', 'Direction of Travel')}
+                                                                    {renderCell('orientation', 'Orientation')}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Group 2: Clock Readings */}
+                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 rounded-xl p-2.5 shadow-sm space-y-1">
+                                                                <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-end mb-1">
+                                                                    <div></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">12 O'Clk</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">3 O'Clk</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">6 O'Clk</span></div>
+                                                                    <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">9 O'Clk</span></div>
+                                                                </div>
+                                                                <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center">
+                                                                    <div className="text-right pr-2"><span className="text-[10px] font-black uppercase text-slate-500">Brace (mm)</span></div>
+                                                                    {renderCell('brace_thick_12clk')}{renderCell('brace_thick_3clk')}{renderCell('brace_thick_6clk')}{renderCell('brace_thick_9clk')}
+                                                                </div>
+                                                                <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-center mt-1">
+                                                                    <div className="text-right pr-2"><span className="text-[10px] font-black uppercase text-slate-500">Chord (mm)</span></div>
+                                                                    {renderCell('chord_thick_12clk')}{renderCell('chord_thick_3clk')}{renderCell('chord_thick_6clk')}{renderCell('chord_thick_9clk')}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
                                                 } else {
                                                     const isUTWTK = type === 'UTWTK';
                                                     const utwtkResultNames = ['avg_reading', 'min_reading', 'max_reading', 'wall_thickness_loss', '%_wall_thickness_loss'];

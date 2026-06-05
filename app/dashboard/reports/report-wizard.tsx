@@ -389,11 +389,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         return (REPORT_TEMPLATES as any)[selections.category]?.find((t: any) => t.id === selections.templateId);
     };
 
-    useEffect(() => {
-        if (step === "preview") {
-            generatePreview();
-        }
-    }, [step, previewMode, activePreviewTemplate, selectedTemplates]);
+    // Consolidated preview generation logic is handled below near line 1170.
+
 
     const handleNext = () => {
         if (step === "template") setStep("context");
@@ -490,6 +487,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         if (!jobPackSearch) return jobPacks;
         const lower = jobPackSearch.toLowerCase();
         return jobPacks.filter((jp: any) =>
+            String(jp.id).includes(lower) ||
             jp.name?.toLowerCase().includes(lower) ||
             jp.status?.toLowerCase().includes(lower)
         );
@@ -1166,33 +1164,54 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         setPreviewUrl(null);
     }, [selections, config]);
 
-    // Auto-generate preview when entering preview step
+    // Auto-generate preview when entering preview step or key dependencies change
     useEffect(() => {
-        if (step === "preview" && !previewUrl) {
+        if (step === "preview") {
             const isDefectReport = selections.templateId === "defect-criteria-report";
             const isJobPackReport = selections.templateId === "jobpack-summary";
             if (selections.structureId || isDefectReport || (isJobPackReport && selections.jobPackId)) {
                 generatePreview();
             }
         }
-    }, [step, selections.structureId, selections.templateId, selections.jobPackId, selections.componentId, selections.planningId, selections.procedureId]);
+    }, [
+        step,
+        previewMode,
+        activePreviewTemplate,
+        selectedTemplates,
+        selections.structureId,
+        selections.templateId,
+        selections.jobPackId,
+        selections.componentId,
+        selections.planningId,
+        selections.procedureId
+    ]);
 
     const fetchStructureData = async () => {
-        if (!selections.structureId) return null;
+        if (!selections.structureId) {
+            console.log("[fetchStructureData] No structureId selected");
+            return null;
+        }
+        console.log(`[fetchStructureData] Fetching data for structure ID: ${selections.structureId}`);
         try {
             const res = await fetch(`/api/structures/${selections.structureId}`);
             const data = await res.json();
-            if (!data.success) return null;
+            if (!data.success) {
+                console.warn("[fetchStructureData] API returned success=false");
+                return null;
+            }
 
             const structureData = data.data;
+            console.log(`[fetchStructureData] Success. Structure name: ${structureData.str_name}`);
 
             // Fetch discussion/comment records for this structure
             try {
                 const strType = structureData.str_type?.toLowerCase() || "platform";
+                console.log(`[fetchStructureData] Fetching comments for ${strType} structure ID: ${selections.structureId}`);
                 const commentRes = await fetch(`/api/comment/${strType}/${selections.structureId}`);
                 const commentJson = await commentRes.json();
                 if (commentJson.data && Array.isArray(commentJson.data)) {
                     structureData.discussions = commentJson.data;
+                    console.log(`[fetchStructureData] Loaded ${commentJson.data.length} comments`);
                 }
             } catch (commentErr) {
                 console.error("Error fetching structure comments for report:", commentErr);
@@ -1206,11 +1225,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const fetchJobPackData = async () => {
-        if (!selections.jobPackId) return null;
+        if (!selections.jobPackId) {
+            console.log("[fetchJobPackData] No jobPackId selected");
+            return null;
+        }
+        console.log(`[fetchJobPackData] Fetching data for job pack ID: ${selections.jobPackId}`);
         try {
             const res = await fetch(`/api/jobpack/${selections.jobPackId}`);
             const data = await res.json();
-            return data.data;
+            if (data.data) {
+                console.log(`[fetchJobPackData] Success. Jobpack name: ${data.data.name || data.data.title}`);
+                return data.data;
+            }
+            console.warn("[fetchJobPackData] No data field in API response");
+            return data;
         } catch (e) {
             console.error("Error fetching jobpack:", e);
             return null;
@@ -1939,11 +1967,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .from('insp_records')
                 .select(`
                     *,
-                    inspection_type:inspection_type_id(id, code, name),
-                    structure_components:component_id(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id(tape_no),
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
                 .eq('structure_id', structId);
@@ -3809,9 +3837,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .from('insp_records')
                 .select(`
                     *,
-                    inspection_type:inspection_type_id(id, code, name),
-                    structure_components:component_id(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no),
                     insp_anomalies(*)
                 `)
                 .eq('structure_id', structId)
@@ -3873,9 +3901,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .from('insp_records')
                 .select(`
                     *,
-                    inspection_type:inspection_type_id(id, code, name),
-                    structure_components:component_id(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no),
                     insp_anomalies(*)
                 `)
                 .eq('structure_id', structId)
@@ -4117,21 +4145,21 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         setPreviewUrl(null);
         setGenerationProgress(5);
         setCurrentGeneratingTemplate("Assembling report preview layout...");
+        console.log(`[generatePreview] Starting preview generation for template: ${selections.templateId}, structure: ${selections.structureId}, SOW: ${selections.sowReportNo}`);
         try {
+            console.log("[generatePreview] Calling generateReportAction(true)...");
             const result = await generateReportAction(true); // Return Blob
-
-            // The generators other than structure-summary might not return a Blob yet (they might save directly).
-            // We need to verify if they return a blob. 
-            // If they return undefined (void), it means they saved it or didn't return.
-            // For now, let's assume valid return. If not, we might need to update those generators too.
+            console.log("[generatePreview] generateReportAction completed, result type:", result ? (result instanceof Blob ? "Blob" : typeof result) : "null/undefined");
 
             if (result instanceof Blob) {
                 const url = URL.createObjectURL(result);
+                console.log("[generatePreview] Created object URL for Blob:", url);
                 setPreviewUrl(url);
             } else if (result && (result as any).output) {
                 // Handle jsPDF object if returned
                 const blob = (result as any).output('blob');
                 const url = URL.createObjectURL(blob);
+                console.log("[generatePreview] Created object URL from jsPDF output('blob'):", url);
                 setPreviewUrl(url);
             } else {
                 console.warn("Generator did not return a blob. It might have saved directly or failed.");
@@ -4140,6 +4168,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         } catch (error) {
             console.error("Preview generation failed", error);
         } finally {
+            console.log("[generatePreview] Finished preview generation, setting isGenerating to false");
             setIsGenerating(false);
         }
     };

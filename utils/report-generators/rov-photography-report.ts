@@ -24,10 +24,20 @@ interface ReportConfig {
 // Helper to load images efficiently for reports
 const loadPhotoData = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
     return new Promise((resolve) => {
+        if (!url || typeof url !== 'string' || !url.trim()) {
+            resolve(null);
+            return;
+        }
         const img = new window.Image();
         img.crossOrigin = "Anonymous";
-        img.src = url;
+        const timeout = setTimeout(() => {
+            console.warn(`Photo loading timed out (5s limit) in rov-photography-report for URL: ${url}`);
+            img.onload = null;
+            img.onerror = null;
+            resolve(null);
+        }, 5000);
         img.onload = () => {
+            clearTimeout(timeout);
             const canvas = document.createElement("canvas");
             canvas.width = img.width;
             canvas.height = img.height;
@@ -40,9 +50,11 @@ const loadPhotoData = async (url: string): Promise<{ data: string; width: number
             }
         };
         img.onerror = () => {
+            clearTimeout(timeout);
             console.warn(`Failed to load photo: ${url}`);
             resolve(null);
         };
+        img.src = url;
     });
 };
 

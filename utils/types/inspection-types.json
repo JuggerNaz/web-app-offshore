@@ -312,6 +312,183 @@
             ]
         },
         {
+            "code": "PL_CO",
+            "name": "Coating Damage Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "width",
+                    "label": "Width",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "name": "length",
+                    "label": "Length",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "name": "assessment",
+                    "label": "Assessment",
+                    "type": "combo",
+                    "lib_code": "COAT_CND",
+                    "required": true
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                }
+            ]
+        },
+        {
+            "code": "ACFMC",
+            "name": "ACFM Survey",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "acfmc_page",
+                    "label": "ACFM Page",
+                    "type": "number",
+                    "unitCategory": "NONE",
+                    "required": true
+                },
+                {
+                    "name": "probe_fl",
+                    "label": "Probe",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "chord_weld_brace",
+                    "label": "Chord / Weld / Brace",
+                    "type": "select",
+                    "options": [
+                        "Chord",
+                        "Weld",
+                        "Brace",
+                        "N/A"
+                    ],
+                    "required": true
+                },
+                {
+                    "name": "direction_travl",
+                    "label": "Direction of Travel",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "probe_flow",
+                    "label": "Probe Flow",
+                    "type": "number",
+                    "unitCategory": "NONE",
+                    "required": true
+                },
+                {
+                    "name": "clk_pos",
+                    "label": "Clock Position",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "orientation",
+                    "label": "Orientation",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "report",
+                    "label": "Report",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_3clk",
+                    "label": "Brace Thick @ 3 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_9clk",
+                    "label": "Brace Thick @ 9 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_12clk",
+                    "label": "Brace Thick @ 12 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_6clk",
+                    "label": "Brace Thick @ 6 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_3clk",
+                    "label": "Chord Thick @ 3 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_9clk",
+                    "label": "Chord Thick @ 9 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_12clk",
+                    "label": "Chord Thick @ 12 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_6clk",
+                    "label": "Chord Thick @ 6 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                }
+            ]
+        },
+        {
             "code": "CLEAN",
             "name": "Cleaning",
             "methods": [
@@ -2402,6 +2579,30 @@
                 },
                 {
                     "$ref": "cp_rdg_additional"
+                }
+            ]
+        },
+        {
+            "code": "RWDI",
+            "name": "ROV Water Depth Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "northing"
+                },
+                {
+                    "$ref": "easting"
+                },
+                {
+                    "name": "water_depth",
+                    "label": "Water Depth",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": true
                 }
             ]
         },
