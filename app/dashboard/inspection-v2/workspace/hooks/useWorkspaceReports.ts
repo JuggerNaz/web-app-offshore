@@ -32,6 +32,9 @@ import { generateDivingCPCLBReport } from "@/utils/report-generators/diving-cpcl
 import { generateDivingUTCLBReport } from "@/utils/report-generators/diving-utclb-report";
 import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anode-report";
 import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-report";
+import { generateDivingACFMCReport as generateDivingACFMCReportTemplate } from "@/utils/report-generators/diving-acfmc-report";
+import { generateDivingPLCOReport as generateDivingPLCOReportTemplate } from "@/utils/report-generators/diving-plco-report";
+import { generateROVRWDIReport as generateROVRWDIReportTemplate } from "@/utils/report-generators/rov-rwdi-report";
 
 
 export function useWorkspaceReports(
@@ -79,6 +82,9 @@ export function useWorkspaceReports(
     const [utclbPreviewOpen, setUtclbPreviewOpen] = useState(false);
     const [divingAnodePreviewOpen, setDivingAnodePreviewOpen] = useState(false);
     const [divingMgiPreviewOpen, setDivingMgiPreviewOpen] = useState(false);
+    const [divingAcfmcPreviewOpen, setDivingAcfmcPreviewOpen] = useState(false);
+    const [divingPlcoPreviewOpen, setDivingPlcoPreviewOpen] = useState(false);
+    const [rovRwdiPreviewOpen, setRovRwdiPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -842,6 +848,72 @@ export function useWorkspaceReports(
         return await generateDivingGVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
+    const generateDivingACFMCReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'ACFMC');
+        if (records.length === 0) {
+            toast.error("No ACFMC records found to generate report");
+            return;
+        }
+        setDivingAcfmcPreviewOpen(true);
+    };
+
+    const generateDivingACFMCReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'ACFMC');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingACFMCReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true });
+    };
+
+    const generateDivingPLCOReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'PL_CO');
+        if (records.length === 0) {
+            toast.error("No PL_CO records found to generate report");
+            return;
+        }
+        setDivingPlcoPreviewOpen(true);
+    };
+
+    const generateDivingPLCOReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'PL_CO');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingPLCOReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true });
+    };
+
+    const generateROVRWDIReport = async () => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RWDI');
+        if (records.length === 0) {
+            toast.error("No RWDI records found to generate report");
+            return;
+        }
+        setRovRwdiPreviewOpen(true);
+    };
+
+    const generateROVRWDIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RWDI');
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateROVRWDIReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true });
+    };
+
     const generateBSINSReport = async () => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'BSINS');
         if (records.length === 0) {
@@ -1485,6 +1557,18 @@ export function useWorkspaceReports(
             await generateSZCIReport();
             return;
         }
+        if (typeCode === 'ACFMC') {
+            await generateDivingACFMCReport();
+            return;
+        }
+        if (typeCode === 'PL_CO') {
+            await generateDivingPLCOReport();
+            return;
+        }
+        if (typeCode === 'RWDI') {
+            await generateROVRWDIReport();
+            return;
+        }
         if (typeCode === 'SZONE' || typeCode === 'SZ') {
             await generateSZONEReport();
             return;
@@ -1593,6 +1677,9 @@ export function useWorkspaceReports(
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         gvinsPreviewOpen, setGvinsPreviewOpen,
+        divingAcfmcPreviewOpen, setDivingAcfmcPreviewOpen,
+        divingPlcoPreviewOpen, setDivingPlcoPreviewOpen,
+        rovRwdiPreviewOpen, setRovRwdiPreviewOpen,
         bsinsPreviewOpen, setBsinsPreviewOpen,
         cvinsPreviewOpen, setCvinsPreviewOpen,
         cleanPreviewOpen, setCleanPreviewOpen,
@@ -1655,6 +1742,12 @@ export function useWorkspaceReports(
         generatePhotographyLogReportBlob,
         generateGVINSReport,
         generateGVINSReportBlob,
+        generateDivingACFMCReport,
+        generateDivingACFMCReportBlob,
+        generateDivingPLCOReport,
+        generateDivingPLCOReportBlob,
+        generateROVRWDIReport,
+        generateROVRWDIReportBlob,
         generateBSINSReport,
         generateBSINSReportBlob,
         generateCVINSReport,

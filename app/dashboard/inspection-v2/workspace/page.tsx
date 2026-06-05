@@ -1512,6 +1512,15 @@ function V10PreviewLayout() {
     divingMgiPreviewOpen,
     setDivingMgiPreviewOpen,
     generateDivingMGIReportBlob,
+    divingAcfmcPreviewOpen,
+    setDivingAcfmcPreviewOpen,
+    generateDivingACFMCReportBlob,
+    divingPlcoPreviewOpen,
+    setDivingPlcoPreviewOpen,
+    generateDivingPLCOReportBlob,
+    rovRwdiPreviewOpen,
+    setRovRwdiPreviewOpen,
+    generateROVRWDIReportBlob,
 
     generateInspectionReportByType,
     generateFullInspectionReport,
@@ -6967,6 +6976,9 @@ function V10PreviewLayout() {
         generateCPCLBReport={() => setCpclbPreviewOpen(true)}
         generateUTCLBReport={() => setUtclbPreviewOpen(true)}
         generateDivingAnodeReport={() => setDivingAnodePreviewOpen(true)}
+        generateDivingACFMCReport={() => setDivingAcfmcPreviewOpen(true)}
+        generateDivingPLCOReport={() => setDivingPlcoPreviewOpen(true)}
+        generateROVRWDIReport={() => setRovRwdiPreviewOpen(true)}
         generateRCASNReport={() => setRcasnPreviewOpen(true)}
         generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
         generateRCONDReport={() => setRcondPreviewOpen(true)}
@@ -7519,6 +7531,9 @@ function V10PreviewLayout() {
           utclbPreviewOpen,
           divingAnodePreviewOpen,
           divingMgiPreviewOpen,
+          divingAcfmcPreviewOpen,
+          divingPlcoPreviewOpen,
+          rovRwdiPreviewOpen,
           isReportWizardOpen,
         }}
         setters={{
@@ -7587,6 +7602,9 @@ function V10PreviewLayout() {
           setUtclbPreviewOpen,
           setDivingAnodePreviewOpen,
           setDivingMgiPreviewOpen,
+          setDivingAcfmcPreviewOpen,
+          setDivingPlcoPreviewOpen,
+          setRovRwdiPreviewOpen,
           setIsReportWizardOpen,
         }}
         handlers={{
@@ -7644,6 +7662,9 @@ function V10PreviewLayout() {
           generateUTCLBReportBlob,
           generateDivingAnodeReportBlob,
           generateDivingMGIReportBlob,
+          generateDivingACFMCReportBlob,
+          generateDivingPLCOReportBlob,
+          generateROVRWDIReportBlob,
         }}
         refs={{
           fileInputRef,

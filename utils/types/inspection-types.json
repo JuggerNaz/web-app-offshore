@@ -319,6 +319,13 @@
             ],
             "fields": [
                 {
+                    "name": "surface_condition",
+                    "label": "Surface Condition",
+                    "type": "combo",
+                    "lib_code": "SURF_CND",
+                    "required": true
+                },
+                {
                     "name": "width",
                     "label": "Width",
                     "type": "number",

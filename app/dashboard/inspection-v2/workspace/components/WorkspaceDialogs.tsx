@@ -156,6 +156,9 @@ interface WorkspaceDialogsProps {
         utclbPreviewOpen: boolean;
         divingAnodePreviewOpen: boolean;
         divingMgiPreviewOpen: boolean;
+        divingAcfmcPreviewOpen: boolean;
+        divingPlcoPreviewOpen: boolean;
+        rovRwdiPreviewOpen: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
@@ -229,6 +232,9 @@ interface WorkspaceDialogsProps {
         setUtclbPreviewOpen: (open: boolean) => void;
         setDivingAnodePreviewOpen: (open: boolean) => void;
         setDivingMgiPreviewOpen: (open: boolean) => void;
+        setDivingAcfmcPreviewOpen: (open: boolean) => void;
+        setDivingPlcoPreviewOpen: (open: boolean) => void;
+        setRovRwdiPreviewOpen: (open: boolean) => void;
         setIsReportWizardOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
 
@@ -293,6 +299,9 @@ interface WorkspaceDialogsProps {
         generateUTCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingACFMCReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingPLCOReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateROVRWDIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -400,7 +409,10 @@ export function WorkspaceDialogs({
         cpclbPreviewOpen,
         utclbPreviewOpen,
         divingAnodePreviewOpen,
-        divingMgiPreviewOpen
+        divingMgiPreviewOpen,
+        divingAcfmcPreviewOpen,
+        divingPlcoPreviewOpen,
+        rovRwdiPreviewOpen
     } = states;
 
 
@@ -467,7 +479,10 @@ export function WorkspaceDialogs({
         setCpclbPreviewOpen,
         setUtclbPreviewOpen,
         setDivingAnodePreviewOpen,
-        setDivingMgiPreviewOpen
+        setDivingMgiPreviewOpen,
+        setDivingAcfmcPreviewOpen,
+        setDivingPlcoPreviewOpen,
+        setRovRwdiPreviewOpen
     } = setters;
 
 
@@ -523,7 +538,10 @@ export function WorkspaceDialogs({
         generateCPCLBReportBlob,
         generateUTCLBReportBlob,
         generateDivingAnodeReportBlob,
-        generateDivingMGIReportBlob
+        generateDivingMGIReportBlob,
+        generateDivingACFMCReportBlob,
+        generateDivingPLCOReportBlob,
+        generateROVRWDIReportBlob
     } = handlers;
 
 
@@ -2095,6 +2113,30 @@ export function WorkspaceDialogs({
                 generateReport={generateDivingMGIReportBlob} 
             />
 
+            <ReportPreviewDialog 
+                open={divingAcfmcPreviewOpen} 
+                onOpenChange={setDivingAcfmcPreviewOpen} 
+                title="Diving ACFMC Inspection Report Preview" 
+                fileName={`Diving_ACFMC_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingACFMCReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={divingPlcoPreviewOpen} 
+                onOpenChange={setDivingPlcoPreviewOpen} 
+                title="Diving Coating Damage Inspection Report Preview" 
+                fileName={`Diving_Coating_Damage_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingPLCOReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={rovRwdiPreviewOpen} 
+                onOpenChange={setRovRwdiPreviewOpen} 
+                title="ROV Water Depth Inspection Report Preview" 
+                fileName={`ROV_Water_Depth_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateROVRWDIReportBlob} 
+            />
+
 
             <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>
                 <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col p-6 dark:bg-slate-950 dark:border-slate-800 bg-white shadow-2xl border-none">
@@ -2256,6 +2298,9 @@ export function WorkspaceDialogs({
                     generateAnodeReport: () => setters.setAnodePreviewOpen(true),
                     generateAnodeRsaniReport: () => setters.setAnodeRsaniPreviewOpen(true),
                     generateDivingAnodeReport: () => setters.setDivingAnodePreviewOpen(true),
+                    generateDivingACFMCReport: () => setters.setDivingAcfmcPreviewOpen(true),
+                    generateDivingPLCOReport: () => setters.setDivingPlcoPreviewOpen(true),
+                    generateROVRWDIReport: () => setters.setRovRwdiPreviewOpen(true),
                     generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
                     generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
                     generateFMDReport: () => setters.setFmdPreviewOpen(true),
@@ -2299,6 +2344,9 @@ export function WorkspaceDialogs({
                             case 'ANODE': setters.setAnodePreviewOpen(true); break;
                             case 'RSANI': setters.setAnodeRsaniPreviewOpen(true); break;
                             case 'DANODE': setters.setDivingAnodePreviewOpen(true); break;
+                            case 'ACFMC': setters.setDivingAcfmcPreviewOpen(true); break;
+                            case 'PL_CO': setters.setDivingPlcoPreviewOpen(true); break;
+                            case 'RWDI': setters.setRovRwdiPreviewOpen(true); break;
                             case 'PHOTO': setters.setPhotographyPreviewOpen(true); break;
                             case 'PLOG': setters.setPhotographyLogPreviewOpen(true); break;
                             case 'FMD': setters.setFmdPreviewOpen(true); break;

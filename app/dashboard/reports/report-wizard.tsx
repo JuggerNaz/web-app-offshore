@@ -148,6 +148,9 @@ export const REPORT_TEMPLATES = {
         { id: "diving-cpclb-report", name: "Diving CP Calibration Report", icon: FileBarChart, description: "CP calibration in water survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-utclb-report", name: "Diving UT Calibration Report", icon: FileBarChart, description: "UT calibration survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-mgi-report", name: "Diving Marine Growth Inspection Graph Report", icon: FileBarChart, description: "Diving marine growth thickness vs allowable thresholds with graphical elevation profile", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-acfmc-report", name: "Diving ACFMC Inspection", icon: FileBarChart, description: "Landscape Diving ACFM Survey report — Chord/Weld/Brace, direction of travel, clock position, page, probe number, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-plco-report", name: "Diving Coating Damage Inspection", icon: FileBarChart, description: "Landscape Diving Coating Damage Survey report — Surface Condition, CP Reading, Length, Width, Assessment, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rwdi-report", name: "ROV Water Depth Inspection Report", icon: FileBarChart, description: "Portrait ROV Water Depth Inspection report — QID, elevation, dive number, water depth, and findings.", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -171,6 +174,9 @@ const TOC_SECTIONS = [
       { id: "diving-clean-report", name: "Diving Cleaning Inspection (CLEAN)", mode: "Diving" },
       { id: "diving-mpins-report", name: "Diving Magnetic Particle Inspection (MPINS)", mode: "Diving" },
       { id: "diving-utwtk-report", name: "Diving UT Wall Thickness Inspection (UTWTK)", mode: "Diving" },
+      { id: "diving-acfmc-report", name: "Diving ACFMC Inspection (ACFMC)", mode: "Diving" },
+      { id: "diving-plco-report", name: "Diving Coating Damage Inspection (PL_CO)", mode: "Diving" },
+      { id: "rov-rwdi-report", name: "ROV Water Depth Inspection Report (RWDI)", mode: "ROV" },
       { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
   ]},
 
@@ -1344,6 +1350,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateDivingCVINSReport } = await import("@/utils/report-generators/diving-cvins-report");
             const { generateDivingCLEANReport } = await import("@/utils/report-generators/diving-clean-report");
             const { generateDivingUTWTKReport } = await import("@/utils/report-generators/diving-utwtk-report");
+            const { generateDivingACFMCReport } = await import("@/utils/report-generators/diving-acfmc-report");
+            const { generateDivingPLCOReport } = await import("@/utils/report-generators/diving-plco-report");
+            const { generateROVRWDIReport } = await import("@/utils/report-generators/rov-rwdi-report");
 
 
             // Fetch real company settings from API
@@ -2482,6 +2491,213 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("GVINS Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving ACFMC Inspection Report (ACFMC)
+        if (currentTemplateId === "diving-acfmc-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const acfmcRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isACFMC = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'ACFMC';
+                return sowMatches && jobPackMatches && isACFMC;
+            });
+
+            if (!acfmcRecords || acfmcRecords.length === 0) {
+                alert(`No Diving ACFMC records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingACFMCReport(
+                    acfmcRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("ACFMC Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Coating Damage Inspection Report (PL_CO)
+        if (currentTemplateId === "diving-plco-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const plcoRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isPLCO = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'PL_CO';
+                return sowMatches && jobPackMatches && isPLCO;
+            });
+
+            if (!plcoRecords || plcoRecords.length === 0) {
+                alert(`No Diving Coating Damage records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingPLCOReport(
+                    plcoRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("PLCO Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Water Depth Inspection Report (RWDI)
+        if (currentTemplateId === "rov-rwdi-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const rwdiRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isRWDI = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RWDI';
+                return sowMatches && jobPackMatches && isRWDI;
+            });
+
+            if (!rwdiRecords || rwdiRecords.length === 0) {
+                alert(`No ROV Water Depth records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVRWDIReport(
+                    rwdiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("RWDI Generator Error:", error);
                 throw error;
             }
         }
