@@ -40,6 +40,7 @@ import { fetcher } from "@/utils/utils";
 import { generateWorkScopeReport } from "@/utils/report-generators/work-scope-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
+import { generateROVAnodeRSANIReport } from "@/utils/report-generators/rov-anode-rsani-report";
 import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
@@ -122,7 +123,8 @@ export const REPORT_TEMPLATES = {
         { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-report", name: "ROV Scour Survey Report", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-anode-report", name: "ROV Anode Inspection Report", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-anode-report", name: "ROV Anode Inspection Report (RGVI)", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-anode-rsani-report", name: "ROV Selected Anode Report (SANI)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (CVI) summary (SANI) with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "ROV CP Survey Report",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-selected-node-report", name: "ROV Selected Node Report", icon: FileText, description: "Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rgvi-report",  name: "ROV GVI Report (RGVI)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
@@ -199,7 +201,8 @@ const TOC_SECTIONS = [
       { id: "diving-szone-report", name: "Diving Splash Zone Inspection", mode: "Diving" }
   ]},
   { id: 8, name: "Anode Inspection", templates: [
-      { id: "rov-anode-report", name: "ROV Anode Inspection Report", mode: "ROV" },
+      { id: "rov-anode-report", name: "ROV Anode Inspection Report (RGVI)", mode: "ROV" },
+      { id: "rov-anode-rsani-report", name: "ROV Selected Anode Report (SANI)", mode: "ROV" },
       { id: "diving-anode-report", name: "Diving Selected Anode Report", mode: "Diving" }
   ]},
   { id: 9, name: "Marine Growth Survey", templates: [
@@ -2029,12 +2032,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 return null;
             }
 
-            // FILTER: RGVI + Component Type AN
+            // FILTER: RGVI + Component Type AN (excluding RSANI)
             const anodeRecords = records?.filter(r => {
                 const sowMatches = !selections.sowReportNo || 
                     String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RGVI';
+                const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const isRGVI = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
                 const isAN = String(r.structure_components?.code || '').toUpperCase() === 'AN' || 
                              String(r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
                 return sowMatches && jobPackMatches && isRGVI && isAN;
@@ -2072,6 +2076,85 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("Anode Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Selected Anode Report (SANI)
+        if (currentTemplateId === "rov-anode-rsani-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Invalid Structure selection. Please ensure a structure is selected.");
+                return null;
+            }
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id(id, code, name),
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId);
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message || 'Unknown fetching error'}`);
+                return null;
+            }
+
+            // FILTER: RSANI + Component Type AN
+            const anodeRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isRSANI = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RSANI';
+                const isAN = String(r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                             String(r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+                return sowMatches && jobPackMatches && isRSANI && isAN;
+            });
+
+            if (!anodeRecords || anodeRecords.length === 0) {
+                alert(`No ROV Selected Anode records (RSANI + component_type: AN) found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVAnodeRSANIReport(
+                    anodeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("Anode RSANI Generator Error:", error);
                 throw error;
             }
         }

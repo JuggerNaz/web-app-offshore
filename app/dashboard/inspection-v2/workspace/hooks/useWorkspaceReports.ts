@@ -11,6 +11,7 @@ import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
+import { generateROVAnodeRSANIReport } from "@/utils/report-generators/rov-anode-rsani-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
 import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-selected-node-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
@@ -52,6 +53,7 @@ export function useWorkspaceReports(
     const [jtisiPreviewOpen, setJtisiPreviewOpen] = useState(false);
     const [itisiPreviewOpen, setItisiPreviewOpen] = useState(false);
     const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
+    const [anodeRsaniPreviewOpen, setAnodeRsaniPreviewOpen] = useState(false);
     const [cpPreviewOpen, setCpPreviewOpen] = useState(false);
     const [rswniPreviewOpen, setRswniPreviewOpen] = useState(false);
     const [rgviPreviewOpen, setRgviPreviewOpen] = useState(false);
@@ -658,10 +660,11 @@ export function useWorkspaceReports(
         const records = currentRecords.filter(r => {
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return typeCode === 'ANODE' || typeCode === 'ANOD' || compCode === 'AN';
+            const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
+            return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
         });
         if (records.length === 0) {
-            toast.error("No Anode records found to generate report");
+            toast.error("No ROV Anode records (RGVI + component_type: AN) found to generate report");
             return;
         }
         setAnodePreviewOpen(true);
@@ -671,7 +674,8 @@ export function useWorkspaceReports(
         const records = currentRecords.filter(r => {
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return typeCode === 'ANODE' || typeCode === 'ANOD' || compCode === 'AN';
+            const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
+            return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
         });
         if (records.length === 0) return;
         const settings = await getReportHeaderData();
@@ -682,6 +686,36 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.lib_path || '';
         }
         return await generateROVAnodeReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+    };
+
+    const generateAnodeRsaniReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return typeCode === 'RSANI' && compCode === 'AN';
+        });
+        if (records.length === 0) {
+            toast.error("No ROV Anode CVI records (RSANI + component_type: AN) found to generate report");
+            return;
+        }
+        setAnodeRsaniPreviewOpen(true);
+    };
+
+    const generateAnodeRsaniReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return typeCode === 'RSANI' && compCode === 'AN';
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.lib_path || '';
+        }
+        return await generateROVAnodeRSANIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
 
     const generateCPReport = async () => {
@@ -1543,6 +1577,7 @@ export function useWorkspaceReports(
         jtisiPreviewOpen, setJtisiPreviewOpen,
         itisiPreviewOpen, setItisiPreviewOpen,
         anodePreviewOpen, setAnodePreviewOpen,
+        anodeRsaniPreviewOpen, setAnodeRsaniPreviewOpen,
         cpPreviewOpen, setCpPreviewOpen,
         rswniPreviewOpen, setRswniPreviewOpen,
         rgviPreviewOpen, setRgviPreviewOpen,
@@ -1596,6 +1631,8 @@ export function useWorkspaceReports(
         generateITISIReportBlob,
         generateAnodeReport,
         generateAnodeReportBlob,
+        generateAnodeRsaniReport,
+        generateAnodeRsaniReportBlob,
         generateCPReport,
         generateCPReportBlob,
         generateRSWNIReport,

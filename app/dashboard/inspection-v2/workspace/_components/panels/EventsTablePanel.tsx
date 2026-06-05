@@ -264,11 +264,19 @@ export function EventsTablePanel({
                               </div>
                             </td>
                           );
-                        case "cr_date":
+                        case "inspection_date":
                           return (
                             <td key={col.id} className="px-3 py-3 text-slate-600 dark:text-slate-300 align-top">
-                              <div className="text-sm font-medium">{r.cr_date ? format(new Date(r.cr_date), "dd MMM") : "-"}</div>
-                              <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), "HH:mm") : "-"}</div>
+                              <div className="text-sm font-medium">
+                                {(() => {
+                                  if (!r.inspection_date) return "-";
+                                  const dateObj = new Date(r.inspection_date);
+                                  return !isNaN(dateObj.getTime()) ? format(dateObj, "dd MMM yyyy") : r.inspection_date;
+                                })()}
+                              </div>
+                              <div className="text-[10px] opacity-70 mt-0.5">
+                                {r.inspection_time ? r.inspection_time.slice(0, 5) : "-"}
+                              </div>
                             </td>
                           );
                         case "type":

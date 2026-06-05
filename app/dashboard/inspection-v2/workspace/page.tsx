@@ -271,11 +271,12 @@ function V10PreviewLayout() {
 
   // Live session records
   const [currentRecords, setCurrentRecords] = useState<any[]>([]);
+  const [allWorkspaceRecords, setAllWorkspaceRecords] = useState<any[]>([]);
   const [historicalRecords, setHistoricalRecords] = useState<any[]>([]);
   const [currentCompRecords, setCurrentCompRecords] = useState<any[]>([]);
 
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
-    key: "cr_date",
+    key: "inspection_date",
     direction: "desc",
   });
 
@@ -288,7 +289,7 @@ function V10PreviewLayout() {
   // Column Settings for Captured Events
   const [columnSettings, setColumnSettings] = useState(() => {
     const defaultCols = [
-      { id: "cr_date", label: "Date", visible: true },
+      { id: "inspection_date", label: "Date/Time", visible: true },
       { id: "type", label: "Type", visible: true },
       { id: "component", label: "Component", visible: true },
       { id: "elev", label: "Elev/KP", visible: true },
@@ -301,7 +302,7 @@ function V10PreviewLayout() {
       const saved = localStorage.getItem("capturedEventsColumns");
       if (saved) {
         try {
-          const parsed = JSON.parse(saved);
+          const parsed = JSON.parse(saved).map((p: any) => p.id === "cr_date" ? { ...p, id: "inspection_date" } : p);
           // Merge with defaults to ensure all keys exist
           return defaultCols.map((dc) => {
             const s = parsed.find((p: any) => p.id === dc.id);
@@ -502,9 +503,11 @@ function V10PreviewLayout() {
       let bVal: any;
 
       switch (sortConfig.key) {
-        case "cr_date":
-          aVal = new Date(a.cr_date || 0).getTime();
-          bVal = new Date(b.cr_date || 0).getTime();
+        case "inspection_date":
+          const aDateTime = new Date(`${a.inspection_date || "1970-01-01"}T${a.inspection_time || "00:00:00"}`).getTime();
+          const bDateTime = new Date(`${b.inspection_date || "1970-01-01"}T${b.inspection_time || "00:00:00"}`).getTime();
+          aVal = aDateTime;
+          bVal = bDateTime;
           break;
         case "type":
           aVal = (a.inspection_type?.name || "").toLowerCase();
@@ -612,11 +615,12 @@ function V10PreviewLayout() {
       texts.push((r.tape_count_no ?? "").toString());
 
       // 4. Date Info
-      if (r.cr_date) {
-        const d = new Date(r.cr_date);
-        texts.push(d.toLocaleDateString(), d.toLocaleTimeString(), d.toISOString());
+      if (r.inspection_date) {
+        texts.push(r.inspection_date);
+        const d = new Date(r.inspection_date);
+        texts.push(d.toLocaleDateString());
       }
-      if (r.inspection_date) texts.push(r.inspection_date);
+      if (r.inspection_time) texts.push(r.inspection_time);
 
       // 5. Deep Inspection Data Scan (Values only)
       if (r.inspection_data && typeof r.inspection_data === 'object') {
@@ -681,6 +685,7 @@ function V10PreviewLayout() {
   const [vidState, setVidState] = useState<"IDLE" | "RECORDING" | "PAUSED">("IDLE");
   const [videoVisible, setVideoVisible] = useState(true);
   const [streamActive, setStreamActive] = useState(false);
+  const [showVideoActionPrompt, setShowVideoActionPrompt] = useState(false);
 
   // Component Target Tab Mode
   const [compView, setCompView] = useState<"LIST" | "MODEL_3D">("LIST");
@@ -1381,6 +1386,8 @@ function V10PreviewLayout() {
     setItisiPreviewOpen,
     anodePreviewOpen,
     setAnodePreviewOpen,
+    anodeRsaniPreviewOpen,
+    setAnodeRsaniPreviewOpen,
     cpPreviewOpen,
     setCpPreviewOpen,
     rswniPreviewOpen,
@@ -1461,6 +1468,8 @@ function V10PreviewLayout() {
     generateITISIReportBlob,
     generateAnodeReport,
     generateAnodeReportBlob,
+    generateAnodeRsaniReport,
+    generateAnodeRsaniReportBlob,
     generateCPReport,
     generateCPReportBlob,
     generateRSWNIReport,
@@ -1511,7 +1520,7 @@ function V10PreviewLayout() {
     jobPackId,
     structureId,
     headerData,
-    currentRecords,
+    allWorkspaceRecords,
     pendingAttachments,
     allInspectionTypes
   );
@@ -3045,6 +3054,12 @@ function V10PreviewLayout() {
   }, [isStreamRecording, isStreamPaused]);
 
   const syncDeploymentState = useCallback(async () => {
+    if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) {
+      console.log("[Sync] Skipping sync: jobPackId or structureId is non-numeric");
+      setIsReadyForComps(true);
+      return;
+    }
+
     if (!activeDep?.id || activeDep.id === "AWAITING") {
       console.log("[Sync] Skipping sync: no active deployment");
       setIsReadyForComps(true);
@@ -3084,6 +3099,29 @@ function V10PreviewLayout() {
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
 
+      let allInspsQuery = supabase
+        .from("insp_records")
+        .select(
+          `
+                *,
+                inspection_type:inspection_type_id!left(id, code, name),
+                structure_components:component_id!left (
+                    id,
+                    q_id, 
+                    code,
+                    metadata
+                ),
+                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
+                insp_video_tapes:tape_id!left(tape_no),
+                insp_anomalies(*)
+            `
+        )
+        .eq("jobpack_id", parseInt(jobPackId || "0"))
+        .not(inspCol, "is", null)
+        .order("inspection_date", { ascending: false })
+        .order("inspection_time", { ascending: false });
+
       if (recordSearchQuery) {
         // When searching, we bypass pagination to allow the client-side Smart Filter 
         // to scan a much larger set of records (up to 3000) globally.
@@ -3095,15 +3133,16 @@ function V10PreviewLayout() {
 
       if (structureId && !isNaN(Number(structureId))) {
         inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
+        allInspsQuery = allInspsQuery.eq("structure_id", Number(structureId));
       }
       if (
         headerData.sowReportNo &&
         headerData.sowReportNo !== "N/A" &&
         headerData.sowReportNo !== "Unknown Report"
       ) {
-        inspsQuery = inspsQuery.or(
-          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
-        );
+        const sowOrFilter = `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`;
+        inspsQuery = inspsQuery.or(sowOrFilter);
+        allInspsQuery = allInspsQuery.or(sowOrFilter);
       }
 
       // Fetch Movements, Tapes, and Inspection Records in PARALLEL
@@ -3119,10 +3158,11 @@ function V10PreviewLayout() {
         .eq(movCol, depId)
         .order("tape_id", { ascending: false });
 
-      let [movsRes, tapesRes, inspsRes] = await Promise.all([
+      let [movsRes, tapesRes, inspsRes, allInspsRes] = await Promise.all([
         movementsPromise,
         tapesPromise,
         inspsQuery,
+        allInspsQuery,
       ]);
 
       // Fallback for Diving if 'timestamp' column is missing (migration inconsistency)
@@ -3268,8 +3308,32 @@ function V10PreviewLayout() {
         }
       } else {
         setTapeId(null);
-      setVidState("IDLE");
+        setVidState("IDLE");
         setVidTimer(0);
+
+        // Carry-over tape number logic for new jobs
+        const { data: overallLatestTape } = await supabase
+          .from("insp_video_tapes")
+          .select("tape_no, chapter_no")
+          .order("tape_id", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (overallLatestTape && overallLatestTape.tape_no) {
+          setTapeNo(overallLatestTape.tape_no);
+          const { data: latestTapeForNo } = await supabase
+            .from("insp_video_tapes")
+            .select("chapter_no")
+            .eq("tape_no", overallLatestTape.tape_no)
+            .order("chapter_no", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const nextChapter = latestTapeForNo ? (Number(latestTapeForNo.chapter_no) || 1) + 1 : 1;
+          setActiveChapter(nextChapter);
+        } else {
+          setTapeNo("VDO-03-2026");
+          setActiveChapter(1);
+        }
       }
 
       let allEv: any[] = [];
@@ -3345,6 +3409,21 @@ function V10PreviewLayout() {
 
         setCurrentRecords(inspsWithCounts);
 
+        if (allInspsRes && allInspsRes.data) {
+          const mappedAll = allInspsRes.data.map((r) => ({
+            ...r,
+            inspection_type: r.inspection_type
+              ? {
+                  ...r.inspection_type,
+                  name: formatInspectionTypeName(r.inspection_type.name),
+                }
+              : null,
+          }));
+          setAllWorkspaceRecords(mappedAll);
+        } else {
+          setAllWorkspaceRecords([]);
+        }
+
         // PERFORMANCE FIX: Use a Set for O(1) lookup during synchronization to avoid O(N*M) lag
         const logInspectionIds = new Set(allEv.map((ev) => ev.inspectionId).filter(Boolean));
 
@@ -3404,7 +3483,7 @@ function V10PreviewLayout() {
   }, [syncDeploymentState]);
 
   const fetchHistory = useCallback(async () => {
-    if (!selectedComp || !structureId) return;
+    if (!selectedComp || !structureId || isNaN(Number(structureId))) return;
 
     try {
       setHistoryLoading(true);
@@ -3656,43 +3735,71 @@ function V10PreviewLayout() {
 
     // Auto-increment chapter logic ON Stop Tape is now at the end of the function.
     // Fallback for first tape if none exists when starting
-    if (!tId && activeDep?.id) {
-      const user = (await supabase.auth.getUser()).data.user;
-      let uniqueTapeNo = tapeNo;
-      if (!uniqueTapeNo) {
-        const base = headerData.sowReportNo || "SOW_REPORT";
-        const platform = headerData.platformName || "STRUCTURE";
-        const postfix = inspMethod === "DIVING" ? "D" : "R";
-        let maxSeq = 0;
-        jobTapes.forEach((t) => {
-          const match = t.tape_no.match(/V(\d{3})[DR]$/);
-          if (match) {
-            const seq = parseInt(match[1], 10);
-            if (seq > maxSeq) maxSeq = seq;
-          }
-        });
-        const nextSeq = String(maxSeq + 1).padStart(3, "0");
-        uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
-      }
-      const { data: newTape } = await supabase
-        .from("insp_video_tapes")
-        .insert({
-          tape_no: uniqueTapeNo,
-          tape_type: "DIGITAL - PRIMARY",
-          chapter_no: 1,
-          status: "ACTIVE",
-          [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: Number(activeDep.id),
-          cr_user: user?.id || "system",
-        })
-        .select()
-        .single();
+    const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+    const jobVal = Number(activeDep?.id);
 
-      if (newTape) {
-        setJobTapes((prev) => [newTape, ...prev]);
-        setTapeId(newTape.tape_id);
-        setTapeNo(newTape.tape_no);
-        setActiveChapter(newTape.chapter_no || 1);
-        tId = newTape.tape_id;
+    if (activeDep?.id && (!tId || action === "Start Tape")) {
+      // 1. Try to find if this tape_no and chapter_no is already registered for this job
+      const { data: existingTape } = await supabase
+        .from("insp_video_tapes")
+        .select("*")
+        .eq("tape_no", tapeNo || "")
+        .eq("chapter_no", activeChapter)
+        .eq(jobCol, jobVal)
+        .maybeSingle();
+
+      if (existingTape) {
+        tId = existingTape.tape_id;
+        setTapeId(existingTape.tape_id);
+        setJobTapes((prev) => {
+          if (!prev.some((t) => t.tape_id === existingTape.tape_id)) {
+            return [existingTape, ...prev];
+          }
+          return prev;
+        });
+      } else {
+        // 2. If it is not registered, create a new record in insp_video_tapes
+        const user = (await supabase.auth.getUser()).data.user;
+        let uniqueTapeNo = tapeNo;
+        if (!uniqueTapeNo) {
+          const base = headerData.sowReportNo || "SOW_REPORT";
+          const platform = headerData.platformName || "STRUCTURE";
+          const postfix = inspMethod === "DIVING" ? "D" : "R";
+          let maxSeq = 0;
+          jobTapes.forEach((t) => {
+            const match = t.tape_no.match(/V(\d{3})[DR]$/);
+            if (match) {
+              const seq = parseInt(match[1], 10);
+              if (seq > maxSeq) maxSeq = seq;
+            }
+          });
+          const nextSeq = String(maxSeq + 1).padStart(3, "0");
+          uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
+        }
+
+        const { data: newTape, error: insErr } = await supabase
+          .from("insp_video_tapes")
+          .insert({
+            tape_no: uniqueTapeNo,
+            tape_type: "DIGITAL - PRIMARY",
+            chapter_no: activeChapter,
+            status: "ACTIVE",
+            [jobCol]: jobVal,
+            cr_user: user?.id || "system",
+          })
+          .select()
+          .single();
+
+        if (insErr) {
+          console.error("[Start Tape] Error registering tape:", insErr.message);
+          toast.error(`Error registering tape: ${insErr.message}`);
+        } else if (newTape) {
+          setJobTapes((prev) => [newTape, ...prev]);
+          setTapeId(newTape.tape_id);
+          setTapeNo(newTape.tape_no);
+          setActiveChapter(newTape.chapter_no || 1);
+          tId = newTape.tape_id;
+        }
       }
     }
 
@@ -4053,7 +4160,7 @@ function V10PreviewLayout() {
       setRequiredProps({});
       setRequiredRecordId(null);
 
-      if (!jobPackId || isNaN(Number(jobPackId))) return;
+      if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) return;
       const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
       const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
 
@@ -4705,6 +4812,14 @@ function V10PreviewLayout() {
   const handleMovementLog = async (actionLabel: string) => {
     if (!activeDep?.id) return;
 
+    // Check if the action is leaving the worksite
+    const actionLower = actionLabel.toLowerCase();
+    const isLeavingWorksite = 
+      actionLower.includes("leaving the worksite") ||
+      actionLower.includes("left bottom") ||
+      actionLower.includes("leaving_worksite") ||
+      actionLower.includes("rov_leaving_worksite");
+
     // Find the database record value for the label
     const dbValue = actionLabel;
     const mvtTable = inspMethod === "DIVING" ? "insp_dive_movements" : "insp_rov_movements";
@@ -4755,6 +4870,28 @@ function V10PreviewLayout() {
         ].includes(actionLabel)
       ) {
         await supabase.from(jobTable).update({ status: "COMPLETED" }).eq(mvtCol, activeDep.id);
+      }
+
+      // Check if we need to alert or auto-stop video recording
+      if (isLeavingWorksite && vidState === "RECORDING") {
+        setShowVideoActionPrompt(true);
+      } else {
+        const isBackToSurfaceOrRecovered =
+          actionLower.includes("arrived surface") ||
+          actionLower.includes("bell on surface") ||
+          actionLower.includes("recovered") ||
+          actionLower.includes("back to surface") ||
+          actionLower.includes("system on deck") ||
+          actionLower.includes("off hire");
+
+        if (isBackToSurfaceOrRecovered && (vidState === "RECORDING" || vidState === "PAUSED")) {
+          // Auto STOP video and log STOP (no prompt, and do not blank the tape no)
+          toast.info("Diver/ROV back to surface. Auto-stopping video recording.");
+          await handleLogEvent("Stop Tape");
+          if (isStreamRecording) {
+            handleStopStreamRecording();
+          }
+        }
       }
     } else {
       console.error("Failed to insert movement log", error);
@@ -5063,13 +5200,16 @@ function V10PreviewLayout() {
       let tId = tapeId;
       let autoRefNo = "";
       if (!tId && activeDep?.id) {
-        // Try to fetch existing active tape for this deployment
+        const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+        const jobVal = Number(activeDep.id);
+
+        // Try to fetch existing active tape for this deployment matching current tapeNo and activeChapter
         const { data: existingTape } = await supabase
           .from("insp_video_tapes")
           .select("tape_id")
-          .eq(inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id", Number(activeDep.id))
-          .order("tape_id", { ascending: false })
-          .limit(1)
+          .eq("tape_no", tapeNo || "")
+          .eq("chapter_no", activeChapter)
+          .eq(jobCol, jobVal)
           .maybeSingle();
 
         if (existingTape) {
@@ -5100,9 +5240,9 @@ function V10PreviewLayout() {
             .insert({
               tape_no: uniqueTapeNo,
               tape_type: "DIGITAL - PRIMARY",
-              chapter_no: 1,
+              chapter_no: activeChapter,
               status: "ACTIVE",
-              [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: Number(activeDep.id),
+              [jobCol]: jobVal,
               cr_user: user?.id || "system",
             })
             .select("tape_id")
@@ -7300,7 +7440,7 @@ function V10PreviewLayout() {
         sowIdFull={sowIdFull}
         headerData={headerData}
         inspMethod={inspMethod}
-        currentRecords={currentRecords}
+        currentRecords={allWorkspaceRecords}
         recordedFiles={recordedFiles}
         pendingAttachments={pendingAttachments}
         setPendingAttachments={setPendingAttachments}
@@ -7343,6 +7483,7 @@ function V10PreviewLayout() {
           pendingRule,
           rscorPreviewOpen,
           anodePreviewOpen,
+          anodeRsaniPreviewOpen,
           cpPreviewOpen,
           rswniPreviewOpen,
           rgviPreviewOpen,
@@ -7420,6 +7561,7 @@ function V10PreviewLayout() {
           setShowCriteriaConfirm,
           setRscorPreviewOpen,
           setAnodePreviewOpen,
+          setAnodeRsaniPreviewOpen,
           setCpPreviewOpen,
           setRswniPreviewOpen,
           setRgviPreviewOpen,
@@ -7484,6 +7626,7 @@ function V10PreviewLayout() {
           generateJTISIReportBlob,
           generateITISIReportBlob,
           generateAnodeReportBlob,
+          generateAnodeRsaniReportBlob,
           generateCPReportBlob,
           generateRSWNIReport,
           generateRSWNIReportBlob,
@@ -7517,6 +7660,57 @@ function V10PreviewLayout() {
           fileInputRef,
         }}
       />
+
+      <Dialog open={showVideoActionPrompt} onOpenChange={setShowVideoActionPrompt}>
+        <DialogContent className="max-w-md bg-white dark:bg-slate-950 border-2 border-amber-500/30 shadow-2xl p-0 overflow-hidden">
+          <DialogHeader className="p-4 bg-amber-500 dark:bg-amber-600/20 text-white dark:text-amber-400 space-y-1">
+            <DialogTitle className="text-xs font-black uppercase tracking-widest opacity-80 mb-0 flex items-center gap-1.5">
+              <Video className="w-4 h-4 animate-pulse" /> Video Recording Alert
+            </DialogTitle>
+            <DialogDescription className="text-sm font-bold text-slate-100 dark:text-slate-300">
+              Diver or ROV action has left the worksite, but the video is still recording. How would you like to proceed?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-5 flex flex-col gap-3 bg-white dark:bg-slate-950">
+            <Button
+              className="w-full h-11 text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/20 border-b-4 border-red-800 transition-all active:scale-95"
+              onClick={async () => {
+                setShowVideoActionPrompt(false);
+                await handleLogEvent("Stop Tape");
+                if (isStreamRecording) {
+                  handleStopStreamRecording();
+                }
+                toast.success("Stopped recording and logged STOP event.");
+              }}
+            >
+              <Square className="w-4 h-4 mr-2" /> Stop Recording & Log Stop Event
+            </Button>
+            <Button
+              className="w-full h-11 text-xs font-black uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20 border-b-4 border-amber-700 transition-all active:scale-95"
+              onClick={async () => {
+                setShowVideoActionPrompt(false);
+                await handleLogEvent("Pause");
+                if (isStreamRecording) {
+                  handlePauseStreamRecording();
+                }
+                toast.success("Paused recording and logged PAUSE event.");
+              }}
+            >
+              <Pause className="w-4 h-4 mr-2" /> Pause Recording & Log Pause Event
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full h-11 text-xs font-black uppercase tracking-wider border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all active:scale-95"
+              onClick={() => {
+                setShowVideoActionPrompt(false);
+                toast.info("Continuing video recording (no event logged).");
+              }}
+            >
+              <Play className="w-4 h-4 mr-2" /> Continue Recording
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

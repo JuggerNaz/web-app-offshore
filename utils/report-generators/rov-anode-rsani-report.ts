@@ -22,9 +22,9 @@ interface ReportConfig {
 }
 
 /**
- * ROV Anode Inspection Report (RGVI + component_type: AN)
+ * ROV Anode Close Visual Inspection (RSANI) Report (RSANI + component_type: AN)
  */
-export const generateROVAnodeReport = async (
+export const generateROVAnodeRSANIReport = async (
     records: any[],
     headerData: any,
     companySettings: CompanySettings,
@@ -96,7 +96,7 @@ export const generateROVAnodeReport = async (
             da.setFontSize(7); da.setFont("helvetica", "normal");
             da.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
             da.setFontSize(14); da.setFont("helvetica", "bold");
-            da.text(`ROV Anode Inspection Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            da.text(`ROV Selected Anode Report (SANI)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
 
             da.setFontSize(8); da.setFont("helvetica", "normal");
             da.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
@@ -153,8 +153,9 @@ export const generateROVAnodeReport = async (
                 
                 // Format Primary + Additional CP readings in the CP column
                 const primaryCP = d.cp_reading_mv || d.cp_rdg || '';
-                const additionalCPs = Array.isArray(d.cp_readings) 
-                    ? d.cp_readings.map((cr: any) => cr.reading).filter(Boolean) 
+                const rawAddCPs = d.cp_rdg_additional || d.cp_readings || [];
+                const additionalCPs = Array.isArray(rawAddCPs) 
+                    ? rawAddCPs.map((cr: any) => cr.reading).filter((v: any) => v !== undefined && v !== null && v !== '') 
                     : [];
                 const cpList = [primaryCP, ...additionalCPs].filter(Boolean);
                 const cp = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
@@ -177,22 +178,23 @@ export const generateROVAnodeReport = async (
 
                 const findingsLines: string[] = [];
                 if (r.description) findingsLines.push(r.description);
+
+                // Add location and CP values to Findings column before anomaly reference details
+                if (Array.isArray(rawAddCPs) && rawAddCPs.length > 0) {
+                    rawAddCPs.forEach((cr: any) => {
+                        if (cr.reading !== undefined && cr.reading !== null && cr.reading !== '' || cr.location) {
+                            const unit = cr.reading_unit || 'mV';
+                            const formattedUnit = String(cr.reading).toLowerCase().includes('mv') ? '' : ` ${unit}`;
+                            findingsLines.push(`${cr.location || 'Unknown'}: ${cr.reading ?? '-'}${formattedUnit}`);
+                        }
+                    });
+                }
+
                 if ((isAnomaly || isDefect) && anomalyRef) {
                     findingsLines.push(`[Reference: ${anomalyRef}]`);
                 }
                 if (isRectified) {
                     findingsLines.push(`Rectified: ${rectifiedComments || 'N/A'}`);
-                }
-                
-                // Add more details of Additional CP readings to Findings column
-                if (Array.isArray(d.cp_readings) && d.cp_readings.length > 0) {
-                    const addCpLines: string[] = ["Additional CP Readings:"];
-                    d.cp_readings.forEach((cr: any) => {
-                        if (cr.reading !== undefined || cr.location) {
-                            addCpLines.push(`• ${cr.location || 'Unknown'}: ${cr.reading ?? '-'} mV`);
-                        }
-                    });
-                    findingsLines.push(addCpLines.join('\n'));
                 }
 
                 const findings = findingsLines.length > 0 ? findingsLines.join('\n') : 'No significant findings';
@@ -232,7 +234,7 @@ export const generateROVAnodeReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Anode Inspection Report  |  SOW: ${headerData.sowReportNo || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Selected Anode Report (SANI)  |  SOW: ${headerData.sowReportNo || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
@@ -274,11 +276,11 @@ export const generateROVAnodeReport = async (
         }
 
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        doc.save(`ROV_Anode_RSANI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return;
 
     } catch (e) {
-        console.error("Anode Report Error", e);
+        console.error("Anode RSANI Report Error", e);
         throw e;
     }
 };

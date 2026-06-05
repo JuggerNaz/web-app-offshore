@@ -109,6 +109,7 @@ interface WorkspaceDialogsProps {
         pendingRule: any;
         rscorPreviewOpen: boolean;
         anodePreviewOpen: boolean;
+        anodeRsaniPreviewOpen: boolean;
         cpPreviewOpen: boolean;
         rswniPreviewOpen: boolean;
         rgviPreviewOpen: boolean;
@@ -191,6 +192,7 @@ interface WorkspaceDialogsProps {
         setShowCriteriaConfirm: (open: boolean) => void;
         setRscorPreviewOpen: (open: boolean) => void;
         setAnodePreviewOpen: (open: boolean) => void;
+        setAnodeRsaniPreviewOpen: (open: boolean) => void;
         setCpPreviewOpen: (open: boolean) => void;
         setRswniPreviewOpen: (open: boolean) => void;
         setRgviPreviewOpen: (open: boolean) => void;
@@ -262,6 +264,7 @@ interface WorkspaceDialogsProps {
         generateJTISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateITISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateAnodeRsaniReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSWNIReport: () => void;
         generateRSWNIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -351,6 +354,7 @@ export function WorkspaceDialogs({
         pendingRule,
         rscorPreviewOpen,
         anodePreviewOpen,
+        anodeRsaniPreviewOpen,
         cpPreviewOpen,
         rswniPreviewOpen,
         rgviPreviewOpen,
@@ -427,6 +431,7 @@ export function WorkspaceDialogs({
         setShowCriteriaConfirm,
         setRscorPreviewOpen,
         setAnodePreviewOpen,
+        setAnodeRsaniPreviewOpen,
         setCpPreviewOpen,
         setRswniPreviewOpen,
         setRgviPreviewOpen,
@@ -492,6 +497,7 @@ export function WorkspaceDialogs({
         generateJTISIReportBlob,
         generateITISIReportBlob,
         generateAnodeReportBlob,
+        generateAnodeRsaniReportBlob,
         generateCPReportBlob,
         generateRGVIReportBlob,
         generateRCASNReportBlob,
@@ -1932,6 +1938,13 @@ export function WorkspaceDialogs({
                 generateReport={generateAnodeReportBlob} 
             />
             <ReportPreviewDialog 
+                open={anodeRsaniPreviewOpen} 
+                onOpenChange={setAnodeRsaniPreviewOpen} 
+                title="ROV Selected Anode Report (SANI) Preview" 
+                fileName={`ROV_Selected_Anode_Report_${headerData.sowReportNo}`} 
+                generateReport={generateAnodeRsaniReportBlob} 
+            />
+            <ReportPreviewDialog 
                 open={cpPreviewOpen} 
                 onOpenChange={setCpPreviewOpen} 
                 title="ROV CP Survey Report Preview" 
@@ -2241,6 +2254,7 @@ export function WorkspaceDialogs({
                     generateCPCLBReport: () => setters.setCpclbPreviewOpen(true),
                     generateUTCLBReport: () => setters.setUtclbPreviewOpen(true),
                     generateAnodeReport: () => setters.setAnodePreviewOpen(true),
+                    generateAnodeRsaniReport: () => setters.setAnodeRsaniPreviewOpen(true),
                     generateDivingAnodeReport: () => setters.setDivingAnodePreviewOpen(true),
                     generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
                     generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
@@ -2283,6 +2297,7 @@ export function WorkspaceDialogs({
                             case 'CPCLB': setters.setCpclbPreviewOpen(true); break;
                             case 'UTCLB': setters.setUtclbPreviewOpen(true); break;
                             case 'ANODE': setters.setAnodePreviewOpen(true); break;
+                            case 'RSANI': setters.setAnodeRsaniPreviewOpen(true); break;
                             case 'DANODE': setters.setDivingAnodePreviewOpen(true); break;
                             case 'PHOTO': setters.setPhotographyPreviewOpen(true); break;
                             case 'PLOG': setters.setPhotographyLogPreviewOpen(true); break;
