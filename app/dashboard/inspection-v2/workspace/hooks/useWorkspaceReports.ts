@@ -205,8 +205,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const result = await generateROVMGIReport(
@@ -249,8 +249,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const result = await generateROVFMDReport(
@@ -292,8 +292,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const result = await generateROVSZCIReport(
@@ -335,8 +335,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const result = await generateROVUTWTReport(
@@ -383,8 +383,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const result = await generateROVRiserGuardReport(
@@ -435,8 +435,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const result = await generateROVCaissonGuardReport(
@@ -487,8 +487,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData = null } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData = null } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const result = await generateROVConductorGuardReport(
@@ -537,8 +537,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const result = await generateROVBoatlandingReport(
@@ -578,8 +578,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVRSCORReport(rscorRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
     };
@@ -624,8 +624,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId), reportType: 'R' }) as Blob;
     };
@@ -637,8 +637,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId), reportType: 'J' }) as Blob;
     };
@@ -650,8 +650,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId), reportType: 'I' }) as Blob;
     };
@@ -682,8 +682,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVAnodeReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
@@ -712,8 +712,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVAnodeRSANIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
@@ -740,8 +740,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVCPReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
@@ -768,8 +768,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVSelectedNodeReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
@@ -790,8 +790,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const isRG = records.some(r => {
@@ -836,8 +836,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateDivingGVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
     };
@@ -858,8 +858,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         try {
             const { generateDivingBSINSReport } = await import("@/utils/report-generators/diving-bsins-report");
@@ -885,8 +885,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         try {
             const { generateDivingCVINSReport } = await import("@/utils/report-generators/diving-cvins-report");
@@ -912,8 +912,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         try {
             const { generateDivingCLEANReport } = await import("@/utils/report-generators/diving-clean-report");
@@ -939,8 +939,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         try {
             const { generateDivingMPINSReport } = await import("@/utils/report-generators/diving-mpins-report");
@@ -966,8 +966,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         try {
             const { generateDivingUTWTKReport } = await import("@/utils/report-generators/diving-utwtk-report");
@@ -993,8 +993,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         return await generateDivingSZONEReport(
@@ -1060,8 +1060,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         return await generateDivingCPCLBReport(
@@ -1126,8 +1126,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         return await generateDivingUTCLBReport(
@@ -1192,8 +1192,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         return await generateDivingAnodeReport(
@@ -1235,8 +1235,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVCasnReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
     };
@@ -1265,8 +1265,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVCasnSketchReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
     };
@@ -1295,8 +1295,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVCondReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
     };
@@ -1325,8 +1325,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVCondSketchReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
     };
@@ -1338,8 +1338,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         // 1. Get database attachments for currently filtered records
@@ -1379,8 +1379,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const inspIds = currentRecords.map(r => r.insp_id).filter(Boolean);
@@ -1512,8 +1512,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         await generateMultiInspectionReport(
@@ -1544,8 +1544,8 @@ export function useWorkspaceReports(
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-            contractorLogoUrl = contrData?.lib_path || '';
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
         }
 
         await generateMultiInspectionReport(
@@ -1679,8 +1679,8 @@ export function useWorkspaceReports(
             const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
             let contractorLogoUrl = '';
             if (jobPack?.metadata?.contrac) {
-                const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-                contractorLogoUrl = contrData?.lib_path || '';
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
             }
 
             const mgiRecords = currentRecords.filter(r => {
@@ -1708,8 +1708,8 @@ export function useWorkspaceReports(
             const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
             let contractorLogoUrl = '';
             if (jobPack?.metadata?.contrac) {
-                const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-                contractorLogoUrl = contrData?.lib_path || '';
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
             }
 
             const mgiRecords = currentRecords.filter(r => {

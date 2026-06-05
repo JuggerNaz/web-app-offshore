@@ -1953,7 +1953,7 @@ function V10PreviewLayout() {
           // Platform details
           supabase.from("platform" as any).select("title, depth").eq("plat_id", Number(structureId)).maybeSingle() as any,
           // Pipeline details
-          supabase.from("u_pipeline" as any).select("pipeline_name, water_depth").eq("pipe_id", Number(structureId)).maybeSingle() as any,
+          supabase.from("u_pipeline" as any).select("title, depth").eq("pipe_id", Number(structureId)).maybeSingle() as any,
           // SOW resolution (only if sowId is not present)
           !sowId
             ? supabase.from("u_sow").select("id, report_numbers").eq("jobpack_id", Number(jobPackId)).eq("structure_id", Number(structureId))
@@ -2003,15 +2003,15 @@ function V10PreviewLayout() {
           if (pipeData) {
             setHeaderData((prev) => ({
               ...prev,
-              platformName: pipeData.pipeline_name || prev.platformName,
+              platformName: pipeData.title || prev.platformName,
               structureType: "pipeline",
             }));
-            if (!strParam && pipeData.pipeline_name && !currentParams.get("structName")) {
-              currentParams.set("structName", pipeData.pipeline_name);
+            if (!strParam && pipeData.title && !currentParams.get("structName")) {
+              currentParams.set("structName", pipeData.title);
               router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
             }
-            if (!strParam && pipeData.pipeline_name) platformName = pipeData.pipeline_name;
-            if (pipeData.water_depth) waterDepth = Number(pipeData.water_depth);
+            if (!strParam && pipeData.title) platformName = pipeData.title;
+            if (pipeData.depth) waterDepth = Number(pipeData.depth);
           }
         }
 

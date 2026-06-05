@@ -2017,11 +2017,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .from('insp_records')
                 .select(`
                     *,
-                    inspection_type:inspection_type_id(id, code, name),
-                    structure_components:component_id(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id(tape_no),
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
                 .eq('structure_id', structId);
@@ -2097,11 +2097,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .from('insp_records')
                 .select(`
                     *,
-                    inspection_type:inspection_type_id(id, code, name),
-                    structure_components:component_id(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id(tape_no),
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
                 .eq('structure_id', structId);

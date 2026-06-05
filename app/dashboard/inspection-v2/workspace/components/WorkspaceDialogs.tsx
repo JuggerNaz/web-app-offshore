@@ -1182,8 +1182,8 @@ export function WorkspaceDialogs({
                     const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     let contractorLogoUrl = '';
                     if (jobPack?.metadata?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.lib_path || '';
+                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.logo_url || '';
                     }
 
                     return await generateROVRSCORReport(
