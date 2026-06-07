@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withTenant(async (request, { companyId, params }) => {
   const { id } = await params;
 
   const supabase = createClient();
-  const { data, error } = await supabase.from("jobpack").select("*").eq("id", Number(id)).single();
+  const { data, error } = await (supabase as any).from("jobpack").select("*").eq("company_id", companyId).eq("id", Number(id)).single();
 
   if (error) {
     if (error.code === "PGRST116") {
@@ -16,19 +17,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 
   return NextResponse.json({ data });
-}
+});
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PUT = withTenant(async (request, { companyId, params }) => {
   const { id } = await params;
   const body = await request.json();
   const supabase = createClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("jobpack")
     .update({
       ...body,
       updated_at: new Date().toISOString(),
     })
+    .eq("company_id", companyId)
     .eq("id", Number(id))
     .single();
 
@@ -41,18 +43,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   return NextResponse.json({ data });
-}
+});
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = withTenant(async (request, { companyId, params }) => {
   const { id } = await params;
   const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabase = useAdmin ? createAdminClient() : createClient();
 
-  const { error } = await supabase.from("jobpack").delete().eq("id", Number(id));
+  const { error } = await (supabase as any).from("jobpack").delete().eq("company_id", companyId).eq("id", Number(id));
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });
-}
+});

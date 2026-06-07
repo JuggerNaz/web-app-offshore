@@ -22,6 +22,7 @@ import {
   Sparkles,
   Paperclip,
   Box,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -308,6 +309,15 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
                 icon={<ShieldAlert className="h-[18px] w-[18px] text-red-500" />}
                 text="User Management"
               />
+              <RoleGate minRole="super_admin" hide>
+                <MenuLink
+                  href="/dashboard/admin/organizations"
+                  isCollapsed={isCollapsed}
+                  label="Organizations"
+                  icon={<Building2 className="h-[18px] w-[18px] text-violet-500" />}
+                  text="Organizations"
+                />
+              </RoleGate>
             </div>
           </RoleGate>
         )}

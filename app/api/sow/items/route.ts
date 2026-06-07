@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-// GET: Fetch SOW items
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -10,12 +10,12 @@ export async function GET(request: NextRequest) {
         const sowId = searchParams.get("sow_id");
         const itemId = searchParams.get("id");
 
-        // If item ID is provided, fetch specific item
         if (itemId) {
             const { data, error } = await (supabase as any)
                 .from("u_sow_items")
                 .select("*")
                 .eq("id", itemId)
+                .eq("company_id", companyId)
                 .single();
 
             if (error) {
@@ -25,12 +25,12 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ data });
         }
 
-        // If sow_id is provided, fetch all items for that SOW
         if (sowId) {
             const { data, error } = await (supabase as any)
                 .from("u_sow_items")
                 .select("*")
                 .eq("sow_id", sowId)
+                .eq("company_id", companyId)
                 .order("component_qid", { ascending: true });
 
             if (error) {
@@ -50,10 +50,9 @@ export async function GET(request: NextRequest) {
             { status: 500 }
         );
     }
-}
+});
 
-// POST: Create or update SOW item
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -74,7 +73,6 @@ export async function POST(request: NextRequest) {
             report_number,
         } = body;
 
-        // If ID is provided, update existing item
         if (id) {
             const { data, error } = await (supabase as any)
                 .from("u_sow_items")
@@ -91,6 +89,7 @@ export async function POST(request: NextRequest) {
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", id)
+                .eq("company_id", companyId)
                 .select()
                 .single();
 
@@ -101,7 +100,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ data });
         }
 
-        // Create new SOW item
         const { data, error } = await (supabase as any)
             .from("u_sow_items")
             .insert({
@@ -117,6 +115,7 @@ export async function POST(request: NextRequest) {
                 status: status || "pending",
                 notes,
                 report_number,
+                company_id: companyId,
             })
             .select()
             .single();
@@ -132,10 +131,9 @@ export async function POST(request: NextRequest) {
             { status: 500 }
         );
     }
-}
+});
 
-// PUT: Bulk update SOW items (for updating multiple items at once)
-export async function PUT(request: NextRequest) {
+export const PUT = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -166,6 +164,7 @@ export async function PUT(request: NextRequest) {
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", id)
+                .eq("company_id", companyId)
                 .select()
                 .single();
 
@@ -186,10 +185,9 @@ export async function PUT(request: NextRequest) {
             { status: 500 }
         );
     }
-}
+});
 
-// DELETE: Delete SOW item
-export async function DELETE(request: NextRequest) {
+export const DELETE = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -205,7 +203,8 @@ export async function DELETE(request: NextRequest) {
         const { error } = await (supabase as any)
             .from("u_sow_items")
             .delete()
-            .eq("id", id);
+            .eq("id", id)
+            .eq("company_id", companyId);
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 400 });
@@ -218,4 +217,4 @@ export async function DELETE(request: NextRequest) {
             { status: 500 }
         );
     }
-}
+});

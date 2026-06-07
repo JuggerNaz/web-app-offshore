@@ -1,7 +1,8 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
                 inspection_type:inspection_type_id!left(id, code, name),
                 structure_components:component_id!left(id, q_id, code)
             `)
+            .eq("company_id", companyId)
             .eq("jobpack_id", Number(jobpack_id))
             .eq("structure_id", Number(structure_id));
 
@@ -43,4 +45,4 @@ export async function GET(request: NextRequest) {
         console.error("[InspectionRecords API] Error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
-}
+});

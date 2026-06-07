@@ -3,23 +3,17 @@ import { createClient } from "@/utils/supabase/server";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
 import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
+import { withTenant } from "@/utils/tenant-auth";
 
-/**
- * GET /api/library
- * Fetch all library items with pagination
- * Query params: ?page=1&pageSize=50
- */
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
 
-  // Build query with count for pagination metadata
   let query = supabase
     .from("u_lib_list")
     .select("*", { count: "exact" })
     .or("lib_delete.is.null,lib_delete.neq.1");
 
-  // Apply pagination
   query = applyPagination(query, paginationParams);
 
   const { data, error, count } = await query;
@@ -28,8 +22,7 @@ export async function GET(request: NextRequest) {
     return handleSupabaseError(error, "Failed to fetch library");
   }
 
-  // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
   return apiPaginated(data || [], pagination);
-}
+});

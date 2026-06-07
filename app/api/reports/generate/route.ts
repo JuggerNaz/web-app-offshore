@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function POST(request: Request) {
+export const POST = withTenant(async (request, { companyId }) => {
     try {
-        const supabase = createClient();
         const body = await request.json();
 
         const { templateId, category, entityId, inspectionType } = body;
 
-        // Validate required fields
         if (!templateId || !category) {
             return NextResponse.json(
                 { error: "Missing required fields: templateId, category" },
@@ -16,8 +14,6 @@ export async function POST(request: Request) {
             );
         }
 
-        // TODO: Implement actual report generation logic
-        // For now, return a mock response
         const reportData = {
             templateId,
             category,
@@ -39,11 +35,10 @@ export async function POST(request: Request) {
             { status: 500 }
         );
     }
-}
+});
 
-export async function GET() {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
-        // TODO: Return list of available report templates
         const templates = {
             structure: [
                 { id: "structure-summary", name: "Structure Summary Report" },
@@ -77,4 +72,4 @@ export async function GET() {
             { status: 500 }
         );
     }
-}
+});
