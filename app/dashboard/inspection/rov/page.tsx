@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -72,6 +72,7 @@ import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog"
 import { useSetAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { ROVDataStringBanner } from "./components/ROVDataStringBanner";
+import { useROVConnection } from "@/components/rov-connection-provider";
 
 interface ROVJob {
   rov_job_id: number;
@@ -101,6 +102,17 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
+  const { isConnected: dataAcqConnected, disconnect: dataAcqDisconnect } = useROVConnection();
+  const hasAutoDisconnectedRef = useRef(false);
+
+  useEffect(() => {
+    if (dataAcqConnected && !hasAutoDisconnectedRef.current) {
+      console.log("[ROV V1] Active connection detected on mount. Closing port.");
+      dataAcqDisconnect(true);
+      toast.info("Active ROV connection detected and closed for new session.");
+      hasAutoDisconnectedRef.current = true;
+    }
+  }, [dataAcqConnected, dataAcqDisconnect]);
 
   const jobpackId = searchParams.get("jobpack");
   const structureId = searchParams.get("structure");

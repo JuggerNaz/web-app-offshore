@@ -1,0 +1,41 @@
+{
+  "project": "web-app-offshore",
+  "version": "1.0.0",
+  "initialized": "2026-05-22T12:15:00+08:00",
+  "stack": {
+    "framework": "next.js",
+    "frameworkVersion": "16.x",
+    "language": "typescript",
+    "runtime": "node",
+    "database": "supabase-postgres",
+    "orm": "supabase-js",
+    "auth": "supabase-auth",
+    "storage": "supabase-storage",
+    "styling": "tailwindcss-3.4",
+    "uiKit": "shadcn-ui",
+    "stateManagement": ["jotai", "zustand", "tanstack-react-query"],
+    "forms": "react-hook-form + zod",
+    "testing": "vitest + testing-library",
+    "packageManager": "yarn-1.22"
+  },
+  "conventions": {
+    "componentStyle": "tsx-function-components",
+    "importAliasPrefix": "@/",
+    "apiPattern": "next-route-handlers",
+    "serverActions": true,
+    "cssApproach": "tailwind-utility + shadcn-css-variables"
+  },
+  "paths": {
+    "app": "app/",
+    "components": "components/",
+    "ui": "components/ui/",
+    "lib": "lib/",
+    "utils": "utils/",
+    "types": "types/",
+    "stores": "stores/",
+    "scripts": "scripts/",
+    "docs": "docs/",
+    "supabase": "supabase/",
+    "public": "public/"
+  }
+}

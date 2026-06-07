@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -18,6 +18,8 @@ interface JobPack {
     structure_name: string;
     status: string;
     structures: Array<{ id: number; name: string }>;
+    start_date?: string;
+    year: string;
 }
 
 interface Structure {
@@ -59,6 +61,53 @@ export default function InspectionLanding() {
     const [openSOW, setOpenSOW] = useState(false);
     const [searchSOW, setSearchSOW] = useState("");
 
+    // State to track which years are expanded in the jobpack list
+    const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
+
+    const selectedJobPackData = jobPacks.find((jp) => jp.id.toString() === selectedJobPack);
+    const selectedStructureData = structures.find((s) => s.id.toString() === selectedStructure);
+    const selectedSOWData = sowReports.find((s) => `${s.sow_id}-${s.item_no}` === selectedSOW);
+
+    const filteredJobPacks = useMemo(() => {
+        return jobPacks.filter((jp) => {
+            const search = searchJP.toLowerCase();
+            return (
+                jp.jobpack_no?.toLowerCase().includes(search) ||
+                jp.jobpack_title?.toLowerCase().includes(search) ||
+                jp.structure_name?.toLowerCase().includes(search)
+            );
+        });
+    }, [jobPacks, searchJP]);
+
+    const filteredStructures = useMemo(() => {
+        return structures.filter((s) =>
+            s.name.toLowerCase().includes(searchStruct.toLowerCase())
+        );
+    }, [structures, searchStruct]);
+
+    const filteredSOWs = useMemo(() => {
+        return sowReports.filter((s) =>
+            s.report_number.toLowerCase().includes(searchSOW.toLowerCase())
+        );
+    }, [sowReports, searchSOW]);
+
+    // Group filtered jobpacks by year
+    const jobPacksByYear: Record<string, JobPack[]> = {};
+    filteredJobPacks.forEach(jp => {
+        const yr = jp.year || "Unknown Year";
+        if (!jobPacksByYear[yr]) {
+            jobPacksByYear[yr] = [];
+        }
+        jobPacksByYear[yr].push(jp);
+    });
+
+    // Get sorted years descending (Unknown Year at the end)
+    const sortedYears = Object.keys(jobPacksByYear).sort((a, b) => {
+        if (a === "Unknown Year") return 1;
+        if (b === "Unknown Year") return -1;
+        return b.localeCompare(a); // Descending order
+    });
+
     // Restore saved selections on mount
     useEffect(() => {
         loadJobPacks();
@@ -88,6 +137,24 @@ export default function InspectionLanding() {
             }
         }
     }, [jobPacks]);
+
+    // Expand the selected job pack's year by default
+    useEffect(() => {
+        if (selectedJobPackData?.year) {
+            setExpandedYears(prev => ({ ...prev, [selectedJobPackData.year]: true }));
+        }
+    }, [selectedJobPack, selectedJobPackData]);
+
+    // Auto-expand all matching years during search
+    useEffect(() => {
+        if (searchJP.trim() !== "") {
+            const yearsWithMatches: Record<string, boolean> = {};
+            filteredJobPacks.forEach(jp => {
+                yearsWithMatches[jp.year] = true;
+            });
+            setExpandedYears(yearsWithMatches);
+        }
+    }, [searchJP, filteredJobPacks]);
 
     // Save selections to sessionStorage whenever they change
     useEffect(() => {
@@ -140,33 +207,27 @@ export default function InspectionLanding() {
 
     async function loadJobPacks() {
         try {
-            const { data, error } = await supabase
-                .from("jobpack")
-                .select(`
-          id,
-          name,
-          metadata,
-          status
-        `)
-                .order("created_at", { ascending: false });
-
-            if (error) {
-                console.error("Error from Supabase:", error);
-                throw error;
+            const res = await fetch("/api/jobpack?limit=1000");
+            if (!res.ok) {
+                throw new Error(`Failed to fetch jobpacks: ${res.statusText}`);
             }
+            const resJson = await res.json();
+            const data = resJson.data;
 
-            console.log("Raw jobpack data:", data);
+            console.log("Raw jobpack data from API:", data);
 
             if (data && data.length > 0) {
                 // Extract structure IDs from metadata.structures array
                 const structureIds: number[] = [];
                 data.forEach((jp: any) => {
                     const structures = (jp.metadata as any)?.structures || [];
-                    structures.forEach((s: any) => {
-                        if (s.id && typeof s.id === 'number') {
-                            structureIds.push(s.id);
-                        }
-                    });
+                    if (Array.isArray(structures)) {
+                        structures.forEach((s: any) => {
+                            if (s.id && typeof s.id === 'number') {
+                                structureIds.push(s.id);
+                            }
+                        });
+                    }
                 });
 
                 const uniqueStructureIds = Array.from(new Set(structureIds));
@@ -175,30 +236,53 @@ export default function InspectionLanding() {
                 let structureMap = new Map<number, string>();
 
                 if (uniqueStructureIds.length > 0) {
-                    const { data: structureData } = await supabase
-                        .from("structure")
-                        .select("str_id, str_title")
-                        .in("str_id", uniqueStructureIds);
+                    const [platformsRes, pipelinesRes] = await Promise.all([
+                        fetch("/api/platform?limit=1000").then(r => r.json()),
+                        fetch("/api/pipeline?limit=1000").then(r => r.json())
+                    ]);
 
-                    console.log("Structure data:", structureData);
+                    const platforms = platformsRes.data || [];
+                    const pipelines = pipelinesRes.data || [];
 
-                    structureMap = new Map(
-                        structureData?.map((s: any) => [s.str_id, s.str_title]) || []
-                    );
+                    platforms.forEach((p: any) => {
+                        structureMap.set(p.plat_id, p.title);
+                    });
+
+                    pipelines.forEach((p: any) => {
+                        structureMap.set(p.pipe_id, p.title);
+                    });
                 }
 
                 const formatted = data.map((jp: any) => {
                     const structures = (jp.metadata as any)?.structures || [];
-                    const structureList = structures
-                        .map((s: any) => ({
-                            id: s.id,
-                            name: structureMap.get(s.id) || s.title || s.code || s.name || ""
-                        }))
-                        .filter((s: Structure) => s.name !== "");
+                    const structureList = Array.isArray(structures)
+                        ? structures
+                            .map((s: any) => ({
+                                id: Number(s.id),
+                                name: structureMap.get(Number(s.id)) || s.title || s.code || s.name || ""
+                            }))
+                            .filter((s: Structure) => s.name !== "")
+                        : [];
 
                     const structureNames = structureList
                         .map((s: Structure) => s.name)
                         .join(", ");
+
+                    // Extract start date and year
+                    const start_date = (jp.metadata as any)?.istart;
+                    let year = "Unknown Year";
+                    if (start_date) {
+                        const match = start_date.match(/^(\d{4})/);
+                        if (match) {
+                            year = match[1];
+                        }
+                    }
+                    if (year === "Unknown Year" && jp.name) {
+                        const match = jp.name.match(/\b(19\d{2}|20\d{2})\b/);
+                        if (match) {
+                            year = match[1];
+                        }
+                    }
 
                     return {
                         id: jp.id,
@@ -207,6 +291,8 @@ export default function InspectionLanding() {
                         structure_name: structureNames || "No structure",
                         status: jp.status || "OPEN",
                         structures: structureList,
+                        start_date: start_date || undefined,
+                        year,
                     };
                 });
 
@@ -244,55 +330,24 @@ export default function InspectionLanding() {
 
     async function loadSOWReports(jobPackId: string, structureId: string) {
         try {
-            console.log("Loading SOW reports for job pack:", jobPackId, "structure:", structureId);
+            console.log("Loading SOW reports via API for job pack:", jobPackId, "structure:", structureId);
 
-            // Load from u_sow table linked to jobpack and structure
-            const { data: sowData, error: sowError } = await supabase
-                .from("u_sow")
-                .select(`
-          id,
-          jobpack_id,
-          structure_id,
-          structure_title,
-          report_numbers,
-          metadata
-        `)
-                .eq("jobpack_id", jobPackId)
-                .eq("structure_id", structureId);
-
-            if (sowError) {
-                console.error("Error loading u_sow:", sowError);
-                throw sowError;
+            const res = await fetch(`/api/sow?jobpack_id=${jobPackId}&structure_id=${structureId}`);
+            if (!res.ok) {
+                throw new Error(`Failed to fetch SOW reports: ${res.statusText}`);
             }
+            const resJson = await res.json();
+            const sow = resJson.data;
 
-            console.log("Raw u_sow data:", sowData);
+            console.log("Raw u_sow data from API:", sow);
 
-            if (!sowData || sowData.length === 0) {
+            if (!sow) {
                 setSOWReports([]);
                 return;
             }
 
-            // Load SOW items from u_sow_items for each SOW
-            const sowIds = sowData.map((sow: any) => sow.id);
-
-            const { data: itemsData, error: itemsError } = await supabase
-                .from("u_sow_items")
-                .select(`
-          id,
-          sow_id,
-          report_number,
-          inspection_code,
-          inspection_name,
-          component_type,
-          component_qid
-        `)
-                .in("sow_id", sowIds);
-
-            if (itemsError) {
-                console.error("Error loading u_sow_items:", itemsError);
-            }
-
-            console.log("Raw u_sow_items data:", itemsData);
+            const sowData = [sow];
+            const itemsData = sow.items || [];
 
             // Group by distinct report numbers (not individual inspection codes)
             const formatted: SOWReport[] = [];
@@ -386,26 +441,7 @@ export default function InspectionLanding() {
     }
 
 
-    const selectedJobPackData = jobPacks.find((jp) => jp.id.toString() === selectedJobPack);
-    const selectedStructureData = structures.find((s) => s.id.toString() === selectedStructure);
-    const selectedSOWData = sowReports.find((s) => `${s.sow_id}-${s.item_no}` === selectedSOW);
 
-    const filteredJobPacks = jobPacks.filter((jp) => {
-        const search = searchJP.toLowerCase();
-        return (
-            jp.jobpack_no?.toLowerCase().includes(search) ||
-            jp.jobpack_title?.toLowerCase().includes(search) ||
-            jp.structure_name?.toLowerCase().includes(search)
-        );
-    });
-
-    const filteredStructures = structures.filter((s) =>
-        s.name.toLowerCase().includes(searchStruct.toLowerCase())
-    );
-
-    const filteredSOWs = sowReports.filter((s) =>
-        s.report_number.toLowerCase().includes(searchSOW.toLowerCase())
-    );
 
     return (
         <div className="min-h-screen max-h-screen overflow-y-auto bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-950 dark:via-blue-950/10 dark:to-slate-950">
@@ -445,11 +481,16 @@ export default function InspectionLanding() {
                                         className={`w-full justify-between h-auto py-3 px-4 font-normal bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-900 ${selectedJobPack ? "border-blue-300 dark:border-blue-700 ring-1 ring-blue-100 dark:ring-blue-900/40" : ""}`}
                                     >
                                         {selectedJobPackData ? (
-                                            <div className="flex flex-col items-start gap-1 w-full overflow-hidden text-left">
+                                            <div className="flex flex-col items-start gap-0.5 w-full overflow-hidden text-left">
                                                 <span className="font-bold text-base text-slate-900 dark:text-slate-100">{selectedJobPackData.jobpack_no}</span>
-                                                <span className="text-xs text-slate-500 truncate w-full uppercase tracking-wider font-medium">
+                                                <span className="text-xs text-slate-500 truncate w-full uppercase tracking-wider font-semibold">
                                                     {selectedJobPackData.jobpack_title} • {selectedJobPackData.structure_name}
                                                 </span>
+                                                {selectedJobPackData.start_date && (
+                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                                                        Start Date: {new Date(selectedJobPackData.start_date).toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                    </span>
+                                                )}
                                             </div>
                                         ) : (
                                             <span className="text-muted-foreground text-base">Choose a job pack...</span>
@@ -475,49 +516,88 @@ export default function InspectionLanding() {
                                         {filteredJobPacks.length === 0 ? (
                                             <div className="py-8 text-center text-sm text-slate-500 font-medium">No job pack found matching your search.</div>
                                         ) : (
-                                            filteredJobPacks.map((jp) => (
-                                                <div
-                                                    key={jp.id}
-                                                    onClick={() => {
-                                                        setSelectedJobPack(jp.id.toString());
-                                                        setOpenJP(false);
-                                                        setSearchJP("");
-                                                        if (jp.structures.length > 1) {
-                                                            setTimeout(() => setOpenStruct(true), 150);
-                                                        }
-                                                    }}
-                                                    className={`relative flex cursor-pointer select-none items-center rounded-lg px-3 py-3 mb-1 text-sm outline-none transition-all hover:bg-slate-100 dark:hover:bg-slate-800 ${selectedJobPack === jp.id.toString() ? "bg-blue-50 dark:bg-blue-900/20 shadow-sm ring-1 ring-blue-100 dark:ring-blue-800/50" : ""}`}
-                                                >
-                                                    <div className="flex flex-col gap-1 w-full pr-8">
-                                                        <div className={`font-bold text-base ${selectedJobPack === jp.id.toString() ? "text-blue-700 dark:text-blue-300" : "text-slate-900 dark:text-slate-100"}`}>
-                                                            {jp.jobpack_no}
+                                            sortedYears.map((year) => {
+                                                const jpsInYear = jobPacksByYear[year];
+                                                const isExpanded = !!expandedYears[year];
+
+                                                return (
+                                                    <div key={year} className="mb-2">
+                                                        {/* Year Group Header */}
+                                                        <div
+                                                            onClick={() => setExpandedYears(prev => ({ ...prev, [year]: !prev[year] }))}
+                                                            className="flex items-center justify-between px-3 py-2 bg-slate-50/80 dark:bg-slate-900/80 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer select-none font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 border border-slate-200/40 dark:border-slate-800/40 mb-1"
+                                                        >
+                                                            <div className="flex items-center gap-1.5">
+                                                                {isExpanded ? (
+                                                                    <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                                                                ) : (
+                                                                    <ChevronRight className="h-3.5 w-3.5 opacity-70" />
+                                                                )}
+                                                                <span>Year {year}</span>
+                                                            </div>
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                                                                {jpsInYear.length} {jpsInYear.length === 1 ? "job pack" : "job packs"}
+                                                            </span>
                                                         </div>
-                                                        <div className="text-xs text-slate-500 truncate w-full uppercase tracking-wider font-medium">
-                                                            {jp.jobpack_title} • {jp.structure_name}
-                                                        </div>
+
+                                                        {/* Job Packs under this Year */}
+                                                        {isExpanded && (
+                                                            <div className="pl-3 border-l border-slate-100 dark:border-slate-850 ml-3.5 space-y-1 mt-1">
+                                                                {jpsInYear.map((jp) => (
+                                                                    <div
+                                                                        key={jp.id}
+                                                                        onClick={() => {
+                                                                            setSelectedJobPack(jp.id.toString());
+                                                                            setOpenJP(false);
+                                                                            setSearchJP("");
+                                                                            if (jp.structures.length > 1) {
+                                                                                setTimeout(() => setOpenStruct(true), 150);
+                                                                            }
+                                                                        }}
+                                                                        className={`relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2.5 mb-0.5 text-sm outline-none transition-all hover:bg-slate-100 dark:hover:bg-slate-800 ${selectedJobPack === jp.id.toString() ? "bg-blue-50 dark:bg-blue-900/20 shadow-sm ring-1 ring-blue-100/70 dark:ring-blue-800/40" : ""}`}
+                                                                    >
+                                                                        <div className="flex flex-col gap-0.5 w-full pr-8">
+                                                                            <div className={`font-bold text-[15px] ${selectedJobPack === jp.id.toString() ? "text-blue-700 dark:text-blue-300" : "text-slate-900 dark:text-slate-100"}`}>
+                                                                                {jp.jobpack_no}
+                                                                            </div>
+                                                                            <div className="text-[11px] text-slate-500 truncate w-full uppercase tracking-wider font-semibold">
+                                                                                {jp.jobpack_title} • {jp.structure_name}
+                                                                            </div>
+                                                                            {jp.start_date && (
+                                                                                <div className="text-[10px] text-slate-450 dark:text-slate-500 font-medium mt-0.5">
+                                                                                    Start Date: {new Date(jp.start_date).toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        {selectedJobPack === jp.id.toString() && (
+                                                                            <div className="absolute right-3 shrink-0 text-blue-600 dark:text-blue-400">
+                                                                                <Check className="h-4 w-4" />
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    {selectedJobPack === jp.id.toString() && (
-                                                        <div className="absolute right-3 shrink-0 text-blue-600 dark:text-blue-400">
-                                                            <Check className="h-5 w-5" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))
+                                                );
+                                            })
                                         )}
                                     </div>
                                 </PopoverContent>
-                            </Popover>
-
-                            {selectedJobPackData && (
+                            </Popover>                            {selectedJobPackData && (
                                 <div className="flex items-center justify-between p-4 mt-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 shadow-sm transition-all animate-in fade-in slide-in-from-top-2">
-                                    <div className="flex-1 pr-4">
-
-                                        <p className="text-sm font-bold text-blue-900 dark:text-blue-100 uppercase tracking-wider mb-1">
+                                    <div className="flex-1 pr-4 space-y-1">
+                                        <p className="text-sm font-bold text-blue-900 dark:text-blue-100 uppercase tracking-wider">
                                             {selectedJobPackData.jobpack_title}
                                         </p>
                                         <p className="text-[13px] font-medium text-blue-700 dark:text-blue-300">
                                             {selectedJobPackData.structures.length} structure(s): {selectedJobPackData.structure_name}
                                         </p>
+                                        {selectedJobPackData.start_date && (
+                                            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                Start Date: <span className="font-bold text-slate-700 dark:text-slate-350">{new Date(selectedJobPackData.start_date).toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="shrink-0 flex items-center gap-3 border-l pl-4 border-blue-200 dark:border-blue-800/50">
                                         <span className="px-3 py-1 text-xs font-black tracking-wider rounded-full bg-blue-600 text-white shadow-sm uppercase shadow-blue-500/30">
@@ -658,7 +738,47 @@ export default function InspectionLanding() {
                             </Popover>
                         </div>
 
-                        {/* Start Button */}
+                    {/* Inspection Method Selection */}
+                    <div className={`space-y-3 transition-opacity duration-300 ${!selectedSOW ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+                        <Label className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            4. Select Inspection Method
+                        </Label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div
+                                onClick={() => setSelectedMode("DIVING")}
+                                className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${selectedMode === "DIVING" 
+                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md ring-1 ring-blue-200" 
+                                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 hover:border-blue-300 dark:hover:border-blue-700"}`}
+                            >
+                                <div className={`p-3 rounded-lg ${selectedMode === "DIVING" ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-900 text-slate-500"}`}>
+                                    <LifeBuoy className="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <p className={`font-bold text-base ${selectedMode === "DIVING" ? "text-blue-900 dark:text-blue-100" : "text-slate-900 dark:text-slate-100"}`}>Diving</p>
+                                    <p className="text-xs text-slate-500 font-medium">Standard diving inspection</p>
+                                </div>
+                                {selectedMode === "DIVING" && <Check className="ml-auto h-5 w-5 text-blue-600" />}
+                            </div>
+
+                            <div
+                                onClick={() => setSelectedMode("ROV")}
+                                className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${selectedMode === "ROV" 
+                                    ? "border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20 shadow-md ring-1 ring-cyan-200" 
+                                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 hover:border-cyan-300 dark:hover:border-cyan-700"}`}
+                            >
+                                <div className={`p-3 rounded-lg ${selectedMode === "ROV" ? "bg-cyan-500 text-white" : "bg-slate-100 dark:bg-slate-900 text-slate-500"}`}>
+                                    <Bot className="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <p className={`font-bold text-base ${selectedMode === "ROV" ? "text-cyan-900 dark:text-cyan-100" : "text-slate-900 dark:text-slate-100"}`}>ROV</p>
+                                    <p className="text-xs text-slate-500 font-medium">Remote operated vehicle</p>
+                                </div>
+                                {selectedMode === "ROV" && <Check className="ml-auto h-5 w-5 text-cyan-600" />}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Start Button */}
                         <div className="pt-6 border-t border-slate-100 dark:border-slate-800 mt-6">
                             {selectedStructure && sowReports.length === 0 && (
                                 <div className="mb-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex gap-3 text-amber-800 dark:text-amber-200">
@@ -672,15 +792,15 @@ export default function InspectionLanding() {
 
                             {(!selectedStructure || sowReports.length > 0) ? (
                                 <Link 
-                                    href={selectedJobPack && selectedStructure && selectedSOW ? `/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.sow_id}&mode=DIVING&jpName=${encodeURIComponent(jobPacks.find(j => j.id.toString() === selectedJobPack)?.jobpack_no || '')}&structName=${encodeURIComponent(structures.find(s => s.id.toString() === selectedStructure)?.name || '')}&sowReport=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.report_number || '')}&jobType=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.job_type || '')}` : "#"}
+                                    href={selectedJobPack && selectedStructure && selectedSOW && selectedMode ? `/dashboard/inspection-v2/workspace?jobpack=${selectedJobPack}&structure=${selectedStructure}&sow=${sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.sow_id}&mode=${selectedMode}&jpName=${encodeURIComponent(jobPacks.find(j => j.id.toString() === selectedJobPack)?.jobpack_no || '')}&structName=${encodeURIComponent(structures.find(s => s.id.toString() === selectedStructure)?.name || '')}&sowReport=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.report_number || '')}&jobType=${encodeURIComponent(sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW)?.job_type || '')}` : "#"}
                                     onClick={(e) => {
-                                        if (!selectedJobPack || !selectedStructure || !selectedSOW) e.preventDefault();
+                                        if (!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode) e.preventDefault();
                                     }}
-                                    className={`w-full block ${(!selectedJobPack || !selectedStructure || !selectedSOW) ? "pointer-events-none" : ""}`}
+                                    className={`w-full block ${(!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode) ? "pointer-events-none" : ""}`}
                                 >
                                     <Button
-                                        disabled={!selectedJobPack || !selectedStructure || !selectedSOW}
-                                        className={`w-full h-16 text-lg font-black transition-all duration-300 ${(!selectedJobPack || !selectedStructure || !selectedSOW)
+                                        disabled={!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode}
+                                        className={`w-full h-16 text-lg font-black transition-all duration-300 ${(!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode)
                                             ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
                                             : "bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-0.5"}`}
                                     >

@@ -14,7 +14,10 @@ export async function GET(request: NextRequest) {
   const paginationParams = getPaginationParams(request);
 
   // Build query with count for pagination metadata
-  let query = supabase.from("u_lib_list").select("*", { count: "exact" });
+  let query = supabase
+    .from("u_lib_list")
+    .select("*", { count: "exact" })
+    .or("lib_delete.is.null,lib_delete.neq.1");
 
   // Apply pagination
   query = applyPagination(query, paginationParams);

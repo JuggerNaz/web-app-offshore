@@ -235,12 +235,12 @@ export const generateDivingSZONEReport = async (
             headStyles: {
                 fillColor: isPF ? [255, 255, 255] : colors.navy,
                 textColor: isPF ? colors.navy : [255, 255, 255],
+                lineColor: isPF ? colors.navy : colors.border,
+                lineWidth: 0.3,
                 fontSize: 7.5,
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
-                lineColor: isPF ? colors.navy : colors.border,
-                lineWidth: 0.3,
             },
             styles: {
                 fontSize: 7,

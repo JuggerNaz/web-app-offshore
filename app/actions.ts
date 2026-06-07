@@ -4,10 +4,13 @@ import { encodedRedirect } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { getUserMembership } from "@/utils/role-auth";
 
 export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const password = formData.get("password")?.toString();
+  const fullName = formData.get("full_name")?.toString();
+  const designation = formData.get("designation")?.toString();
   const supabase = createClient();
   const origin = (await headers()).get("origin");
 
@@ -20,6 +23,10 @@ export const signUpAction = async (formData: FormData) => {
     password,
     options: {
       emailRedirectTo: `${origin}/auth/callback`,
+      data: {
+        full_name: fullName || "",
+        designation: designation || "",
+      },
     },
   });
 
@@ -41,13 +48,36 @@ export const signInAction = async (formData: FormData) => {
   const errorRedirect = formData.get("errorRedirect") as string;
   const supabase = createClient();
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data: signInData, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
   if (error) {
     return encodedRedirect("error", errorRedirect ?? "/sign-in", error.message);
+  }
+
+  // Intercept and prevent login for deactivated users
+  const user = signInData?.user;
+  if (user) {
+    try {
+      const result = await getUserMembership(supabase, user.id);
+      if (result && "error" in result) {
+        // Programmatically sign out to clear active session cookie
+        await supabase.auth.signOut();
+
+        const isDeactivated = result.error === "User profile is inactive" || result.error === "No active company memberships found";
+        const errorMsg = isDeactivated
+          ? "Your account has been deactivated. Please contact your administrator."
+          : `Access Denied: ${result.error}`;
+
+        return encodedRedirect("error", errorRedirect ?? "/sign-in", errorMsg);
+      }
+    } catch (dbError: any) {
+      console.error("Error verifying user status during sign-in:", dbError);
+      await supabase.auth.signOut();
+      return encodedRedirect("error", errorRedirect ?? "/sign-in", "An error occurred during verification. Please try again.");
+    }
   }
 
   return redirect("/dashboard");

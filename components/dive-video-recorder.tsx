@@ -93,6 +93,17 @@ export default function DiveVideoRecorder({
 }: DiveVideoRecorderProps) {
     const supabase = createClient();
 
+    const getUserId = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) return session.user.id;
+            const { data: { user } } = await supabase.auth.getUser();
+            return user?.id || 'system';
+        } catch (e) {
+            return 'system';
+        }
+    };
+
     // Refs
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -345,14 +356,14 @@ export default function DiveVideoRecorder({
             return;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const userId = await getUserId();
 
         const payload: any = {
             tape_no: newTapeNo,
             tape_type: `${recordingType} - ${recordingMode}`,
             status: 'ACTIVE',
             workunit: '000',
-            cr_user: user?.id || 'system',
+            cr_user: userId,
             chapter_no: newTapeChapter,
             remarks: newTapeRemarks
         };
@@ -489,14 +500,14 @@ export default function DiveVideoRecorder({
             return null;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const userId = await getUserId();
 
         const payload: any = {
             tape_no: tapeNo,
             tape_type: `${recordingType} - ${recordingMode}`,
             status: 'ACTIVE',
             workunit: '000',
-            cr_user: user?.id || 'system'
+            cr_user: userId
         };
 
         // Handle Dive vs ROV Job ID
@@ -544,7 +555,7 @@ export default function DiveVideoRecorder({
         const currentCounter = overrideCounter !== undefined ? overrideCounter : counter;
 
         // Save to DB first to get the real ID
-        const { data: { user } } = await supabase.auth.getUser();
+        const userId = await getUserId();
         const { data, error } = await supabase.from('insp_video_logs').insert({
             tape_id: currentTapeId,
             event_type: eventType,
@@ -552,7 +563,7 @@ export default function DiveVideoRecorder({
             timecode_start: currentTCode,
             tape_counter_start: currentCounter,
             remarks: remarks || chapterDetails,
-            cr_user: user?.id || 'system',
+            cr_user: userId,
             workunit: '000'
         }).select().single();
 

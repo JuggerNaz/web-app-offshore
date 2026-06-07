@@ -67,6 +67,21 @@ The module utilizes a centralized JSON specification (`utils/types/inspection-ty
 4. **Validation**: Checks for required fields and proper unit selection.
 5. **Auto-Update**: Saving a record triggers `u_sow_items` status updates via database triggers.
 
+### 6.3 Video Logging & Diver/ROV Movement Rules (v2 Cockpit)
+1. **Leaving Worksite Rules**:
+   - When a Diver or ROV Log action transitions to "leaving the worksite" (e.g. `Diver Left Worksite`, `Left Bottom`, `Rov Leaving the Worksite`), if the video log is actively recording (`vidState === "RECORDING"`), the user is prompted with an alert to Stop, Pause, or Continue the recording.
+   - **Stop**: Stops the video log action, inserts an `END` (STOP) event log in `insp_video_logs`, and terminates the live stream recorder.
+   - **Pause**: Pauses the video log action, inserts a `PAUSE` event log in `insp_video_logs`, and pauses the stream recorder.
+   - **Continue**: Recording continues unaffected without logging any new video event.
+2. **Auto Stop on Recovery**:
+   - When the Diver/ROV action indicates they have returned to the surface or recovered (e.g., `Arrived Surface`, `Bell on Surface`, `Rov Recovered`, `System on Deck`), if the video is still running or recording, the system automatically triggers a `Stop Tape` action (inserting an `END` event log in `insp_video_logs` and stopping the stream recorder). The current Tape Number is explicitly preserved and NOT blanked.
+3. **Tape & Chapter Number Handlers (Carry-Over & Auto-Chaptering)**:
+   - When a new Diver/ROV job (dive) is created, the system carries over the most recent tape number from the database instead of removing it or defaulting to a hardcoded placeholder.
+   - The chapter number automatically increments based on the maximum chapter recorded for that tape number across any job. The user can manually edit it if they want to maintain the previous chapter number.
+4. **Captured Event List Sorting and Limits**:
+   - The Captured Event list is sorted chronologically descending by **Inspection Date and Time** by default (newest events in the front).
+   - By default, 25 records are loaded dynamically without any filtering by Dive No, ROV No, or Tape No. The user can choose to display 50 or 100 records using the limit select in the panel header, or perform custom filtering using the Smart Filter search box.
+
 ## 7. Reference Documentation
 For deep dives into specific subsystems, refer to:
 - [SOW System Details](../docs/SOW_SYSTEM.md)

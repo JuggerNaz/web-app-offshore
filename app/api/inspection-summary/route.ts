@@ -58,11 +58,9 @@ export async function GET(request: NextRequest) {
                 .select(`
                     status, 
                     component_id, 
+                    component_qid,
                     component_type, 
-                    report_number, 
-                    structure_components:component_id(
-                        id, q_id, code, metadata
-                    )
+                    report_number
                 `)
                 .eq("sow_id", Number(resolvedSowId));
             
@@ -475,7 +473,7 @@ export async function GET(request: NextRequest) {
 
         // Scope (Total) is based on ALL items in the SOW (the whole platform's scope)
         allSowItems.forEach((item: any) => {
-            const comp = item.structure_components || item.component || {};
+            const comp = { q_id: item.component_qid, code: item.component_type };
             const qid = (comp?.q_id || "").toUpperCase();
             if (!qid && !item.component_id) return;
 
@@ -653,6 +651,28 @@ export async function GET(request: NextRequest) {
                 mgi: { total: mgiRecords.length, max: mgiMax, avg: mgiAvg },
                 scour: { total: scourRecords.length, exposed: scourExposedCount, minBurial: scourMinBurial },
                 attachmentGroups: attachmentGroupBreakdown,
+                
+                // Detailed Item Lists for Tables
+                cp_items: rawRecords.filter(r => {
+                    const d = r.inspection_data || {};
+                    return (d.cp_rdg !== undefined || d.cp_reading_mv !== undefined);
+                }).map(r => ({
+                    component: r.structure_components?.code || r.component_type || "N/A",
+                    reading: r.inspection_data?.cp_rdg || r.inspection_data?.cp_reading_mv || "N/A",
+                    status: r.status || "COMPLETED"
+                })),
+
+                fmd_items: fmdRecords.map(r => ({
+                    component: r.structure_components?.code || r.component_type || "N/A",
+                    status: r.inspection_data?.member_status || "N/A",
+                    mode: r.rov_job_id ? "ROV" : "DIVE"
+                })),
+
+                mgi_items: mgiRecords.map(r => ({
+                    component: r.structure_components?.code || r.component_type || "N/A",
+                    thickness: r.inspection_data?.avg_thickness || r.inspection_data?.thickness || "0",
+                    date: r.inspection_data?.date || new Date().toLocaleDateString("en-GB")
+                })),
             },
         });
     } catch (error: any) {

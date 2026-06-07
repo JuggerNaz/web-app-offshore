@@ -7,11 +7,20 @@
             "unitCategory": "VOLTAGE",
             "required": false
         },
-        "marine_growth": {
-            "name": "marine_growth",
-            "label": "Marine Growth",
+        "marine_growth_soft": {
+            "name": "marine_growth_soft",
+            "label": "Soft Marine Growth",
             "type": "combo",
-            "lib_code": "MGI",
+            "lib_code": "MGI_SOFT",
+            "group": "marine_growth",
+            "required": false
+        },
+        "marine_growth_hard": {
+            "name": "marine_growth_hard",
+            "label": "Hard Marine Growth",
+            "type": "combo",
+            "lib_code": "MGI_HARD",
+            "group": "marine_growth",
             "required": false
         },
         "debris": {
@@ -241,7 +250,10 @@
             ],
             "fields": [
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -296,6 +308,190 @@
                     "required": true,
                     "defaultMetric": "mm",
                     "defaultImperial": "in"
+                }
+            ]
+        },
+        {
+            "code": "PL_CO",
+            "name": "Coating Damage Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "surface_condition",
+                    "label": "Surface Condition",
+                    "type": "combo",
+                    "lib_code": "SURF_CND",
+                    "required": true
+                },
+                {
+                    "name": "width",
+                    "label": "Width",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "name": "length",
+                    "label": "Length",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "name": "assessment",
+                    "label": "Assessment",
+                    "type": "combo",
+                    "lib_code": "COAT_CND",
+                    "required": true
+                },
+                {
+                    "$ref": "cp_rdg_additional"
+                }
+            ]
+        },
+        {
+            "code": "ACFMC",
+            "name": "ACFM Survey",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "acfmc_page",
+                    "label": "ACFM Page",
+                    "type": "number",
+                    "unitCategory": "NONE",
+                    "required": true
+                },
+                {
+                    "name": "probe_fl",
+                    "label": "Probe",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "chord_weld_brace",
+                    "label": "Chord / Weld / Brace",
+                    "type": "select",
+                    "options": [
+                        "Chord",
+                        "Weld",
+                        "Brace",
+                        "N/A"
+                    ],
+                    "required": true
+                },
+                {
+                    "name": "direction_travl",
+                    "label": "Direction of Travel",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "probe_flow",
+                    "label": "Probe Flow",
+                    "type": "number",
+                    "unitCategory": "NONE",
+                    "required": true
+                },
+                {
+                    "name": "clk_pos",
+                    "label": "Clock Position",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "orientation",
+                    "label": "Orientation",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "report",
+                    "label": "Report",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_3clk",
+                    "label": "Brace Thick @ 3 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_9clk",
+                    "label": "Brace Thick @ 9 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_12clk",
+                    "label": "Brace Thick @ 12 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "brace_thick_6clk",
+                    "label": "Brace Thick @ 6 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_3clk",
+                    "label": "Chord Thick @ 3 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_9clk",
+                    "label": "Chord Thick @ 9 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_12clk",
+                    "label": "Chord Thick @ 12 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_thick_6clk",
+                    "label": "Chord Thick @ 6 Clocks",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
                 }
             ]
         },
@@ -614,188 +810,213 @@
             "fields": [
                 {
                     "name": "no_bolts_pres_memb",
-                    "label": "No of Bolts Present at Member",
+                    "label": "Bolts Present",
                     "type": "number",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "no_bolts_loose_memb",
-                    "label": "No of Bolts Loose at Member",
+                    "label": "Bolts Loose",
                     "type": "number",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "no_bolts_miss_memb",
-                    "label": "No of Bolts Missing at Member",
+                    "label": "Bolts Missing",
                     "type": "number",
-                    "required": true
-                },
-                {
-                    "name": "no_bolts_pres_brace",
-                    "label": "No of Bolts Present at Brace",
-                    "type": "number",
-                    "required": true
-                },
-                {
-                    "name": "no_bolts_loose_brace",
-                    "label": "No of Bolts Loose at Brace",
-                    "type": "number",
-                    "required": true
-                },
-                {
-                    "name": "no_bolts_miss_brace",
-                    "label": "No of Bolts Missing at Brace",
-                    "type": "number",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "max_gap_top_member",
-                    "label": "Max Gap Top Member",
+                    "label": "Max Gap Top",
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultMetric": "mm",
                     "defaultImperial": "in",
-                    "required": true
-                },
-                {
-                    "name": "max_gap_top_brace",
-                    "label": "Max Gap Top Brace",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
-                    "defaultMetric": "mm",
-                    "defaultImperial": "in",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "max_gap_bottom_member",
-                    "label": "Max Gap Bottom Member",
+                    "label": "Max Gap Bottom",
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultMetric": "mm",
                     "defaultImperial": "in",
-                    "required": true
-                },
-                {
-                    "name": "max_gap_bottom_brace",
-                    "label": "Max Gap Bottom Brace",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
-                    "defaultMetric": "mm",
-                    "defaultImperial": "in",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "max_flange_misalign_member",
-                    "label": "Max Flange Misalign - Member",
+                    "label": "Max Flange Misalign",
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultMetric": "mm",
                     "defaultImperial": "in",
-                    "required": true
-                },
-                {
-                    "name": "max_flange_misalign_brace",
-                    "label": "Max Flange Misalign - Brace",
-                    "type": "number",
-                    "unitCategory": "LENGTH",
-                    "defaultMetric": "mm",
-                    "defaultImperial": "in",
-                    "required": true
-                },
-                {
-                    "name": "appurtenance_clamp_type",
-                    "label": "Appurtenance Clamp Type",
-                    "type": "text",
-                    "required": true
-                },
-                {
-                    "name": "appurtenance_cp",
-                    "label": "Appurtenance CP Reading",
-                    "type": "number",
-                    "unitCategory": "VOLTAGE",
-                    "defaultMetric": "mV",
-                    "defaultImperial": "mV",
-                    "required": true
-                },
-                {
-                    "name": "appurtenance_clamp_cp",
-                    "label": "Appurtenance CP Reading",
-                    "type": "number",
-                    "unitCategory": "VOLTAGE",
-                    "defaultMetric": "mV",
-                    "defaultImperial": "mV",
-                    "required": true
-                },
-                {
-                    "name": "stub_cp",
-                    "label": "Appurtenance CP Reading",
-                    "type": "number",
-                    "unitCategory": "VOLTAGE",
-                    "defaultMetric": "mV",
-                    "defaultImperial": "mV",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "member_clamp_cp",
-                    "label": "Member Clamp CP Reading",
+                    "label": "Clamp CP",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
                     "defaultMetric": "mV",
                     "defaultImperial": "mV",
+                    "group": "Member",
                     "required": true
                 },
                 {
                     "name": "member_cp",
-                    "label": "Member CP Reading",
+                    "label": "CP 1",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
                     "defaultMetric": "mV",
                     "defaultImperial": "mV",
+                    "group": "Member",
                     "required": true
                 },
                 {
-                    "name": "member_cp",
-                    "label": "Member CP Reading",
+                    "name": "member_cp_2",
+                    "label": "CP 2",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
                     "defaultMetric": "mV",
                     "defaultImperial": "mV",
+                    "group": "Member",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_pres_brace",
+                    "label": "Bolts Present",
+                    "type": "number",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_loose_brace",
+                    "label": "Bolts Loose",
+                    "type": "number",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "no_bolts_miss_brace",
+                    "label": "Bolts Missing",
+                    "type": "number",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "max_gap_top_brace",
+                    "label": "Max Gap Top",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "max_gap_bottom_brace",
+                    "label": "Max Gap Bottom",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "max_flange_misalign_brace",
+                    "label": "Max Flange Misalign",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "group": "Brace",
+                    "required": true
+                },
+                {
+                    "name": "appurtenance_clamp_type",
+                    "label": "Clamp Type",
+                    "type": "text",
+                    "group": "Appurtenance",
+                    "required": true
+                },
+                {
+                    "name": "appurtenance_cp",
+                    "label": "Appurtenance CP",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "group": "Appurtenance",
+                    "required": true
+                },
+                {
+                    "name": "appurtenance_clamp_cp",
+                    "label": "Clamp CP",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "group": "Appurtenance",
+                    "required": true
+                },
+                {
+                    "name": "stub_cp",
+                    "label": "Stub CP",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "group": "Appurtenance",
                     "required": true
                 },
                 {
                     "name": "clamp_coating_satisfactory",
-                    "label": "Clamp Coating Satisfactory",
+                    "label": "Coating Satisfactory",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "all_bolts_double_nutted",
-                    "label": "All Bolts Double Nutted",
+                    "label": "Double Nutted",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "liner_present_member_end",
-                    "label": "Liner Present @ Member End",
+                    "label": "Liner @ Member",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "earthing_wire_or_bolt_present",
-                    "label": "Earthing Wire or Bolt Present",
+                    "label": "Earthing Wire/Bolt",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "liner_present_component_end",
-                    "label": "Liner Present @ Component End",
+                    "label": "Liner @ Component",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 },
                 {
                     "name": "washers_present_all_bolts",
-                    "label": "Washers Present @ All Bolts",
+                    "label": "Washers Present",
                     "type": "boolean",
+                    "group": "General",
                     "required": true
                 }
             ]
@@ -883,8 +1104,17 @@
                     "required": true
                 },
                 {
-                    "name": "nominal_thickness",
-                    "label": "Nominal Thickness",
+                    "name": "brace_nominal_thickness",
+                    "label": "Brace Nominal Thickness",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in",
+                    "required": true
+                },
+                {
+                    "name": "chord_nominal_thickness",
+                    "label": "Chord Nominal Thickness",
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "defaultMetric": "mm",
@@ -1123,7 +1353,10 @@
                     "$ref": "cp_rdg"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "name": "wall_thickness",
@@ -1192,6 +1425,20 @@
                     "$ref": "mgi_soft_thickness_at_9"
                 },
                 {
+                    "name": "mgi_hard_growth",
+                    "label": "MGI Hard Growth",
+                    "type": "number",
+                    "unitCategory": "PERCENTAGE",
+                    "required": true
+                },
+                {
+                    "name": "mgi_soft_growth",
+                    "label": "MGI Soft Growth",
+                    "type": "number",
+                    "unitCategory": "PERCENTAGE",
+                    "required": true
+                },
+                {
                     "name": "circumferential_measurement_5m_above",
                     "label": "Circumferential Measurement 5m above",
                     "type": "number",
@@ -1228,15 +1475,22 @@
                     "defaultImperial": "in"
                 },
                 {
-                    "name": "hard_mgi",
+                    "name": "hard_circum",
                     "label": "Hard MGI",
                     "type": "boolean",
                     "required": true
                 },
                 {
-                    "name": "soft_mgi",
+                    "name": "soft_circum",
                     "label": "Soft MGI",
                     "type": "boolean",
+                    "required": true
+                },
+                {
+                    "name": "growth_circum",
+                    "label": "Growth Circum %",
+                    "type": "number",
+                    "unitCategory": "PERCENTAGE",
                     "required": true
                 },
                 {
@@ -1255,7 +1509,10 @@
                     "defaultImperial": "in"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "mgi_profile"
@@ -1338,7 +1595,7 @@
             ]
         },
         {
-            "code": "FLOODZONE",
+            "code": "FLOOD",
             "name": "Flooded Member Inspection",
             "methods": [
                 "DIVING"
@@ -1747,7 +2004,10 @@
                     "$ref": "cp_rdg"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "debris"
@@ -1793,7 +2053,10 @@
                             "lib_code": "ADA"
                         },
                         {
-                            "$ref": "marine_growth"
+                            "$ref": "marine_growth_soft"
+                        },
+                        {
+                            "$ref": "marine_growth_hard"
                         },
                         {
                             "$ref": "debris",
@@ -1847,7 +2110,10 @@
                     "$ref": "mgi_soft_thickness_at_9"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 }
             ]
         },
@@ -1941,7 +2207,10 @@
                     "$ref": "debris_material"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -2009,7 +2278,10 @@
                             "$ref": "debris_material"
                         },
                         {
-                            "$ref": "marine_growth"
+                            "$ref": "marine_growth_soft"
+                        },
+                        {
+                            "$ref": "marine_growth_hard"
                         },
                         {
                             "name": "missing_bolts_nuts",
@@ -2043,7 +2315,7 @@
                             "name": "clamp_type",
                             "label": "Clamp Type",
                             "type": "combo",
-                            "lib_code": "CLT_TYP",
+                            "lib_code": "CLAM_TYP",
                             "required": false
                         },
                         {
@@ -2067,7 +2339,10 @@
                     "$ref": "easting"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -2145,8 +2420,60 @@
                     }
                 },
                 {
-                    "name": "size_dimensions",
-                    "label": "Size / Dimensions",
+                    "name": "size_length",
+                    "label": "Size Length",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "item_details",
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
+                },
+                {
+                    "name": "size_width",
+                    "label": "Size Width",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "item_details",
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
+                },
+                {
+                    "name": "size_height",
+                    "label": "Size Height",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "item_details",
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
+                },
+                {
+                    "name": "size_diameter",
+                    "label": "Size Diameter",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "group": "item_details",
+                    "condition": {
+                        "field": "category",
+                        "value": "Debris"
+                    },
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft"
+                },
+                {
+                    "name": "debris_desc",
+                    "label": "Debris Description",
                     "type": "text",
                     "group": "item_details",
                     "condition": {
@@ -2243,13 +2570,46 @@
                     "$ref": "easting"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
+                },
+                {
+                    "$ref": "component_condition"
+                },
+                {
+                    "$ref": "coating_condition"
                 },
                 {
                     "$ref": "cp_rdg"
                 },
                 {
                     "$ref": "cp_rdg_additional"
+                }
+            ]
+        },
+        {
+            "code": "RWDI",
+            "name": "ROV Water Depth Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "northing"
+                },
+                {
+                    "$ref": "easting"
+                },
+                {
+                    "name": "water_depth",
+                    "label": "Water Depth",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": true
                 }
             ]
         },
@@ -2276,7 +2636,10 @@
                     "$ref": "debris_material"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -2310,7 +2673,10 @@
                             "$ref": "debris_material"
                         },
                         {
-                            "$ref": "marine_growth"
+                            "$ref": "marine_growth_soft"
+                        },
+                        {
+                            "$ref": "marine_growth_hard"
                         },
                         {
                             "$ref": "component_condition"
@@ -2322,7 +2688,7 @@
                             "name": "clamp_type",
                             "label": "Clamp Type",
                             "type": "combo",
-                            "lib_code": "CLT_TYP",
+                            "lib_code": "CLAM_TYP",
                             "required": false
                         },
                         {
@@ -2355,7 +2721,10 @@
                     "$ref": "debris_material"
                 },
                 {
-                    "$ref": "marine_growth"
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "component_condition"
@@ -2389,7 +2758,10 @@
                             "$ref": "debris_material"
                         },
                         {
-                            "$ref": "marine_growth"
+                            "$ref": "marine_growth_soft"
+                        },
+                        {
+                            "$ref": "marine_growth_hard"
                         },
                         {
                             "$ref": "component_condition"
@@ -2401,7 +2773,7 @@
                             "name": "clamp_type",
                             "label": "Clamp Type",
                             "type": "combo",
-                            "lib_code": "CLT_TYP",
+                            "lib_code": "CLAM_TYP",
                             "required": false
                         },
                         {
@@ -2426,7 +2798,8 @@
                         "Flooded",
                         "Dry",
                         "Grouted",
-                        "Inconclusive"
+                        "Inconclusive",
+                        "Unable to Take Reading"
                     ],
                     "default": "Dry",
                     "required": true

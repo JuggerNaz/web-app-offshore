@@ -177,7 +177,7 @@ export default function DataAcquisitionPage() {
         return () => {
             if (isConnected) {
                 console.log("[Data Acquisition] Component unmounting, auto-disconnecting...");
-                globalDisconnect();
+                globalDisconnect(true);
             }
         };
     }, [isConnected, globalDisconnect]);
@@ -566,7 +566,7 @@ export default function DataAcquisitionPage() {
     };
 
     const handleDisconnect = async () => {
-        await globalDisconnect();
+        await globalDisconnect(true);
     };
 
     const applyModification = (value: string, field: FieldMapping): string => {

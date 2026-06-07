@@ -215,9 +215,9 @@ BEGIN
     v_format := regexp_replace(v_format, '\d{2}', '{##}', 'g');
     v_format := regexp_replace(v_format, '\d{1}', '{#}', 'g');
     
-    -- Extract sequence number (last numeric segment)
+    -- Extract sequence number safely (captures the last contiguous sequence of digits, supporting both prefixes and trailing non-digit suffixes)
     v_sequence_number := COALESCE(
-        CAST(regexp_replace(p_sample_value, '.*?(\d+)$', '\1') AS INTEGER),
+        CAST(substring(p_sample_value from '(\\d+)\\D*$') AS INTEGER),
         0
     );
     

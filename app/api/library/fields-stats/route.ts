@@ -9,6 +9,7 @@ export async function GET() {
         .from("u_lib_list")
         .select("*")
         .eq("lib_code", "OILFIELD")
+        .or("lib_delete.is.null,lib_delete.neq.1")
         .order("lib_id");
 
     if (fieldsError) {

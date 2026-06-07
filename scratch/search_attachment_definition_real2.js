@@ -1,0 +1,13 @@
+const fs = require('fs');
+const path = require('path');
+
+const filePath = path.join(__dirname, '..', 'supabase', 'migrations', '20260211_inspection_module_schema.sql');
+const content = fs.readFileSync(filePath, 'utf-8');
+const lines = content.split('\n');
+
+console.log("Searching attachment in uncorrected schema...");
+lines.forEach((line, idx) => {
+  if (line.toLowerCase().includes('attachment')) {
+    console.log(`  ${idx + 1}: ${line.trim()}`);
+  }
+});

@@ -80,10 +80,129 @@ export function FindingsSuggestionEngine({
   currentFinding
 }: FindingsSuggestionEngineProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<{ text: string; count: number }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tab, setTab] = useState<"history" | "standard">("history");
+  const [showAll, setShowAll] = useState(false);
+
+  // Helper to determine recommended categories based on inspectionTypeCode and componentType
+  const recommendedCategories = React.useMemo(() => {
+    const code = (inspectionTypeCode || "").toUpperCase().trim();
+    const comp = (componentType || "").toUpperCase().trim();
+    const recommended = new Set<string>(["GENERAL"]);
+
+    // Marine Growth
+    if (
+      code.includes("MGI") || 
+      code.includes("CLEAN") || 
+      code.includes("GROWTH") ||
+      comp.includes("MB") || 
+      comp.includes("CS") || 
+      comp.includes("CD") || 
+      comp.includes("LEG") || 
+      comp.includes("RIS") || 
+      comp.includes("AN") || 
+      comp.includes("WLD") ||
+      comp.includes("MEMBER") ||
+      comp.includes("CAISSON") ||
+      comp.includes("CONDUCTOR") ||
+      comp.includes("RISER")
+    ) {
+      recommended.add("MARINE_GROWTH");
+    }
+
+    // Coating
+    if (
+      code.includes("COAT") || 
+      code === "PL_CO" ||
+      comp.includes("MB") || 
+      comp.includes("CS") || 
+      comp.includes("CD") || 
+      comp.includes("LEG") || 
+      comp.includes("RIS") || 
+      comp.includes("CL") ||
+      comp.includes("MEMBER") ||
+      comp.includes("CAISSON") ||
+      comp.includes("CONDUCTOR") ||
+      comp.includes("RISER") ||
+      comp.includes("CLAMP")
+    ) {
+      recommended.add("COATING");
+    }
+
+    // Corrosion
+    if (
+      code.includes("CORR") || 
+      code.includes("UT") || 
+      code === "ACFMC" || 
+      code === "PL_CO" ||
+      comp.includes("MB") || 
+      comp.includes("CS") || 
+      comp.includes("CD") || 
+      comp.includes("LEG") || 
+      comp.includes("RIS") || 
+      comp.includes("CL") ||
+      comp.includes("WLD") ||
+      comp.includes("AN") ||
+      comp.includes("MEMBER") ||
+      comp.includes("CAISSON") ||
+      comp.includes("CONDUCTOR") ||
+      comp.includes("RISER") ||
+      comp.includes("CLAMP") ||
+      comp.includes("WELD") ||
+      comp.includes("ANODE")
+    ) {
+      recommended.add("CORROSION");
+    }
+
+    // Anode
+    if (
+      code.includes("ANODE") || 
+      code.includes("CP") || 
+      comp.includes("AN") || 
+      comp.includes("ANODE")
+    ) {
+      recommended.add("ANODE");
+    }
+
+    // Weld
+    if (
+      code.includes("WELD") || 
+      code === "ACFMC" || 
+      code.includes("NDT") || 
+      code.includes("MPI") ||
+      comp.includes("WLD") || 
+      comp.includes("WELD") || 
+      comp.includes("NODE")
+    ) {
+      recommended.add("WELD");
+    }
+
+    // Debris & Seabed Survey
+    if (
+      code.includes("SEABED") || 
+      code.includes("SBD") || 
+      code === "RSEAB" || 
+      code === "RWDI" ||
+      comp.includes("SD") || 
+      comp.includes("SEABED") || 
+      comp.includes("SBD")
+    ) {
+      recommended.add("DEBRIS");
+      recommended.add("SEABED_SURVEY");
+    }
+
+    // Fallbacks
+    if (code === "GVINS" || code === "CVINS") {
+      recommended.add("MARINE_GROWTH");
+      recommended.add("COATING");
+      recommended.add("CORROSION");
+      recommended.add("DEBRIS");
+    }
+
+    return Array.from(recommended);
+  }, [inspectionTypeCode, componentType]);
 
   useEffect(() => {
     if (isOpen && tab === "history" && history.length === 0) {
@@ -95,23 +214,46 @@ export function FindingsSuggestionEngine({
     if (!supabase) return;
     setIsLoading(true);
     try {
-      // Query unique findings for similar components and inspection types
-      const { data, error } = await supabase
+      // Query database findings matching both inspection_type_code AND component_type
+      let query = supabase
         .from("insp_records")
-        .select("inspection_data")
-        .eq("inspection_type_code", inspectionTypeCode)
-        .not("inspection_data->findings", "is", null)
-        .limit(50);
+        .select("description, finding, inspection_data")
+        .eq("inspection_type_code", inspectionTypeCode);
 
+      if (componentType) {
+        query = query.eq("component_type", componentType.toUpperCase().trim());
+      }
+
+      const { data, error } = await query.limit(200);
       if (error) throw error;
 
-      if (data) {
-        const uniqueFindings = Array.from(new Set(
-          data.map((r: any) => r.inspection_data?.findings || r.inspection_data?.observation)
-            .filter(Boolean)
-            .filter((f: string) => f.length > 5)
-        )) as string[];
-        setHistory(uniqueFindings);
+      let finalData = data;
+      // If we searched with componentType filter and got no results, try fallback without componentType to be helpful
+      if (componentType && (!data || data.length === 0)) {
+        const fallbackRes = await supabase
+          .from("insp_records")
+          .select("description, finding, inspection_data")
+          .eq("inspection_type_code", inspectionTypeCode)
+          .limit(200);
+        if (fallbackRes.data) {
+          finalData = fallbackRes.data;
+        }
+      }
+
+      if (finalData) {
+        const counts: Record<string, number> = {};
+        finalData.forEach((r: any) => {
+          const text = (r.description || r.finding || r.inspection_data?.findings || r.inspection_data?.observation || "").trim();
+          if (text && text.length > 5) {
+            counts[text] = (counts[text] || 0) + 1;
+          }
+        });
+
+        const sortedItems = Object.entries(counts)
+          .map(([text, count]) => ({ text, count }))
+          .sort((a, b) => b.count - a.count);
+
+        setHistory(sortedItems);
       }
     } catch (err) {
       console.error("Error fetching finding history:", err);
@@ -120,15 +262,15 @@ export function FindingsSuggestionEngine({
     }
   };
 
-  const filteredStandard = React.useMemo(() => {
-    const all = Object.values(STANDARD_FINDINGS).flat();
-    if (!searchQuery) return all;
-    return all.filter(f => f.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [searchQuery]);
+  const displayStandardCategories = React.useMemo(() => {
+    const entries = Object.entries(STANDARD_FINDINGS);
+    if (showAll) return entries;
+    return entries.filter(([category]) => recommendedCategories.includes(category));
+  }, [recommendedCategories, showAll]);
 
   const filteredHistory = React.useMemo(() => {
     if (!searchQuery) return history;
-    return history.filter(f => f.toLowerCase().includes(searchQuery.toLowerCase()));
+    return history.filter(item => item.text.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [history, searchQuery]);
 
   return (
@@ -195,6 +337,23 @@ export function FindingsSuggestionEngine({
             </button>
           </div>
 
+          {/* Recommended vs All Toggle Switch */}
+          {tab === "standard" && (
+            <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                {showAll ? "All Suggestions" : "AI Recommended Only"}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAll(!showAll)}
+                className="h-5 px-2 text-[8px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-950"
+              >
+                {showAll ? "AI Recommended" : "Show All"}
+              </Button>
+            </div>
+          )}
+
           {/* Content */}
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1.5">
@@ -209,13 +368,18 @@ export function FindingsSuggestionEngine({
                     <button
                       key={idx}
                       onClick={() => {
-                        onSelect(item);
+                        onSelect(item.text);
                         setIsOpen(false);
                       }}
-                      className="w-full text-left p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group relative"
+                      className="w-full text-left p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group relative flex flex-col gap-1"
                     >
                       <div className="text-[11px] font-medium text-slate-700 dark:text-slate-300 leading-relaxed pr-6">
-                        {item}
+                        {item.text}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[8px] font-bold text-blue-500/70 dark:text-blue-400/70 uppercase tracking-wider bg-blue-50/50 dark:bg-blue-950/50 px-1 py-0.5 rounded">
+                          Used {item.count} {item.count === 1 ? "time" : "times"}
+                        </span>
                       </div>
                       <Copy className="absolute top-2.5 right-2.5 w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </button>
@@ -228,7 +392,7 @@ export function FindingsSuggestionEngine({
                 )
               ) : (
                 <div className="space-y-4 pt-1">
-                  {Object.entries(STANDARD_FINDINGS)
+                  {displayStandardCategories
                     .sort(([catA], [catB]) => {
                       if (inspectionTypeCode === 'RSEAB') {
                         if (catA === 'SEABED_SURVEY') return -1;
@@ -236,38 +400,50 @@ export function FindingsSuggestionEngine({
                         if (catA === 'DEBRIS') return -1;
                         if (catB === 'DEBRIS') return 1;
                       }
+                      // Sort recommended categories first if showAll is true
+                      if (showAll) {
+                        const recA = recommendedCategories.includes(catA);
+                        const recB = recommendedCategories.includes(catB);
+                        if (recA && !recB) return -1;
+                        if (!recA && recB) return 1;
+                      }
                       return 0;
                     })
                     .map(([category, items]) => {
-                    const filteredItems = searchQuery 
-                      ? items.filter(f => f.toLowerCase().includes(searchQuery.toLowerCase()))
-                      : items;
-                    
-                    if (filteredItems.length === 0) return null;
+                      const filteredItems = searchQuery 
+                        ? items.filter(f => f.toLowerCase().includes(searchQuery.toLowerCase()))
+                        : items;
+                      
+                      if (filteredItems.length === 0) return null;
 
-                    return (
-                      <div key={category} className="space-y-1.5">
-                        <div className="px-2 py-0.5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10">
-                          {category.replace("_", " ")}
+                      return (
+                        <div key={category} className="space-y-1.5">
+                          <div className="px-2 py-1 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10 flex items-center justify-between">
+                            <span>{category.replace("_", " ")}</span>
+                            {recommendedCategories.includes(category) && (
+                              <Badge variant="outline" className="text-[7px] py-0 px-1 font-bold text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/30 uppercase tracking-tighter bg-blue-50/30">
+                                Recommended
+                              </Badge>
+                            )}
+                          </div>
+                          {filteredItems.map((item, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                onSelect(item);
+                                setIsOpen(false);
+                              }}
+                              className="w-full text-left p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group relative"
+                            >
+                              <div className="text-[11px] font-medium text-slate-700 dark:text-slate-300 leading-relaxed pr-6">
+                                {item}
+                              </div>
+                              <Copy className="absolute top-2.5 right-2.5 w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </button>
+                          ))}
                         </div>
-                        {filteredItems.map((item, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              onSelect(item);
-                              setIsOpen(false);
-                            }}
-                            className="w-full text-left p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group relative"
-                          >
-                            <div className="text-[11px] font-medium text-slate-700 dark:text-slate-300 leading-relaxed pr-6">
-                              {item}
-                            </div>
-                            <Copy className="absolute top-2.5 right-2.5 w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        ))}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               )}
             </div>

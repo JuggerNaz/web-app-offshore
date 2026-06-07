@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 // Trigger recompile
 const nextConfig = {
-  experimental: {},
+  serverExternalPackages: ['oracledb'],
   turbopack: {
     root: __dirname,
   },

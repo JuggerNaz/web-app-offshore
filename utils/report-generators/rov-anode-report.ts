@@ -150,7 +150,15 @@ export const generateROVAnodeReport = async (
                 const qid = r.structure_components?.q_id || 'N/A';
                 const elev = r.elevation || '-';
                 const depletion = d.anode_depletion_percent !== undefined ? `${d.anode_depletion_percent}%` : (d.anode_depletion || '-');
-                const cp = d.cp_reading_mv || d.cp_rdg || '-';
+                
+                // Format Primary + Additional CP readings in the CP column
+                const primaryCP = d.cp_reading_mv || d.cp_rdg || '';
+                const additionalCPs = Array.isArray(d.cp_readings) 
+                    ? d.cp_readings.map((cr: any) => cr.reading).filter(Boolean) 
+                    : [];
+                const cpList = [primaryCP, ...additionalCPs].filter(Boolean);
+                const cp = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+                
                 const anodeType = d.anode_type || '-';
                 
                 const isAnomaly = r.has_anomaly === true || r.is_anomaly === true || r.component_condition === 'Anomalous' || (r.description && r.description.toLowerCase().includes('anomaly')) || (r.insp_anomalies && r.insp_anomalies.length > 0);
@@ -174,6 +182,17 @@ export const generateROVAnodeReport = async (
                 }
                 if (isRectified) {
                     findingsLines.push(`Rectified: ${rectifiedComments || 'N/A'}`);
+                }
+                
+                // Add more details of Additional CP readings to Findings column
+                if (Array.isArray(d.cp_readings) && d.cp_readings.length > 0) {
+                    const addCpLines: string[] = ["Additional CP Readings:"];
+                    d.cp_readings.forEach((cr: any) => {
+                        if (cr.reading !== undefined || cr.location) {
+                            addCpLines.push(`• ${cr.location || 'Unknown'}: ${cr.reading ?? '-'} mV`);
+                        }
+                    });
+                    findingsLines.push(addCpLines.join('\n'));
                 }
 
                 const findings = findingsLines.length > 0 ? findingsLines.join('\n') : 'No significant findings';

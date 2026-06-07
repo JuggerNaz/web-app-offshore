@@ -222,9 +222,23 @@ export function SOWDialog({
     // ── CORE LOGIC ──
     const getTaskMode = (it: { code: string; name: string; metadata?: any }) => {
         const code = (it.code || "").toUpperCase();
-        const meta = JSON.stringify(it.metadata || "").toLowerCase();
         const name = (it.name || "").toUpperCase();
-        if (code.includes("ROV") || meta.includes("rov") || name.includes("ROV") || name.includes("SEABED") || name.includes("SURVEY") || name.includes("VIDEO")) return "ROV";
+        const meta = it.metadata || {};
+
+        // Use structured metadata checks (not string matching on JSON.stringify)
+        const isRov = meta.rov === 1 || meta.rov === "1" || meta.rov === true;
+        const isDiving = meta.diving === 1 || meta.diving === "1" || meta.diving === true;
+
+        if (isRov && !isDiving) return "ROV";
+        if (isDiving && !isRov) return "DIVING";
+        if (isRov && isDiving) {
+            // Both flags set — disambiguate by code/name
+            if (code.includes("ROV") || name.includes("ROV")) return "ROV";
+            return "DIVING";
+        }
+
+        // Neither flag set explicitly — fallback to code/name heuristics
+        if (code.includes("ROV") || name.includes("ROV") || name.includes("SEABED")) return "ROV";
         return "DIVING";
     };
 

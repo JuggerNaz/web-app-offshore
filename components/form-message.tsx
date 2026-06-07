@@ -1,6 +1,6 @@
 export type Message = { success: string } | { error: string } | { message: string };
 
-export async function FormMessage({ message }: { message: Promise<Message> }) {
+export async function FormMessage({ message }: { message: Message | Promise<Message> }) {
   const resolvedMessage = await message;
 
   return (
