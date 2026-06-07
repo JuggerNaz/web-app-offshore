@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function GET(request: Request) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = createClient();
         const { searchParams } = new URL(request.url);
@@ -10,10 +11,10 @@ export async function GET(request: Request) {
         const field = searchParams.get("field");
         const search = searchParams.get("search");
 
-        // Get all structures
-        let structureQuery = supabase
+        let structureQuery = (supabase as any)
             .from("structure")
-            .select("*");
+            .select("*")
+            .eq("company_id", companyId);
 
         // Apply type filter
         if (type && type !== "all") {
@@ -31,13 +32,13 @@ export async function GET(request: Request) {
         }
 
         // Get platform and pipeline details
-        const platformIds = structures
-            ?.filter((item) => item.str_type === "PLATFORM")
-            .map((item) => item.str_id) || [];
+        const platformIds = (structures as any[])
+            ?.filter((item: any) => item.str_type === "PLATFORM")
+            .map((item: any) => item.str_id) || [];
 
-        const pipelineIds = structures
-            ?.filter((item) => item.str_type === "PIPELINE")
-            .map((item) => item.str_id) || [];
+        const pipelineIds = (structures as any[])
+            ?.filter((item: any) => item.str_type === "PIPELINE")
+            .map((item: any) => item.str_id) || [];
 
         const { data: platforms } = await supabase
             .from("platform" as any)
@@ -50,8 +51,8 @@ export async function GET(request: Request) {
             .in("pipe_id", pipelineIds) as any;
 
         // Combine data
-        const result = structures
-            ?.map((item) => {
+        const result = (structures as any[])
+            ?.map((item: any) => {
                 if (item.str_type === "PLATFORM") {
                     const platform = platforms?.find((p: any) => p.plat_id === item.str_id);
                     return {
@@ -111,4 +112,4 @@ export async function GET(request: Request) {
             { status: 500 }
         );
     }
-}
+});

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 // Last Updated: 2026-05-11T18:01:00
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 const ATTACHMENT_GROUPS: Record<string, string[]> = {
@@ -11,7 +12,7 @@ const ATTACHMENT_GROUPS: Record<string, string[]> = {
     "Boat Landing": ["BL", "BLTG", "BOAT_LANDING", "BOATLANDING", "BLD"],
 };
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
             const { data: sowRec } = await (supabase as any)
                 .from("u_sow")
                 .select("id")
+                .eq("company_id", companyId)
                 .eq("jobpack_id", jpNum)
                 .eq("structure_id", strNum)
                 .limit(1)
@@ -62,6 +64,7 @@ export async function GET(request: NextRequest) {
                     component_type, 
                     report_number
                 `)
+                .eq("company_id", companyId)
                 .eq("sow_id", Number(resolvedSowId));
             
             itemsErr = err;
@@ -103,7 +106,8 @@ export async function GET(request: NextRequest) {
                 ),
                 inspection_type:inspection_type_id!left(id, code, name),
                 insp_anomalies(anomaly_id, status, defect_type_code, defect_category_code, priority_code, record_category)
-            `);
+            `)
+            .eq("company_id", companyId);
 
         if (!isNaN(jpNum)) recQuery = recQuery.eq("jobpack_id", jpNum);
         if (!isNaN(strNum)) recQuery = recQuery.eq("structure_id", strNum);
@@ -679,4 +683,4 @@ export async function GET(request: NextRequest) {
         console.error("[Summary] Critical error:", error);
         return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
     }
-}
+});

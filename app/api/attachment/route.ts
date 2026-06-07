@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-// Attachment API - Multi-cloud support enabled
 import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
 import { apiPaginated } from "@/utils/api-response";
@@ -10,25 +9,19 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { getStorageHandler } from "@/utils/storage-factory";
+import { withTenant } from "@/utils/tenant-auth";
 
 const execAsync = promisify(exec);
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 minutes for large videos
+export const maxDuration = 300;
 
-/**
- * GET /api/attachment
- * Fetch all attachments with pagination
- * Query params: ?page=1&pageSize=50
- */
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
 
-  // Build query with count for pagination metadata
-  let query = supabase.from("attachment").select("*", { count: "exact" });
+  let query = (supabase as any).from("attachment").select("*", { count: "exact" }).eq("company_id", companyId);
 
-  // Apply pagination
   query = applyPagination(query, paginationParams);
 
   const { data, error, count } = await query;
@@ -37,9 +30,8 @@ export async function GET(request: NextRequest) {
     return handleSupabaseError(error, "Failed to fetch attachments");
   }
 
-  // Enrich data with source details (Structure, Component, Inspection)
   const enrichedData = await Promise.all(
-    (data || []).map(async (attachment) => {
+    (data || []).map(async (attachment: any) => {
       let enrichment: any = {
         source_name: "Unknown",
         structure_name: null,
@@ -52,12 +44,12 @@ export async function GET(request: NextRequest) {
       };
 
       if (attachment.source_id) {
-        // Case 1: Platform (Direct Structure)
         if (attachment.source_type === "platform") {
-          const { data: platform } = await supabase
+          const { data: platform } = await (supabase as any)
             .from("platform")
             .select("title, plat_id")
             .eq("plat_id", attachment.source_id)
+            .eq("company_id", companyId)
             .single();
           if (platform) {
             enrichment.source_name = platform.title;
@@ -66,12 +58,12 @@ export async function GET(request: NextRequest) {
             enrichment.structure_type = "Platform";
           }
         }
-        // Case 2: Pipeline (Direct Structure)
         else if (attachment.source_type === "pipeline") {
-          const { data: pipeline } = await supabase
+          const { data: pipeline } = await (supabase as any)
             .from("u_pipeline")
             .select("title, pipe_id")
             .eq("pipe_id", attachment.source_id)
+            .eq("company_id", companyId)
             .single();
           if (pipeline) {
             enrichment.source_name = pipeline.title;
@@ -80,9 +72,7 @@ export async function GET(request: NextRequest) {
             enrichment.structure_type = "Pipeline";
           }
         }
-        // Case 3: Component (Structure Component)
         else if (attachment.source_type === "component" || attachment.source_type === "structure_component") {
-          // Fetch component from structure_components
           const { data: component } = await supabase
             .from("structure_components")
             .select("q_id, id, structure_id")
@@ -95,12 +85,12 @@ export async function GET(request: NextRequest) {
             enrichment.component_name = compName;
             enrichment.component_id = component.id;
 
-            // Fetch parent platform using structure_id
             if (component.structure_id) {
-              const { data: platform } = await supabase
+              const { data: platform } = await (supabase as any)
                 .from("platform")
                 .select("title, plat_id")
                 .eq("plat_id", component.structure_id)
+                .eq("company_id", companyId)
                 .single();
               if (platform) {
                 enrichment.structure_name = platform.title;
@@ -110,12 +100,12 @@ export async function GET(request: NextRequest) {
             }
           }
         }
-        // Case 4a: Inspection Record
         else if (attachment.source_type?.toLowerCase() === "inspection") {
           const { data: inspRecord } = await (supabase as any)
             .from("insp_records")
             .select("insp_id, jobpack_id, structure_id, component_id")
             .eq("insp_id", attachment.source_id)
+            .eq("company_id", companyId)
             .single();
 
           if (inspRecord) {
@@ -123,11 +113,11 @@ export async function GET(request: NextRequest) {
             let platName = null;
             
             if (inspRecord.jobpack_id) {
-              const { data: jp } = await supabase.from("jobpack").select("name").eq("id", inspRecord.jobpack_id).single();
+              const { data: jp } = await (supabase as any).from("jobpack").select("name").eq("id", inspRecord.jobpack_id).eq("company_id", companyId).single();
               if (jp) jpName = jp.name;
             }
             if (inspRecord.structure_id) {
-              const { data: plat } = await (supabase as any).from("platform").select("title").eq("plat_id", inspRecord.structure_id).single();
+              const { data: plat } = await (supabase as any).from("platform").select("title").eq("plat_id", inspRecord.structure_id).eq("company_id", companyId).single();
               if (plat) {
                 platName = plat.title;
                 enrichment.structure_name = plat.title;
@@ -152,12 +142,12 @@ export async function GET(request: NextRequest) {
             enrichment.inspection_id = inspRecord.insp_id;
           }
         }
-        // Case 4b: Inspection Planning
         else if (attachment.source_type === "inspection_planning") {
-          const { data: inspection } = await supabase
+          const { data: inspection } = await (supabase as any)
             .from("inspection_planning")
             .select("name, id, metadata")
             .eq("id", attachment.source_id)
+            .eq("company_id", companyId)
             .single();
 
           if (inspection) {
@@ -165,10 +155,8 @@ export async function GET(request: NextRequest) {
             enrichment.inspection_name = inspection.name;
             enrichment.inspection_id = inspection.id;
 
-            // Try to extract component/structure info from metadata
             const metadata = inspection.metadata as any;
             if (metadata) {
-              // Priority 1: Component info
               if (metadata.componentId) {
                 const { data: component } = await supabase
                   .from("components")
@@ -181,10 +169,11 @@ export async function GET(request: NextRequest) {
                   enrichment.component_id = component.id;
 
                   if (component.plat) {
-                    const { data: platform } = await supabase
+                    const { data: platform } = await (supabase as any)
                       .from("platform")
                       .select("title, plat_id")
                       .eq("plat_id", component.plat)
+                      .eq("company_id", companyId)
                       .single();
                     if (platform) {
                       enrichment.structure_name = platform.title;
@@ -194,12 +183,12 @@ export async function GET(request: NextRequest) {
                   }
                 }
               }
-              // Priority 2: Structure info if component is missing
               else if (metadata.structureId) {
-                const { data: platform } = await supabase
+                const { data: platform } = await (supabase as any)
                   .from("platform")
                   .select("title, plat_id")
                   .eq("plat_id", metadata.structureId)
+                  .eq("company_id", companyId)
                   .single();
                 if (platform) {
                   enrichment.structure_name = platform.title;
@@ -210,18 +199,17 @@ export async function GET(request: NextRequest) {
             }
           }
         }
-        // Case 5: Jobpack
         else if (attachment.source_type === "jobpack") {
-          const { data: jobpack } = await supabase
+          const { data: jobpack } = await (supabase as any)
             .from("jobpack")
             .select("name, id, metadata")
             .eq("id", attachment.source_id)
+            .eq("company_id", companyId)
             .single();
           if (jobpack) {
             enrichment.source_name = jobpack.name;
             enrichment.structure_type = "Work Pack";
 
-            // Try to extract structures from metadata
             const metadata = jobpack.metadata as any;
             if (metadata?.structures && Array.isArray(metadata.structures) && metadata.structures.length > 0) {
               const firstStr = metadata.structures[0];
@@ -230,7 +218,6 @@ export async function GET(request: NextRequest) {
             }
           }
         }
-        // Case 6: Work Program (workpl)
         else if (attachment.source_type === "workpl" || attachment.source_type === "work_program") {
           const { data: workpl } = await supabase
             .from("workpl")
@@ -247,26 +234,23 @@ export async function GET(request: NextRequest) {
     })
   );
 
-  // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
   return apiPaginated(enrichedData, pagination);
-}
+});
 
-export async function POST(request: Request, context: any) {
+export const POST = withTenant(async (request, { companyId }) => {
   const supabase = createClient();
   
   try {
-    const formData = await request.formData();
+    const formData = await (request as any).formData();
 
-    // Get text fields
     const name = formData.get("name") as string;
     const source_type = formData.get("source_type") as string;
     const source_id_str = formData.get("source_id") as string;
     const title = (formData.get("title") as string) || "";
     const description = (formData.get("description") as string) || "";
 
-    // Get file
     const file = formData.get("file") as File;
 
     console.log(`[POST /api/attachment] Uploading file: ${file?.name}, size: ${file?.size}, type: ${file?.type}`);
@@ -282,7 +266,6 @@ export async function POST(request: Request, context: any) {
       return NextResponse.json({ error: `Invalid source_id: ${source_id_str}` }, { status: 400 });
     }
 
-    // Determine if we need to transcode
     const originalFileExt = file.name.includes(".") ? file.name.split(".").pop() : "bin";
     const incompatibleFormats = ["wmv", "mkv", "avi", "asf", "flv"];
     const needsTranscoding = incompatibleFormats.includes(originalFileExt?.toLowerCase() || "");
@@ -300,20 +283,16 @@ export async function POST(request: Request, context: any) {
         tempInputPath = path.join(tempDir, `input-${Date.now()}.${originalFileExt}`);
         tempOutputPath = path.join(tempDir, `output-${Date.now()}.mp4`);
 
-        // Write input file
         const buffer = Buffer.from(await file.arrayBuffer());
         await fs.writeFile(tempInputPath, buffer);
 
-        // Run FFmpeg
         console.log(`[POST /api/attachment] Running FFmpeg: ${tempInputPath} -> ${tempOutputPath}`);
-        // -preset fast for speed, -crf 23 for decent quality/size balance
         const { stdout, stderr } = await execAsync(`ffmpeg -i "${tempInputPath}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -y "${tempOutputPath}"`);
         
         if (stderr && stderr.includes('Error')) {
             console.warn("[POST /api/attachment] FFmpeg warning/error in stderr:", stderr);
         }
 
-        // Read output file
         fileToUpload = await fs.readFile(tempOutputPath);
         finalFileExt = "mp4";
         finalContentType = "video/mp4";
@@ -323,19 +302,17 @@ export async function POST(request: Request, context: any) {
         if (transcodeErr.stderr) {
             console.error("[POST /api/attachment] FFmpeg Stderr:", transcodeErr.stderr);
         }
-        // Fallback to original file
         fileToUpload = file;
       }
     }
 
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${finalFileExt}`;
     
-    // Get storage settings using admin client to bypass RLS
     const adminClient = createAdminClient();
     const { data: settings, error: settingsError } = await adminClient
       .from("company_settings" as any)
       .select("storage_provider, storage_config")
-      .eq("id", 1)
+      .eq("company_id", companyId)
       .single() as any;
 
     if (settingsError || !settings) {
@@ -356,13 +333,14 @@ export async function POST(request: Request, context: any) {
     console.log(`[POST /api/attachment] Generated Path: ${storageFilePath}`);
     console.log(`[POST /api/attachment] Generated Public URL: ${publicUrl}`);
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("attachment")
       .insert([
         {
           name: name,
           source_type: source_type,
           source_id: source_id,
+          company_id: companyId,
           meta: {
             title: title || name,
             description: description,
@@ -372,8 +350,8 @@ export async function POST(request: Request, context: any) {
             file_path: storageFilePath,
             file_size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
             file_type: finalContentType,
-            mime: finalContentType, // Duplicated for compatibility
-            size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length, // Duplicated for compatibility
+            mime: finalContentType,
+            size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
             type: finalContentType.startsWith('video/') ? 'VIDEO' : (finalContentType.startsWith('image/') ? 'PHOTO' : 'DOCUMENT'),
             storage_provider: settings?.storage_provider || 'Supabase'
           },
@@ -389,7 +367,6 @@ export async function POST(request: Request, context: any) {
 
     console.log(`[POST /api/attachment] Successfully uploaded and recorded: ${data?.[0]?.id}`);
 
-    // Cleanup temp files
     if (tempInputPath) fs.unlink(tempInputPath).catch(() => {});
     if (tempOutputPath) fs.unlink(tempOutputPath).catch(() => {});
 
@@ -398,14 +375,9 @@ export async function POST(request: Request, context: any) {
     console.error("[POST /api/attachment] Exception:", err);
     return NextResponse.json({ error: `Server error during upload: ${err.message || 'Unknown error'}` }, { status: 500 });
   }
-}
+});
 
-/**
- * DELETE /api/attachment
- * Delete an attachment by ID (and its file from storage)
- * Query params: ?id=123
- */
-export async function DELETE(request: NextRequest) {
+export const DELETE = withTenant(async (request, { companyId }) => {
   const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabase = useAdmin ? createAdminClient() : createClient();
   const { searchParams } = new URL(request.url);
@@ -424,11 +396,11 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`[DELETE] Attempting to delete attachment ID: ${attachmentId}`);
 
-    // 1. Fetch attachment to get storage path
-    const { data: attachment, error: fetchError } = await supabase
+    const { data: attachment, error: fetchError } = await (supabase as any)
       .from("attachment")
       .select("path, meta")
       .eq("id", attachmentId)
+      .eq("company_id", companyId)
       .single();
 
     if (fetchError) {
@@ -436,18 +408,17 @@ export async function DELETE(request: NextRequest) {
       return handleSupabaseError(fetchError, "Attachment not found");
     }
 
-    // 2. Delete from storage using handler
     const storagePath = (attachment.meta as any)?.file_path || attachment.path;
 
     if (storagePath) {
-      const { data: settings } = await supabase
-        .from("company_settings" as any)
+      const { data: settings } = await (supabase as any)
+        .from("company_settings")
         .select("storage_provider, storage_config")
-        .eq("id", 1)
-        .single() as any;
+        .eq("company_id", companyId)
+        .single();
 
-      const handler = await getStorageHandler(settings?.storage_provider, settings?.storage_config);
-      console.log(`[DELETE] Using storage provider: ${settings?.storage_provider || 'Supabase'}`);
+      const handler = await getStorageHandler((settings as any)?.storage_provider, (settings as any)?.storage_config);
+      console.log(`[DELETE] Using storage provider: ${(settings as any)?.storage_provider || 'Supabase'}`);
       
       try {
         await handler.delete(storagePath);
@@ -456,11 +427,11 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // 3. Delete from database
-    const { data: deleteResult, error: deleteError } = await supabase
+    const { data: deleteResult, error: deleteError } = await (supabase as any)
       .from("attachment")
       .delete()
       .eq("id", attachmentId)
+      .eq("company_id", companyId)
       .select();
 
     if (deleteError) {
@@ -488,14 +459,9 @@ export async function DELETE(request: NextRequest) {
     console.error(`[DELETE] Exception for ID ${attachmentId}:`, err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
   }
-}
+});
 
-/**
- * PATCH /api/attachment
- * Update an attachment by ID
- * Body: { id, title, description, ... }
- */
-export async function PATCH(request: NextRequest) {
+export const PATCH = withTenant(async (request, { companyId }) => {
   const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabase = useAdmin ? createAdminClient() : createClient();
   const body = await request.json();
@@ -505,11 +471,11 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "No ID provided" }, { status: 400 });
   }
 
-  // Fetch current attachment to get existing meta
-  const { data: current, error: fetchError } = await supabase
+  const { data: current, error: fetchError } = await (supabase as any)
     .from("attachment")
     .select("meta, name")
     .eq("id", id)
+    .eq("company_id", companyId)
     .single();
 
   if (fetchError) {
@@ -522,13 +488,14 @@ export async function PATCH(request: NextRequest) {
     description: description !== undefined ? description : (current.meta as any)?.description,
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("attachment")
     .update({
       name: name || current.name,
       meta: updatedMeta
     })
     .eq("id", id)
+    .eq("company_id", companyId)
     .select()
     .single();
 
@@ -537,18 +504,14 @@ export async function PATCH(request: NextRequest) {
   }
 
   return NextResponse.json({ success: true, data });
-}
+});
 
-/**
- * PUT /api/attachment
- * Overwrite an existing attachment file
- */
-export async function PUT(request: NextRequest) {
+export const PUT = withTenant(async (request, { companyId }) => {
   const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabase = useAdmin ? createAdminClient() : createClient();
   
   try {
-    const formData = await request.formData();
+    const formData = await (request as any).formData();
     const id = formData.get("id") as string;
     const filePath = formData.get("filePath") as string;
     const file = formData.get("file") as File;
@@ -559,7 +522,6 @@ export async function PUT(request: NextRequest) {
 
     const attachmentId = Number(id);
 
-    // Identify relative path of the existing file
     let relativePath = filePath;
     if (filePath.startsWith("http")) {
       const parts = filePath.split("/");
@@ -569,20 +531,15 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Instead of using upsert (which triggers UPDATE RLS on storage.objects that users might not have),
-    // we upload the edited image to a NEW path, and then update the database record.
-    
-    // Get storage settings
     const adminClient = createAdminClient();
     const { data: settings } = await adminClient
       .from("company_settings" as any)
       .select("storage_provider, storage_config")
-      .eq("id", 1)
+      .eq("company_id", companyId)
       .single() as any;
 
     const handler = await getStorageHandler(settings?.storage_provider || "Supabase", settings?.storage_config);
 
-    // 1. Attempt to delete the old file from the current provider
     try {
       console.log(`[PUT /api/attachment] Deleting old file: ${relativePath}`);
       await handler.delete(relativePath);
@@ -590,7 +547,6 @@ export async function PUT(request: NextRequest) {
       console.warn(`[PUT /api/attachment] Deletion failed (may be expected):`, err);
     }
 
-    // 2. Determine if we need to transcode
     const originalFileExt = file.name.includes(".") ? file.name.split(".").pop() : "bin";
     const incompatibleFormats = ["wmv", "mkv", "avi", "asf", "flv"];
     const needsTranscoding = incompatibleFormats.includes(originalFileExt?.toLowerCase() || "");
@@ -608,22 +564,18 @@ export async function PUT(request: NextRequest) {
         tempInputPath = path.join(tempDir, `edit-input-${Date.now()}.${originalFileExt}`);
         tempOutputPath = path.join(tempDir, `edit-output-${Date.now()}.mp4`);
 
-        // Write input file
         const buffer = Buffer.from(await file.arrayBuffer());
         await fs.writeFile(tempInputPath, buffer);
 
-        // Run FFmpeg
         console.log(`[PUT /api/attachment] Running FFmpeg: ${tempInputPath} -> ${tempOutputPath}`);
         await execAsync(`ffmpeg -i "${tempInputPath}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -y "${tempOutputPath}"`);
 
-        // Read output file
         fileToUpload = await fs.readFile(tempOutputPath);
         finalFileExt = "mp4";
         finalContentType = "video/mp4";
         console.log(`[PUT /api/attachment] Transcoding complete. New size: ${fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length}`);
       } catch (transcodeErr) {
         console.error("[PUT /api/attachment] Transcoding failed:", transcodeErr);
-        // Fallback to original file
         fileToUpload = Buffer.from(await file.arrayBuffer());
       }
     } else {
@@ -636,16 +588,15 @@ export async function PUT(request: NextRequest) {
     
     const { publicUrl, filePath: storageFilePath } = await handler.upload(fileToUpload, newFileName, finalContentType);
 
-    // 4. Update the database record with the new path and URL
-    // First, fetch existing meta to preserve other fields
-    const { data: currentAttachment } = await supabase
+    const { data: currentAttachment } = await (supabase as any)
       .from("attachment")
       .select("meta")
       .eq("id", attachmentId)
+      .eq("company_id", companyId)
       .single();
 
     const updatedMeta = {
-      ...(currentAttachment?.meta as object || {}),
+      ...((currentAttachment as any)?.meta as object || {}),
       file_path: storageFilePath,
       file_url: publicUrl,
       file_type: finalContentType,
@@ -653,20 +604,20 @@ export async function PUT(request: NextRequest) {
       type: finalContentType.startsWith('video/') ? 'VIDEO' : (finalContentType.startsWith('image/') ? 'PHOTO' : 'DOCUMENT'),
     };
 
-    const { error: dbError } = await supabase
+    const { error: dbError } = await (supabase as any)
       .from("attachment")
       .update({
         path: publicUrl,
         meta: updatedMeta
       })
-      .eq("id", attachmentId);
+      .eq("id", attachmentId)
+      .eq("company_id", companyId);
 
     if (dbError) {
       console.error("Failed to update database record after upload:", dbError);
       return handleSupabaseError(dbError, "Failed to update attachment record with new file");
     }
 
-    // Cleanup temp files
     if (tempInputPath) fs.unlink(tempInputPath).catch(() => {});
     if (tempOutputPath) fs.unlink(tempOutputPath).catch(() => {});
 
@@ -675,5 +626,4 @@ export async function PUT(request: NextRequest) {
     console.error("Exception in PUT /api/attachment:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
   }
-}
-
+});

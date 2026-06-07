@@ -1,32 +1,53 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function GET() {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = createClient();
 
-        const { data: settings, error } = await supabase
-            .from("company_settings" as any)
-            .select("*")
-            .eq("id", 1)
-            .single() as any;
+        let settings: any = null;
 
-        if (error) {
-            console.error("Error fetching company settings:", error);
-            return NextResponse.json(
-                { error: "Failed to fetch company settings" },
-                { status: 500 }
-            );
+        const { data: byCompany, error: byCompanyError } = await (supabase as any)
+            .from("company_settings")
+            .select("*")
+            .eq("company_id", companyId)
+            .maybeSingle();
+
+        if (byCompanyError) {
+            console.error("Error fetching company settings by company_id:", byCompanyError);
         }
 
-        // Check if any structures exist
-        const { count, error: countError } = await supabase
+        if (byCompany) {
+            settings = byCompany;
+        } else {
+            const { data: fallback, error: fallbackError } = await (supabase as any)
+                .from("company_settings")
+                .select("*")
+                .eq("id", 1)
+                .maybeSingle();
+
+            if (fallbackError) {
+                console.error("Error fetching company settings fallback:", fallbackError);
+                return NextResponse.json(
+                    { error: "Failed to fetch company settings" },
+                    { status: 500 }
+                );
+            }
+            settings = fallback;
+        }
+
+        if (!settings) {
+            return NextResponse.json({ data: null });
+        }
+
+        const { count, error: countError } = await (supabase as any)
             .from("structure")
-            .select("*", { count: "exact", head: true });
+            .select("*", { count: "exact", head: true })
+            .eq("company_id", companyId);
 
         const hasStructures = !countError && (count || 0) > 0;
 
-        // If logo_path exists, get the public URL
         let logoUrl = null;
         if (settings.logo_path) {
             const { data: publicUrlData } = supabase.storage
@@ -53,9 +74,9 @@ export async function GET() {
             { status: 500 }
         );
     }
-}
+});
 
-export async function PUT(request: Request) {
+export const PUT = withTenant(async (request, { companyId }) => {
     try {
         const supabase = createClient();
         const body = await request.json();
@@ -72,11 +93,11 @@ export async function PUT(request: Request) {
         if (storage_provider) updateData.storage_provider = storage_provider;
         if (storage_config) updateData.storage_config = storage_config;
 
-        const { data, error } = await supabase
-            .from("company_settings" as any)
-            .upsert({ id: 1, ...updateData })
+        const { data, error } = await (supabase as any)
+            .from("company_settings")
+            .upsert({ company_id: companyId, ...updateData })
             .select()
-            .single() as any;
+            .single();
 
         if (error) {
             console.error("Error updating company settings:", error);
@@ -94,4 +115,4 @@ export async function PUT(request: Request) {
             { status: 500 }
         );
     }
-}
+});

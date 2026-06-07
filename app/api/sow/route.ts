@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-// GET: Fetch SOW data
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -11,19 +11,18 @@ export async function GET(request: NextRequest) {
         const structureId = searchParams.get("structure_id");
         const sowId = searchParams.get("sow_id");
 
-        // If sow_id is provided, fetch specific SOW with items
         if (sowId) {
             const { data: sow, error: sowError } = await (supabase as any)
                 .from("u_sow")
                 .select("*")
                 .eq("id", sowId)
+                .eq("company_id", companyId)
                 .single();
 
             if (sowError) {
                 return NextResponse.json({ error: sowError.message }, { status: 400 });
             }
 
-            // Fetch SOW items
             const { data: items, error: itemsError } = await (supabase as any)
                 .from("u_sow_items")
                 .select("*")
@@ -37,24 +36,22 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ data: { ...sow, items } });
         }
 
-        // If jobpack_id and structure_id are provided, fetch SOW for that structure
         if (jobpackId && structureId) {
             const { data: sow, error: sowError } = await (supabase as any)
                 .from("u_sow")
                 .select("*")
                 .eq("jobpack_id", jobpackId)
                 .eq("structure_id", structureId)
+                .eq("company_id", companyId)
                 .single();
 
             if (sowError) {
                 if (sowError.code === "PGRST116") {
-                    // No SOW found, return null
                     return NextResponse.json({ data: null });
                 }
                 return NextResponse.json({ error: sowError.message }, { status: 400 });
             }
 
-            // Fetch SOW items
             const { data: items, error: itemsError } = await (supabase as any)
                 .from("u_sow_items")
                 .select("*")
@@ -68,12 +65,12 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ data: { ...sow, items } });
         }
 
-        // If only jobpack_id is provided, fetch all SOWs for that job pack
         if (jobpackId) {
             const { data: sows, error } = await (supabase as any)
                 .from("u_sow")
                 .select("*")
                 .eq("jobpack_id", jobpackId)
+                .eq("company_id", companyId)
                 .order("created_at", { ascending: false });
 
             if (error) {
@@ -93,10 +90,9 @@ export async function GET(request: NextRequest) {
             { status: 500 }
         );
     }
-}
+});
 
-// POST: Create or update SOW header
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -111,7 +107,6 @@ export async function POST(request: NextRequest) {
             metadata,
         } = body;
 
-        // If ID is provided, update existing SOW
         if (id) {
             const { data, error } = await (supabase as any)
                 .from("u_sow")
@@ -123,6 +118,7 @@ export async function POST(request: NextRequest) {
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", id)
+                .eq("company_id", companyId)
                 .select()
                 .single();
 
@@ -133,7 +129,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ data });
         }
 
-        // Create new SOW
         const { data, error } = await (supabase as any)
             .from("u_sow")
             .insert({
@@ -143,6 +138,7 @@ export async function POST(request: NextRequest) {
                 structure_title,
                 report_numbers: report_numbers || [],
                 metadata: metadata || {},
+                company_id: companyId,
             })
             .select()
             .single();
@@ -158,10 +154,9 @@ export async function POST(request: NextRequest) {
             { status: 500 }
         );
     }
-}
+});
 
-// DELETE: Delete SOW (will cascade delete all items)
-export async function DELETE(request: NextRequest) {
+export const DELETE = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -177,7 +172,8 @@ export async function DELETE(request: NextRequest) {
         const { error } = await (supabase as any)
             .from("u_sow")
             .delete()
-            .eq("id", id);
+            .eq("id", id)
+            .eq("company_id", companyId);
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 400 });
@@ -190,4 +186,4 @@ export async function DELETE(request: NextRequest) {
             { status: 500 }
         );
     }
-}
+});

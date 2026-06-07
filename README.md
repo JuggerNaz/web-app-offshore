@@ -1,101 +1,142 @@
-<a href="https://demo-nextjs-with-supabase.vercel.app/">
-  <img alt="Next.js and Supabase Starter Kit - the fastest way to build apps with Next.js and Supabase" src="https://demo-nextjs-with-supabase.vercel.app/opengraph-image.png">
-  <h1 align="center">Next.js and Supabase Starter Kit</h1>
-</a>
+# Web App Offshore
 
-<p align="center">
- The fastest way to build apps with Next.js and Supabase
-</p>
+A full-featured offshore inspection and operations management platform for managing subsea structural inspections — both **ROV** and **diving-based** — across oil and gas platforms, pipelines, and offshore structures.
 
-<p align="center">
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#demo"><strong>Demo</strong></a> ·
-  <a href="#deploy-to-vercel"><strong>Deploy to Vercel</strong></a> ·
-  <a href="#clone-and-run-locally"><strong>Clone and run locally</strong></a> ·
-  <a href="#feedback-and-issues"><strong>Feedback and issues</strong></a>
-  <a href="#more-supabase-examples"><strong>More Examples</strong></a>
-</p>
-<br/>
+## Tech Stack
 
-## Development for Web App Offshore Nasquest
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript |
+| Auth & Database | Supabase (PostgreSQL, Auth, Storage, RLS) |
+| Deployment | Netlify |
+| Styling | Tailwind CSS, Radix UI / shadcn |
+| State | Zustand, Jotai |
+| Data Fetching | TanStack React Query, SWR |
+| 3D Visualization | Three.js / React Three Fiber |
+| Video Processing | FFmpeg WASM, MediaRecorder API |
+| Reports | jsPDF, pdf-lib, docx, docxtemplater |
+| Storage | AWS S3, Supabase Storage, Cloudinary |
+| Testing | Vitest, Testing Library |
 
-- Run type gen
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- Yarn
+
+### Setup
+
+1. Copy environment variables:
+
+   ```bash
+   cp .env.local.example .env.local
+   ```
+
+2. Update `.env.local` with your Supabase credentials:
+
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=<your-supabase-url>
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+   ```
+
+3. Install dependencies and start the dev server:
+
+   ```bash
+   yarn install
+   yarn dev
+   ```
+
+4. Open [localhost:3000](http://localhost:3000)
+
+### Generate Supabase Types
+
+```bash
+npx supabase gen types typescript --db-url <your-db-url> > ./supabase/schema.ts
+```
+
+## Scripts
+
+| Command | Description |
+|---|---|
+| `yarn dev` | Start development server |
+| `yarn build` | Production build |
+| `yarn start` | Start production server |
+| `yarn lint` | Run ESLint |
+| `yarn lint:fix` | Auto-fix lint issues |
+| `yarn typecheck` | TypeScript type checking |
+| `yarn format` | Format code with Prettier |
+| `yarn test` | Run tests (Vitest watch mode) |
+| `yarn test:run` | Run tests once |
+| `yarn test:coverage` | Run tests with coverage |
+
+## Project Structure
+
+```
+├── app/                        # Next.js App Router
+│   ├── (auth-pages)/           # Sign-in, sign-up, forgot-password
+│   ├── (main)/                 # Landing page
+│   ├── api/                    # 36+ API route handlers
+│   ├── auth/callback/          # OAuth callback
+│   └── dashboard/              # Main authenticated application
+│       ├── admin/              # User management
+│       ├── field/              # Field operations (platform, pipeline)
+│       ├── inspection/         # ROV & dive inspection workflows
+│       ├── inspection-v2/      # Next-gen inspection interface
+│       ├── jobpack/            # Job packs & Scope of Work (SOW)
+│       ├── manager-overview/   # Executive dashboard
+│       ├── planning/           # Inspection planning
+│       ├── reports/            # Report wizard & datasheets
+│       ├── settings/           # Defect criteria, MGI, video capture
+│       ├── system-updates/     # System changelog
+│       ├── user/               # User profile
+│       └── utilities/          # Migration, library, smart query, QA/QC
+├── components/                 # UI components
+│   ├── ui/                     # Base design system (Radix-based)
+│   ├── charts/                 # Chart components (anode, CP, anomaly trends)
+│   ├── dialogs/                # Modal dialogs
+│   ├── inspection/             # 3D view, checklist, video recorder widget
+│   ├── video-player/           # Custom video player with FFmpeg
+│   ├── jobpack/                # SOW dialog, vessel manager, wizard
+│   └── forms/                  # Pipeline/platform spec forms
+├── utils/                      # Utility modules
+│   ├── supabase/               # Supabase client (client, server, middleware)
+│   ├── report-generators/      # 51 report generators (ROV, dive, seabed)
+│   ├── conversion/             # AI-assisted data conversion
+│   ├── hooks/                  # Custom React hooks
+│   └── schemas/                # Zod validation schemas
+├── lib/                        # Core library
+│   ├── video-recorder/         # Browser video recording engine
+│   └── ...                     # Search, validation, utils
+├── stores/                     # Zustand/Jotai state stores
+├── types/                      # TypeScript type definitions
+├── supabase/                   # Supabase config & migrations (45+)
+├── docs/                       # Feature documentation
+├── scripts/                    # Utility & debug scripts
+├── sql/                        # Database migration & fix SQL files
+├── info/                       # Reference docs, code patches, data dumps
+├── scratch/                    # Scratch/temp files
+├── middleware.ts                # Supabase session refresh (SSR auth)
+├── netlify.toml                # Netlify deployment config
+├── next.config.js              # Next.js configuration
+├── tailwind.config.ts          # Tailwind CSS configuration
+├── tsconfig.json               # TypeScript configuration
+└── components.json             # shadcn/ui configuration
+```
+
+## Key Features
+
+- **Inspection Workflows** — Full ROV and diving inspection lifecycle management
+- **51 Report Generators** — Industry-standard PDF/DOCX reports (NACE, API, DNV)
+- **Live Video Recording** — In-browser recording with FFmpeg WASM encoding
+- **3D Visualization** — Platform and seabed rendering with Three.js
+- **AI-Assisted Defect Analysis** — GPT/Gemini integration for data conversion
+- **Scope of Work (SOW)** — Comprehensive SOW management with job pack wizard
+- **Smart Query** — Cross-table query builder for inspection data
+- **Executive Dashboard** — Manager-level overview and summary generation
+- **Data Migration** — Oracle-to-Supabase migration utilities
+
+## MISC
+
 - npx supabase gen types typescript --db-url postgresql://postgres.zpsmxtdqlpbdwfzctqzd:yourpassword@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres > ./supabase/schema.ts
-
-## Features
-
-- Works across the entire [Next.js](https://nextjs.org) stack
-  - App Router
-  - Pages Router
-  - Middleware
-  - Client
-  - Server
-  - It just works!
-- supabase-ssr. A package to configure Supabase Auth to use cookies
-- Styling with [Tailwind CSS](https://tailwindcss.com)
-- Components with [shadcn/ui](https://ui.shadcn.com/)
-- Optional deployment with [Supabase Vercel Integration and Vercel deploy](#deploy-your-own)
-  - Environment variables automatically assigned to Vercel project
-
-## Demo
-
-You can view a fully working demo at [demo-nextjs-with-supabase.vercel.app](https://demo-nextjs-with-supabase.vercel.app/).
-
-## Deploy to Vercel
-
-Vercel deployment will guide you through creating a Supabase account and project.
-
-After installation of the Supabase integration, all relevant environment variables will be assigned to the project so the deployment is fully functioning.
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&project-name=nextjs-with-supabase&repository-name=nextjs-with-supabase&demo-title=nextjs-with-supabase&demo-description=This+starter+configures+Supabase+Auth+to+use+cookies%2C+making+the+user%27s+session+available+throughout+the+entire+Next.js+app+-+Client+Components%2C+Server+Components%2C+Route+Handlers%2C+Server+Actions+and+Middleware.&demo-url=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2F&external-id=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&demo-image=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2Fopengraph-image.png)
-
-The above will also clone the Starter kit to your GitHub, you can clone that locally and develop locally.
-
-If you wish to just develop locally and not deploy to Vercel, [follow the steps below](#clone-and-run-locally).
-
-## Clone and run locally
-
-1. You'll first need a Supabase project which can be made [via the Supabase dashboard](https://database.new)
-
-2. Create a Next.js app using the Supabase Starter template npx command
-
-   ```bash
-   npx create-next-app -e with-supabase
-   ```
-
-3. Use `cd` to change into the app's directory
-
-   ```bash
-   cd name-of-new-app
-   ```
-
-4. Rename `.env.example` to `.env.local` and update the following:
-
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=[INSERT SUPABASE PROJECT URL]
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=[INSERT SUPABASE PROJECT API ANON KEY]
-   ```
-
-   Both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` can be found in [your Supabase project's API settings](https://app.supabase.com/project/_/settings/api)
-
-5. You can now run the Next.js local development server:
-
-   ```bash
-   npm run dev
-   ```
-
-   The starter kit should now be running on [localhost:3000](http://localhost:3000/).
-
-6. This template comes with the default shadcn/ui style initialized. If you instead want other ui.shadcn styles, delete `components.json` and [re-install shadcn/ui](https://ui.shadcn.com/docs/installation/next)
-
-> Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
-
-## Feedback and issues
-
-Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).
-
-## More Supabase examples
-
-- [Next.js Subscription Payments Starter](https://github.com/vercel/nextjs-subscription-payments)
-- [Cookie-based Auth and the Next.js 13 App Router (free course)](https://youtube.com/playlist?list=PL5S4mPUpp4OtMhpnp93EFSo42iQ40XjbF)
-- [Supabase Auth and the Next.js App Router](https://github.com/supabase/supabase/tree/master/examples/auth/nextjs)

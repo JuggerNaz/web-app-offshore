@@ -1,11 +1,8 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
+import { withTenant } from "@/utils/tenant-auth";
 
-/**
- * GET /api/defect-criteria/procedures
- * Fetch all defect criteria procedures
- */
-export async function GET(request: Request) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -14,6 +11,7 @@ export async function GET(request: Request) {
         let query = (supabase as any)
             .from('defect_criteria_procedures')
             .select('*')
+            .eq('company_id', companyId)
             .order('effective_date', { ascending: false });
 
         if (status) {
@@ -26,9 +24,8 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
-        // Map snake_case to camelCase
         const procedures = data.map((proc: any) => ({
-            id: proc.id.toString(), // Ensure ID is string
+            id: proc.id.toString(),
             procedureNumber: proc.procedure_number,
             procedureName: proc.procedure_name,
             version: proc.version,
@@ -46,13 +43,9 @@ export async function GET(request: Request) {
             { status: 500 }
         );
     }
-}
+});
 
-/**
- * POST /api/defect-criteria/procedures
- * Create a new defect criteria procedure
- */
-export async function POST(request: Request) {
+export const POST = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -65,26 +58,23 @@ export async function POST(request: Request) {
             copyFromProcedureId,
         } = body;
 
-        // Get current user
         const { data: { user } } = await supabase.auth.getUser();
 
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Check if procedure number already exists
         const { data: existing } = await (supabase as any)
             .from('defect_criteria_procedures')
             .select('procedure_number, version')
             .eq('procedure_number', procedureNumber)
+            .eq('company_id', companyId)
             .order('version', { ascending: false })
             .limit(1)
             .single();
 
-        // Calculate next version number
         const nextVersion = existing ? existing.version + 1 : 1;
 
-        // Create new procedure
         const { data: newProcedure, error: procedureError } = await (supabase as any)
             .from('defect_criteria_procedures')
             .insert({
@@ -95,6 +85,7 @@ export async function POST(request: Request) {
                 created_by: user.id,
                 status: 'draft',
                 notes: notes || null,
+                company_id: companyId,
             })
             .select()
             .single();
@@ -106,12 +97,12 @@ export async function POST(request: Request) {
             );
         }
 
-        // If copying from another procedure, copy its rules
         if (copyFromProcedureId) {
             const { data: rulesToCopy } = await (supabase as any)
                 .from('defect_criteria_rules')
                 .select('*')
-                .eq('procedure_id', copyFromProcedureId);
+                .eq('procedure_id', copyFromProcedureId)
+                .eq('company_id', companyId);
 
             if (rulesToCopy && rulesToCopy.length > 0) {
                 const copiedRules = rulesToCopy.map((rule: any) => ({
@@ -131,6 +122,7 @@ export async function POST(request: Request) {
                     alert_message: rule.alert_message,
                     rule_order: rule.rule_order,
                     evaluation_priority: rule.evaluation_priority,
+                    company_id: companyId,
                 }));
 
                 await (supabase as any)
@@ -139,7 +131,6 @@ export async function POST(request: Request) {
             }
         }
 
-        // Map snake_case to camelCase
         const createdProcedure = {
             id: newProcedure.id.toString(),
             procedureNumber: newProcedure.procedure_number,
@@ -159,4 +150,4 @@ export async function POST(request: Request) {
             { status: 500 }
         );
     }
-}
+});

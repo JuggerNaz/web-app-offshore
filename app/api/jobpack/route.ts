@@ -3,20 +3,13 @@ import { createClient } from "@/utils/supabase/server";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
 import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
+import { withTenant } from "@/utils/tenant-auth";
 
-/**
- * GET /api/jobpack
- * Fetch all job packs with pagination
- * Query params: ?page=1&pageSize=50
- */
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
   const supabase = createClient();
 
-  // Get pagination params
   const paginationParams = getPaginationParams(request);
 
-  // If pageSize is the default 50 and not explicitly requested, 
-  // let's use a larger limit to "remove" the restriction for jobpacks
   const url = new URL(request.url);
   if (!url.searchParams.has("pageSize") && !url.searchParams.has("limit")) {
     paginationParams.pageSize = 1000;
@@ -26,21 +19,22 @@ export async function GET(request: NextRequest) {
   const hasInspection = url.searchParams.get("has_inspection") === "true";
 
   if (hasInspection) {
-    // Fetch jobpack IDs that have at least one inspection record
-    // via insp_records which references dive_job or rov_job which have jobpack_id
     const { data: diveJobPackIds } = await (supabase as any)
       .from("insp_dive_jobs")
       .select("jobpack_id")
+      .eq("company_id", companyId)
       .not("jobpack_id", "is", null);
 
     const { data: rovJobPackIds } = await (supabase as any)
       .from("insp_rov_jobs")
       .select("jobpack_id")
+      .eq("company_id", companyId)
       .not("jobpack_id", "is", null);
 
     const { data: directJobPackIds } = await (supabase as any)
       .from("insp_records")
       .select("jobpack_id")
+      .eq("company_id", companyId)
       .not("jobpack_id", "is", null);
 
     const allIds = new Set<number>();
@@ -52,9 +46,10 @@ export async function GET(request: NextRequest) {
       return apiPaginated([], createPaginationMeta(paginationParams, 0));
     }
 
-    let query = supabase
+    let query = (supabase as any)
       .from("jobpack")
       .select("*", { count: "exact" })
+      .eq("company_id", companyId)
       .in("id", Array.from(allIds))
       .order("metadata->>istart", { ascending: false });
 
@@ -64,10 +59,12 @@ export async function GET(request: NextRequest) {
     return apiPaginated(data || [], createPaginationMeta(paginationParams, count || 0));
   }
 
-  // Build query with count for pagination metadata
-  let query = supabase.from("jobpack").select("*", { count: "exact" }).order("metadata->>istart", { ascending: false });
+  let query = (supabase as any)
+    .from("jobpack")
+    .select("*", { count: "exact" })
+    .eq("company_id", companyId)
+    .order("metadata->>istart", { ascending: false });
 
-  // Apply pagination
   query = applyPagination(query, paginationParams);
 
   const { data, error, count } = await query;
@@ -76,24 +73,20 @@ export async function GET(request: NextRequest) {
     return handleSupabaseError(error, "Failed to fetch jobpack");
   }
 
-  // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
   return apiPaginated(data || [], pagination);
-}
+});
 
-/**
- * POST /api/jobpack
- * Create a new jobpack record
- */
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request, { companyId }) => {
   const supabase = createClient();
   const body = await request.json();
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("jobpack")
     .insert({
       ...body,
+      company_id: companyId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -102,4 +95,4 @@ export async function POST(request: NextRequest) {
 
   if (error) return handleSupabaseError(error, "Failed to create jobpack");
   return NextResponse.json({ data });
-}
+});

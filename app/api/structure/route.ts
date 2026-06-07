@@ -3,30 +3,25 @@ import { createClient } from "@/utils/supabase/server";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
 import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
+import { withTenant } from "@/utils/tenant-auth";
 
-/**
- * GET /api/structure
- * Fetch all structures with pagination
- * Query params: ?page=1&pageSize=50
- */
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
 
-  // Build query with count for pagination metadata
-  let structureQuery = supabase.from("structure").select("*", { count: "exact" });
+  let structureQuery = (supabase as any).from("structure").select("*", { count: "exact" }).eq("company_id", companyId);
 
   // Apply pagination
   structureQuery = applyPagination(structureQuery, paginationParams);
 
   const { data: structures, error, count } = await structureQuery;
 
-  const platformIds = structures
-    ?.filter((item) => item.str_type === "PLATFORM")
-    .map((item) => item.str_id);
-  const pipelineIds = structures
-    ?.filter((item) => item.str_type === "PIPELINE")
-    .map((item) => item.str_id);
+  const platformIds = (structures as any[])
+    ?.filter((item: any) => item.str_type === "PLATFORM")
+    .map((item: any) => item.str_id);
+  const pipelineIds = (structures as any[])
+    ?.filter((item: any) => item.str_type === "PIPELINE")
+    .map((item: any) => item.str_id);
 
   const { data: platforms } = await supabase
     .from("platform")
@@ -38,9 +33,9 @@ export async function GET(request: NextRequest) {
     .in("pipe_id", pipelineIds || []);
 
   //should return only required fields
-  const result = structures
-    ?.filter((item) => item.str_type == "PLATFORM" || item.str_type == "PIPELINE")
-    .map((item) => {
+  const result = (structures as any[])
+    ?.filter((item: any) => item.str_type == "PLATFORM" || item.str_type == "PIPELINE")
+    .map((item: any) => {
       const resultObj = {
         str_id: 0,
         str_title: "",
@@ -73,4 +68,4 @@ export async function GET(request: NextRequest) {
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
   return apiPaginated(result || [], pagination);
-}
+});

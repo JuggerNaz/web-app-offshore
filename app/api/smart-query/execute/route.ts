@@ -7,15 +7,11 @@ import {
   type SortRule,
   type ComputedField,
 } from "@/utils/smart-query-schema";
+import { withTenant } from "@/utils/tenant-auth";
 
 const MAX_ROWS = 10000;
 
-/**
- * POST /api/smart-query/execute
- * Executes a dynamic query based on the wizard configuration.
- * Body: { category, fields, computedFields, sorting, conditions }
- */
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request, { companyId }) => {
   try {
     const supabase = await createClient();
     const body = await request.json();
@@ -34,13 +30,11 @@ export async function POST(request: NextRequest) {
       conditions?: ConditionRule[];
     } = body;
 
-    // Validate category
     const catDef = QUERY_CATEGORIES.find(c => c.id === category);
     if (!catDef) {
       return NextResponse.json({ error: "Invalid category" }, { status: 400 });
     }
 
-    // Validate fields are in the category definition
     const validFieldKeys = new Set(catDef.fields.map(f => f.key));
     const selectFields = fields.filter(f => validFieldKeys.has(f));
 
@@ -48,12 +42,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No valid fields selected" }, { status: 400 });
     }
 
-    // Build Supabase query
     let query = (supabase as any)
       .from(catDef.table)
-      .select(selectFields.join(","), { count: "exact" });
+      .select(selectFields.join(","), { count: "exact" })
+      .eq("company_id", companyId);
 
-    // Apply base filters for special categories
     if (category === "findings") {
       query = query.eq("record_category", "Finding");
     } else if (category === "anomalies") {
@@ -62,7 +55,6 @@ export async function POST(request: NextRequest) {
       query = query.eq("status", "INCOMPLETE");
     }
 
-    // Apply user conditions
     if (conditions && conditions.length > 0) {
       for (const cond of conditions) {
         if (!validFieldKeys.has(cond.field)) continue;
@@ -73,7 +65,6 @@ export async function POST(request: NextRequest) {
         let finalValue2 = cond.value2;
         let finalOperator = cond.operator;
 
-        // Handle Year Transformation (convert to date range for performance)
         if (cond.transform === "year" && fieldType === "date" && cond.value) {
           const year = parseInt(cond.value);
           if (!isNaN(year)) {
@@ -160,7 +151,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Apply sorting
     if (sorting && sorting.length > 0) {
       for (const sort of sorting) {
         if (validFieldKeys.has(sort.field)) {
@@ -169,10 +159,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Limit rows
     query = query.limit(MAX_ROWS);
 
-    // Execute
     const { data, error, count } = await query;
 
     if (error) {
@@ -180,7 +168,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Apply computed fields on the results
     let results = data || [];
     if (computedFields && computedFields.length > 0) {
       results = results.map((row: any) => {
@@ -210,4 +197,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
