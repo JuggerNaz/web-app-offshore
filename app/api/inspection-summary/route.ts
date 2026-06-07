@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 // Last Updated: 2026-05-11T18:01:00
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 const ATTACHMENT_GROUPS: Record<string, string[]> = {
@@ -11,7 +12,7 @@ const ATTACHMENT_GROUPS: Record<string, string[]> = {
     "Boat Landing": ["BL", "BLTG", "BOAT_LANDING", "BOATLANDING", "BLD"],
 };
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
             const { data: sowRec } = await (supabase as any)
                 .from("u_sow")
                 .select("id")
+                .eq("company_id", companyId)
                 .eq("jobpack_id", jpNum)
                 .eq("structure_id", strNum)
                 .limit(1)
@@ -58,12 +60,11 @@ export async function GET(request: NextRequest) {
                 .select(`
                     status, 
                     component_id, 
+                    component_qid,
                     component_type, 
-                    report_number, 
-                    structure_components:component_id(
-                        id, q_id, code, metadata
-                    )
+                    report_number
                 `)
+                .eq("company_id", companyId)
                 .eq("sow_id", Number(resolvedSowId));
             
             itemsErr = err;
@@ -105,7 +106,8 @@ export async function GET(request: NextRequest) {
                 ),
                 inspection_type:inspection_type_id!left(id, code, name),
                 insp_anomalies(anomaly_id, status, defect_type_code, defect_category_code, priority_code, record_category)
-            `);
+            `)
+            .eq("company_id", companyId);
 
         if (!isNaN(jpNum)) recQuery = recQuery.eq("jobpack_id", jpNum);
         if (!isNaN(strNum)) recQuery = recQuery.eq("structure_id", strNum);
@@ -475,7 +477,7 @@ export async function GET(request: NextRequest) {
 
         // Scope (Total) is based on ALL items in the SOW (the whole platform's scope)
         allSowItems.forEach((item: any) => {
-            const comp = item.structure_components || item.component || {};
+            const comp = { q_id: item.component_qid, code: item.component_type };
             const qid = (comp?.q_id || "").toUpperCase();
             if (!qid && !item.component_id) return;
 
@@ -653,10 +655,32 @@ export async function GET(request: NextRequest) {
                 mgi: { total: mgiRecords.length, max: mgiMax, avg: mgiAvg },
                 scour: { total: scourRecords.length, exposed: scourExposedCount, minBurial: scourMinBurial },
                 attachmentGroups: attachmentGroupBreakdown,
+                
+                // Detailed Item Lists for Tables
+                cp_items: rawRecords.filter(r => {
+                    const d = r.inspection_data || {};
+                    return (d.cp_rdg !== undefined || d.cp_reading_mv !== undefined);
+                }).map(r => ({
+                    component: r.structure_components?.code || r.component_type || "N/A",
+                    reading: r.inspection_data?.cp_rdg || r.inspection_data?.cp_reading_mv || "N/A",
+                    status: r.status || "COMPLETED"
+                })),
+
+                fmd_items: fmdRecords.map(r => ({
+                    component: r.structure_components?.code || r.component_type || "N/A",
+                    status: r.inspection_data?.member_status || "N/A",
+                    mode: r.rov_job_id ? "ROV" : "DIVE"
+                })),
+
+                mgi_items: mgiRecords.map(r => ({
+                    component: r.structure_components?.code || r.component_type || "N/A",
+                    thickness: r.inspection_data?.avg_thickness || r.inspection_data?.thickness || "0",
+                    date: r.inspection_data?.date || new Date().toLocaleDateString("en-GB")
+                })),
             },
         });
     } catch (error: any) {
         console.error("[Summary] Critical error:", error);
         return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
     }
-}
+});

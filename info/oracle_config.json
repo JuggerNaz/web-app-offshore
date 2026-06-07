@@ -1,0 +1,10 @@
+{
+  "host": "nq-35",
+  "port": 1522,
+  "serviceName": "orcl10",
+  "connectString": "(DESCRIPTION =   (ADDRESS = (PROTOCOL = TCP)(HOST = nq-35)(PORT = 1522))   (CONNECT_DATA =     (SID = orcl10)   ) )",
+  "user": "sko251",
+  "password": "sko251",
+  "useThickMode": true,
+  "libDir": "C:\\instantclient64_12_2"
+}

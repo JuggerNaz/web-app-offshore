@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Manager Summary API
@@ -7,7 +8,7 @@ import { createClient } from "@/utils/supabase/server";
    Params : field_id, structure_id, jobpack_ids (comma-separated, 1-4)
    ────────────────────────────────────────────────────────────────────────── */
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = createClient();
         const { searchParams } = new URL(request.url);
@@ -29,7 +30,8 @@ export async function GET(request: NextRequest) {
         // ─── Fetch all platforms to resolve names ────────────────────────────
         const { data: allPlatforms } = await (supabase as any)
             .from("platform")
-            .select("plat_id, plat_name, pfield");
+            .select("plat_id, plat_name, pfield")
+            .eq("company_id", companyId);
         const platformMap = new Map<string, any>((allPlatforms || []).map((p: any) => [String(p.plat_id || ""), p]));
 
         // ─── Determine which jobpacks to query ───────────────────────────────
@@ -40,8 +42,8 @@ export async function GET(request: NextRequest) {
         } else if ((scope === "platform" || scope === "jobpack") && structureId) {
             // Efficient DB-level discovery
             const [sowRes, recRes] = await Promise.all([
-                (supabase as any).from("u_sow").select("jobpack_id").eq("structure_id", structureId).limit(100),
-                (supabase as any).from("insp_records").select("jobpack_id").eq("structure_id", structureId).limit(100)
+                (supabase as any).from("u_sow").select("jobpack_id").eq("company_id", companyId).eq("structure_id", structureId).limit(100),
+                (supabase as any).from("insp_records").select("jobpack_id").eq("company_id", companyId).eq("structure_id", structureId).limit(100)
             ]);
 
             if (sowRes.error) console.error("[ManagerSummary] SOW discovery error:", sowRes.error);
@@ -61,6 +63,7 @@ export async function GET(request: NextRequest) {
                 const { data: recentJp } = await (supabase as any)
                     .from("jobpack")
                     .select("id, metadata")
+                    .eq("company_id", companyId)
                     .order("id", { ascending: false })
                     .limit(200);
                 
@@ -85,13 +88,14 @@ export async function GET(request: NextRequest) {
             const { data: platforms } = await (supabase as any)
                 .from("platform")
                 .select("plat_id")
+                .eq("company_id", companyId)
                 .eq("pfield", fieldId);
             const platIds = (platforms || []).map((p: any) => p.plat_id);
             
             if (platIds.length > 0) {
                 const [sowRes, recRes] = await Promise.all([
-                    (supabase as any).from("u_sow").select("jobpack_id").in("structure_id", platIds).limit(200),
-                    (supabase as any).from("insp_records").select("jobpack_id").in("structure_id", platIds).limit(200)
+                    (supabase as any).from("u_sow").select("jobpack_id").eq("company_id", companyId).in("structure_id", platIds).limit(200),
+                    (supabase as any).from("insp_records").select("jobpack_id").eq("company_id", companyId).in("structure_id", platIds).limit(200)
                 ]);
                 const ids = new Set([
                     ...(sowRes.data || []).map((j: any) => j.jobpack_id),
@@ -104,6 +108,7 @@ export async function GET(request: NextRequest) {
                     const { data: recentJp } = await (supabase as any)
                         .from("jobpack")
                         .select("id, metadata")
+                        .eq("company_id", companyId)
                         .order("id", { ascending: false })
                         .limit(100);
                     const filtered = (recentJp || []).filter((jp: any) => {
@@ -125,6 +130,7 @@ export async function GET(request: NextRequest) {
             const { data: allJp } = await (supabase as any)
                 .from("jobpack")
                 .select("id")
+                .eq("company_id", companyId)
                 .order("id", { ascending: false })
                 .limit(40);
             jobpackFilter = (allJp || []).map((jp: any) => jp.id);
@@ -137,6 +143,7 @@ export async function GET(request: NextRequest) {
             const { data: platforms } = await (supabase as any)
                 .from("platform")
                 .select("plat_id")
+                .eq("company_id", companyId)
                 .eq("pfield", fieldId);
             fieldPlatIds = (platforms || []).map((p: any) => p.plat_id);
         }
@@ -145,6 +152,7 @@ export async function GET(request: NextRequest) {
             const { data: jpData } = await (supabase as any)
                 .from("jobpack")
                 .select("id, name, status, metadata, created_at")
+                .eq("company_id", companyId)
                 .in("id", jobpackFilter.slice(0, 50)) // Increase to 50 for better aggregation
                 .order("id", { ascending: false });
             jobpacks = jpData || [];
@@ -186,6 +194,7 @@ export async function GET(request: NextRequest) {
             const { data: allSowData, error: sowErr } = await (supabase as any)
                 .from("u_sow")
                 .select("id, report_numbers, structure_id")
+                .eq("company_id", companyId)
                 .eq("jobpack_id", jp.id)
                 .in("structure_id", structIds);
             if (sowErr) console.error(`[ManagerSummary] JP ${jp.id} SOW error:`, sowErr);
@@ -199,6 +208,7 @@ export async function GET(request: NextRequest) {
                     inspection_type:inspection_type_id!left(id, code, name),
                     insp_anomalies(anomaly_id, status, defect_type_code, defect_category_code, priority_code, record_category)
                 `)
+                .eq("company_id", companyId)
                 .eq("jobpack_id", jp.id)
                 .in("structure_id", structIds);
             if (recErr) console.error(`[ManagerSummary] JP ${jp.id} records error:`, recErr);
@@ -359,6 +369,7 @@ export async function GET(request: NextRequest) {
                 let sowItemsQuery = (supabase as any)
                     .from("u_sow_items")
                     .select("status")
+                    .eq("company_id", companyId)
                     .in("sow_id", sowIds);
                 
                 if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null") {
@@ -462,7 +473,7 @@ export async function GET(request: NextRequest) {
             stack: process.env.NODE_ENV === "development" ? error.stack : undefined
         }, { status: 500 });
     }
-}
+});
 
 // ─── Prediction Engine ───────────────────────────────────────────────────────
 function computePredictions(summaries: any[]) {

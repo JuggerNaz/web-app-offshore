@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
+import { ReportWizardDialog } from "./ReportWizardDialog";
 
 import DiveJobSetupDialog from "@/app/dashboard/inspection/dive/components/DiveJobSetupDialog";
 import DiveCalibrationDialog from "@/app/dashboard/inspection/dive/components/DiveCalibrationDialog";
@@ -50,6 +51,7 @@ import { getReportHeaderData } from "@/utils/company-settings";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
+import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-selected-node-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
@@ -107,7 +109,9 @@ interface WorkspaceDialogsProps {
         pendingRule: any;
         rscorPreviewOpen: boolean;
         anodePreviewOpen: boolean;
+        anodeRsaniPreviewOpen: boolean;
         cpPreviewOpen: boolean;
+        rswniPreviewOpen: boolean;
         rgviPreviewOpen: boolean;
         rcondSketchPreviewOpen: boolean;
         showRemovalConfirm: boolean;
@@ -142,14 +146,23 @@ interface WorkspaceDialogsProps {
         sgPreviewOpen: boolean;
         cuPreviewOpen: boolean;
         gvinsPreviewOpen: boolean;
+        bsinsPreviewOpen: boolean;
+        cvinsPreviewOpen: boolean;
+        cleanPreviewOpen: boolean;
+        mpinsPreviewOpen: boolean;
+        utwtkPreviewOpen: boolean;
         szonePreviewOpen: boolean;
         cpclbPreviewOpen: boolean;
         utclbPreviewOpen: boolean;
         divingAnodePreviewOpen: boolean;
         divingMgiPreviewOpen: boolean;
+        divingAcfmcPreviewOpen: boolean;
+        divingPlcoPreviewOpen: boolean;
+        rovRwdiPreviewOpen: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
+        isReportWizardOpen: boolean;
     };
 
 
@@ -182,7 +195,9 @@ interface WorkspaceDialogsProps {
         setShowCriteriaConfirm: (open: boolean) => void;
         setRscorPreviewOpen: (open: boolean) => void;
         setAnodePreviewOpen: (open: boolean) => void;
+        setAnodeRsaniPreviewOpen: (open: boolean) => void;
         setCpPreviewOpen: (open: boolean) => void;
+        setRswniPreviewOpen: (open: boolean) => void;
         setRgviPreviewOpen: (open: boolean) => void;
         setRcondSketchPreviewOpen: (open: boolean) => void;
         setShowRemovalConfirm: (open: boolean) => void;
@@ -207,11 +222,20 @@ interface WorkspaceDialogsProps {
         setSgPreviewOpen: (open: boolean) => void;
         setCuPreviewOpen: (open: boolean) => void;
         setGvinsPreviewOpen: (open: boolean) => void;
+        setBsinsPreviewOpen: (open: boolean) => void;
+        setCvinsPreviewOpen: (open: boolean) => void;
+        setCleanPreviewOpen: (open: boolean) => void;
+        setMpinsPreviewOpen: (open: boolean) => void;
+        setUtwtkPreviewOpen: (open: boolean) => void;
         setSzonePreviewOpen: (open: boolean) => void;
         setCpclbPreviewOpen: (open: boolean) => void;
         setUtclbPreviewOpen: (open: boolean) => void;
         setDivingAnodePreviewOpen: (open: boolean) => void;
         setDivingMgiPreviewOpen: (open: boolean) => void;
+        setDivingAcfmcPreviewOpen: (open: boolean) => void;
+        setDivingPlcoPreviewOpen: (open: boolean) => void;
+        setRovRwdiPreviewOpen: (open: boolean) => void;
+        setIsReportWizardOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
 
         setRovCalibrationDialogOpen: (open: boolean) => void;
@@ -246,7 +270,10 @@ interface WorkspaceDialogsProps {
         generateJTISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateITISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateAnodeRsaniReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRSWNIReport: () => void;
+        generateRSWNIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRGVIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCASNReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCASNSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -257,11 +284,24 @@ interface WorkspaceDialogsProps {
         generatePhotographyLogReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateGVINSReport: () => void;
         generateGVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateBSINSReport: () => void;
+        generateBSINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateCVINSReport: () => void;
+        generateCVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateCLEANReport: () => void;
+        generateCLEANReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateMPINSReport: () => void;
+        generateMPINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateUTWTKReport: () => void;
+        generateUTWTKReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingACFMCReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingPLCOReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateROVRWDIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -323,7 +363,9 @@ export function WorkspaceDialogs({
         pendingRule,
         rscorPreviewOpen,
         anodePreviewOpen,
+        anodeRsaniPreviewOpen,
         cpPreviewOpen,
+        rswniPreviewOpen,
         rgviPreviewOpen,
         rcondSketchPreviewOpen,
         showRemovalConfirm,
@@ -358,11 +400,19 @@ export function WorkspaceDialogs({
         sgPreviewOpen,
         cuPreviewOpen,
         gvinsPreviewOpen,
+        bsinsPreviewOpen,
+        cvinsPreviewOpen,
+        cleanPreviewOpen,
+        mpinsPreviewOpen,
+        utwtkPreviewOpen,
         szonePreviewOpen,
         cpclbPreviewOpen,
         utclbPreviewOpen,
         divingAnodePreviewOpen,
-        divingMgiPreviewOpen
+        divingMgiPreviewOpen,
+        divingAcfmcPreviewOpen,
+        divingPlcoPreviewOpen,
+        rovRwdiPreviewOpen
     } = states;
 
 
@@ -393,7 +443,9 @@ export function WorkspaceDialogs({
         setShowCriteriaConfirm,
         setRscorPreviewOpen,
         setAnodePreviewOpen,
+        setAnodeRsaniPreviewOpen,
         setCpPreviewOpen,
+        setRswniPreviewOpen,
         setRgviPreviewOpen,
         setRcondSketchPreviewOpen,
         setShowRemovalConfirm,
@@ -418,11 +470,19 @@ export function WorkspaceDialogs({
         setSgPreviewOpen,
         setCuPreviewOpen,
         setGvinsPreviewOpen,
+        setBsinsPreviewOpen,
+        setCvinsPreviewOpen,
+        setCleanPreviewOpen,
+        setMpinsPreviewOpen,
+        setUtwtkPreviewOpen,
         setSzonePreviewOpen,
         setCpclbPreviewOpen,
         setUtclbPreviewOpen,
         setDivingAnodePreviewOpen,
-        setDivingMgiPreviewOpen
+        setDivingMgiPreviewOpen,
+        setDivingAcfmcPreviewOpen,
+        setDivingPlcoPreviewOpen,
+        setRovRwdiPreviewOpen
     } = setters;
 
 
@@ -452,6 +512,7 @@ export function WorkspaceDialogs({
         generateJTISIReportBlob,
         generateITISIReportBlob,
         generateAnodeReportBlob,
+        generateAnodeRsaniReportBlob,
         generateCPReportBlob,
         generateRGVIReportBlob,
         generateRCASNReportBlob,
@@ -463,11 +524,24 @@ export function WorkspaceDialogs({
         generatePhotographyLogReportBlob,
         generateGVINSReport,
         generateGVINSReportBlob,
+        generateBSINSReport,
+        generateBSINSReportBlob,
+        generateCVINSReport,
+        generateCVINSReportBlob,
+        generateCLEANReport,
+        generateCLEANReportBlob,
+        generateMPINSReport,
+        generateMPINSReportBlob,
+        generateUTWTKReport,
+        generateUTWTKReportBlob,
         generateSZONEReportBlob,
         generateCPCLBReportBlob,
         generateUTCLBReportBlob,
         generateDivingAnodeReportBlob,
-        generateDivingMGIReportBlob
+        generateDivingMGIReportBlob,
+        generateDivingACFMCReportBlob,
+        generateDivingPLCOReportBlob,
+        generateROVRWDIReportBlob
     } = handlers;
 
 
@@ -1126,8 +1200,8 @@ export function WorkspaceDialogs({
                     const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
                     let contractorLogoUrl = '';
                     if (jobPack?.metadata?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_contr_nam').select('lib_path').eq('lib_desc', jobPack?.metadata?.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.lib_path || '';
+                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.logo_url || '';
                     }
 
                     return await generateROVRSCORReport(
@@ -1264,6 +1338,65 @@ export function WorkspaceDialogs({
                 }}
                 title="ROV CP Survey Report"
                 fileName={`ROV_CP_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                open={rswniPreviewOpen}
+                onOpenChange={setRswniPreviewOpen}
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const swniRecords = (allRecords || []).filter((r: any) => {
+                        const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                        return typeCode === 'RSWNI' || typeCode === 'SWNI';
+                    });
+
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    return await generateROVSelectedNodeReport(
+                        swniRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                            showSignatures
+                        }
+                    );
+                }}
+                title="ROV Selected Node Report"
+                fileName={`ROV_Selected_Node_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             <ReportPreviewDialog
@@ -1538,7 +1671,7 @@ export function WorkspaceDialogs({
                             <div className="space-y-1">
                                 {allInspectionTypes
                                     .filter(it => {
-                                        const isInSow = selectedComp?.tasks?.includes(it.code);
+                                        const isInSow = (selectedComp?.taskStatuses || []).some((ts: any) => ts.code === it.code);
                                         if (isInSow) return false;
                                         const matchesSearch = it.name.toLowerCase().includes(addTaskSearch.toLowerCase()) || 
                                                             it.code.toLowerCase().includes(addTaskSearch.toLowerCase());
@@ -1823,6 +1956,13 @@ export function WorkspaceDialogs({
                 generateReport={generateAnodeReportBlob} 
             />
             <ReportPreviewDialog 
+                open={anodeRsaniPreviewOpen} 
+                onOpenChange={setAnodeRsaniPreviewOpen} 
+                title="ROV Selected Anode Report (SANI) Preview" 
+                fileName={`ROV_Selected_Anode_Report_${headerData.sowReportNo}`} 
+                generateReport={generateAnodeRsaniReportBlob} 
+            />
+            <ReportPreviewDialog 
                 open={cpPreviewOpen} 
                 onOpenChange={setCpPreviewOpen} 
                 title="ROV CP Survey Report Preview" 
@@ -1900,10 +2040,50 @@ export function WorkspaceDialogs({
                 fileName={`Diving_GVINS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateGVINSReportBlob} 
             />
+
+            <ReportPreviewDialog 
+                open={bsinsPreviewOpen} 
+                onOpenChange={setBsinsPreviewOpen} 
+                title="Diving Bolted Support (BSINS) Report Preview" 
+                fileName={`Diving_BSINS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={handlers.generateBSINSReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={cleanPreviewOpen} 
+                onOpenChange={setCleanPreviewOpen} 
+                title="Diving Cleaning Inspection (CLEAN) Report Preview" 
+                fileName={`Diving_CLEAN_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateCLEANReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={cvinsPreviewOpen} 
+                onOpenChange={setCvinsPreviewOpen} 
+                title="Diving Close Visual Inspection (CVINS) Report Preview" 
+                fileName={`Diving_CVINS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={handlers.generateCVINSReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={mpinsPreviewOpen} 
+                onOpenChange={setMpinsPreviewOpen} 
+                title="Diving Magnetic Particle (MPINS) Report Preview" 
+                fileName={`Diving_MPINS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateMPINSReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={utwtkPreviewOpen} 
+                onOpenChange={setUtwtkPreviewOpen} 
+                title="Diving UT Wall Thickness Inspection (UTWTK) Report Preview" 
+                fileName={`Diving_UTWTK_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateUTWTKReportBlob} 
+            />
             
             <ReportPreviewDialog 
-                open={states.szonePreviewOpen} 
-                onOpenChange={setters.setSzonePreviewOpen} 
+                open={szonePreviewOpen} 
+                onOpenChange={setSzonePreviewOpen} 
                 title="Diving Splash Zone Inspection Report Preview" 
                 fileName={`Diving_SZONE_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={handlers.generateSZONEReportBlob} 
@@ -1931,6 +2111,30 @@ export function WorkspaceDialogs({
                 title="Diving Marine Growth Inspection Report Preview" 
                 fileName={`Diving_MGI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateDivingMGIReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={divingAcfmcPreviewOpen} 
+                onOpenChange={setDivingAcfmcPreviewOpen} 
+                title="Diving ACFMC Inspection Report Preview" 
+                fileName={`Diving_ACFMC_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingACFMCReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={divingPlcoPreviewOpen} 
+                onOpenChange={setDivingPlcoPreviewOpen} 
+                title="Diving Coating Damage Inspection Report Preview" 
+                fileName={`Diving_Coating_Damage_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingPLCOReportBlob} 
+            />
+
+            <ReportPreviewDialog 
+                open={rovRwdiPreviewOpen} 
+                onOpenChange={setRovRwdiPreviewOpen} 
+                title="ROV Water Depth Inspection Report Preview" 
+                fileName={`ROV_Water_Depth_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateROVRWDIReportBlob} 
             />
 
 
@@ -2067,6 +2271,101 @@ export function WorkspaceDialogs({
                         } catch (err: any) {
                             console.error("Failed to save attachment:", err);
                             toast.error("Failed to save attachment: " + err.message);
+                        }
+                    }
+                }}
+            />
+            <ReportWizardDialog
+                open={states.isReportWizardOpen}
+                onOpenChange={setters.setIsReportWizardOpen}
+                inspMethod={inspMethod}
+                currentRecords={currentRecords}
+                headerData={headerData}
+                allInspectionTypes={states.allInspectionTypes}
+                handlers={{
+                    generateRGVIReport: () => setters.setRgviPreviewOpen(true),
+                    generateGVINSReport: () => setters.setGvinsPreviewOpen(true),
+                    generateBSINSReport: () => setBsinsPreviewOpen(true),
+                    generateCVINSReport: () => setCvinsPreviewOpen(true),
+                    generateCLEANReport: () => handlers.generateCLEANReport(),
+                    generateMPINSReport: () => setMpinsPreviewOpen(true),
+                    generateUTWTKReport: () => setUtwtkPreviewOpen(true),
+                    generateSZONEReport: () => setSzonePreviewOpen(true),
+                    generateCPReport: () => setters.setCpPreviewOpen(true),
+                    generateRSWNIReport: () => setters.setRswniPreviewOpen(true),
+                    generateCPCLBReport: () => setters.setCpclbPreviewOpen(true),
+                    generateUTCLBReport: () => setters.setUtclbPreviewOpen(true),
+                    generateAnodeReport: () => setters.setAnodePreviewOpen(true),
+                    generateAnodeRsaniReport: () => setters.setAnodeRsaniPreviewOpen(true),
+                    generateDivingAnodeReport: () => setters.setDivingAnodePreviewOpen(true),
+                    generateDivingACFMCReport: () => setters.setDivingAcfmcPreviewOpen(true),
+                    generateDivingPLCOReport: () => setters.setDivingPlcoPreviewOpen(true),
+                    generateROVRWDIReport: () => setters.setRovRwdiPreviewOpen(true),
+                    generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
+                    generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
+                    generateFMDReport: () => setters.setFmdPreviewOpen(true),
+                    generateUTWTReport: () => setters.setUtwtPreviewOpen(true),
+                    generateMGIReport: () => setters.setMPreviewOpen(true),
+                    generateSZCIReport: () => setters.setSzciPreviewOpen(true),
+                    generateRSCORReport: () => setters.setRscorPreviewOpen(true),
+                    generateRRISIReport: () => setters.setRrisiPreviewOpen(true),
+                    generateJTISIReport: () => setters.setJtisiPreviewOpen(true),
+                    generateITISIReport: () => setters.setItisiPreviewOpen(true),
+                    generateRCASNReport: () => setters.setRcasnPreviewOpen(true),
+                    generateRCASNSketchReport: () => setters.setRcasnSketchPreviewOpen(true),
+                    generateRCONDReport: () => setters.setRcondPreviewOpen(true),
+                    generateRCONDSketchReport: () => setters.setRcondSketchPreviewOpen(true),
+                    generateBLReport: () => setters.setBlPreviewOpen(true),
+                    generateRGReport: () => setters.setRgPreviewOpen(true),
+                    generateSGReport: () => setters.setSgPreviewOpen(true),
+                    generateCUReport: () => setters.setCuPreviewOpen(true),
+                    generateSeabedReport: (templateId: string) => setters.setSeabedPreviewOpen(true),
+                    generateFullInspectionReport: () => toast.info("Generating full inspection report..."),
+                    generateInspectionReportByType: (id: any) => {
+                        const type = states.allInspectionTypes.find(t => t.id === id);
+                        if (!type) return;
+                        const code = type.code;
+                        
+                        // Map code to setter
+                        switch(code) {
+                            case 'RGVI': setters.setRgviPreviewOpen(true); break;
+                            case 'GVINS': setters.setGvinsPreviewOpen(true); break;
+                            case 'BSINS': setBsinsPreviewOpen(true); break;
+                            case 'CVINS': setCvinsPreviewOpen(true); break;
+                            case 'CLEAN': handlers.generateCLEANReport(); break;
+                            case 'MPINS': setMpinsPreviewOpen(true); break;
+                            case 'UTWTK': setUtwtkPreviewOpen(true); break;
+                            case 'SZONE': setSzonePreviewOpen(true); break;
+                            case 'CP': setters.setCpPreviewOpen(true); break;
+                            case 'RSWNI':
+                            case 'SWNI': setters.setRswniPreviewOpen(true); break;
+                            case 'CPCLB': setters.setCpclbPreviewOpen(true); break;
+                            case 'UTCLB': setters.setUtclbPreviewOpen(true); break;
+                            case 'ANODE': setters.setAnodePreviewOpen(true); break;
+                            case 'RSANI': setters.setAnodeRsaniPreviewOpen(true); break;
+                            case 'DANODE': setters.setDivingAnodePreviewOpen(true); break;
+                            case 'ACFMC': setters.setDivingAcfmcPreviewOpen(true); break;
+                            case 'PL_CO': setters.setDivingPlcoPreviewOpen(true); break;
+                            case 'RWDI': setters.setRovRwdiPreviewOpen(true); break;
+                            case 'PHOTO': setters.setPhotographyPreviewOpen(true); break;
+                            case 'PLOG': setters.setPhotographyLogPreviewOpen(true); break;
+                            case 'FMD': setters.setFmdPreviewOpen(true); break;
+                            case 'UTWT': setters.setUtwtPreviewOpen(true); break;
+                            case 'MGI': setters.setMPreviewOpen(true); break;
+                            case 'SZCI': setters.setSzciPreviewOpen(true); break;
+                            case 'RSCOR': setters.setRscorPreviewOpen(true); break;
+                            case 'RRISI': setters.setRrisiPreviewOpen(true); break;
+                            case 'JTISI': setters.setJtisiPreviewOpen(true); break;
+                            case 'ITISI': setters.setItisiPreviewOpen(true); break;
+                            case 'RCASN': setters.setRcasnPreviewOpen(true); break;
+                            case 'RCASN-S': setters.setRcasnSketchPreviewOpen(true); break;
+                            case 'RCOND': setters.setRcondPreviewOpen(true); break;
+                            case 'RCOND-S': setters.setRcondSketchPreviewOpen(true); break;
+                            case 'BL': setters.setBlPreviewOpen(true); break;
+                            case 'RG': setters.setRgPreviewOpen(true); break;
+                            case 'SG': setters.setSgPreviewOpen(true); break;
+                            case 'CU': setters.setCuPreviewOpen(true); break;
+                            default: toast.error("No preview available for type " + code);
                         }
                     }
                 }}

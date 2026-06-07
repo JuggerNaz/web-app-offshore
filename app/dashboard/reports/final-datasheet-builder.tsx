@@ -66,7 +66,8 @@ const TOC_SECTIONS = [
       { id: "diving-szone-report", name: "Diving Splash Zone Inspection", mode: "Diving" }
   ]},
   { id: 8, name: "Anode Inspection", templates: [
-      { id: "rov-anode-report", name: "ROV Anode Inspection Report", mode: "ROV" }
+      { id: "rov-anode-report", name: "ROV Anode Inspection Report (RGVI)", mode: "ROV" },
+      { id: "rov-anode-rsani-report", name: "ROV Selected Anode Report (SANI)", mode: "ROV" }
   ]},
   { id: 9, name: "Marine Growth Survey", templates: [
       { id: "mgi-report", name: "ROV MGI Survey Report", mode: "ROV" }
@@ -80,7 +81,9 @@ const TOC_SECTIONS = [
       { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" },
       { id: "rov-seabed-report", name: "ROV Seabed Survey Report", mode: "ROV" }
   ]},
-  { id: 12, name: "Specified Node Inspection", templates: [] },
+  { id: 12, name: "Specified Node Inspection", templates: [
+      { id: "rov-selected-node-report", name: "ROV Selected Node Report (RSWNI)", mode: "ROV" }
+  ] },
   { id: 13, name: "Additional Wall Thickness Inspection", templates: [
       { id: "utwt-report", name: "ROV UT Thickness Report", mode: "ROV" }
   ]},

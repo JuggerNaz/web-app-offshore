@@ -163,7 +163,10 @@ export const generateROVRGVIReport = async (
 
             const parts: string[] = [];
 
-            const mg = d.marine_growth ?? d.marine_growth_hard ?? "";
+            const mg = d.marine_growth ?? [
+                d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',
+                d.marine_growth_soft ? `Soft: ${d.marine_growth_soft}` : ''
+            ].filter(Boolean).join(', ');
             if (mg !== "" && mg !== null && mg !== undefined) parts.push(`Marine Growth: ${mg}`);
 
             const compCond = d.component_condition ?? d.general_condition ?? "";

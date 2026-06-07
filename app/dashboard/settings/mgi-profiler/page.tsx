@@ -72,7 +72,7 @@ interface MGIProfile {
 interface JobPack {
     id: number;
     name: string;
-    metadata: any;
+    status?: string;
     mgi_profile_id?: number;
 }
 
@@ -94,6 +94,8 @@ export default function MGIProfilerPage() {
     const [profiles, setProfiles] = useState<MGIProfile[]>([]);
     const [jobPacks, setJobPacks] = useState<JobPack[]>([]);
     const [loading, setLoading] = useState(true);
+    const [jobpacksLoading, setJobpacksLoading] = useState(false);
+    const [jobpacksLoaded, setJobpacksLoaded] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
     const [viewMode, setViewMode] = useState<"PROFILES" | "JOBWISE">("PROFILES");
@@ -107,23 +109,71 @@ export default function MGIProfilerPage() {
         fetchData();
     }, []);
 
+    useEffect(() => {
+        if (viewMode === "JOBWISE") {
+            fetchJobpacks();
+        }
+    }, [viewMode]);
+
+    const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms));
+
     async function fetchData() {
+        console.log("[MGI Profiler] Starting fetchData...");
         setLoading(true);
         try {
-            const [profilesRes, jobpacksRes] = await Promise.all([
-                fetch('/api/mgi-profiles').then(res => res.json()),
-                supabase.from('jobpack').select('id, name, metadata, mgi_profile_id').order('created_at', { ascending: false })
+            const profilesRes: any = await Promise.race([
+                fetch('/api/mgi-profiles').then(async res => {
+                    console.log("[MGI Profiler] API profiles fetch raw response status:", res.status);
+                    const data = await res.json();
+                    console.log("[MGI Profiler] API profiles fetch JSON resolved:", data);
+                    return data;
+                }),
+                timeout(15000)
             ]);
 
-            if (profilesRes.data) setProfiles(profilesRes.data);
-            if (jobpacksRes.data) setJobPacks(jobpacksRes.data);
-        } catch (error) {
-            console.error("Error fetching data:", error);
-            toast.error("Failed to load data");
+            if (profilesRes && profilesRes.data) {
+                setProfiles(profilesRes.data);
+            } else {
+                console.warn("[MGI Profiler] Profiles response has no data field:", profilesRes);
+            }
+        } catch (err: any) {
+            console.error("[MGI Profiler] Error fetching profiles:", err);
+            toast.error(`Failed to load profiles: ${err.message || err}`);
         } finally {
+            console.log("[MGI Profiler] Setting loading to false");
             setLoading(false);
         }
     }
+
+    async function fetchJobpacks(force = false) {
+        if (!force && (jobpacksLoaded || jobpacksLoading)) return;
+        console.log("[MGI Profiler] Starting fetchJobpacks...");
+        setJobpacksLoading(true);
+        try {
+            const res = await Promise.race([
+                supabase.from('jobpack')
+                    .select('id, name, status, mgi_profile_id')
+                    .order('created_at', { ascending: false }),
+                timeout(15000)
+            ]);
+
+            if (res && (res as any).data) {
+                setJobPacks((res as any).data);
+                setJobpacksLoaded(true);
+            } else if ((res as any).error) {
+                throw new Error((res as any).error.message);
+            } else {
+                console.warn("[MGI Profiler] Jobpacks response has no data field:", res);
+                toast.error("Failed to load jobpacks");
+            }
+        } catch (err: any) {
+            console.error("[MGI Profiler] Error fetching jobpacks:", err);
+            toast.error(`Failed to load jobpacks: ${err.message || err}`);
+        } finally {
+            setJobpacksLoading(false);
+        }
+    }
+
 
     const handleCreateProfile = () => {
         setEditingProfile({
@@ -191,6 +241,7 @@ export default function MGIProfilerPage() {
             toast.success("Jobpack linked successfully");
             setIsLinkDialogOpen(false);
             fetchData();
+            fetchJobpacks(true);
         } catch (error) {
             toast.error("Error linking jobpack");
         }
@@ -246,7 +297,10 @@ export default function MGIProfilerPage() {
                             <Button 
                                 variant={viewMode === "JOBWISE" ? "secondary" : "ghost"}
                                 size="sm"
-                                onClick={() => setViewMode("JOBWISE")}
+                                onClick={() => {
+                                    setViewMode("JOBWISE");
+                                    fetchJobpacks();
+                                }}
                                 className="rounded-lg font-bold"
                             >
                                 <FileText className="w-4 h-4 mr-2" />
@@ -360,43 +414,60 @@ export default function MGIProfilerPage() {
                                         ))
                                     )
                                 ) : (
-                                    filteredJobPacks.map((job) => {
-                                        const profile = profiles.find(p => p.id === job.mgi_profile_id);
-                                        return (
-                                            <TableRow key={job.id} className="hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors border-slate-100 dark:border-slate-800">
-                                                <TableCell className="pl-6 py-4 font-bold text-slate-800 dark:text-white">
-                                                    {job.name}
-                                                </TableCell>
-                                                <TableCell>
-                                                    {profile ? (
-                                                        <div className="flex items-center gap-2">
-                                                            <Badge variant="secondary" className="bg-rose-100 text-rose-600 border-rose-200">
-                                                                {profile.name}
-                                                            </Badge>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-slate-400 text-xs italic">Default Profile Active</span>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="text-center">
-                                                    <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[10px] font-black">{job.metadata?.status || 'Active'}</Badge>
-                                                </TableCell>
-                                                <TableCell className="pr-6 text-right">
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="sm" 
-                                                        className="h-8 font-bold border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg"
-                                                        onClick={() => {
-                                                            setSelectedJobId(job.id);
-                                                            setIsLinkDialogOpen(true);
-                                                        }}
-                                                    >
-                                                        Switch Profile
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })
+                                    jobpacksLoading ? (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="h-64 text-center">
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <Waves className="w-10 h-10 text-rose-600 animate-pulse" />
+                                                    <span className="text-slate-500 font-bold">Synchronizing Jobpacks...</span>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : filteredJobPacks.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="h-48 text-center text-slate-400 font-medium">
+                                                No jobpacks found
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        filteredJobPacks.map((job) => {
+                                            const profile = profiles.find(p => p.id === job.mgi_profile_id);
+                                            return (
+                                                <TableRow key={job.id} className="hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors border-slate-100 dark:border-slate-800">
+                                                    <TableCell className="pl-6 py-4 font-bold text-slate-800 dark:text-white">
+                                                        {job.name}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {profile ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <Badge variant="secondary" className="bg-rose-100 text-rose-600 border-rose-200">
+                                                                    {profile.name}
+                                                                </Badge>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-400 text-xs italic">Default Profile Active</span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[10px] font-black">{job.status || 'Active'}</Badge>
+                                                    </TableCell>
+                                                    <TableCell className="pr-6 text-right">
+                                                        <Button 
+                                                            variant="outline" 
+                                                            size="sm" 
+                                                            className="h-8 font-bold border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg"
+                                                            onClick={() => {
+                                                                setSelectedJobId(job.id);
+                                                                setIsLinkDialogOpen(true);
+                                                            }}
+                                                        >
+                                                            Switch Profile
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })
+                                    )
                                 )}
                             </TableBody>
                         </Table>

@@ -3,13 +3,9 @@ import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
 import { apiPaginated, apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
+import { withTenant } from "@/utils/tenant-auth";
 
-/**
- * GET /api/inspection-type
- * Fetch all inspection types or a single record
- * Query params: ?page=1&pageSize=50 OR ?id=1
- */
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request) => {
     const supabase = createClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -34,25 +30,20 @@ export async function GET(request: NextRequest) {
 
     const pagination = createPaginationMeta(paginationParams, count || 0);
     return apiPaginated(data || [], pagination);
-}
+});
 
-/**
- * POST /api/inspection-type
- * Create or update an inspection type record
- */
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request) => {
     const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabase = useAdmin ? createAdminClient() : createClient();
     const body = await request.json();
     const { id, ...payload } = body;
 
     let result;
-    
+
     console.log("[INSPECTION TYPE POST] Received payload keys:", Object.keys(payload));
-    
+
     if (id) {
         console.log(`[INSPECTION TYPE POST] Updating record ${id}...`);
-        // Update existing
         result = await supabase
             .from("inspection_type")
             .update(payload)
@@ -60,7 +51,6 @@ export async function POST(request: NextRequest) {
             .select();
     } else {
         console.log(`[INSPECTION TYPE POST] Inserting new record...`);
-        // Create new
         result = await supabase
             .from("inspection_type")
             .insert(payload)
@@ -70,24 +60,20 @@ export async function POST(request: NextRequest) {
     console.log("[INSPECTION TYPE POST] Supabase Result:", { error: result.error, dataCount: result.data?.length });
 
     if (result.error) return handleSupabaseError(result.error, "Failed to save inspection type");
-    
-    // Check if 0 rows returned on update, which means it silently failed (e.g. RLS or id mismatch)
+
     if (id && (!result.data || result.data.length === 0)) {
         console.warn(`[INSPECTION TYPE POST] WARNING: Update returned 0 rows for ID ${id}. RLS or invalid ID?`);
-        return NextResponse.json({ 
-            success: false, 
-            error: "Failed to save configuration. You do not have the required administrative permissions to modify this library record." 
+        return NextResponse.json({
+            success: false,
+            error: "Failed to save configuration. You do not have the required administrative permissions to modify this library record."
         }, { status: 403 });
     }
 
     const savedData = result.data && result.data.length > 0 ? result.data[0] : null;
     return apiSuccess(savedData);
-}
+});
 
-/**
- * DELETE /api/inspection-type
- */
-export async function DELETE(request: NextRequest) {
+export const DELETE = withTenant(async (request) => {
     const supabase = createClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -101,4 +87,4 @@ export async function DELETE(request: NextRequest) {
 
     if (error) return handleSupabaseError(error, "Failed to delete inspection type");
     return apiSuccess({ success: true });
-}
+});

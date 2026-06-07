@@ -1,0 +1,1135 @@
+{
+  "comps": [
+    {
+      "id": 112487,
+      "structure_id": 1061,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "del": false,
+        "dist": "0",
+        "face": null,
+        "life": null,
+        "elv_1": "-12.672",
+        "elv_2": "-4.945",
+        "f_leg": "A2",
+        "level": null,
+        "s_leg": "B2",
+        "f_node": "3515",
+        "id_chk": "1",
+        "s_node": "3003",
+        "clk_pos": "N/A",
+        "fitting": null,
+        "thetype": null,
+        "top_und": "SUBSEA",
+        "material": null,
+        "position": null,
+        "inst_date": null,
+        "comp_group": null,
+        "description": "BAN004"
+      }
+    },
+    {
+      "id": 112490,
+      "structure_id": 1061,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "del": false,
+        "dist": "0",
+        "face": null,
+        "life": null,
+        "elv_1": "-12.675",
+        "elv_2": "-4.945",
+        "f_leg": "A1",
+        "level": null,
+        "s_leg": "B1",
+        "f_node": "3510",
+        "id_chk": "1",
+        "s_node": "3002",
+        "clk_pos": "N/A",
+        "fitting": null,
+        "thetype": null,
+        "top_und": "SUBSEA",
+        "material": null,
+        "position": null,
+        "inst_date": null,
+        "comp_group": null,
+        "description": "BAN007"
+      }
+    },
+    {
+      "id": 114666,
+      "structure_id": 258,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "del": false,
+        "dist": "0",
+        "face": null,
+        "life": "10",
+        "elv_1": "3",
+        "elv_2": "-12",
+        "f_leg": "B3",
+        "level": null,
+        "s_leg": "B4",
+        "f_node": "116",
+        "id_chk": "1",
+        "s_node": "4",
+        "clk_pos": "N/A",
+        "fitting": "BRACELET",
+        "thetype": "TYPE B",
+        "top_und": "SUBSEA",
+        "material": "ZINC",
+        "position": null,
+        "inst_date": null,
+        "comp_group": null,
+        "description": "BAN 4"
+      }
+    },
+    {
+      "id": 114669,
+      "structure_id": 258,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "del": false,
+        "dist": "0",
+        "face": null,
+        "life": "10",
+        "elv_1": "3",
+        "elv_2": "-12",
+        "f_leg": "A1",
+        "level": null,
+        "s_leg": "B1",
+        "f_node": "121",
+        "id_chk": "1",
+        "s_node": "1",
+        "clk_pos": "N/A",
+        "fitting": "BRACELET",
+        "thetype": "TYPE B",
+        "top_und": "SUBSEA",
+        "material": "ZINC",
+        "position": null,
+        "inst_date": null,
+        "comp_group": null,
+        "description": "BAN 7"
+      }
+    },
+    {
+      "id": 1174,
+      "structure_id": 234,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": true,
+      "metadata": {
+        "fp": null,
+        "del": 1,
+        "lvl": "",
+        "code": "AN",
+        "dist": 0,
+        "face": "",
+        "depth": null,
+        "elv_1": -9,
+        "elv_2": -20,
+        "f_leg": "A2",
+        "s_leg": "A1",
+        "f_node": "14",
+        "id_chk": 1,
+        "s_node": "9",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 0,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN007"
+      }
+    },
+    {
+      "id": 1171,
+      "structure_id": 234,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": true,
+      "metadata": {
+        "fp": null,
+        "del": 1,
+        "lvl": "",
+        "code": "AN",
+        "dist": 0,
+        "face": "",
+        "depth": null,
+        "elv_1": -9,
+        "elv_2": -9,
+        "f_leg": "A1",
+        "s_leg": "A2",
+        "f_node": "13",
+        "id_chk": 1,
+        "s_node": "12",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 0,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN004"
+      }
+    },
+    {
+      "id": 76101,
+      "structure_id": 255,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "description": "BAN004",
+        "auto_migrated": true
+      }
+    },
+    {
+      "id": 76104,
+      "structure_id": 255,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "description": "BAN007",
+        "auto_migrated": true
+      }
+    },
+    {
+      "id": 86,
+      "structure_id": 231,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "Level 2",
+        "code": "AN",
+        "dist": 0,
+        "face": "B-A",
+        "depth": null,
+        "elv_1": -5,
+        "elv_2": -12,
+        "f_leg": "A",
+        "s_leg": "B",
+        "f_node": "7",
+        "id_chk": 1,
+        "s_node": "6",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 0,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN004"
+      }
+    },
+    {
+      "id": 89,
+      "structure_id": 231,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "Level 2",
+        "code": "AN",
+        "dist": 0,
+        "face": "B-A",
+        "depth": null,
+        "elv_1": -12,
+        "elv_2": -12,
+        "f_leg": "A",
+        "s_leg": "B",
+        "f_node": "7",
+        "id_chk": 1,
+        "s_node": "9",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 0,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN007"
+      }
+    },
+    {
+      "id": 170,
+      "structure_id": 243,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "Level 1",
+        "code": "AN",
+        "dist": 0,
+        "face": "ROW A",
+        "depth": null,
+        "elv_1": 3,
+        "elv_2": -12,
+        "f_leg": "A3",
+        "s_leg": "A2",
+        "f_node": "22",
+        "id_chk": 1,
+        "s_node": "2",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 9,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN004"
+      }
+    },
+    {
+      "id": 173,
+      "structure_id": 243,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "Level 2",
+        "code": "AN",
+        "dist": 0,
+        "face": "ROW 2",
+        "depth": null,
+        "elv_1": 3,
+        "elv_2": -12,
+        "f_leg": "B2",
+        "s_leg": "A2",
+        "f_node": "26",
+        "id_chk": 1,
+        "s_node": "101",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 6,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN007"
+      }
+    },
+    {
+      "id": 3588,
+      "structure_id": 234,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "",
+        "code": "AN",
+        "dist": 0,
+        "face": "",
+        "depth": null,
+        "elv_1": -9,
+        "elv_2": -20,
+        "f_leg": "A2",
+        "s_leg": "A1",
+        "f_node": "3130",
+        "id_chk": 1,
+        "s_node": "2140",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 6,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN007"
+      }
+    },
+    {
+      "id": 3589,
+      "structure_id": 234,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "",
+        "code": "AN",
+        "dist": 0,
+        "face": "",
+        "depth": null,
+        "elv_1": -9,
+        "elv_2": -9,
+        "f_leg": "A1",
+        "s_leg": "A2",
+        "f_node": "2215",
+        "id_chk": 1,
+        "s_node": "2205",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 0,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN004"
+      }
+    },
+    {
+      "id": 4601,
+      "structure_id": 1262,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "",
+        "code": "AN",
+        "dist": 0,
+        "face": "",
+        "depth": null,
+        "elv_1": -10,
+        "elv_2": -4.653,
+        "f_leg": "A8",
+        "s_leg": "A6",
+        "f_node": "513",
+        "id_chk": 1,
+        "s_node": "507",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 6,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN004"
+      }
+    },
+    {
+      "id": 4604,
+      "structure_id": 1262,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "",
+        "code": "AN",
+        "dist": 0,
+        "face": "",
+        "depth": null,
+        "elv_1": -15.653,
+        "elv_2": -4.653,
+        "f_leg": "A6",
+        "s_leg": "A6",
+        "f_node": "511",
+        "id_chk": 1,
+        "s_node": "503",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 12,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN007"
+      }
+    },
+    {
+      "id": 7107,
+      "structure_id": 1263,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "",
+        "code": "AN",
+        "dist": 0,
+        "face": "",
+        "depth": null,
+        "elv_1": 5.277,
+        "elv_2": -13.773,
+        "f_leg": "A3",
+        "s_leg": "A1",
+        "f_node": "6031",
+        "id_chk": 1,
+        "s_node": "5041",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 9,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN004"
+      }
+    },
+    {
+      "id": 7189,
+      "structure_id": 1263,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "fp": null,
+        "del": null,
+        "lvl": "",
+        "code": "AN",
+        "dist": 0,
+        "face": "",
+        "depth": null,
+        "elv_1": -13.773,
+        "elv_2": -5,
+        "f_leg": "A1",
+        "s_leg": "A3",
+        "f_node": "6024",
+        "id_chk": 1,
+        "s_node": "6033",
+        "x_cord": "",
+        "y_cord": "",
+        "clk_pos": 12,
+        "top_und": "SUBSEA",
+        "comp_group": "",
+        "description": "BAN007"
+      }
+    },
+    {
+      "id": 124690,
+      "structure_id": 1202,
+      "q_id": "BAN004",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "del": false,
+        "dist": "0",
+        "face": null,
+        "life": null,
+        "elv_1": "6.634",
+        "elv_2": "-13.5",
+        "f_leg": "A1",
+        "level": "Level 4",
+        "s_leg": "A3",
+        "f_node": "42",
+        "id_chk": "1",
+        "s_node": "36",
+        "clk_pos": "6 O' CLOCK",
+        "fitting": "WELDED",
+        "thetype": "TYPE A",
+        "top_und": "SUBSEA",
+        "material": "AL. ALLOY",
+        "position": " 6 O' CLOCK",
+        "inst_date": null,
+        "comp_group": null,
+        "description": "BAN004"
+      }
+    },
+    {
+      "id": 124718,
+      "structure_id": 1202,
+      "q_id": "BAN007",
+      "code": "AN",
+      "is_deleted": false,
+      "metadata": {
+        "del": false,
+        "dist": "0",
+        "face": null,
+        "life": null,
+        "elv_1": "6.634",
+        "elv_2": "-13.5",
+        "f_leg": "B1",
+        "level": "Level 4",
+        "s_leg": "B3",
+        "f_node": "46",
+        "id_chk": "1",
+        "s_node": "38",
+        "clk_pos": "6 O' CLOCK",
+        "fitting": "WELDED",
+        "thetype": "TYPE A",
+        "top_und": "SUBSEA",
+        "material": "AL. ALLOY",
+        "position": " 6 O' CLOCK",
+        "inst_date": null,
+        "comp_group": null,
+        "description": "BAN007"
+      }
+    }
+  ],
+  "records": [
+    {
+      "insp_id": 43,
+      "component_id": 3588,
+      "inspection_type_code": "RGVI",
+      "status": "COMPLETED",
+      "cr_date": "2026-03-24T09:54:16.748627",
+      "inspection_date": "2026-03-24",
+      "inspection_time": "17:54:11"
+    },
+    {
+      "insp_id": 47,
+      "component_id": 3588,
+      "inspection_type_code": "RGVI",
+      "status": "COMPLETED",
+      "cr_date": "2026-04-01T05:04:25.649538",
+      "inspection_date": "2026-04-20",
+      "inspection_time": "14:36:06"
+    },
+    {
+      "insp_id": 48,
+      "component_id": 3589,
+      "inspection_type_code": "RGVI",
+      "status": "COMPLETED",
+      "cr_date": "2026-04-01T05:04:56.428066",
+      "inspection_date": "2026-04-14",
+      "inspection_time": "10:20:40"
+    },
+    {
+      "insp_id": 89994,
+      "component_id": 3589,
+      "inspection_type_code": "RSANI",
+      "status": "COMPLETED",
+      "cr_date": "2026-06-05T04:32:55.294",
+      "inspection_date": "2026-06-05",
+      "inspection_time": "12:32:07"
+    },
+    {
+      "insp_id": 84559,
+      "component_id": 112487,
+      "inspection_type_code": "RGVI",
+      "status": "COMPLETED",
+      "cr_date": "2026-06-04T09:27:42.660674",
+      "inspection_date": "2014-06-28",
+      "inspection_time": "18:11:48"
+    },
+    {
+      "insp_id": 84206,
+      "component_id": 112490,
+      "inspection_type_code": "RGVI",
+      "status": "COMPLETED",
+      "cr_date": "2026-06-04T09:27:42.660674",
+      "inspection_date": "2014-06-30",
+      "inspection_time": "03:16:12"
+    },
+    {
+      "insp_id": 61069,
+      "component_id": 114666,
+      "inspection_type_code": "RGVI",
+      "status": "COMPLETED",
+      "cr_date": "2026-06-02T05:48:58.915538",
+      "inspection_date": "2013-11-06",
+      "inspection_time": "20:06:31"
+    },
+    {
+      "insp_id": 89549,
+      "component_id": 124690,
+      "inspection_type_code": "RGVI",
+      "status": "COMPLETED",
+      "cr_date": "2026-06-04T18:08:42.407262",
+      "inspection_date": "2016-09-06",
+      "inspection_time": "08:11:55"
+    },
+    {
+      "insp_id": 89081,
+      "component_id": 124718,
+      "inspection_type_code": "RGVI",
+      "status": "COMPLETED",
+      "cr_date": "2026-06-04T18:08:42.407262",
+      "inspection_date": "2016-09-09",
+      "inspection_time": "20:37:40"
+    }
+  ],
+  "sowItems": [
+    {
+      "id": 8536,
+      "component_id": 86,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 8550,
+      "component_id": 86,
+      "component_qid": "BAN004",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 21329,
+      "component_id": 86,
+      "component_qid": "BAN004",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": "26001/PLAT-A/RAHMAN"
+    },
+    {
+      "id": 21315,
+      "component_id": 86,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "26001/PLAT-A/RAHMAN"
+    },
+    {
+      "id": 8539,
+      "component_id": 89,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 8553,
+      "component_id": 89,
+      "component_qid": "BAN007",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 21318,
+      "component_id": 89,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "26001/PLAT-A/RAHMAN"
+    },
+    {
+      "id": 21332,
+      "component_id": 89,
+      "component_qid": "BAN007",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": "26001/PLAT-A/RAHMAN"
+    },
+    {
+      "id": 331,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "RSEAB",
+      "status": "pending",
+      "report_number": "TEST-RPT-001"
+    },
+    {
+      "id": 5185,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 6129,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 32586,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "CLEAN",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 11383,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "26002/PLAT-B/SHAFIQ"
+    },
+    {
+      "id": 11487,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": "26002/PLAT-B/SHAFIQ"
+    },
+    {
+      "id": 33305,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "CVINS",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 36181,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "CVINS",
+      "status": "pending",
+      "report_number": "DIVING01"
+    },
+    {
+      "id": 34024,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "CPCLB",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 34743,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "UTCLB",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 35462,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "CLEAN",
+      "status": "pending",
+      "report_number": "DIVING01"
+    },
+    {
+      "id": 36900,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "CPCLB",
+      "status": "pending",
+      "report_number": "DIVING01"
+    },
+    {
+      "id": 37619,
+      "component_id": 170,
+      "component_qid": "BAN004",
+      "inspection_code": "UTCLB",
+      "status": "pending",
+      "report_number": "DIVING01"
+    },
+    {
+      "id": 334,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "RSEAB",
+      "status": "pending",
+      "report_number": "TEST-RPT-001"
+    },
+    {
+      "id": 5189,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 6132,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 11390,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "26002/PLAT-B/SHAFIQ"
+    },
+    {
+      "id": 32589,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "CLEAN",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 11493,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": "26002/PLAT-B/SHAFIQ"
+    },
+    {
+      "id": 33308,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "CVINS",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 34027,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "CPCLB",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 34746,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "UTCLB",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 35465,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "CLEAN",
+      "status": "pending",
+      "report_number": "DIVING01"
+    },
+    {
+      "id": 36184,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "CVINS",
+      "status": "pending",
+      "report_number": "DIVING01"
+    },
+    {
+      "id": 36903,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "CPCLB",
+      "status": "pending",
+      "report_number": "DIVING01"
+    },
+    {
+      "id": 37622,
+      "component_id": 173,
+      "component_qid": "BAN007",
+      "inspection_code": "UTCLB",
+      "status": "pending",
+      "report_number": "DIVING01"
+    },
+    {
+      "id": 26,
+      "component_id": 3588,
+      "component_qid": "BAN007",
+      "inspection_code": "RUTWT",
+      "status": "pending",
+      "report_number": "2026-01"
+    },
+    {
+      "id": 599,
+      "component_id": 3588,
+      "component_qid": "BAN007",
+      "inspection_code": "RSEAB",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 3201,
+      "component_id": 3588,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 9629,
+      "component_id": 3588,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "NAQIBPLATC"
+    },
+    {
+      "id": 32027,
+      "component_id": 3588,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "DIVER1"
+    },
+    {
+      "id": 32532,
+      "component_id": 3588,
+      "component_qid": "BAN007",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": "NAQIBPLATC"
+    },
+    {
+      "id": 28979,
+      "component_id": 3588,
+      "component_qid": "BAN007",
+      "inspection_code": "GVINS",
+      "status": "pending",
+      "report_number": "2026-01"
+    },
+    {
+      "id": 25,
+      "component_id": 3588,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "completed",
+      "report_number": "2026-01"
+    },
+    {
+      "id": 596,
+      "component_id": 3589,
+      "component_qid": "BAN004",
+      "inspection_code": "RSEAB",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 32024,
+      "component_id": 3589,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "DIVER1"
+    },
+    {
+      "id": 32529,
+      "component_id": 3589,
+      "component_qid": "BAN004",
+      "inspection_code": "RSANI",
+      "status": "pending",
+      "report_number": "NAQIBPLATC"
+    },
+    {
+      "id": 3195,
+      "component_id": 3589,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": null
+    },
+    {
+      "id": 9626,
+      "component_id": 3589,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "NAQIBPLATC"
+    },
+    {
+      "id": 267,
+      "component_id": 3589,
+      "component_qid": "BAN004",
+      "inspection_code": "RSANI",
+      "status": "completed",
+      "report_number": "2026-01"
+    },
+    {
+      "id": 40664,
+      "component_id": 3589,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "completed",
+      "report_number": "2026-01"
+    },
+    {
+      "id": 23848,
+      "component_id": 4601,
+      "component_qid": "BAN004",
+      "inspection_code": "RCASN",
+      "status": "pending",
+      "report_number": "Unassigned Items"
+    },
+    {
+      "id": 24845,
+      "component_id": 4601,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "Unassigned Items"
+    },
+    {
+      "id": 25842,
+      "component_id": 4601,
+      "component_qid": "BAN004",
+      "inspection_code": "RRISI",
+      "status": "pending",
+      "report_number": "Unassigned Items"
+    },
+    {
+      "id": 26840,
+      "component_id": 4601,
+      "component_qid": "BAN004",
+      "inspection_code": "RSZCI",
+      "status": "pending",
+      "report_number": "Unassigned Items"
+    },
+    {
+      "id": 23851,
+      "component_id": 4604,
+      "component_qid": "BAN007",
+      "inspection_code": "RCASN",
+      "status": "pending",
+      "report_number": "Unassigned Items"
+    },
+    {
+      "id": 25845,
+      "component_id": 4604,
+      "component_qid": "BAN007",
+      "inspection_code": "RRISI",
+      "status": "pending",
+      "report_number": "Unassigned Items"
+    },
+    {
+      "id": 24848,
+      "component_id": 4604,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "pending",
+      "report_number": "Unassigned Items"
+    },
+    {
+      "id": 26843,
+      "component_id": 4604,
+      "component_qid": "BAN007",
+      "inspection_code": "RSZCI",
+      "status": "pending",
+      "report_number": "Unassigned Items"
+    },
+    {
+      "id": 38689,
+      "component_id": 112487,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "completed",
+      "report_number": "14061"
+    },
+    {
+      "id": 38377,
+      "component_id": 112490,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "completed",
+      "report_number": "14061"
+    },
+    {
+      "id": 38934,
+      "component_id": 114666,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "completed",
+      "report_number": "13144"
+    },
+    {
+      "id": 39884,
+      "component_id": 124690,
+      "component_qid": "BAN004",
+      "inspection_code": "RGVI",
+      "status": "completed",
+      "report_number": "16001"
+    },
+    {
+      "id": 39912,
+      "component_id": 124718,
+      "component_qid": "BAN007",
+      "inspection_code": "RGVI",
+      "status": "completed",
+      "report_number": "16001"
+    }
+  ]
+}

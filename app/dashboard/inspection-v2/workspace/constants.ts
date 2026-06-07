@@ -1,27 +1,24 @@
 export const AIR_DIVE_ACTIONS = [
-    { label: "Left Surface", value: "LEAVING_SURFACE" },
-    { label: "Arrived Bottom", value: "AT_WORKSITE" },
-    { label: "Diver at Worksite", value: "AT_WORKSITE" },
-    { label: "Diver Left Worksite", value: "LEAVING_WORKSITE" },
-    { label: "Left Bottom", value: "LEAVING_WORKSITE" },
-    { label: "Arrived Surface", value: "BACK_TO_SURFACE" }
+    { label: "Left Surface", value: "LEAVING_SURFACE", location: "Surface" },
+    { label: "Arrived Bottom", value: "AT_WORKSITE", location: "Bottom" },
+    { label: "Diver at Worksite", value: "AT_WORKSITE", location: "Worksite" },
+    { label: "Diver Left Worksite", value: "LEAVING_WORKSITE", location: "Worksite" },
+    { label: "Left Bottom", value: "LEAVING_WORKSITE", location: "Bottom" },
+    { label: "Arrived Surface", value: "BACK_TO_SURFACE", location: "Surface" }
 ];
 
 export const BELL_DIVE_ACTIONS = [
-    { label: "Left Surface", value: "BELL_LAUNCHED" },
-    { label: "Bell at Working Depth", value: "BELL_AT_DEPTH" },
-    { label: "Diver Locked Out", value: "DIVER_EXITING_BELL" },
-    { label: "Diver Locked In", value: "DIVER_RETURNING_TO_BELL" },
-    { label: "Bell Left Bottom", value: "BELL_ASCENDING" },
-    { label: "Bell on Surface", value: "BELL_AT_SURFACE" },
-    { label: "TUP Complete", value: "BELL_MATED_TO_CHAMBER" }
+    { label: "Left Surface", value: "BELL_LAUNCHED", location: "Surface" },
+    { label: "Bell at Working Depth", value: "BELL_AT_DEPTH", location: "Bottom" },
+    { label: "Diver Locked Out", value: "DIVER_EXITING_BELL", location: "Worksite" },
+    { label: "Diver Locked In", value: "DIVER_RETURNING_TO_BELL", location: "Bell" },
+    { label: "Bell Left Bottom", value: "BELL_ASCENDING", location: "Bottom" },
+    { label: "Bell on Surface", value: "BELL_AT_SURFACE", location: "Surface" },
+    { label: "TUP Complete", value: "BELL_MATED_TO_CHAMBER", location: "Deck" }
 ];
 
 export const MARINE_GROWTH_LIST = [
-    "Hard: 0-20% Coverage", "Hard: 20-40% Coverage", "Hard: 40-60% Coverage", "Hard: 60-80% Coverage", "Hard: 80-100% Coverage", "Hard: All Over",
-    "Soft: 0-20% Coverage", "Soft: 20-40% Coverage", "Soft: 40-60% Coverage", "Soft: 60-80% Coverage", "Soft: 80-100% Coverage", "Soft: All Over",
-    "Hard and Soft: 0-20% Coverage", "Hard and Soft: 20-40% Coverage", "Hard and Soft: 40-60% Coverage", "Hard and Soft: 60-80% Coverage", "Hard and Soft: 80-100% Coverage", "Hard and Soft: All Over",
-    "MGI: 0-20% Coverage", "MGI: 20-40% Coverage", "MGI: 40-60% Coverage", "MGI: 60-80% Coverage", "MGI: 80-100% Coverage", "MGI: All Over"
+    "0-20%", "20-40%", "40-60%", "60-80%", "80-100%", "All Over"
 ];
 
 export const COATING_CONDITION_LIST = [

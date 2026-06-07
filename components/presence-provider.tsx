@@ -104,7 +104,7 @@ export function PresenceProvider({
                                     heartbeatFailed.current = true;
                                     console.warn("Presence heartbeat function missing. Disabling DB heartbeat tracking.");
                                 } else {
-                                    console.error("Initial heartbeat error:", error.message || error);
+                                    console.warn("Initial heartbeat warning:", error.message || error);
                                 }
                             }
                         });
@@ -130,19 +130,19 @@ export function PresenceProvider({
                     supabase.rpc('update_user_heartbeat').then(({ error }) => {
                         if (error) {
                             if (error.code === 'PGRST202') {
-                                heartbeatFailed.current = true;
-                                console.warn("Presence heartbeat function missing. Disabling DB heartbeat tracking.");
-                            } else {
-                                // Only log if it's a real error and we have details
-                                if (error.message || error.code) {
-                                    console.error("Heartbeat interval error:", error.message || error.code);
-                                }
+                                            heartbeatFailed.current = true;
+                                            console.warn("Presence heartbeat function missing. Disabling DB heartbeat tracking.");
+                                        } else {
+                                            // Only log if it's a real error and we have details
+                                            if (error.message || error.code) {
+                                                console.warn("Heartbeat interval warning:", error.message || error.code);
+                                            }
+                                        }
+                                    }
+                                });
                             }
                         }
-                    });
-                }
-            }
-        }, 60000);
+                    }, 60000);
 
         return () => {
             clearInterval(refreshInterval);

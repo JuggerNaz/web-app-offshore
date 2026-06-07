@@ -32,10 +32,20 @@ export interface ReportConfig {
 
 const loadImage = (url: string): Promise<string> => {
     return new Promise((resolve, reject) => {
+        if (!url || typeof url !== 'string' || !url.trim()) {
+            resolve("");
+            return;
+        }
         const img = new Image();
         img.crossOrigin = "Anonymous";
-        img.src = url;
+        const timeout = setTimeout(() => {
+            console.warn(`Image loading timed out (5s limit) in defect-anomaly-report for URL: ${url}`);
+            img.onload = null;
+            img.onerror = null;
+            resolve("");
+        }, 5000);
         img.onload = () => {
+            clearTimeout(timeout);
             const canvas = document.createElement("canvas");
             canvas.width = img.width;
             canvas.height = img.height;
@@ -47,7 +57,11 @@ const loadImage = (url: string): Promise<string> => {
                 reject(new Error("Canvas context is null"));
             }
         };
-        img.onerror = (e) => resolve("");
+        img.onerror = (e) => {
+            clearTimeout(timeout);
+            resolve("");
+        };
+        img.src = url;
     });
 };
 

@@ -11,11 +11,19 @@ import { UserSidebar } from "./user-sidebar";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 
+import { useUserRole } from "@/utils/hooks/use-user-role";
+
 export function CollapsibleSidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState("OFFSHORE");
   const [departmentName, setDepartmentName] = useState("Data Management");
+  const { role, modules } = useUserRole();
+
+  const isModuleAllowed = (moduleName: string) => {
+    if (role === "super_admin") return true;
+    return modules.includes(moduleName);
+  };
 
   // Load company settings from API
   useEffect(() => {
@@ -149,20 +157,22 @@ export function CollapsibleSidebar() {
       {/* User Support & Account */}
       <div className="flex flex-col gap-1 py-4">
         {/* Settings Link */}
-        <div className="px-4">
-          <Link
-            href="/dashboard/settings"
-            className={cn(
-              "flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all hover:bg-slate-100 dark:hover:bg-slate-800",
-              isCollapsed ? "justify-center px-2" : "justify-start"
-            )}
-          >
-            <Settings className="h-4 w-4 text-slate-400" />
-            {!isCollapsed && (
-              <span className="text-slate-600 dark:text-slate-400">Settings</span>
-            )}
-          </Link>
-        </div>
+        {isModuleAllowed("Settings") && (
+          <div className="px-4">
+            <Link
+              href="/dashboard/settings"
+              className={cn(
+                "flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all hover:bg-slate-100 dark:hover:bg-slate-800",
+                isCollapsed ? "justify-center px-2" : "justify-start"
+              )}
+            >
+              <Settings className="h-4 w-4 text-slate-400" />
+              {!isCollapsed && (
+                <span className="text-slate-600 dark:text-slate-400">Settings</span>
+              )}
+            </Link>
+          </div>
+        )}
 
         <UserSidebar isCollapsed={isCollapsed} />
 

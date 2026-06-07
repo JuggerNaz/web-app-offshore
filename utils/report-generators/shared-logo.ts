@@ -1,9 +1,22 @@
 export const loadLogoWithTransparency = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
     return new Promise((resolve) => {
+        if (!url || typeof url !== 'string' || !url.trim()) {
+            resolve(null);
+            return;
+        }
+
         const img = new window.Image();
         img.crossOrigin = "Anonymous";
-        img.src = url;
+
+        const timeout = setTimeout(() => {
+            console.warn(`Logo loading timed out (3s limit) for URL: ${url}`);
+            img.onload = null;
+            img.onerror = null;
+            resolve(null);
+        }, 3000);
+
         img.onload = () => {
+            clearTimeout(timeout);
             const canvas = document.createElement("canvas");
             canvas.width = img.width;
             canvas.height = img.height;
@@ -77,7 +90,14 @@ export const loadLogoWithTransparency = (url: string): Promise<{ data: string; w
                 resolve(null);
             }
         };
-        img.onerror = () => resolve(null);
+        img.onerror = () => {
+            clearTimeout(timeout);
+            console.warn(`Logo loading failed for URL: ${url}`);
+            resolve(null);
+        };
+
+        // Assign src AFTER setting onload and onerror handlers to prevent race conditions
+        img.src = url;
     });
 };
 

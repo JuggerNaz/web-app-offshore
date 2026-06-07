@@ -1,11 +1,8 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
+import { withTenant } from "@/utils/tenant-auth";
 
-/**
- * GET /api/defect-criteria/rules
- * Fetch rules for a specific procedure
- */
-export async function GET(request: Request) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -22,6 +19,7 @@ export async function GET(request: Request) {
             .from('defect_criteria_rules')
             .select('*')
             .eq('procedure_id', procedureId)
+            .eq('company_id', companyId)
             .order('evaluation_priority', { ascending: false })
             .order('rule_order', { ascending: true });
 
@@ -29,7 +27,6 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
-        // Transform snake_case to camelCase to match Frontend interfaces
         const camelData = data.map((r: any) => ({
             id: r.id,
             procedureId: r.procedure_id,
@@ -62,13 +59,9 @@ export async function GET(request: Request) {
             { status: 500 }
         );
     }
-}
+});
 
-/**
- * POST /api/defect-criteria/rules
- * Create a new defect criteria rule
- */
-export async function POST(request: Request) {
+export const POST = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -93,11 +86,11 @@ export async function POST(request: Request) {
             evaluationPriority,
         } = body;
 
-        // Get the current max rule_order for this procedure
         const { data: maxOrderRule } = await (supabase as any)
             .from('defect_criteria_rules')
             .select('rule_order')
             .eq('procedure_id', procedureId)
+            .eq('company_id', companyId)
             .order('rule_order', { ascending: false })
             .limit(1)
             .single();
@@ -125,6 +118,7 @@ export async function POST(request: Request) {
                 alert_message: alertMessage,
                 rule_order: nextOrder,
                 evaluation_priority: evaluationPriority || 0,
+                company_id: companyId,
             })
             .select()
             .single();
@@ -140,4 +134,4 @@ export async function POST(request: Request) {
             { status: 500 }
         );
     }
-}
+});

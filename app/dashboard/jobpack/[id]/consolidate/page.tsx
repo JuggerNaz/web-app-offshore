@@ -31,8 +31,37 @@ export default function ConsolidatePage() {
 
     // Fetch User
     useEffect(() => {
+        let isMounted = true;
         const supabase = createClient();
-        supabase.auth.getUser().then(({ data }) => setCurrentUser(data.user));
+
+        const fetchUser = async () => {
+            try {
+                // Try fetching session first to avoid GoTrue navigator lock issues
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.user) {
+                    if (isMounted) setCurrentUser(session.user);
+                    return;
+                }
+
+                // Fallback to getUser with safety try/catch
+                const { data: { user } } = await supabase.auth.getUser();
+                if (isMounted) setCurrentUser(user);
+            } catch (err) {
+                console.warn("Gracefully handled auth lock or session timeout in ConsolidatePage:", err);
+            }
+        };
+
+        fetchUser();
+
+        // Subscribe to auth state changes dynamically
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (isMounted) setCurrentUser(session?.user ?? null);
+        });
+
+        return () => {
+            isMounted = false;
+            subscription.unsubscribe();
+        };
     }, []);
 
     // Initialize structureStatus from DB

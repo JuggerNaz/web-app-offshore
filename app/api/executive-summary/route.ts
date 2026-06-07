@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
         const { data, error } = await (supabase as any)
             .from("u_executive_summaries")
             .select("*")
+            .eq("company_id", companyId)
             .eq("jobpack_id", Number(jobpackId))
             .eq("structure_id", Number(structureId))
             .eq("sow_report_no", sowReportNo)
@@ -27,9 +29,9 @@ export async function GET(request: NextRequest) {
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -39,11 +41,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
         }
 
-        // Check if exists first to be safe, or just use upsert with id if we had it
-        // For now, we use upsert with onConflict but with better error handling
         const { data, error } = await (supabase as any)
             .from("u_executive_summaries")
             .upsert({
+                company_id: companyId,
                 jobpack_id: Number(jobpack_id),
                 structure_id: Number(structure_id),
                 sow_report_no,
@@ -66,4 +67,4 @@ export async function POST(request: NextRequest) {
         console.error("Executive Summary POST error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
-}
+});

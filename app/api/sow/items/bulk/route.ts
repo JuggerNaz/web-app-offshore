@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -16,24 +17,22 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "items must be an array" }, { status: 400 });
         }
 
-        // 1. Fetch existing items to preserve status/notes/elevation_data
         const { data: existingItems, error: fetchError } = await (supabase as any)
             .from("u_sow_items")
             .select("*")
-            .eq("sow_id", sow_id);
+            .eq("sow_id", sow_id)
+            .eq("company_id", companyId);
 
         if (fetchError) {
             return NextResponse.json({ error: fetchError.message }, { status: 400 });
         }
 
-        // Create a map for quick lookup
         const existingMap = new Map();
         existingItems?.forEach((item: any) => {
             const key = `${item.report_number || 'null'}:${item.component_id}:${item.inspection_type_id}`;
             existingMap.set(key, item);
         });
 
-        // 2. Prepare items for upsert
         const itemsToUpsert = items.map((item: any) => {
             const key = `${item.report_number || 'null'}:${item.component_id}:${item.inspection_type_id}`;
             const existing = existingMap.get(key);
@@ -49,14 +48,13 @@ export async function POST(request: NextRequest) {
                 inspection_name: item.inspection_name,
                 elevation_required: item.elevation_required || false,
                 elevation_data: item.elevation_data || [],
-                // Preserve status and notes if they exist, otherwise use defaults
                 status: existing?.status || item.status || "pending",
                 notes: existing?.notes || item.notes || null,
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                company_id: companyId,
             };
         });
 
-        // 3. Separate items into updates and inserts
         const toUpdate: any[] = [];
         const toInsert: any[] = [];
 
@@ -71,7 +69,6 @@ export async function POST(request: NextRequest) {
             }
         });
 
-        // 4. Identify items to delete
         const newItemKeys = new Set(items.map((item: any) => 
             `${item.report_number || 'null'}:${item.component_id}:${item.inspection_type_id}`
         ));
@@ -83,7 +80,6 @@ export async function POST(request: NextRequest) {
             })
             .map((item: any) => item.id) || [];
 
-        // 5. Execute deletion if needed
         if (itemIdsToDelete.length > 0) {
             const { error: deleteError } = await (supabase as any)
                 .from("u_sow_items")
@@ -96,11 +92,10 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // 6. Execute Updates
         if (toUpdate.length > 0) {
             const { error: updateError } = await (supabase as any)
                 .from("u_sow_items")
-                .upsert(toUpdate); // All have IDs, so this will update
+                .upsert(toUpdate);
 
             if (updateError) {
                 console.error("Bulk Update Error:", updateError);
@@ -108,11 +103,10 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // 7. Execute Inserts
         if (toInsert.length > 0) {
             const { error: insertError } = await (supabase as any)
                 .from("u_sow_items")
-                .insert(toInsert); // None have IDs, so this will insert
+                .insert(toInsert);
 
             if (insertError) {
                 console.error("Bulk Insert Error:", insertError);
@@ -126,12 +120,10 @@ export async function POST(request: NextRequest) {
             inserted: toInsert.length, 
             deleted: itemIdsToDelete.length 
         });
-
-        return NextResponse.json({ success: true, count: 0 });
     } catch (error: any) {
         return NextResponse.json(
             { error: error.message || "Internal server error" },
             { status: 500 }
         );
     }
-}
+});

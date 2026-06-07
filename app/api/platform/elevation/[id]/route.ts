@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase.from("str_elv").select("*").eq("plat_id", Number(id));
 
   if (error) {
+    console.error("[Elevation GET Error]", error);
     if (error.code === "PGRST116") {
       return NextResponse.json({ error: error.message }, { status: 404 });
     } else if (error.code === "22P02") {
       return NextResponse.json({ error: error.message }, { status: 400 });
-    } else return NextResponse.json({ error: "Failed to fetch platform" }, { status: 500 });
+    } else return NextResponse.json({ error: error.message || "Failed to fetch platform" }, { status: 500 });
   }
 
   return NextResponse.json({ data });
@@ -21,7 +22,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await request.json();
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
   console.log(id, body);
 

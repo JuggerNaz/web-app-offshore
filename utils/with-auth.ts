@@ -3,12 +3,17 @@ import { createClient } from "@/utils/supabase/server";
 import { apiUnauthorized } from "@/utils/api-response";
 import { User } from "@supabase/supabase-js";
 
+export interface AuthenticatedContext {
+  params: Promise<any>;
+  user: User;
+}
+
 /**
  * Type for authenticated route handler
  */
 type AuthenticatedHandler = (
   request: NextRequest,
-  context: { params: Promise<any>; user: User }
+  context: AuthenticatedContext
 ) => Promise<NextResponse> | NextResponse;
 
 /**

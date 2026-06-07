@@ -1,0 +1,2995 @@
+{
+  "columns": [
+    "STR_ID",
+    "DEFECT",
+    "DEFECT_ID",
+    "COMP_ID",
+    "DEFECT_CODE",
+    "DEFECT_TYPE",
+    "DEFECT_DESC",
+    "RECTIFID_DESC",
+    "INSP_ID",
+    "RECT_DATE",
+    "RECTIFID",
+    "DFT_CODE_TYPE",
+    "DFT_REF_NO",
+    "EVAL_BY",
+    "APPROV_BY"
+  ],
+  "uDefectRow": [
+    {
+      "STR_ID": 264,
+      "DEFECT": 1,
+      "DEFECT_ID": 16983,
+      "COMP_ID": 166375,
+      "DEFECT_CODE": "LIMEMFLO",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "FMD reading taken at 5 locations on the member.  \r\n(1) 1.2 g/cc (2) 1.2 g/cc (3) 1.2 g/cc (4) 1.2 g/cc (5) 1.2 g/cc\r\nConfirmation from FMD Engineer onboard the member is flooded with average density of 1.05 g/cc",
+      "RECTIFID_DESC": "Member is design as flooded. Drawing L-07902.\r\n",
+      "INSP_ID": 418484,
+      "RECT_DATE": "2016-09-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "LI",
+      "DFT_REF_NO": "12/BNJT-H/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 205,
+      "DEFECT": 1,
+      "DEFECT_ID": 14659,
+      "COMP_ID": 156305,
+      "DEFECT_CODE": "CPUP",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "Low CP's on Riser Clamp (both Inboard & Outboard), Stub & Member Clamp.\r\nCP values range from -698mV to -703mV.\r\nInwater CP Calibration -1052mV",
+      "RECTIFID_DESC": "Pipeline scope\r\n",
+      "INSP_ID": 350113,
+      "RECT_DATE": "2016-07-26T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "CP",
+      "DFT_REF_NO": "11/BADP-E/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 921,
+      "DEFECT": 1,
+      "DEFECT_ID": 14199,
+      "COMP_ID": 155583,
+      "DEFECT_CODE": "VSCOAT",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Observed coating partially peeled off  at elevation (-)20m. the dimension of peeled off coating is approximately 200mm width x 500mm length. CP stab obtained is (-)1011mV indicating the riser is still cathodically protected.  ",
+      "RECTIFID_DESC": "As agreed by BIE-4 Structure TP - 30-Oct-2014",
+      "INSP_ID": 337011,
+      "RECT_DATE": "2014-10-30T06:57:34.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "11/BAKP-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1021,
+      "DEFECT": 1,
+      "DEFECT_ID": 14668,
+      "COMP_ID": 157424,
+      "DEFECT_CODE": "BMISS",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "One bolt missing from riser 1 stub flange located on the 12 o'clock position.",
+      "RECTIFID_DESC": "Close. 7 other nuts are still secured. Closed\r\n",
+      "INSP_ID": 351991,
+      "RECT_DATE": "2016-07-27T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "LI",
+      "DFT_REF_NO": "11/BAJT-H/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 304,
+      "DEFECT": 1,
+      "DEFECT_ID": 14291,
+      "COMP_ID": 155822,
+      "DEFECT_CODE": "PDDEF",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "Upper stud to boatlanding half-shell (Clamp B1) East deformed 4-5 degrees. No other features observed, remaining studs appear intact.",
+      "RECTIFID_DESC": "\"The condition of clamp is still intact despite the upper stud was deformed.\nRemaining studs are still intact to support the clamp.\nRe-prioritize to SJ3.\"\r\n",
+      "INSP_ID": 339279,
+      "RECT_DATE": "2016-09-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "PD",
+      "DFT_REF_NO": "11/BNG-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 213,
+      "DEFECT": 1,
+      "DEFECT_ID": 16864,
+      "COMP_ID": 6787,
+      "DEFECT_CODE": "AWABP",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Anode depleted approximately 75-100%",
+      "RECTIFID_DESC": "BAN 26 has been replaced with new anode (Type A) on Q4, 2013.\r\n",
+      "INSP_ID": 416984,
+      "RECT_DATE": "2016-06-26T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "12/BNJT-C/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 268,
+      "DEFECT": 1,
+      "DEFECT_ID": 16779,
+      "COMP_ID": 23387,
+      "DEFECT_CODE": "CPUP",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "The inspection of the riser clamp, stub and member clamp at this elevation was limited due to the marine growth obscuring all detail. No obvious sign of damage, defect, deformation or debris observed. CP reading obtained within acceptable limit stipu",
+      "RECTIFID_DESC": "Pipeline scope. \r\n",
+      "INSP_ID": 411874,
+      "RECT_DATE": "2016-07-26T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "CP",
+      "DFT_REF_NO": "12/BAP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 229,
+      "DEFECT": 1,
+      "DEFECT_ID": 16989,
+      "COMP_ID": 29705,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Cable tray 2.5m in length and 500mm width in contact with HOM N90-N94. No sign of damage or deformation observed. CP reading obtained on the member is (-)1012mV.",
+      "RECTIFID_DESC": "Cable tray is successfully removed from HOM N90-N94",
+      "INSP_ID": 419145,
+      "RECT_DATE": "2012-04-01T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "12/BNQ-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 230,
+      "DEFECT": 1,
+      "DEFECT_ID": 15253,
+      "COMP_ID": 158029,
+      "DEFECT_CODE": "CRUNIF",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "The paint coat is peeling from the edges of the riser clamp half shells along with surface corrosion on the exposed metal. The bolts and nuts of the riser clamp and telescopic clamp have commenced corrosive blooming.",
+      "RECTIFID_DESC": "Incorporated in topside repair\r\n",
+      "INSP_ID": 363794,
+      "RECT_DATE": "2016-04-21T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "CR",
+      "DFT_REF_NO": "11/WL-123/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 250,
+      "DEFECT": 1,
+      "DEFECT_ID": 17336,
+      "COMP_ID": 38197,
+      "DEFECT_CODE": "DBNMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "A piece of wood approx. 1m in length in contact with HOM N78-N79. No damage or deformation observed at the contact point.",
+      "RECTIFID_DESC": "Wood debris is successfully removed from HOM N78-N79",
+      "INSP_ID": 430013,
+      "RECT_DATE": "2012-04-17T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "12/BODP-C/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 240,
+      "DEFECT": 1,
+      "DEFECT_ID": 17469,
+      "COMP_ID": 120975,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scaffold pole (approx. 6.0m in length x 50mm in diameter) and grating (approx. 1m in length x 1m in width)in contact with HDM N34-N36 located close to node WN N58.No sign of any damage to the contact area",
+      "RECTIFID_DESC": "The debris was successfully removed by the air diver",
+      "INSP_ID": 436306,
+      "RECT_DATE": "2012-07-16T05:31:59.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "12/SIMP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 212,
+      "DEFECT": 1,
+      "DEFECT_ID": 15794,
+      "COMP_ID": 28893,
+      "DEFECT_CODE": "LIMEMFLO",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "MEMBER HOM N217-N218 IS FLOODED. THE FLOODED MEMBER WAS SUSPECTED TO BE GROUTED BUT SUBJECT TO PCSB/AME TO CONFIRM IT. AVERAGE DENSITY WAS REPORTED TO BE 1.2-1.4 g/cc",
+      "RECTIFID_DESC": "\"No finding on FMD on the previous UIMC campaign (2003).\nFMD found at EL(-)31.\nRecommendation: To analyze the flooded member with push-over analysis (GUSA).\n\"\r\n",
+      "INSP_ID": 379298,
+      "RECT_DATE": "2016-07-18T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "LI",
+      "DFT_REF_NO": "11/BNDP-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 233,
+      "DEFECT": 1,
+      "DEFECT_ID": 15358,
+      "COMP_ID": 68506,
+      "DEFECT_CODE": null,
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "BAN030 75-100% Depleted",
+      "RECTIFID_DESC": "Replaced with new anode. Post replacement survey showing the Anode is secure and active. CP reading obtained were reported to be in range (-)1014 to (-)1051 mV",
+      "INSP_ID": 367657,
+      "RECT_DATE": "2018-11-13T06:38:36.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "11/WLDP-C/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 322,
+      "DEFECT": 1,
+      "DEFECT_ID": 19006,
+      "COMP_ID": 76873,
+      "DEFECT_CODE": "VSDRW",
+      "DEFECT_TYPE": "P3",
+      "DEFECT_DESC": "The grouted member is not shown in as-built drawing ",
+      "RECTIFID_DESC": "Closed",
+      "INSP_ID": 504193,
+      "RECT_DATE": "2013-12-13T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "13/TEJT-C/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 243,
+      "DEFECT": 1,
+      "DEFECT_ID": 17698,
+      "COMP_ID": 38613,
+      "DEFECT_CODE": "DBNMHI",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Fishing net wrapping the member (HDM N25-N40).",
+      "RECTIFID_DESC": "non-metallic debris - no impact to platforms CP. CLOSED\r\n",
+      "INSP_ID": 444725,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "12/WLDP-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 545,
+      "DEFECT": 1,
+      "DEFECT_ID": 14911,
+      "COMP_ID": 14814,
+      "DEFECT_CODE": "AWABFV",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "BAN042 depleted 75% - 100%",
+      "RECTIFID_DESC": "Replaced in 2011. CLOSED\r\n",
+      "INSP_ID": 360135,
+      "RECT_DATE": "2016-03-21T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "11/BADP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 267,
+      "DEFECT": 1,
+      "DEFECT_ID": 15658,
+      "COMP_ID": 36999,
+      "DEFECT_CODE": "LIMEMFLO",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "Horizontal member (HOM N102-N103) flooded. FMD readings were taken close to node 102, at the center of the member and close to node 103. The HOM appeared to have no obvious sign of any mechanical or impact damage.",
+      "RECTIFID_DESC": "Member is design as flooded. Refer drawing L-05402.\r\n",
+      "INSP_ID": 374970,
+      "RECT_DATE": "2016-09-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "LI",
+      "DFT_REF_NO": "11/BNJT-E/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 231,
+      "DEFECT": 1,
+      "DEFECT_ID": 15283,
+      "COMP_ID": 25297,
+      "DEFECT_CODE": "VSCLAMP",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Observed no riser clamp at EL(-)12m as stated in SKOPL238 Pipeline Isometric drawing ref no. P-0202 Sheet no. 5.",
+      "RECTIFID_DESC": "pipeline scope\r\n",
+      "INSP_ID": 364850,
+      "RECT_DATE": "2016-06-28T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "11/WL-4/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 232,
+      "DEFECT": 1,
+      "DEFECT_ID": 19365,
+      "COMP_ID": 55366,
+      "DEFECT_CODE": "LIMEMFLO",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Member Flooded",
+      "RECTIFID_DESC": "Incorporated flooded member in GUSA 2014. RSR = 1.92 which is more than minimum RSR of 1.50\r\n",
+      "INSP_ID": 516420,
+      "RECT_DATE": "2016-06-27T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "LI",
+      "DFT_REF_NO": "13/WLDP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 982,
+      "DEFECT": 1,
+      "DEFECT_ID": 17420,
+      "COMP_ID": 163085,
+      "DEFECT_CODE": "CRUNIF",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Corrosion observed on the riser R3 above the riser clamp at EL(+)4.5m close to leg A3",
+      "RECTIFID_DESC": "Transfer to pipeline\r\n",
+      "INSP_ID": 431049,
+      "RECT_DATE": "2016-03-21T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "CR",
+      "DFT_REF_NO": "12/KAKG-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 234,
+      "DEFECT": 1,
+      "DEFECT_ID": 17772,
+      "COMP_ID": 130113,
+      "DEFECT_CODE": "VSMEMB",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "3 cut off appurtenances observed on member HOM N2120-N2140.",
+      "RECTIFID_DESC": "Drop cell survey performed in 2015 shows minimum CP is (-)979 mV\r\n",
+      "INSP_ID": 447950,
+      "RECT_DATE": "2016-06-28T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "12/WLP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 276,
+      "DEFECT": 1,
+      "DEFECT_ID": 22827,
+      "COMP_ID": 14309,
+      "DEFECT_CODE": "AWABP",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "Anode depleted approximately 75-100%",
+      "RECTIFID_DESC": "Anode repalcement was done in 2019.\r\nAs per Nurul Zuzulawati's email, Structural Engineer dated on 1.9.2020",
+      "INSP_ID": 874364,
+      "RECT_DATE": "2020-09-29T06:20:10.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "18/FBJT-29/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 220,
+      "DEFECT": 1,
+      "DEFECT_ID": 18713,
+      "COMP_ID": 63204,
+      "DEFECT_CODE": "SDOTL",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scour depth exceeding allowable value as stipulated by the client.",
+      "RECTIFID_DESC": "Incorporated exposed pile and scour in GUSA 2014. RSR = 2.76 which is more than minimum RSR of 1.32\r\n",
+      "INSP_ID": 493417,
+      "RECT_DATE": "2016-04-21T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "SC",
+      "DFT_REF_NO": "13/BKV-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 251,
+      "DEFECT": 1,
+      "DEFECT_ID": 19121,
+      "COMP_ID": 179694,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scaffold pole (approximately 4m in length x 50mm in diameter) in contact with the conductor guide frame. ",
+      "RECTIFID_DESC": "unrecoverable debris deeper than 10m - no danger to vessel operations. CLOSED\r\n",
+      "INSP_ID": 508392,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/TKJT-C/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 225,
+      "DEFECT": 1,
+      "DEFECT_ID": 18598,
+      "COMP_ID": 119058,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Grating (approximately 2m in length x 0.5m in width) in contact with the member.",
+      "RECTIFID_DESC": "unrecoverable debris deeper than 10m - no danger to vessel operations. CLOSED\r\n",
+      "INSP_ID": 491458,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/BEP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 236,
+      "DEFECT": 1,
+      "DEFECT_ID": 19404,
+      "COMP_ID": 62200,
+      "DEFECT_CODE": "DBNMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Soft rope (approximately  4m in length) entangled with the riser. No sign of any damage was observed at the contact area. No attempt was made to remove the debris as it may pose entanglement hazard to the ROV. ",
+      "RECTIFID_DESC": "non-metallic debris - no impact to platforms CP. CLOSED\r\n",
+      "INSP_ID": 518055,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/WLV-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 301,
+      "DEFECT": 1,
+      "DEFECT_ID": 18164,
+      "COMP_ID": 53343,
+      "DEFECT_CODE": "DRAWG",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Member wall thickness discrepancy in between on-site specification and reference drawing specification. UTWT measurement by diver on VDM N21-N41 were 25.1mm in contrast to 12mm as specified by reference drawing. ",
+      "RECTIFID_DESC": "UTWT measurement by diver on VDM N21-N41 was in the range of 25.4mm to 25.5mm. Wall thickness obtained tallies with member wall thickness, 25.0mm as specified by updated reference drawing.",
+      "INSP_ID": 473175,
+      "RECT_DATE": "2012-08-09T04:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "12/BAP-AA/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 310,
+      "DEFECT": 1,
+      "DEFECT_ID": 18933,
+      "COMP_ID": 76046,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scaffold pole (approximately 3m in length x 50mm in diameter) in contact with the member.",
+      "RECTIFID_DESC": "unrecoverable debris deeper than 10m - no danger to vessel operations. CLOSED\r\n",
+      "INSP_ID": 502422,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/TEDP-E/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 248,
+      "DEFECT": 1,
+      "DEFECT_ID": 17629,
+      "COMP_ID": 145629,
+      "DEFECT_CODE": "EXPOSED",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Exposed pile observed at Leg A2 approx. height 150mm. CP reading (-931mV) obtained at exposed pile area within acceptable range.",
+      "RECTIFID_DESC": "After further QA/QC by SIE team, it was reported that their was no sign of exposed pile. Observed extended bottom section of the Leg A2 buried into the seabed.",
+      "INSP_ID": 442693,
+      "RECT_DATE": "2012-06-11T04:41:16.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "SC",
+      "DFT_REF_NO": "12/TKP-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 324,
+      "DEFECT": 1,
+      "DEFECT_ID": 17928,
+      "COMP_ID": 123505,
+      "DEFECT_CODE": "PDBROKE",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "The top ladder step is broken off on the one side and bented up vertically towards surface.\r\n",
+      "RECTIFID_DESC": "Part of TSM workscope. CLOSED\r\n",
+      "INSP_ID": 456425,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "PD",
+      "DFT_REF_NO": "12/BYG-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 223,
+      "DEFECT": 1,
+      "DEFECT_ID": 18658,
+      "COMP_ID": 82702,
+      "DEFECT_CODE": "VSDRW",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Cut off stub (approximately 400mm in length x 200mm in diameter) observed to be securely attached to the member. The CP reading taken on the stub was within the acceptable range as stipulated by the client. ; 60-80% COVERAGE OF HARD AND SOFT GROWTH",
+      "RECTIFID_DESC": "CP reading of stub still within allowable range.CLOSED\r\n",
+      "INSP_ID": 492747,
+      "RECT_DATE": "2016-05-15T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "13/BEV-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 307,
+      "DEFECT": 1,
+      "DEFECT_ID": 18851,
+      "COMP_ID": 68676,
+      "DEFECT_CODE": "AWABP",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Anode depleted approximately 75-100%",
+      "RECTIFID_DESC": "Anode was successfully replaced by the air diver.\r\n\r\nCP on member= -969mV\r\nCP on anode = -1044mV\r\n\r\n",
+      "INSP_ID": 499604,
+      "RECT_DATE": "2013-11-21T07:11:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "13/TEDP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 235,
+      "DEFECT": 1,
+      "DEFECT_ID": 15379,
+      "COMP_ID": 25412,
+      "DEFECT_CODE": "AWABFV",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "BAN016 75-100% depleted",
+      "RECTIFID_DESC": "Replaced with new anode. Post replacement survey showing\r\nthe Anode is secure and active. CP reading obtained were\r\nreported to be in range (-)1010 to (-)1041 mV",
+      "INSP_ID": 368813,
+      "RECT_DATE": "2011-09-07T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "11/WLP-C/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 261,
+      "DEFECT": 1,
+      "DEFECT_ID": 18806,
+      "COMP_ID": 178645,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scaffold pole (approximately 2m in length x 50mm in diameter) in contact with the member. No sign of any damage was observed at the contact area. Unable to remove the debris due to restricted access caused by member configuration.",
+      "RECTIFID_DESC": "unrecoverable debris deeper than 10m - no danger to vessel operations. CLOSED\r\n",
+      "INSP_ID": 498165,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/BOV-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 235,
+      "DEFECT": 1,
+      "DEFECT_ID": 15395,
+      "COMP_ID": 25412,
+      "DEFECT_CODE": "AWABFV",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Anode BAN 16 depleted approximately 75-100%",
+      "RECTIFID_DESC": "CP within allowable range\r\n",
+      "INSP_ID": 368292,
+      "RECT_DATE": "2016-04-21T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "11/WLP-C/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 252,
+      "DEFECT": 1,
+      "DEFECT_ID": 19140,
+      "COMP_ID": 53524,
+      "DEFECT_CODE": "SDOTL",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scour depth exceeding allowable value as stipulated by the client.",
+      "RECTIFID_DESC": "Incorporated scour and exposed pile in GUSA 2014. RSR = 2.28 which is more than minimum RSR of 1.50\r\n",
+      "INSP_ID": 509151,
+      "RECT_DATE": "2016-06-30T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "SC",
+      "DFT_REF_NO": "13/TKJT-D/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 517,
+      "DEFECT": 1,
+      "DEFECT_ID": 18080,
+      "COMP_ID": 8170,
+      "DEFECT_CODE": "VSDWG",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "2 readings of FMD survey done on the member close to node N25 and N27. Unable to take reading close to node N18 due to no access for the ROV. Density readings obtained were within the range of 1.45 g/cc to 1.52 g/cc showing the member is grouted.",
+      "RECTIFID_DESC": "Member designed as flooded - presence of flooding vent. CLOSED\r\n",
+      "INSP_ID": 466436,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "12/BYV-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 311,
+      "DEFECT": 1,
+      "DEFECT_ID": 19599,
+      "COMP_ID": 180782,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Grating (approximately 2m in length x 0.5m in width) and 2 scaffold poles(approximately 2m x 50mm in diameter) in contact with the member. ",
+      "RECTIFID_DESC": "Debris was successfully removed by air diver.",
+      "INSP_ID": 524604,
+      "RECT_DATE": "2013-12-18T02:23:59.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/TEDP-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 253,
+      "DEFECT": 1,
+      "DEFECT_ID": 19158,
+      "COMP_ID": 135024,
+      "DEFECT_CODE": "DBNMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Fishing net (approximately 10m in length x 2m in width) in contact with themember located close to node N88.",
+      "RECTIFID_DESC": "Fishing net was successfully removed by diver",
+      "INSP_ID": 510360,
+      "RECT_DATE": "2013-06-04T03:30:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/TKJT-E/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 323,
+      "DEFECT": 1,
+      "DEFECT_ID": 18053,
+      "COMP_ID": 75977,
+      "DEFECT_CODE": "DBMHI",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scaffold pole approx. 4m in length in contact with HOM N57-N80. No sign of dent, deformation or damage observed on the member at the contact point. ",
+      "RECTIFID_DESC": "The scaffold pole was successfully removed by air divers.",
+      "INSP_ID": 465359,
+      "RECT_DATE": "2012-07-01T20:38:18.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "12/TEP-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 241,
+      "DEFECT": 1,
+      "DEFECT_ID": 17519,
+      "COMP_ID": 38799,
+      "DEFECT_CODE": "PDDENT",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "Dent (approx. 1m in length) causing 25% of deformation (from 12 to 3 o'clock position) on the outboard side of the HOM N13-N14 between node WN N13 and node WN N26",
+      "RECTIFID_DESC": "Based on GUSA Report Year 2013, Min RSR=4.6 which still meets the minimum requirement of RSR = 1.32\r\n",
+      "INSP_ID": 437244,
+      "RECT_DATE": "2016-08-02T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "PD",
+      "DFT_REF_NO": "12/SIV-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 216,
+      "DEFECT": 1,
+      "DEFECT_ID": 18774,
+      "COMP_ID": 52095,
+      "DEFECT_CODE": "DBNMHI",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Soft line (approximately 4m to 5m in length) entangled with the member",
+      "RECTIFID_DESC": "non-metallic debris - no impact to platforms CP. CLOSED\r\n",
+      "INSP_ID": 496378,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/BNV-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 325,
+      "DEFECT": 1,
+      "DEFECT_ID": 18107,
+      "COMP_ID": 174899,
+      "DEFECT_CODE": "CRPIT",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Localized pitting corrosion on the clamp & the big stub of the shock absorber",
+      "RECTIFID_DESC": "Rectified during TSM in 2013. CLOSED\r\n",
+      "INSP_ID": 467350,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "CR",
+      "DFT_REF_NO": "12/BYR-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 334,
+      "DEFECT": 1,
+      "DEFECT_ID": 16289,
+      "COMP_ID": 110954,
+      "DEFECT_CODE": "SCEXP",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "EXPOSED PILE OBSERVED APPROX. 350MM AT LEG B1",
+      "RECTIFID_DESC": "Modelled in GUSA 2013. RSR > 1.32. Closed.\r\n",
+      "INSP_ID": 391210,
+      "RECT_DATE": "2016-09-05T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "SC",
+      "DFT_REF_NO": "11/TEV-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 305,
+      "DEFECT": 1,
+      "DEFECT_ID": 18030,
+      "COMP_ID": 68899,
+      "DEFECT_CODE": "AWABP",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "Anode Depleted approximately 75-100%",
+      "RECTIFID_DESC": "Closed",
+      "INSP_ID": 464253,
+      "RECT_DATE": "2012-06-27T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "12/TEP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 315,
+      "DEFECT": 1,
+      "DEFECT_ID": 16253,
+      "COMP_ID": 68941,
+      "DEFECT_CODE": "AWABFV",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "BAN008 80-100% DEPLETED",
+      "RECTIFID_DESC": "Anode retropod installed at TEV-A in 2013\r\n",
+      "INSP_ID": 390595,
+      "RECT_DATE": "2016-09-05T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "11/TEV-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 326,
+      "DEFECT": 1,
+      "DEFECT_ID": 19044,
+      "COMP_ID": 81556,
+      "DEFECT_CODE": "DBNMHI",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Fishing net (approximately 5m visible length) entangled with the riser clamp. No sign of any damage was observed at the contact area. Unable to remove the debris as it may pose entanglement hazard to the ROV. ",
+      "RECTIFID_DESC": "Debris was successfully removed by air diver \r\nRectified Date : 13-02-2014",
+      "INSP_ID": 505298,
+      "RECT_DATE": "2014-02-12T20:29:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/TEJT-T/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1204,
+      "DEFECT": 1,
+      "DEFECT_ID": 21634,
+      "COMP_ID": 191669,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scaffold pole and wire rope found.",
+      "RECTIFID_DESC": "Remove 2 x scaffold poles.\r\n\r\nRefer to excel sheet Maintenance tab - Dive No. RT012",
+      "INSP_ID": 690691,
+      "RECT_DATE": "2014-02-08T06:47:24.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "14/M1PQ-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 239,
+      "DEFECT": 1,
+      "DEFECT_ID": 19235,
+      "COMP_ID": 62211,
+      "DEFECT_CODE": "VSRIS",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Riser is in contact with the member",
+      "RECTIFID_DESC": "pipeline scope \r\n",
+      "INSP_ID": 512614,
+      "RECT_DATE": "2016-07-03T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "13/TKP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 222,
+      "DEFECT": 1,
+      "DEFECT_ID": 18560,
+      "COMP_ID": 67735,
+      "DEFECT_CODE": "AWABP",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Anode depleted approximately 75-100%",
+      "RECTIFID_DESC": "Portable anode sled installed on Q3 2014. CP range: -832mV to -911mV\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n",
+      "INSP_ID": 490733,
+      "RECT_DATE": "2014-09-12T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "13/BAV-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1262,
+      "DEFECT": 1,
+      "DEFECT_ID": 22255,
+      "COMP_ID": 199995,
+      "DEFECT_CODE": "CPUP",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Cathodic Potential reading is out of acceptable range as stipulated by the client.",
+      "RECTIFID_DESC": "CP re-verification reading were within the acceptable range as stipulated by the client.\r\nCP Pre Calibration:(-)1025mV, CP Post Calibration:(-)1026mV\r\nCP on bottom yoke plate:\r\nPile A8-1:(-)820mV\r\nPile A8-2:(-)853mV\r\nPile A8-3:(-)862mV",
+      "INSP_ID": 770353,
+      "RECT_DATE": "2017-10-09T05:35:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "CP",
+      "DFT_REF_NO": "17/NC3CP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1061,
+      "DEFECT": 1,
+      "DEFECT_ID": 20561,
+      "COMP_ID": 183624,
+      "DEFECT_CODE": "VSMEMB",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Observed two additional members welded to the member at face A2-B2 close to MSL",
+      "RECTIFID_DESC": "To be updated in line diagram and SACS model. CLOSED\r\n",
+      "INSP_ID": 645207,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "14/D21JT-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1223,
+      "DEFECT": 1,
+      "DEFECT_ID": 22091,
+      "COMP_ID": 198717,
+      "DEFECT_CODE": "DBNMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Fishing net (approximately 2m visible length) entangled with the weld node. No sign of any damage was observed at the contact area.",
+      "RECTIFID_DESC": "Debris was successfully removed by the diver.",
+      "INSP_ID": 756727,
+      "RECT_DATE": "2016-11-08T05:45:50.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "16/LADR-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1511,
+      "DEFECT": 1,
+      "DEFECT_ID": 24823,
+      "COMP_ID": 240167,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "P3",
+      "DEFECT_DESC": "Scaffold pole (approximately 8m in length x 50mm in diameter) in contact with in contact with anode BAN141. No sign of any damage observed at the contact area. ",
+      "RECTIFID_DESC": "Debris was removed by ROV. ",
+      "INSP_ID": 953697,
+      "RECT_DATE": "2018-04-11T14:43:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "18/F13WDR-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 246,
+      "DEFECT": 1,
+      "DEFECT_ID": 19293,
+      "COMP_ID": 53936,
+      "DEFECT_CODE": "SDOTL",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scour depth exceeding allowable value as stipulated by the client.",
+      "RECTIFID_DESC": "Incorporated scour in GUSA 2015. RSR = 1.86 which is more than minimum RSR of 1.32\r\n",
+      "INSP_ID": 514573,
+      "RECT_DATE": "2016-06-30T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "SC",
+      "DFT_REF_NO": "13/TKV-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 245,
+      "DEFECT": 1,
+      "DEFECT_ID": 19271,
+      "COMP_ID": 179980,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Scaffold pole (approximately 4m in length x 50mm in diameter) in contact with the member and located close to node N84. ",
+      "RECTIFID_DESC": "unrecoverable debris deeper than 10m - no danger to vessel operations. CLOSED\r\n",
+      "INSP_ID": 514278,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/TKQ-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1142,
+      "DEFECT": 1,
+      "DEFECT_ID": 21620,
+      "COMP_ID": 184823,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "P3",
+      "DEFECT_DESC": "Scaffold pole found.",
+      "RECTIFID_DESC": "Removed scaffold pole debris.\r\n\r\nRefer to excel sheet Maintenace Tab - Dive No. RT083.",
+      "INSP_ID": 689309,
+      "RECT_DATE": "2013-08-30T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/B11K-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1262,
+      "DEFECT": 1,
+      "DEFECT_ID": 20904,
+      "COMP_ID": 200181,
+      "DEFECT_CODE": "DBNMH",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Canvas was found on the seabed.",
+      "RECTIFID_DESC": "Debris was recovered on deck.",
+      "INSP_ID": 658886,
+      "RECT_DATE": "2015-05-25T06:47:13.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "16/NC3CP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 325,
+      "DEFECT": 1,
+      "DEFECT_ID": 22425,
+      "COMP_ID": 133259,
+      "DEFECT_CODE": "CPUP",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Cathodic Potential reading is out of acceptable range as stipulated by the client.",
+      "RECTIFID_DESC": "CP rectification work successfully done by air diver. CP readings obtained as per below:-\r\n\r\nBracing member: -906mV\r\nClamp Lug #1: -908mV\r\nClamp Lug #2: -909mV\r\nClamp Lug #3: -910mV\r\nInboard half shell: -915mV\r\nOutboard half shell: -916mV",
+      "INSP_ID": 778890,
+      "RECT_DATE": "2017-11-15T14:30:30.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "CP",
+      "DFT_REF_NO": "17/BYR-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 208,
+      "DEFECT": 1,
+      "DEFECT_ID": 22961,
+      "COMP_ID": 23980,
+      "DEFECT_CODE": "AWABP",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "Anode depleted approximately 75-100%",
+      "RECTIFID_DESC": "Anode replacement executed in 2019.\r\nAnomaly closed as per emel from \r\nNurul Zuzilawati Amir\r\nStructural Engineer (BTS32) dated 5.8 2020\r\n",
+      "INSP_ID": 880490,
+      "RECT_DATE": "2020-08-05T02:56:39.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "AW",
+      "DFT_REF_NO": "18/BAP-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 221,
+      "DEFECT": 1,
+      "DEFECT_ID": 22882,
+      "COMP_ID": 14574,
+      "DEFECT_CODE": "AS-BUILT",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "Free span was observed from the riser R2 bend.",
+      "RECTIFID_DESC": "Pipeline approved for abandonment.\r\n\r\nAs per Zuzi's emel dated 7.8.2020\r\nStructure Engineer\r\n",
+      "INSP_ID": 875873,
+      "RECT_DATE": "2020-08-13T02:38:54.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "VS",
+      "DFT_REF_NO": "18/BA-24/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 249,
+      "DEFECT": 1,
+      "DEFECT_ID": 19313,
+      "COMP_ID": 54345,
+      "DEFECT_CODE": "DBNMHI",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Fishing net (approximately 15m in length x 0.5m in width) entangled all around the face of C-B from leg C at EL(-)25m accross to Leg B at EL(-)26m including theVDM at this elevation. ",
+      "RECTIFID_DESC": "non-metallic debris - no impact to platforms CP. CLOSED\r\n",
+      "INSP_ID": 515362,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/TKV-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 323,
+      "DEFECT": 1,
+      "DEFECT_ID": 22448,
+      "COMP_ID": 75988,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "Scaffold poles in contact with the member.",
+      "RECTIFID_DESC": "As per Deris Hazard Risk Assessment conducted in 2015, the debris brings minimum effect to structural integrity.\r\n",
+      "INSP_ID": 780264,
+      "RECT_DATE": "2020-08-17T01:52:23.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "17/TEP-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1202,
+      "DEFECT": 1,
+      "DEFECT_ID": 21367,
+      "COMP_ID": 190453,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Stage 58\r\nNo visible damage. 1 x scaffold pole.",
+      "RECTIFID_DESC": "Stage 58\r\nScaffold pole removed. No visible damage to associated member.",
+      "INSP_ID": 683620,
+      "RECT_DATE": "2018-11-13T06:38:36.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "12/B11DR-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 248,
+      "DEFECT": 1,
+      "DEFECT_ID": 20099,
+      "COMP_ID": 62236,
+      "DEFECT_CODE": "CPUP",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Cathodic Potential reading is out of acceptable range as stipulated by the client",
+      "RECTIFID_DESC": "pipeline scope\r\n",
+      "INSP_ID": 539211,
+      "RECT_DATE": "2016-04-21T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "CP",
+      "DFT_REF_NO": "13/SKOPL205/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 238,
+      "DEFECT": 1,
+      "DEFECT_ID": 19223,
+      "COMP_ID": 176514,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Grating (approximately 1m in length x 0.5m in width) in contact with the member and located close to node N71.",
+      "RECTIFID_DESC": "unrecoverable debris deeper than 10m - no danger to vessel operations. CLOSED\r\n",
+      "INSP_ID": 511891,
+      "RECT_DATE": "2016-03-20T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "13/TKK-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 210,
+      "DEFECT": 1,
+      "DEFECT_ID": 20504,
+      "COMP_ID": 7566,
+      "DEFECT_CODE": "CPOP",
+      "DEFECT_TYPE": "NONE",
+      "DEFECT_DESC": "Cathodic Potential reading is out of acceptable range as stipulated by the client.",
+      "RECTIFID_DESC": "\"Pipeline scope.\nTransfer to pipeline cluster engineer.\"\r\n",
+      "INSP_ID": 642085,
+      "RECT_DATE": "2016-06-26T16:00:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "CP",
+      "DFT_REF_NO": "13/SKOPL041/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 208,
+      "DEFECT": 1,
+      "DEFECT_ID": 23890,
+      "COMP_ID": 148790,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "P3",
+      "DEFECT_DESC": "Metallic item in contact with pipeline. ",
+      "RECTIFID_DESC": "Debris removed by the ROV. No visible damage observed on the pipeline. ",
+      "INSP_ID": 916320,
+      "RECT_DATE": "2020-11-04T18:22:57.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "20/BAP-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1505,
+      "DEFECT": 1,
+      "DEFECT_ID": 24719,
+      "COMP_ID": 234046,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "P2",
+      "DEFECT_DESC": "One (1) scaffold pole debris in contact with member close to N37.",
+      "RECTIFID_DESC": "One (1) scaffold pole debris was removed.",
+      "INSP_ID": 950513,
+      "RECT_DATE": "2017-08-03T19:32:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "17/E11P-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1504,
+      "DEFECT": 1,
+      "DEFECT_ID": 24934,
+      "COMP_ID": 232410,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "P3",
+      "DEFECT_DESC": "Scaffold pole (approximately 1m in length) in contact with the BAN 218. ",
+      "RECTIFID_DESC": "Debris was removed by ROV.",
+      "INSP_ID": 955220,
+      "RECT_DATE": "2019-10-01T22:50:27.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "19/E11DP-A/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    },
+    {
+      "STR_ID": 1509,
+      "DEFECT": 1,
+      "DEFECT_ID": 24743,
+      "COMP_ID": 238110,
+      "DEFECT_CODE": "DBMIC",
+      "DEFECT_TYPE": "P3",
+      "DEFECT_DESC": "Removed three (3) scaffold pole debris.",
+      "RECTIFID_DESC": "Debris removal before GVI and CPS as according to ROV JHA for internal member at seabed level.",
+      "INSP_ID": 951215,
+      "RECT_DATE": "2017-08-10T00:26:00.000Z",
+      "RECTIFID": 1,
+      "DFT_CODE_TYPE": "DB",
+      "DFT_REF_NO": "17/E11P-B/A-014R",
+      "EVAL_BY": null,
+      "APPROV_BY": null
+    }
+  ],
+  "amlyItems": [
+    {
+      "LIB_ID": "FJ",
+      "LIB_DESC": "PIPELINE FIELD JOINT DEFECT",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "PLCD",
+      "LIB_DESC": "PIPELINE COATING DAMAGE",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "PLPD",
+      "LIB_DESC": "PIPELINE PHYSICAL DAMAGE",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "CDBC",
+      "LIB_DESC": "CLAD OFF-BITUMEN CRACKED BARE METAL SHOWING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CDBD",
+      "LIB_DESC": "CLAD OFF-BITUMEN DISINTEGRATED BARE METAL SHOWING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DEBRIS 1",
+      "LIB_DESC": "Debris",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DEBOTH",
+      "LIB_DESC": "DEBRIS - OTHERS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOOSEGAP",
+      "LIB_DESC": "LACK OF INTEGRITY - LOOSE NUTS & GAP",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "EXMG",
+      "LIB_DESC": "EXCEEDING MAXIMUM ALLOWABLE VALUE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ANNW",
+      "LIB_DESC": "ANODE NOT WORKING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CPERR",
+      "LIB_DESC": "CP READING OUT OF RANGE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SUPNT",
+      "LIB_DESC": "SUPPORT STRUCTURE NOT SUPPORTING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": " ",
+      "LIB_DESC": "NONE - NO DEFECTS FOUND",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MULTI",
+      "LIB_DESC": "MULTIPLE DEFECTS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CORROP",
+      "LIB_DESC": "CORROSION - PITTING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIABM",
+      "LIB_DESC": "LACK OF INTEGRITY - ABRASION BARE METAL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOICC",
+      "LIB_DESC": "LACK OF INTEGRITY - CORROSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSAA",
+      "LIB_DESC": "VARIATION TO SPEC - ANODE ADDITIONAL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSBBL",
+      "LIB_DESC": "VARIATION TO SPEC - OTHERS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIBMISS",
+      "LIB_DESC": "LACK OF INTEGRITY - BOLTS MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BURIED",
+      "LIB_DESC": "BURIED PIPE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "FREESP",
+      "LIB_DESC": "SPAN EXCEEDING THE ALLOWBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MGEXC",
+      "LIB_DESC": "MARINE GROWTH EXCEEDING ALLOW.",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MDEBRI",
+      "LIB_DESC": "METALLIC DEBRIS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "NOMDEB",
+      "LIB_DESC": "NON METALLIC DEBRIS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "THKLOS",
+      "LIB_DESC": "WALL THICKNESS LOSS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "WTCTDG",
+      "LIB_DESC": "WEIGHT COAT DAMAGED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LACKC",
+      "LIB_DESC": "LACK OF CLEARANCE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DEBRIS",
+      "LIB_DESC": "DEBRIS- METALIC, ETC",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PITT",
+      "LIB_DESC": "PITTING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MOVE",
+      "LIB_DESC": "MOVEMENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "NIS",
+      "LIB_DESC": "NOT IN SERVICEBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "NIS2",
+      "LIB_DESC": "NOT IN SERVICEABLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIWALLDEF",
+      "LIB_DESC": "LACK OF INTEGRITY - THROUGH WALL DEFECT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIMEMFLO",
+      "LIB_DESC": "LACK OF INTEGRITY - MEMBER FLOODED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LILEGFLO",
+      "LIB_DESC": "LACK OF INTEGRITY - LEG FLOODED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "GROUT",
+      "LIB_DESC": "VARIATION TO SPEC - MEMBER GROUTED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ABRMRK",
+      "LIB_DESC": "LACK OF INTEGRITY - ABRASION MARK",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSEXC",
+      "LIB_DESC": "VARIATION TO SPEC - EXCESSIVE GAP",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSMOV",
+      "LIB_DESC": "VARIATION TO SPEC - MOVEMENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LICOMMOVE",
+      "LIB_DESC": "LACK OF INTEGRITY - COMPONENT MOVING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SCDOVL",
+      "LIB_DESC": "SCOUR DEPTH OVER LIMIT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MGEX",
+      "LIB_DESC": "EXCESSIVE MG THICKNESS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSWT1",
+      "LIB_DESC": "WALL THICKNESS >12.5% NOMINAL THICKNESS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSWT2",
+      "LIB_DESC": "WALL THICKNESS < 12.5% NOMINAL THICKNESS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PHYDMG",
+      "LIB_DESC": "PHYSICAL DAMAGE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSCCT",
+      "LIB_DESC": "VARIATION TO SPEC - COATING CRACKED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSFA",
+      "LIB_DESC": "VARIATION TO SPEC - FLANGE ADDITIONAL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LICD",
+      "LIB_DESC": "LACK OF INTEGRITY - COATING DAMAGED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BOLT LOOSE",
+      "LIB_DESC": "BOLT LOOSE AND DAMAGED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BL",
+      "LIB_DESC": "BOLTS LOOSE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "WO",
+      "LIB_DESC": "WRAPPING OFF-BARE METAL SHOWING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "UCUTT",
+      "LIB_DESC": "UNDERCUT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDOTHER",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - OTHER",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "REEXP",
+      "LIB_DESC": "REINFORCING EXPOSED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "WIRESCAR",
+      "LIB_DESC": "WIRE SCAR",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "WRAPSCAR",
+      "LIB_DESC": "WRAP SCAR",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWABV",
+      "LIB_DESC": "ANODE WASTAGE ANODE BAR VISIBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SLIP",
+      "LIB_DESC": "SURFACE SLIPPERY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWASP",
+      "LIB_DESC": "ANODE WASTAGE ANODE SLED PARTIALLY VISIBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PLCD",
+      "LIB_DESC": "COATING CRACKED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "REX",
+      "LIB_DESC": "REINFORCING EXPOSED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "OTHER",
+      "LIB_DESC": "OTHER TYPE OF DEFECT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BBPS",
+      "LIB_DESC": "BEND/BUCKLE TO PORT SIDE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BBSS",
+      "LIB_DESC": "BEND/BUCKLE TO STARBOARD SIDE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BBUP",
+      "LIB_DESC": "BEND/BUCKLE TO UPWARDS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BBDN",
+      "LIB_DESC": "BEND/BUCKLE TO DOWNWARDS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DPS",
+      "LIB_DESC": "DENT ON PORT SIDE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DSS",
+      "LIB_DESC": "DENT ON STARBOARD SIDE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DTP",
+      "LIB_DESC": "DENT ON TOP SIDE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "RPT",
+      "LIB_DESC": "RUPTURED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDMOV",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - MOVEMENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "EXP",
+      "LIB_DESC": "EXPOSE PILE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DEPLET",
+      "LIB_DESC": "DEPLETION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CORRO",
+      "LIB_DESC": "CORROSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SUSP",
+      "LIB_DESC": "SUSPENSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "INC",
+      "LIB_DESC": "INCONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "OVSZE",
+      "LIB_DESC": "OVERSIZE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "OPFLV",
+      "LIB_DESC": "OPEN FLOOD VALVE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PD",
+      "LIB_DESC": "PHYSICAL DAMAGE",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "PS",
+      "LIB_DESC": "PIPELINE SPANNING",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "SC",
+      "LIB_DESC": "SCOUR",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "VS",
+      "LIB_DESC": "VARIATION TO SPECIFICATION",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "WD",
+      "LIB_DESC": "WELD DEFECT",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "NONE",
+      "LIB_DESC": "NONE",
+      "LIB_CODE": "AMLY_TYP"
+    },
+    {
+      "LIB_ID": "SEVERE",
+      "LIB_DESC": "SEVERE",
+      "LIB_CODE": "AMLY_TYP"
+    },
+    {
+      "LIB_ID": "ATTENT REQ",
+      "LIB_DESC": "ATTENTION REQUIRED",
+      "LIB_CODE": "AMLY_TYP"
+    },
+    {
+      "LIB_ID": "WORSE",
+      "LIB_DESC": "WORSE",
+      "LIB_CODE": "AMLY_TYP"
+    },
+    {
+      "LIB_ID": "P1",
+      "LIB_DESC": "PRIORITY 1",
+      "LIB_CODE": "AMLY_TYP"
+    },
+    {
+      "LIB_ID": "P2",
+      "LIB_DESC": "PRIORITY 2",
+      "LIB_CODE": "AMLY_TYP"
+    },
+    {
+      "LIB_ID": "P3",
+      "LIB_DESC": "PRIORITY 3",
+      "LIB_CODE": "AMLY_TYP"
+    },
+    {
+      "LIB_ID": "VARSPC",
+      "LIB_DESC": "VARIATION TO SPECIFICATION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SURCOR",
+      "LIB_DESC": "SURFACE CORROSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ABRAS",
+      "LIB_DESC": "ABRASION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ANGLE",
+      "LIB_DESC": "INCORRECT CHAIN ANGLE OR CHAIN ANCHOR",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ARCST",
+      "LIB_DESC": "ARK STRIKE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BENTT",
+      "LIB_DESC": "BENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BLOWH",
+      "LIB_DESC": "BLOWHOLES (CASTING DEFECT)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BMEXP",
+      "LIB_DESC": "BARE METAL EXPOSED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BMISS",
+      "LIB_DESC": "BOLTS MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BRITF",
+      "LIB_DESC": "BRITTLE FRACTURE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BULGE",
+      "LIB_DESC": "BULGE OR SWELLING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BURNT",
+      "LIB_DESC": "BURN THROUGH",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CABRA",
+      "LIB_DESC": "COATING ABRASION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSCPEEL",
+      "LIB_DESC": "VARIATION TO SPEC - COATING PEEL/FLAKE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LICMISS",
+      "LIB_DESC": "LACK OF INTEGRITY - COATING MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSOTH",
+      "LIB_DESC": "VARIATION TO SPEC - OTHER",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOIMN",
+      "LIB_DESC": "LACK OF INTEGRITY - MISSING NUT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOIWD",
+      "LIB_DESC": "LACK OF INTEGRITY - WELD DEFECT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CL",
+      "LIB_DESC": "VARIATION TO SPEC - CLAMP",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "TW",
+      "LIB_DESC": "THROUGH WALL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSRIS",
+      "LIB_DESC": "VARIATION TO SPEC - RISER",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOILB",
+      "LIB_DESC": "LACK OF INTEGRITY - LOOSE BOLTS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSTHICK",
+      "LIB_DESC": "WALL THICKNESS ANOMALY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSINC",
+      "LIB_DESC": "VARIATION TO SPEC - IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDLK",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - LEAK",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIANMISS",
+      "LIB_DESC": "LACK OF INTEGRITY - ANODE MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MGTHC",
+      "LIB_DESC": "EXCESSIVE MARINE GROWTH THICKNESS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSO",
+      "LIB_DESC": "VARIATION TO SPEC OTHERS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIO",
+      "LIB_DESC": "LACK OF INTEGRITY - OTHERS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWABRP",
+      "LIB_DESC": "ANODE WASTAGE ANODE BRACELET PARTIALLY VISIBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SDOTL",
+      "LIB_DESC": "SCOUR DEPTH OVER THE LIMIT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MIC",
+      "LIB_DESC": "IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PIC",
+      "LIB_DESC": "PIPELINE IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWACP",
+      "LIB_DESC": "ANODE WASTAGE ANODE COLLAR PARTIALLY VISIBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CRPIT",
+      "LIB_DESC": "CORROSION PITTING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CRUNIF",
+      "LIB_DESC": "CORROSION UNIFORM",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CBLIS",
+      "LIB_DESC": "COATING BLISTERED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CCRAK",
+      "LIB_DESC": "COATING CRACKED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CCVRT",
+      "LIB_DESC": "CONCAVE ROOT SURFACE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CERTX",
+      "LIB_DESC": "CERTIFICATION EXPIRED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CFLAK",
+      "LIB_DESC": "COATING FLAKING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CHALK",
+      "LIB_DESC": "COATING CHALKING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CLDSH",
+      "LIB_DESC": "CLOD SHUT (CASTING DEFECT)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CMISS",
+      "LIB_DESC": "COATING MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "COLLP",
+      "LIB_DESC": "STRUCTURE OR HOSE COLLAPSED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CONTAC",
+      "LIB_DESC": "UNINTENDED CONTACT (NOT METAL TO METAL)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CRACK",
+      "LIB_DESC": "STRUCTURAL CRACK",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CREMD",
+      "LIB_DESC": "COATING REMOVED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DELAM",
+      "LIB_DESC": "DELAMINATING HOSE OR SHOCKCELL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DENTT",
+      "LIB_DESC": "DENT IN MEMBER / LEG / COMPONENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DIAMT",
+      "LIB_DESC": "TUBULAR DIAMETER OUTSIDE SPEC.",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DRAWG",
+      "LIB_DESC": "DRAWING ANOMALY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "EGAPS",
+      "LIB_DESC": "EXCESSIVE GAP",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "EWAND",
+      "LIB_DESC": "EXCESSIVE WASTAGE ON ANODES",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "EXPEN",
+      "LIB_DESC": "EXCESSIVE WELD PENETRATION (DROP THROUGH)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "EXWMT",
+      "LIB_DESC": "EXCESSIVE WELD METAL / BUILD UP / CONVEXITY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "FLOTM",
+      "LIB_DESC": "FLOATATION MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "FORBT",
+      "LIB_DESC": "FORGING BURST",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "FORLP",
+      "LIB_DESC": "FORGING LAP (CASTING DEFECT)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "FRAYD",
+      "LIB_DESC": "WIRE OR ROPE FRATED, STRANDING, PARTING, etc.",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "GASDM",
+      "LIB_DESC": "GASKET DAMAGED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "GASMS",
+      "LIB_DESC": "GASKET MISSING IN FLANGE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "GOUGE",
+      "LIB_DESC": "GOUGING TIP DAMAGE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "GRIND",
+      "LIB_DESC": "GRINDING DAMAGE TO COMPONENT FROM GRINDER",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "HCOPT",
+      "LIB_DESC": "HIGH (EXCESSIVE CURRENT OUTPUT)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "HCPPP",
+      "LIB_DESC": "HIGH CP (OVER PRTECTION)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "HOTER",
+      "LIB_DESC": "HOT TEAR (CASTING DEFECT)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ICCPP",
+      "LIB_DESC": "DEFECTIVE IMPRESSED CURRENT SYSTEM",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "IFBDN",
+      "LIB_DESC": "INSULATION FLANGE BREAKDOWN",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "INCCU",
+      "LIB_DESC": "COPPER INCLUSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "INCTI",
+      "LIB_DESC": "TUNGSTEN INCLUSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "IVOID",
+      "LIB_DESC": "INTERNAL VOIDS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "KINKK",
+      "LIB_DESC": "KINK IN HOSE OR ROPE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LAMIN",
+      "LIB_DESC": "LAMINATION IN METAL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LCOPT",
+      "LIB_DESC": "LOW CURRENT READING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LCPPP",
+      "LIB_DESC": "LOW CP READING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LEAKK",
+      "LIB_DESC": "LEAK",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LMISS",
+      "LIB_DESC": "LINER MISSING IN INSULATED CLAMP",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOFW",
+      "LIB_DESC": "LACK OF FUSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOIBF",
+      "LIB_DESC": "LACK OF INTERBEAD WELD FUSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOOSE",
+      "LIB_DESC": "LOOSE OR DISLODGED COMPONENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOPW",
+      "LIB_DESC": "LACK OF PENETRATION OF WELD",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LORFN",
+      "LIB_DESC": "LACK OF ROOT FUSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOSFN",
+      "LIB_DESC": "LACK OF SIDE WALL FUSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOWLD",
+      "LIB_DESC": "LACK OF WELD METAL (INSUFFICIENT REINFORCEMENT)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MALGN",
+      "LIB_DESC": "MISALIGNMENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MISSS",
+      "LIB_DESC": "COMPONENT MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MMETL",
+      "LIB_DESC": "METAL TO METAL CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MOVED",
+      "LIB_DESC": "COMPONENT MOVING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MSHRK",
+      "LIB_DESC": "MICRO SHRINKAGE (CASTING DEFECT)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "NACES",
+      "LIB_DESC": "NO ACCESS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "OVLAP",
+      "LIB_DESC": "OVERLAPING WELD",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "OXIWR",
+      "LIB_DESC": "OXIDISED WELD ROOT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PENTR",
+      "LIB_DESC": "HOLE OR PENETRATION INTO COMPONENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PERSH",
+      "LIB_DESC": "HOSE OR RUBBER PERISHING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "POROS",
+      "LIB_DESC": "POROSITY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PTHCK",
+      "LIB_DESC": "PAINT COATING THICK",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PTHIN",
+      "LIB_DESC": "PAINT COATING THIN",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "RBEXP",
+      "LIB_DESC": "RE BAR EXPOSED IN CONCRETE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "REDCP",
+      "LIB_DESC": "REDUNDANT COMPONENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SHRIK",
+      "LIB_DESC": "SHRINKAGE CAVITY (CASTING DEFECT)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SINCL",
+      "LIB_DESC": "SLAG INCLUSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SLINE",
+      "LIB_DESC": "SLAG LINE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "STRCH",
+      "LIB_DESC": "HOSE STRETCHED / OVERLOADED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "THICK",
+      "LIB_DESC": "THICK WALL (GREATER THAN SPEC.)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "THINN",
+      "LIB_DESC": "THIN WALL (LESS THAN SPEC. OR REQUIRED)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "TORNN",
+      "LIB_DESC": "COMPONENT TORN OR BROKEN",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIAMISS",
+      "LIB_DESC": "LACK OF INTEGRITY - ANODE MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIBKN",
+      "LIB_DESC": "LACK OF INTEGRITY - COMPONENT BROKEN",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWABP",
+      "LIB_DESC": "ANODE WASTAGE ANODE BAR PARTIALLY VISIBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWABFV",
+      "LIB_DESC": "ANODE WASTAGE ANODE BAR FULLY VISIBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDSDABR",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - ABRAISION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDBUC",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - BUCKLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDDEF",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - DEFORMATION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDDENT",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - DENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDBROKE",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - BROKEN OFF",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSBLMISS",
+      "LIB_DESC": "VARIATION TO SPEC - BOAT LANDING MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSGUARD",
+      "LIB_DESC": "VARIATION TO SPEC - GUARD MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSAPP",
+      "LIB_DESC": "VARIATION TO SPEC - APPURTENANCE MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSCOAT",
+      "LIB_DESC": "VARIATION TO SPEC - COATING MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSANODE",
+      "LIB_DESC": "VARIATION TO SPEC - ANODE MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSRISCON",
+      "LIB_DESC": "VARIATION TO SPEC - RISER/CONDUCTOR MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSCLAMP",
+      "LIB_DESC": "VARIATION TO SPEC - CLAMP/GUIDE/CGF  MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSCAISS",
+      "LIB_DESC": "VARIATION TO SPEC - CAISSON MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSWELDCAP",
+      "LIB_DESC": "VARIATION TO SPEC - WELDMENT CAP WIDTH",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSMEMB",
+      "LIB_DESC": "VARIATION TO SPEC - MEMBER",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSLEG",
+      "LIB_DESC": "VARIATION TO SPEC - LEG",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LICOMMISS",
+      "LIB_DESC": "LACK OF INTEGRITY - COMPONENT MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIBOLT",
+      "LIB_DESC": "LACK OF INTEGRITY - 100% BOLTS AND NUTS MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSADDCLMP",
+      "LIB_DESC": "VARIATION TO SPEC - ADDITIONAL CLAMP",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSTEST",
+      "LIB_DESC": "test",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDSDABRS",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - ABRASION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ADD AND",
+      "LIB_DESC": "VARIATION TO SPEC - ADDITIONAL ANODE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ANP",
+      "LIB_DESC": "ANODE NOT PRESENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSDRAN",
+      "LIB_DESC": "VARIATION TO SPEC - DRAWING ANOMALY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWCBEX",
+      "LIB_DESC": "ANODE WASTAGE CORE BARS EXPOSED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CPOFF",
+      "LIB_DESC": "COATING PEEL OFF",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CCRAKL",
+      "LIB_DESC": "COATING CRACKED LONGITUDINALLY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CCRAKC",
+      "LIB_DESC": "COATING CRACKED CIRCUMFERENTIALLY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CCWM",
+      "LIB_DESC": "CONCRETE WIRE MESH EXPOSED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SPD",
+      "LIB_DESC": "SUPERFICIAL DAMAGED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "WS",
+      "LIB_DESC": "PIPELINE:WIRE SCAR",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "WD",
+      "LIB_DESC": "PIPELINE:WRAP DAMAGE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SCEXP",
+      "LIB_DESC": "EXPOSED PILE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SCLIM",
+      "LIB_DESC": "SCOUR HEIGHT EXCEEDING LIMIT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDCT",
+      "LIB_DESC": "COATING DAMAGE/BARE METAL EXPOSURE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CODMG",
+      "LIB_DESC": "PHYSICAL DAMAGE - COATING DAMAGE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSCTG",
+      "LIB_DESC": "VARIATION TO SPEC - COATING FLAKING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSCTCT",
+      "LIB_DESC": "VARIATION TO SPEC- MEMBER IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSIC",
+      "LIB_DESC": "VARIATION  TO SPEC - IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSWTEX",
+      "LIB_DESC": "WALL THICKNESS >12.5% NOMINAL THICKNESS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSWTLE",
+      "LIB_DESC": "WALL THICKNESS < 12.5% NOMINAL THICKNESS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "EXPO",
+      "LIB_DESC": "EXPOSED PILE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSAPD",
+      "LIB_DESC": "VARIATION TO SPEC - APPURTENANCE ADDITIONAL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LCLOOB",
+      "LIB_DESC": "LACK OF INTEGRITY - LOOSE BOLTS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "FLOOD",
+      "LIB_DESC": "FLOODED MEMBER",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SCOUR",
+      "LIB_DESC": "SEABED SCOUR",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSDWG",
+      "LIB_DESC": "VARIATION TO SPEC - DRAWING ANOMALY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWDEF",
+      "LIB_DESC": "ANODE WASTAGE DEFORMED SHAPE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWPITT",
+      "LIB_DESC": "ANODE WASTAGE PITTING 100% VISIBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWPDD",
+      "LIB_DESC": "ANODE WASTAGE PITTING DIAMETER 50% VISIBLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AWPISU",
+      "LIB_DESC": "ANODE WASTAGE PITTING IRREGULAR  SURFACE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIMISSBNUT",
+      "LIB_DESC": "LACK OF INTEGRITY - MISSING BOLT AND NUT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LINBM",
+      "LIB_DESC": "LACK ON INTEGRITY - ABRASION NO BARE METAL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSEXGP",
+      "LIB_DESC": "VARIATION TO SPEC - EXCESSIVE GAP",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PCBMS",
+      "LIB_DESC": "BARE METAL SHOWING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBSMHA",
+      "LIB_DESC": "DEBRIS METALLIC HAZARDOUS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CPFC",
+      "LIB_DESC": "CATHODIC POTENTIAL FREE CORROSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CPUP",
+      "LIB_DESC": "CATHODIC POTENTIAL UNPROTECTED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CPOP",
+      "LIB_DESC": "CATHODIC POTENTIAL OVER PROTECTED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PSPIPE",
+      "LIB_DESC": "PIPELINE SPAN",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PSTIE",
+      "LIB_DESC": "TIE IN SPOOL SPAN",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIWELDCRCK",
+      "LIB_DESC": "LACK OF INTEGRITY LONG CRACK",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIWDRG",
+      "LIB_DESC": "LACK OF INTEGRITY REM GRINDING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSCAV",
+      "LIB_DESC": "VARIATION IN SPECIFICATION CAVITIES",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSSOLID",
+      "LIB_DESC": "VARIATION IN SPECIFICATION SOLID INCLUSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSLOF",
+      "LIB_DESC": "VARIATION IN SPECIFICATION LACK OF FUSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSIS",
+      "LIB_DESC": "VARIATION IN SPECIFICATION IMPERFECT SHAPE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSMISC",
+      "LIB_DESC": "VARIATON OF SPECIFICATION MISCELLANEOUS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CRCRVC",
+      "LIB_DESC": "CORROSION CREVICE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CRER",
+      "LIB_DESC": "CORROSION EROSION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CRGAL",
+      "LIB_DESC": "CORROSION GALVANIC",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AW",
+      "LIB_DESC": "ANODE WASTAGE",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "CP",
+      "LIB_DESC": "CATHODIC POTENTIAL",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "CR",
+      "LIB_DESC": "CORROSION",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "DB",
+      "LIB_DESC": "DEBRIS",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "LI",
+      "LIB_DESC": "LACK OF INTEGRITY",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "MG",
+      "LIB_DESC": "MARINE GROWTH",
+      "LIB_CODE": "AMLY_COD"
+    },
+    {
+      "LIB_ID": "VDAMA",
+      "LIB_DESC": "VALVE DAMAGED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VINOP",
+      "LIB_DESC": "VALVE NON OPERATIONAL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "WDCRK",
+      "LIB_DESC": "WELD CRACKED, INCLUDES STRESS, CRATER. etc.",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "WSPAT",
+      "LIB_DESC": "WELD SPATTER",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSMARINE",
+      "LIB_DESC": "VARIATION TO SPEC - M. GROWTH INHIBITOR MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSMISCE",
+      "LIB_DESC": "VARIATION TO SPEC - MISCELLANEOUS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LICT",
+      "LIB_DESC": "LACK OF INTEGRITY - COMPONENT IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIMGROUTED",
+      "LIB_DESC": "LACK OF INTEGRITY - MEMBER GROUTED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDIM",
+      "LIB_DESC": "IMPACT DAMAGE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "COBSTR",
+      "LIB_DESC": "COMPONENT OBSTRUCTION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DACOMP",
+      "LIB_DESC": "DAMAGED COMPONENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "TEST",
+      "LIB_DESC": "TEST DEFECT,  SAMPLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SUBSTD",
+      "LIB_DESC": "SUBSTANDARD COMPONENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "NONE",
+      "LIB_DESC": "NONE - NO DEFECTS FOUND",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "TORN",
+      "LIB_DESC": "COMPONENT TORN OR BROKEN",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CMOVE",
+      "LIB_DESC": "COMPONENT MOVING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CMIS",
+      "LIB_DESC": "COATING MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ARC",
+      "LIB_DESC": "ARC STRIKE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BLND",
+      "LIB_DESC": "BOLTS LOOSE AND DAMAGED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CORROG",
+      "LIB_DESC": "CORROSION - GENERAL",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BENT",
+      "LIB_DESC": "BENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BURN T",
+      "LIB_DESC": "BURN THROUGH",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "THIN",
+      "LIB_DESC": "THIN WALL (LESS THAN SPEC. OR REQUIRED)",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "ROTTEN",
+      "LIB_DESC": "ROTTEN TIMBER",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DICOMP",
+      "LIB_DESC": "DISTORTED COMPONENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LICM",
+      "LIB_DESC": "LACK OF INTEGRITY - CONDUCTOR MOVEMENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CDAMG",
+      "LIB_DESC": "COATING DAMAGED.",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DETRIO",
+      "LIB_DESC": "DETERIORATED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LOBLT",
+      "LIB_DESC": "LOOSE BOLTS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LACKIN",
+      "LIB_DESC": "LACK OF INTEGRITY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AW_75-90",
+      "LIB_DESC": "PITTING 100% OF VISIBLE SURFACE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AW_75-90-1",
+      "LIB_DESC": "DEFORMED SHAPE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AW_75-90-2",
+      "LIB_DESC": "PITTING -100% OF VISIBLE SURFACE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AW_75-90-3",
+      "LIB_DESC": "PITTING - DIA. = 50% OF VISIBLE SURFACE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDMISS",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - MISALIGNMENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBSMH",
+      "LIB_DESC": "DEBRIS NON METALLIC IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBSNMH",
+      "LIB_DESC": "DEBRIS METALLIC NON HAZARDOUS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBNMNH",
+      "LIB_DESC": "DEBRIS NON METALLIC NON HAZARDOUS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBNMH",
+      "LIB_DESC": "DEBRIS NON METALLIC HAZARDOUS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBMHI",
+      "LIB_DESC": "DEBRIS METALLIC HAZARDOUS AND IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBNMHI",
+      "LIB_DESC": "DEBRIS NON METALLIC HAZARDOUS AND IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBMIC",
+      "LIB_DESC": "DEBRIS METALLIC IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBNMIC",
+      "LIB_DESC": "DEBRIS NON METALLIC IN CONTACT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "WDCR",
+      "LIB_DESC": "LACK OF INTEGRITY CRACK LIKE INDICATION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LILOBLT",
+      "LIB_DESC": "LACK OF INTEGRITY - LOOSE BOLTS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PITHL",
+      "LIB_DESC": "PITTING HOLE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "EXPOSED",
+      "LIB_DESC": "EXPOSED PILE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "OTHERS",
+      "LIB_DESC": "OTHERS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIABME",
+      "LIB_DESC": "LACK OF INTEGRITY- ABRASION NO BARE METAL EXPOSED",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SCR",
+      "LIB_DESC": "SCOUR HEIGHT EQUALS AND MORE THAN 900MM",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MGI",
+      "LIB_DESC": "MARINE GROWTH EXCEEDING ALLOWABLE LIMIT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSLBOLTS",
+      "LIB_DESC": "VARIATION TO SPEC - LOOSE BOLTS",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSDRW",
+      "LIB_DESC": "VARIATION TO SPEC - DRAWING ANOMALY",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AS-BUILT",
+      "LIB_DESC": "VARIATION TO SPEC - AS-BUILT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LICRACKCIR",
+      "LIB_DESC": "LACK OF INTEGRITY - CRACK LENGTH 0-5% CIRCUMF.",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LICRCKLHUND",
+      "LIB_DESC": "LACK OF INTEGRITY - CRACK LENGTH 5-100% CIRCUMF.",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LIABRBM",
+      "LIB_DESC": "LACK OF INTEGRITY - ABRAISION BM",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDBENT",
+      "LIB_DESC": "PHYSICAL DAMAGE ANODE BAR/STUB BENT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "LICOMV",
+      "LIB_DESC": "LACK OF INTEGRITY - COMPONENT MOVING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSPLG",
+      "LIB_DESC": "VARIATION TO SPEC - PGB LEG",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "SCOURHT",
+      "LIB_DESC": "SCOUR HEIGHT EQUALS AND MORE THAN 900MM",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BOLT / NUTS",
+      "LIB_DESC": "BOLT / NUTS MISSING MORE THAN 25%",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BOLT/ NUTS50",
+      "LIB_DESC": "BOLT/ NUTS MISSING MORE THAN 50%",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "BOLT/NUTS25",
+      "LIB_DESC": "BOLTS / NUTS MISSING MORE THAN 25%",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "NWT",
+      "LIB_DESC": "WALL THICKNESS MORE THAN NWT",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "DBNM",
+      "LIB_DESC": "DEBRIS NON METALLIC",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "AW_DEF",
+      "LIB_DESC": "DEFORMED SHAPE",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSMM",
+      "LIB_DESC": "VARIATION TO SPECIFICATION - MEMBER MISSING",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "VSWC",
+      "LIB_DESC": "VARIATION TO SPEC - WRONG CONFIGURATION",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "PDPBROKE",
+      "LIB_DESC": "PHYSICAL IN SERVICE DAMAGE - PARTED / BROKEN OFF",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "CTPEELOFF",
+      "LIB_DESC": "COATING PEEL OFF",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "MGIEA",
+      "LIB_DESC": "MARINE GROWTH EXCEEDING ALLOW",
+      "LIB_CODE": "AMLY_FND"
+    },
+    {
+      "LIB_ID": "OBSERVATION",
+      "LIB_DESC": "OBSERVATION",
+      "LIB_CODE": "AMLY_TYP"
+    },
+    {
+      "LIB_ID": "CPIP",
+      "LIB_DESC": "CP INADEQUATE PROTECTION",
+      "LIB_CODE": "AMLY_FND"
+    }
+  ]
+}

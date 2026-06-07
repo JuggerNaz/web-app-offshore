@@ -1,46 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-/**
- * GET /api/smart-query/saved
- * List saved query templates for the current user.
- *
- * POST /api/smart-query/saved
- * Create or update a saved query template.
- *
- * DELETE /api/smart-query/saved?id=<uuid>
- * Delete a saved query template.
- *
- * Table: smart_queries (must be created in Supabase)
- *   id          UUID PRIMARY KEY DEFAULT gen_random_uuid()
- *   user_id     UUID NOT NULL REFERENCES auth.users(id)
- *   name        TEXT NOT NULL
- *   description TEXT
- *   config      JSONB NOT NULL  -- full wizard state
- *   created_at  TIMESTAMPTZ DEFAULT now()
- *   updated_at  TIMESTAMPTZ DEFAULT now()
- */
-
-export async function GET(_request: NextRequest) {
+export const GET = withTenant(async (request, { companyId, user }) => {
   try {
     const supabase = await createClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const { data, error } = await (supabase as any)
       .from("smart_queries")
       .select("*")
+      .eq("company_id", companyId)
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
 
     if (error) {
-      // Table might not exist yet — return empty list
       if (error.code === "42P01" || error.message?.includes("does not exist")) {
         return NextResponse.json({ data: [] });
       }
@@ -54,19 +27,11 @@ export async function GET(_request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request, { companyId, user }) => {
   try {
     const supabase = await createClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const body = await request.json();
     const { id, name, description, config } = body;
@@ -78,7 +43,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update existing
     if (id) {
       const { data, error } = await (supabase as any)
         .from("smart_queries")
@@ -89,6 +53,7 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
+        .eq("company_id", companyId)
         .eq("user_id", user.id)
         .select()
         .single();
@@ -99,10 +64,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data });
     }
 
-    // Create new
     const { data, error } = await (supabase as any)
       .from("smart_queries")
       .insert({
+        company_id: companyId,
         user_id: user.id,
         name,
         description: description || null,
@@ -122,9 +87,9 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = withTenant(async (request, { companyId, user }) => {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -134,18 +99,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Query ID is required" }, { status: 400 });
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { error } = await (supabase as any)
       .from("smart_queries")
       .delete()
       .eq("id", id)
+      .eq("company_id", companyId)
       .eq("user_id", user.id);
 
     if (error) {
@@ -159,4 +117,4 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

@@ -27,11 +27,35 @@ export function UserSidebar({ isCollapsed }: UserMenuProps) {
     const supabase = createClient();
 
     useEffect(() => {
+        let isMounted = true;
+        
         const getUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            setUser(user);
+            try {
+                // Try fetching session first to avoid GoTrue navigator lock issues
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.user) {
+                    if (isMounted) setUser(session.user);
+                    return;
+                }
+                
+                // Fallback to getUser with safety try/catch
+                const { data: { user } } = await supabase.auth.getUser();
+                if (isMounted) setUser(user);
+            } catch (err) {
+                console.warn("Gracefully handled auth lock or session timeout in UserSidebar:", err);
+            }
         };
         getUser();
+
+        // Subscribe to auth state changes dynamically
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (isMounted) setUser(session?.user ?? null);
+        });
+
+        return () => {
+            isMounted = false;
+            subscription.unsubscribe();
+        };
     }, []);
 
     if (!user) return null;

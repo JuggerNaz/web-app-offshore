@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
 
   if (!id) return NextResponse.json({ error: "Missing id parameter" }, { status: 400 });
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase.from("str_elv").select("*").eq("plat_id", Number(id));
 
   if (error) {
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request, context: any) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const body = await request.json();
 
   const {
@@ -43,7 +43,7 @@ export async function POST(request: Request, context: any) {
 export async function DELETE(request: Request, context: any) {
   const body = await request.json();
 
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from("str_elv")

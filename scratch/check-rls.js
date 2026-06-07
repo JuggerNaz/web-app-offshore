@@ -17,23 +17,18 @@ const supabase = createClient(
 );
 
 async function checkRLS() {
-  const { data, error } = await supabase.rpc('get_policies', { table_name: 'inspection_type' });
-  if (error) {
-    // get_policies might not exist, try common RPCs or just select from pg_policies if allowed (unlikely)
-    console.log('Error checking policies (RPC might be missing):', error.message);
-  } else {
-    console.log('Policies for inspection_type:', data);
+  try {
+    console.log("Checking if we can select jobpack as anon...");
+    const { data: anonData, error: anonError } = await supabase
+      .from("jobpack")
+      .select("id")
+      .limit(1);
+    
+    console.log("Anon select:", { dataCount: anonData?.length, error: anonError });
+    
+  } catch (err) {
+    console.error("Error:", err);
   }
-
-  // Check if we can see any tables
-  const { data: tables, error: tableErr } = await supabase.from('information_schema.tables').select('table_name').limit(1);
-  if (tableErr) {
-    console.log('Direct information_schema access denied (Typical for anon)');
-  }
-
-  // Just try to fetch ONE row with 'code' filter if the user mentioned one
-  const { data: q, error: qErr } = await supabase.from('inspection_type').select('code').limit(1);
-  console.log('Attempting fetch with select(code):', q, qErr);
 }
 
 checkRLS();

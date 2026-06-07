@@ -18,9 +18,11 @@ import {
   ClipboardCheck,
   Crown,
   AlertTriangle,
+  ShieldAlert,
   Sparkles,
   Paperclip,
   Box,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -28,6 +30,8 @@ import { useState, useMemo, useEffect } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { RoleGate } from "@/components/role-gate";
+import { useUserRole } from "@/utils/hooks/use-user-role";
 
 interface MenuLinkProps {
   href: string;
@@ -49,6 +53,13 @@ interface MenuGroupProps {
 }
 
 const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
+  const { role, modules } = useUserRole();
+
+  const isModuleAllowed = (moduleName: string) => {
+    if (role === "super_admin") return true;
+    return modules.includes(moduleName);
+  };
+
   return (
     <TooltipProvider>
       <nav className="space-y-6 px-3 py-4">
@@ -66,171 +77,250 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             icon={<LayoutDashboard className="h-[18px] w-[18px]" />}
             text="Analytics"
           />
-          <MenuLink
-            href="/dashboard/manager-overview"
-            isCollapsed={isCollapsed}
-            label="Manager Overview"
-            icon={<Crown className="h-[18px] w-[18px]" />}
-            text="Manager Overview"
-          />
+          <RoleGate minRole="manager" hide>
+            <MenuLink
+              href="/dashboard/manager-overview"
+              isCollapsed={isCollapsed}
+              label="Manager Overview"
+              icon={<Crown className="h-[18px] w-[18px]" />}
+              text="Manager Overview"
+            />
+          </RoleGate>
 
         </div>
 
         {/* Assets Section */}
-        <div className="space-y-1">
-          {!isCollapsed && (
-            <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-              Asset Management
-            </p>
-          )}
-          {isCollapsed ? (
-            <MenuLink
-              href="/dashboard/field"
-              isCollapsed={isCollapsed}
-              label="Field Assets"
-              icon={<MapPin className="h-[18px] w-[18px]" />}
-              text="Field"
-            />
-          ) : (
-            <MenuGroup
-              label="Field Assets"
-              icon={<MapPin className="h-[18px] w-[18px]" />}
-              isCollapsed={isCollapsed}
-              defaultOpen={true}
-            >
+        {isModuleAllowed("Field Assets") && (
+          <div className="space-y-1">
+            {!isCollapsed && (
+              <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                Asset Management
+              </p>
+            )}
+            {isCollapsed ? (
               <MenuLink
                 href="/dashboard/field"
                 isCollapsed={isCollapsed}
-                label="Field Overview"
-                icon={<Compass className="h-4 w-4" />}
-                text="Field Overview"
-                isChild
+                label="Field Assets"
+                icon={<MapPin className="h-[18px] w-[18px]" />}
+                text="Field"
               />
-              <MenuLink
-                href="/dashboard/field/platform"
+            ) : (
+              <MenuGroup
+                label="Field Assets"
+                icon={<MapPin className="h-[18px] w-[18px]" />}
                 isCollapsed={isCollapsed}
-                label="Platforms"
-                icon={<Layers2 className="h-4 w-4" />}
-                text="Platforms"
-                isChild
-                actionHref="/dashboard/field/platform/new"
-              />
-              <MenuLink
-                href="/dashboard/field/pipeline"
-                isCollapsed={isCollapsed}
-                label="Pipelines"
-                icon={<FileText className="h-4 w-4" />}
-                text="Pipelines"
-                isChild
-                actionHref="/dashboard/field/pipeline/new"
-              />
-            </MenuGroup>
-          )}
-        </div>
+                defaultOpen={true}
+              >
+                <MenuLink
+                  href="/dashboard/field"
+                  isCollapsed={isCollapsed}
+                  label="Field Overview"
+                  icon={<Compass className="h-4 w-4" />}
+                  text="Field Overview"
+                  isChild
+                />
+                <MenuLink
+                  href="/dashboard/field/platform"
+                  isCollapsed={isCollapsed}
+                  label="Platforms"
+                  icon={<Layers2 className="h-4 w-4" />}
+                  text="Platforms"
+                  isChild
+                  actionHref="/dashboard/field/platform/new"
+                />
+                <MenuLink
+                  href="/dashboard/field/pipeline"
+                  isCollapsed={isCollapsed}
+                  label="Pipelines"
+                  icon={<FileText className="h-4 w-4" />}
+                  text="Pipelines"
+                  isChild
+                  actionHref="/dashboard/field/pipeline/new"
+                />
+              </MenuGroup>
+            )}
+          </div>
+        )}
 
         {/* EXECUTION / OPERATIONS */}
-        <div className="space-y-1">
-          {!isCollapsed && (
-            <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-              Execution
-            </p>
-          )}
-          <MenuLink
-            href="/dashboard/planning"
-            isCollapsed={isCollapsed}
-            label="Planning"
-            icon={<Calendar className="h-[18px] w-[18px]" />}
-            text="Planning"
-            actionHref="/dashboard/planning/form"
-          />
-          <MenuLink
-            href="/dashboard/jobpack"
-            isCollapsed={isCollapsed}
-            label="Work Packages"
-            icon={<Package className="h-[18px] w-[18px]" />}
-            text="Work Packages"
-          />
-          <MenuLink
-            href="/dashboard/inspection-v2"
-            isCollapsed={isCollapsed}
-            label="Inspection"
-            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
-            text="Inspection"
-          />
-          <MenuLink
-            href="/dashboard/reports"
-            isCollapsed={isCollapsed}
-            label="Reports"
-            icon={<FileSpreadsheet className="h-[18px] w-[18px]" />}
-            text="Reports"
-          />
-          <MenuLink
-            href="/dashboard/reports/executive-summary"
-            isCollapsed={isCollapsed}
-            label="Executive Summary"
-            icon={<Sparkles className="h-[18px] w-[18px] text-blue-500" />}
-            text="Executive Summary"
-          />
-        </div>
+        {(isModuleAllowed("Planning") || isModuleAllowed("Work Packages") || isModuleAllowed("Inspection") || isModuleAllowed("Reports") || isModuleAllowed("Executive Summary")) && (
+          <div className="space-y-1">
+            {!isCollapsed && (
+              <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                Execution
+              </p>
+            )}
+            {isModuleAllowed("Planning") && (
+              <MenuLink
+                href="/dashboard/planning"
+                isCollapsed={isCollapsed}
+                label="Planning"
+                icon={<Calendar className="h-[18px] w-[18px]" />}
+                text="Planning"
+                actionHref="/dashboard/planning/form"
+              />
+            )}
+            {isModuleAllowed("Work Packages") && (
+              <MenuLink
+                href="/dashboard/jobpack"
+                isCollapsed={isCollapsed}
+                label="Work Packages"
+                icon={<Package className="h-[18px] w-[18px]" />}
+                text="Work Packages"
+              />
+            )}
+            {isModuleAllowed("Inspection") && (
+              <MenuLink
+                href="/dashboard/inspection-v2"
+                isCollapsed={isCollapsed}
+                label="Inspection"
+                icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+                text="Inspection"
+              />
+            )}
+            {isModuleAllowed("Reports") && (
+              <MenuLink
+                href="/dashboard/reports"
+                isCollapsed={isCollapsed}
+                label="Reports"
+                icon={<FileSpreadsheet className="h-[18px] w-[18px]" />}
+                text="Reports"
+              />
+            )}
+            {isModuleAllowed("Executive Summary") && (
+              <MenuLink
+                href="/dashboard/reports/executive-summary"
+                isCollapsed={isCollapsed}
+                label="Executive Summary"
+                icon={<Sparkles className="h-[18px] w-[18px] text-blue-500" />}
+                text="Executive Summary"
+              />
+            )}
+          </div>
+        )}
 
 
         {/* UTILITIES */}
-        <div className="space-y-1">
-          {!isCollapsed && (
-            <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-              Utilities
-            </p>
-          )}
-          <MenuLink
-            href="/dashboard/utilities/library"
-            isCollapsed={isCollapsed}
-            label="Library"
-            icon={<Database className="h-[18px] w-[18px]" />}
-            text="Library"
-          />
-          <MenuLink
-            href="/dashboard/utilities/platform-3d"
-            isCollapsed={isCollapsed}
-            label="Platform 3D"
-            icon={<Box className="h-[18px] w-[18px]" />}
-            text="Platform 3D"
-          />
-          <MenuLink
-            href="/dashboard/utilities/inspection-type"
-            isCollapsed={isCollapsed}
-            label="Inspection Type"
-            icon={<FileText className="h-[18px] w-[18px]" />}
-            text="Inspection Type"
-          />
-          <MenuLink
-            href="/dashboard/utilities/attachments"
-            isCollapsed={isCollapsed}
-            label="Attachments"
-            icon={<Paperclip className="h-[18px] w-[18px]" />}
-            text="Attachments"
-          />
-          <MenuLink
-            href="/dashboard/utilities/anomalies-findings"
-            isCollapsed={isCollapsed}
-            label="Anomalies & Findings"
-            icon={<AlertTriangle className="h-[18px] w-[18px]" />}
-            text="Anomalies & Findings"
-          />
-          <MenuLink
-            href="/dashboard/utilities/smart-query"
-            isCollapsed={isCollapsed}
-            label="Smart Query"
-            icon={<Sparkles className="h-[18px] w-[18px]" />}
-            text="Smart Query"
-          />
-          <MenuLink
-            href="/dashboard/utilities/qa-qc"
-            isCollapsed={isCollapsed}
-            label="QA-QC"
-            icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
-            text="QA-QC"
-          />
-        </div>
+        {(isModuleAllowed("Library") ||
+          isModuleAllowed("Platform 3D") ||
+          isModuleAllowed("Inspection Type") ||
+          isModuleAllowed("Attachments") ||
+          isModuleAllowed("Anomalies & Findings") ||
+          isModuleAllowed("Smart Query") ||
+          isModuleAllowed("QA-QC") ||
+          isModuleAllowed("Oracle Migration")) && (
+          <div className="space-y-1">
+            {!isCollapsed && (
+              <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                Utilities
+              </p>
+            )}
+            {isModuleAllowed("Oracle Migration") && (
+              <RoleGate allowedRoles={["super_admin"]} hide>
+                <MenuLink
+                  href="/dashboard/utilities/migration"
+                  isCollapsed={isCollapsed}
+                  label="Oracle Migration"
+                  icon={<Database className="h-[18px] w-[18px] text-indigo-500" />}
+                  text="Oracle Migration"
+                />
+              </RoleGate>
+            )}
+            {isModuleAllowed("Library") && (
+              <MenuLink
+                href="/dashboard/utilities/library"
+                isCollapsed={isCollapsed}
+                label="Library"
+                icon={<Database className="h-[18px] w-[18px]" />}
+                text="Library"
+              />
+            )}
+            {isModuleAllowed("Platform 3D") && (
+              <MenuLink
+                href="/dashboard/utilities/platform-3d"
+                isCollapsed={isCollapsed}
+                label="Platform 3D"
+                icon={<Box className="h-[18px] w-[18px]" />}
+                text="Platform 3D"
+              />
+            )}
+            {isModuleAllowed("Inspection Type") && (
+              <MenuLink
+                href="/dashboard/utilities/inspection-type"
+                isCollapsed={isCollapsed}
+                label="Inspection Type"
+                icon={<FileText className="h-[18px] w-[18px]" />}
+                text="Inspection Type"
+              />
+            )}
+            {isModuleAllowed("Attachments") && (
+              <MenuLink
+                href="/dashboard/utilities/attachments"
+                isCollapsed={isCollapsed}
+                label="Attachments"
+                icon={<Paperclip className="h-[18px] w-[18px]" />}
+                text="Attachments"
+              />
+            )}
+            {isModuleAllowed("Anomalies & Findings") && (
+              <MenuLink
+                href="/dashboard/utilities/anomalies-findings"
+                isCollapsed={isCollapsed}
+                label="Anomalies & Findings"
+                icon={<AlertTriangle className="h-[18px] w-[18px]" />}
+                text="Anomalies & Findings"
+              />
+            )}
+            {isModuleAllowed("Smart Query") && (
+              <MenuLink
+                href="/dashboard/utilities/smart-query"
+                isCollapsed={isCollapsed}
+                label="Smart Query"
+                icon={<Sparkles className="h-[18px] w-[18px]" />}
+                text="Smart Query"
+              />
+            )}
+            {isModuleAllowed("QA-QC") && (
+              <MenuLink
+                href="/dashboard/utilities/qa-qc"
+                isCollapsed={isCollapsed}
+                label="QA-QC"
+                icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+                text="QA-QC"
+              />
+            )}
+          </div>
+        )}
+
+        {/* Administration Section */}
+        {isModuleAllowed("User Data") && (
+          <RoleGate minRole="company_admin" hide>
+            <div className="space-y-1">
+              {!isCollapsed && (
+                <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                  Administration
+                </p>
+              )}
+              <MenuLink
+                href="/dashboard/admin/users"
+                isCollapsed={isCollapsed}
+                label="User Management"
+                icon={<ShieldAlert className="h-[18px] w-[18px] text-red-500" />}
+                text="User Management"
+              />
+              <RoleGate minRole="super_admin" hide>
+                <MenuLink
+                  href="/dashboard/admin/organizations"
+                  isCollapsed={isCollapsed}
+                  label="Organizations"
+                  icon={<Building2 className="h-[18px] w-[18px] text-violet-500" />}
+                  text="Organizations"
+                />
+              </RoleGate>
+            </div>
+          </RoleGate>
+        )}
 
       </nav>
     </TooltipProvider>

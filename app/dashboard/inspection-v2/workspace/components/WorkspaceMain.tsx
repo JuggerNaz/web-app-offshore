@@ -98,6 +98,8 @@ interface WorkspaceMainProps {
   handleSort: (key: string) => void;
   handleEditRecord: (record: any) => void;
   handleDeleteRecord: (id: number) => void;
+  validateAnomalyRef: (ref: string) => Promise<boolean>;
+  setPrevRefNo: (val: string) => void;
   setViewingRecordAttachments: (atts: any[]) => void;
   handlePrintAnomaly: (record: any) => void;
   allComps: any[];
@@ -172,6 +174,8 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
     handleSort,
     handleEditRecord,
     handleDeleteRecord,
+    validateAnomalyRef,
+    setPrevRefNo,
     setViewingRecordAttachments,
     handlePrintAnomaly,
     allComps,
@@ -705,6 +709,8 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                 setEditingAttachment={setEditingAttachment}
                 deletedAttachmentIds={deletedAttachmentIds}
                 setDeletedAttachmentIds={setDeletedAttachmentIds}
+                validateAnomalyRef={validateAnomalyRef}
+                setPrevRefNo={setPrevRefNo}
               />
             )}
           </div>
@@ -930,7 +936,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                       size="sm" 
                                       className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-500"
                                       onClick={async () => {
-                                        const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
+                                        const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).in('source_type', ['inspection', 'INSPECTION']);
                                         if (data) setViewingRecordAttachments(data);
                                       }}
                                     >
@@ -1254,7 +1260,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                           size="sm" 
                                           className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-500"
                                           onClick={async () => {
-                                            const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).eq('source_type', 'INSPECTION');
+                                            const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).in('source_type', ['inspection', 'INSPECTION']);
                                             if (data) setViewingRecordAttachments(data);
                                           }}
                                         >

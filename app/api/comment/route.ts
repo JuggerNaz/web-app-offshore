@@ -3,20 +3,14 @@ import { createClient } from "@/utils/supabase/server";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
 import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
+import { withTenant } from "@/utils/tenant-auth";
 
-/**
- * GET /api/comment
- * Fetch all comments with pagination
- * Query params: ?page=1&pageSize=50
- */
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
 
-  // Build query with count for pagination metadata
-  let query = supabase.from("comment").select("*", { count: "exact" });
+  let query = (supabase as any).from("comment").select("*", { count: "exact" }).eq("company_id", companyId);
 
-  // Apply pagination
   query = applyPagination(query, paginationParams);
 
   const { data, error, count } = await query;
@@ -25,17 +19,16 @@ export async function GET(request: NextRequest) {
     return handleSupabaseError(error, "Failed to fetch comments");
   }
 
-  // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
   return apiPaginated(data || [], pagination);
-}
+});
 
-export async function POST(request: Request, context: any) {
+export const POST = withTenant(async (request, { companyId }) => {
   const supabase = createClient();
   const body = await request.json();
   console.log(body);
-  const { data, error } = await supabase.from("comment").insert(body);
+  const { data, error } = await (supabase as any).from("comment").insert({ ...body, company_id: companyId });
 
   if (error) {
     console.error(error.message);
@@ -43,4 +36,4 @@ export async function POST(request: Request, context: any) {
   }
 
   return NextResponse.json({ comment: data });
-}
+});

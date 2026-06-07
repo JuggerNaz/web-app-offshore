@@ -20,6 +20,7 @@ import { Upload, FileText, Check, Star, Trash2, Info, ExternalLink } from "lucid
 import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
+import { REPORT_TEMPLATES } from "../report-wizard";
 
 interface ReportSettingsDialogProps {
     open: boolean;
@@ -34,8 +35,45 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
         file: null as File | null
     });
 
+    const [editingAliases, setEditingAliases] = useState<Record<string, string>>({});
+    const [isSavingAliases, setIsSavingAliases] = useState(false);
+
     const { data: templatesRes } = useSWR("/api/report-templates", fetcher);
-    const templates = templatesRes?.data || [];
+    const templates = Array.isArray(templatesRes?.data) ? templatesRes.data : [];
+
+    const { data: aliasesRes, mutate: mutateAliases } = useSWR("/api/report-aliases", fetcher);
+    const aliases = Array.isArray(aliasesRes?.data) ? aliasesRes.data : [];
+
+    useEffect(() => {
+        if (aliases.length > 0) {
+            const mapping: Record<string, string> = {};
+            aliases.forEach((a: any) => {
+                mapping[a.template_id] = a.alias;
+            });
+            setEditingAliases(mapping);
+        }
+    }, [aliases]);
+
+    const handleSaveAlias = async (templateId: string, alias: string) => {
+        if (!alias) {
+            // Delete if empty? Or just ignore
+            return;
+        }
+
+        try {
+            const res = await fetch("/api/report-aliases", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ template_id: templateId, alias })
+            });
+
+            if (!res.ok) throw new Error("Failed to save alias");
+            toast.success(`Alias saved for ${templateId}`);
+            mutate("/api/report-aliases");
+        } catch (error: any) {
+            toast.error(error.message);
+        }
+    };
 
     const handleUpload = async () => {
         if (!uploadData.file || !uploadData.name) {
@@ -56,14 +94,17 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                 body: formData
             });
 
-            if (!res.ok) throw new Error("Upload failed");
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || "Upload failed");
+            }
 
             toast.success("Template uploaded successfully");
             mutate("/api/report-templates");
             setUploadData({ name: "", type: "final", file: null });
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast.error("Error uploading template");
+            toast.error(error.message || "Error uploading template");
         } finally {
             setIsUploading(false);
         }
@@ -73,6 +114,27 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
         // Implementation for setting default would go here
         // For now we'll just show success
         toast.success("Default template updated");
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this template?")) return;
+
+        try {
+            const res = await fetch(`/api/report-templates?id=${id}`, {
+                method: "DELETE"
+            });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || "Delete failed");
+            }
+
+            toast.success("Template deleted successfully");
+            mutate("/api/report-templates");
+        } catch (error: any) {
+            console.error(error);
+            toast.error(error.message || "Error deleting template");
+        }
     };
 
     return (
@@ -89,8 +151,9 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                 </DialogHeader>
 
                 <Tabs defaultValue="manage" className="grow flex flex-col overflow-hidden">
-                    <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="manage">Manage Templates</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="manage">Master Templates</TabsTrigger>
+                        <TabsTrigger value="system">System Mapping</TabsTrigger>
                         <TabsTrigger value="tags">Help & Tags</TabsTrigger>
                     </TabsList>
 
@@ -137,7 +200,7 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                         </div>
 
                         {/* List Section */}
-                        <ScrollArea className="grow pr-4">
+                        <ScrollArea className="h-[450px] pr-4">
                             <div className="space-y-3">
                                 {templates.length === 0 ? (
                                     <div className="text-center py-10 text-slate-500 border rounded-xl">
@@ -171,7 +234,13 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                                                         <Star className="h-4 w-4" />
                                                     </Button>
                                                 )}
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" title="Delete">
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" 
+                                                    title="Delete"
+                                                    onClick={() => handleDelete(template.id)}
+                                                >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>
@@ -182,9 +251,53 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                         </ScrollArea>
                     </TabsContent>
 
-                    <TabsContent value="tags" className="grow overflow-hidden pt-4">
-                        <ScrollArea className="h-full pr-4">
-                            <div className="space-y-6 pb-6">
+                    <TabsContent value="system" className="grow flex flex-col space-y-4 overflow-hidden pt-4">
+                        <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/50 rounded-lg flex items-start gap-2 mb-2 mx-4">
+                            <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                                Assign an <strong>Alias</strong> to system reports to use them as tags in your Master DOCX. 
+                                <br/>Example: Setting Alias <code>MGI_FINAL</code> makes <code>{"{{#T_MGI_FINAL}}"}</code> available.
+                            </p>
+                        </div>
+
+                        <ScrollArea className="h-[450px] pr-4 px-4">
+                            <div className="space-y-6 pb-10">
+                                {Object.entries(REPORT_TEMPLATES).map(([category, reports]) => (
+                                    <div key={category} className="space-y-3">
+                                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b pb-1">{category} Reports</h4>
+                                        <div className="grid gap-2">
+                                            {Array.isArray(reports) && reports.map((report: any) => (
+                                                <div key={report.id} className="flex items-center gap-4 p-3 border rounded-xl bg-white dark:bg-slate-900 shadow-sm">
+                                                    <div className="grow">
+                                                        <div className="font-bold text-sm">{report.name}</div>
+                                                        <div className="text-[10px] text-slate-500 font-mono">ID: {report.id}</div>
+                                                    </div>
+                                                    <div className="w-48 flex items-center gap-2">
+                                                        <Input 
+                                                            placeholder="Tag Alias (e.g. MGI)"
+                                                            className="h-8 text-xs font-mono"
+                                                            value={editingAliases[report.id] || ""}
+                                                            onChange={e => setEditingAliases(prev => ({ ...prev, [report.id]: e.target.value.toUpperCase().replace(/\s+/g, '_') }))}
+                                                            onBlur={e => handleSaveAlias(report.id, e.target.value)}
+                                                        />
+                                                        {Array.isArray(aliases) && aliases.find((a: any) => a.template_id === report.id && a.alias === editingAliases[report.id]) ? (
+                                                            <Check className="h-4 w-4 text-green-500 shrink-0" />
+                                                        ) : (
+                                                            <div className="w-4 h-4" />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </ScrollArea>
+                    </TabsContent>
+
+                    <TabsContent value="tags" className="flex-1 min-h-0 pt-4 overflow-hidden">
+                        <ScrollArea className="h-[450px] pr-4">
+                            <div className="space-y-6 pb-10">
                                 <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/50 rounded-xl space-y-2">
                                     <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 font-bold text-sm">
                                         <Info className="h-4 w-4" />
@@ -192,7 +305,7 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                                     </div>
                                     <p className="text-xs text-blue-600/80 dark:text-blue-400/80 leading-relaxed">
                                         Create a standard DOCX file and use double curly braces for placeholders. 
-                                        Example: <code>{"{{PLATFORM_TITLE}}"}</code> will be replaced with the platform name.
+                                        Example: <code>{"{{PLATFORM_TITLE}}"}</code> for text, or <code>{"{%CLIENT_LOGO}"}</code> for images.
                                     </p>
                                 </div>
 
@@ -202,25 +315,34 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                                         { tag: "{{PLATFORM_TITLE}}", desc: "Title of the platform/structure" },
                                         { tag: "{{JOB_PACK_NAME}}", desc: "Name of the active jobpack" },
                                         { tag: "{{REPORT_NO}}", desc: "SOW Report Number" },
-                                        { tag: "{{REPORT_TYPE}}", desc: "PRELIMINARY or FINAL" },
-                                        { tag: "{{CLIENT_LOGO}}", desc: "Image tag for client logo" },
+                                         { tag: "{{REPORT_TYPE}}", desc: "PRELIMINARY or FINAL" },
+                                         { tag: "{%CLIENT_LOGO}", desc: "Image tag for client logo" },
+                                         { tag: "{{CLIENT_NAME}}", desc: "Name of the client" },
+                                         { tag: "{{VESSEL_NAME}}", desc: "Inspection vessel name" },
+                                         { tag: "{{PROJECT_NO}}", desc: "Job pack project number" },
+                                         { tag: "{{START_DATE}}", desc: "Job start date (DD/MM/YYYY)" },
+                                         { tag: "{{END_DATE}}", desc: "Job end date (DD/MM/YYYY)" },
+                                     ]} />
+ 
+                                     <h4 className="font-bold text-sm border-l-4 border-amber-600 pl-2">Inspection Metrics</h4>
+                                     <TagList items={[
+                                         { tag: "{{SOW_COMPLETION}}", desc: "SOW Completion percentage (0-100)" },
+                                         { tag: "{{TOTAL_ANOMALIES}}", desc: "Total anomalies found" },
+                                         { tag: "{{OPEN_ANOMALIES}}", desc: "Count of currently open anomalies" },
+                                         { tag: "{{P1_ANOMALIES}}", desc: "Count of Priority 1 anomalies" },
+                                         { tag: "{{CP_MIN}} / {{CP_MAX}}", desc: "Min/Max CP potential readings" },
+                                         { tag: "{{MGI_AVG}} / {{MGI_MAX}}", desc: "Average/Max Marine Growth thickness" },
+                                     ]} />
+
+                                    <h4 className="font-bold text-sm border-l-4 border-emerald-600 pl-2">Detailed Tables (Loops)</h4>
+                                    <TagList items={[
+                                        { tag: "{{#SECTIONS}}...{{/SECTIONS}}", desc: "Loop for all summary sections (title, content)" },
+                                        { tag: "{{#ANOMALIES}}...{{/ANOMALIES}}", desc: "Loop for structural anomalies (ref, description, priority, status)" },
+                                        { tag: "{{#CP_RECORDS}}...{{/CP_RECORDS}}", desc: "Loop for CP results (component, reading, status)" },
+                                        { tag: "{{#FMD_RECORDS}}...{{/FMD_RECORDS}}", desc: "Loop for FMD results (component, status, mode)" },
+                                        { tag: "{{#MGI_RECORDS}}...{{/MGI_RECORDS}}", desc: "Loop for Marine Growth (component, thickness, date)" },
                                     ]} />
 
-                                    <h4 className="font-bold text-sm border-l-4 border-emerald-600 pl-2">Summary Sections</h4>
-                                    <TagList items={[
-                                        { tag: "{{#SECTIONS}}...{{/SECTIONS}}", desc: "Loop for all summary sections" },
-                                        { tag: "{{title}}", desc: "Section title (inside SECTIONS loop)" },
-                                        { tag: "{{content}}", desc: "Section content (inside SECTIONS loop)" },
-                                    ]} />
-
-                                    <h4 className="font-bold text-sm border-l-4 border-amber-600 pl-2">Anomaly Tables</h4>
-                                    <TagList items={[
-                                        { tag: "{{#ANOMALIES}}...{{/ANOMALIES}}", desc: "Loop for structural anomalies" },
-                                        { tag: "{{ref}}", desc: "Anomaly Ref No" },
-                                        { tag: "{{description}}", desc: "Defect Description" },
-                                        { tag: "{{priority}}", desc: "Priority Code (P1, P2...)" },
-                                        { tag: "{{status}}", desc: "Current Status" },
-                                    ]} />
                                 </div>
                             </div>
                         </ScrollArea>
@@ -237,9 +359,9 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
 
 function TagList({ items }: { items: { tag: string, desc: string }[] }) {
     return (
-        <div className="grid grid-cols-1 gap-2">
+        <div className="grid grid-cols-1 gap-1.5">
             {items.map(item => (
-                <div key={item.tag} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900 border text-xs">
+                <div key={item.tag} className="flex items-center justify-between p-1.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border text-[11px]">
                     <code className="font-bold text-blue-600 dark:text-blue-400">{item.tag}</code>
                     <span className="text-slate-500">{item.desc}</span>
                 </div>

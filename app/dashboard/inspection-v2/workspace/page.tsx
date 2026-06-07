@@ -41,7 +41,6 @@ import {
   History,
   Info,
   Layers,
-  Layout,
   LayoutDashboard,
   LineChart,
   List,
@@ -79,6 +78,17 @@ import {
   Settings2,
   GripVertical,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+
+function formatCounter(seconds: number | string): string {
+  const totalSeconds = typeof seconds === "string" ? parseFloat(seconds) : seconds;
+  if (isNaN(totalSeconds)) return "00:00:00";
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = Math.floor(totalSeconds % 60);
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -124,7 +134,6 @@ import ROVMovementLog from "../../inspection/rov/components/ROVMovementLog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -182,6 +191,15 @@ import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { WorkspaceResources } from "./components/WorkspaceResources";
 import { useROVConnection } from "@/components/rov-connection-provider";
+import { Layout, Model, TabNode, IJsonModel } from "flexlayout-react";
+import "flexlayout-react/style/dark.css";
+import { DiverLogPanel } from "./_components/panels/DiverLogPanel";
+import { VideoLogPanel } from "./_components/panels/VideoLogPanel";
+import { InspectionFormPanel } from "./_components/panels/InspectionFormPanel";
+import { EventsTablePanel } from "./_components/panels/EventsTablePanel";
+import { ComponentListPanel } from "./_components/panels/ComponentListPanel";
+import { HistoryDataPanel } from "./_components/panels/HistoryDataPanel";
+
 
 export default function WorkspaceV2Page() {
   return (
@@ -197,11 +215,11 @@ export default function WorkspaceV2Page() {
   );
 }
 
+const supabase = createClient();
+
 function V10PreviewLayout() {
-  console.log("[DEBUG] V10PreviewLayout Reached - Route is active");
   const searchParams = useSearchParams();
   const router = useRouter();
-  const supabase = createClient();
   const queryClient = useQueryClient();
 
   const jobPackId = searchParams.get("jobpack");
@@ -210,6 +228,7 @@ function V10PreviewLayout() {
   const sowId = sowIdFull?.split("-")[0];
   const targetReportNumber = searchParams.get("sowReport");
   const initialMode = searchParams.get("mode") as "DIVING" | "ROV" | null;
+  const hasAutoDisconnectedRef = useRef(false);
 
   // Jotai State Sync for Dialog
   const [, setGlobalUrlId] = useAtom(urlId);
@@ -222,12 +241,12 @@ function V10PreviewLayout() {
     }
   }, [structureId, setGlobalUrlId, setGlobalUrlType]);
 
-  // Force-refresh SOW and Component lists upon entering/returning to this screen
-  useEffect(() => {
-    if (queryClient && (structureId || sowIdFull)) {
-      queryClient.invalidateQueries({ queryKey: ["sow-data"] });
-    }
-  }, [queryClient, structureId, sowIdFull]);
+  // // Force-refresh SOW and Component lists upon entering/returning to this screen
+  // useEffect(() => {
+  //   if (queryClient && (structureId || sowIdFull)) {
+  //     queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+  //   }
+  // }, [queryClient, structureId, sowIdFull]);
 
   const compIdParam = searchParams.get("compId");
   const recordIdParam = searchParams.get("recordId");
@@ -239,6 +258,7 @@ function V10PreviewLayout() {
   );
   const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+  const [isReportWizardOpen, setIsReportWizardOpen] = useState(false);
 
   const [deployments, setDeployments] = useState<any[]>([]);
   const [activeDep, setActiveDep] = useState<{
@@ -251,21 +271,25 @@ function V10PreviewLayout() {
 
   // Live session records
   const [currentRecords, setCurrentRecords] = useState<any[]>([]);
+  const [allWorkspaceRecords, setAllWorkspaceRecords] = useState<any[]>([]);
   const [historicalRecords, setHistoricalRecords] = useState<any[]>([]);
   const [currentCompRecords, setCurrentCompRecords] = useState<any[]>([]);
 
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
-    key: "cr_date",
+    key: "inspection_date",
     direction: "desc",
   });
 
   const [unitSystem, setUnitSystem] = useState<"METRIC" | "IMPERIAL">("METRIC");
   const [recordSearchQuery, setRecordSearchQuery] = useState("");
+  const [recordsOffset, setRecordsOffset] = useState(0);
+  const [recordsLimit, setRecordsLimit] = useState(25);
+  const [totalRecords, setTotalRecords] = useState(0);
 
   // Column Settings for Captured Events
   const [columnSettings, setColumnSettings] = useState(() => {
     const defaultCols = [
-      { id: "cr_date", label: "Date", visible: true },
+      { id: "inspection_date", label: "Date/Time", visible: true },
       { id: "type", label: "Type", visible: true },
       { id: "component", label: "Component", visible: true },
       { id: "elev", label: "Elev/KP", visible: true },
@@ -278,7 +302,7 @@ function V10PreviewLayout() {
       const saved = localStorage.getItem("capturedEventsColumns");
       if (saved) {
         try {
-          const parsed = JSON.parse(saved);
+          const parsed = JSON.parse(saved).map((p: any) => p.id === "cr_date" ? { ...p, id: "inspection_date" } : p);
           // Merge with defaults to ensure all keys exist
           return defaultCols.map((dc) => {
             const s = parsed.find((p: any) => p.id === dc.id);
@@ -310,11 +334,133 @@ function V10PreviewLayout() {
 
   const activeTableColumns = useMemo(() => {
     return [
-      { id: "actions", label: "Actions", fixed: true },
       { id: "status", label: "Status", fixed: true },
       ...columnSettings.filter((c) => c.visible),
     ];
   }, [columnSettings]);
+
+  // --- DOCKABLE LAYOUT STATE ---
+  const [layoutModel, setLayoutModel] = useState<Model | null>(null);
+  const [videoLogExpanded, setVideoLogExpanded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const savedLayout = localStorage.getItem("inspection-workspace-layout-v2");
+    if (savedLayout && savedLayout !== "[object Object]" && savedLayout.startsWith("{")) {
+      try {
+        let parsed = JSON.parse(savedLayout);
+        if (typeof parsed === 'string') {
+          parsed = JSON.parse(parsed);
+        }
+        if (parsed && parsed.layout && parsed.layout.children && parsed.layout.children.length > 0) {
+          console.log("[DEBUG] Restoring layout from storage", parsed);
+          setLayoutModel(Model.fromJson(parsed));
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to restore layout from storage", e);
+      }
+    }
+
+    console.log("[DEBUG] Using default layout model");
+    const defaultModel: IJsonModel = {
+      global: { 
+        tabEnableClose: false, 
+        tabSetEnableMaximize: true,
+        tabSetEnableDivide: true,
+        tabSetEnableDrop: true,
+        enableEdgeDock: true,
+      },
+      layout: {
+        type: "row",
+        weight: 100,
+        children: [
+          {
+            type: "row",
+            weight: 18,
+            children: [
+              {
+                type: "tabset",
+                weight: 35,
+                children: [
+                  { type: "tab", name: "Diver Log", component: "opsLog" },
+                ],
+              },
+              {
+                type: "tabset",
+                weight: 35,
+                children: [
+                  { type: "tab", name: "Video Log", component: "videoLog" },
+                ],
+              },
+              {
+                type: "tabset",
+                weight: 30,
+                children: [
+                  { type: "tab", name: "Live Preview", component: "videoPreview" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "row",
+            weight: 62,
+            children: [
+              {
+                type: "tabset",
+                weight: 100,
+                children: [
+                  { type: "tab", name: "Inspection Form", component: "form" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "row",
+            weight: 20,
+            children: [
+              {
+                type: "tabset",
+                weight: 30,
+                children: [
+                  { type: "tab", name: "Captured Events", component: "events" },
+                ],
+              },
+              {
+                type: "tabset",
+                weight: 35,
+                children: [
+                  { type: "tab", name: "Component List", component: "components" },
+                ],
+              },
+              {
+                type: "tabset",
+                weight: 35,
+                children: [
+                  { type: "tab", name: "History Data", component: "history" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    setLayoutModel(Model.fromJson(defaultModel));
+  }, []);
+
+  const onLayoutChange = useCallback((model: Model) => {
+    localStorage.setItem("inspection-workspace-layout-v2", JSON.stringify(model.toJson()));
+    setLayoutModel(model);
+  }, []);
+
+  const handleResetLayout = useCallback(() => {
+    if (confirm("Are you sure you want to reset the cockpit layout to default? All panel positions will be restored.")) {
+      localStorage.removeItem("inspection-workspace-layout-v2");
+      window.location.reload();
+    }
+  }, []);
+
 
   // Fetch Global Unit Preference
   useEffect(() => {
@@ -357,9 +503,11 @@ function V10PreviewLayout() {
       let bVal: any;
 
       switch (sortConfig.key) {
-        case "cr_date":
-          aVal = new Date(a.cr_date || 0).getTime();
-          bVal = new Date(b.cr_date || 0).getTime();
+        case "inspection_date":
+          const aDateTime = new Date(`${a.inspection_date || "1970-01-01"}T${a.inspection_time || "00:00:00"}`).getTime();
+          const bDateTime = new Date(`${b.inspection_date || "1970-01-01"}T${b.inspection_time || "00:00:00"}`).getTime();
+          aVal = aDateTime;
+          bVal = bDateTime;
           break;
         case "type":
           aVal = (a.inspection_type?.name || "").toLowerCase();
@@ -428,57 +576,100 @@ function V10PreviewLayout() {
   }, [currentRecords, sortConfig]);
 
   const displayRecords = useMemo(() => {
-    if (!recordSearchQuery) return sortedRecords;
-    const q = recordSearchQuery.toLowerCase();
-    return sortedRecords.filter((r) => {
-      const typeName = (r.inspection_type?.name || "").toLowerCase();
-      const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toLowerCase();
-      const componentId = (r.structure_components?.q_id || "").toLowerCase();
-      const elev = (r.elevation || "").toString().toLowerCase();
-      const status = r.has_anomaly
-        ? "anomaly"
-        : r.status === "COMPLETED"
-          ? "complete"
-          : "incomplete";
-      const remarks = (
-        r.inspection_data?.observation ||
-        r.inspection_data?.findings ||
-        ""
-      ).toLowerCase();
-      const refNo = (r.insp_anomalies?.[0]?.anomaly_ref_no || "").toLowerCase();
-      const cpReading = (
-        r.inspection_data?.cp_rdg ??
-        r.inspection_data?.cp_reading_mv ??
-        r.inspection_data?.cp ??
-        ""
-      )
-        .toString()
-        .toLowerCase();
-      const diveNo = (r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "").toLowerCase();
-      const tapeNo = (r.insp_video_tapes?.tape_no || "").toLowerCase();
+    const query = recordSearchQuery.toLowerCase().trim();
+    if (!query) return sortedRecords;
 
-      // Add date and timecode for completeness
-      const crDateStr = r.cr_date
-        ? new Date(r.cr_date).toLocaleDateString() + " " + new Date(r.cr_date).toLocaleTimeString()
-        : "";
-      const timecode = (r.inspection_data?._meta_timecode || r.tape_count_no || "")
-        .toString()
-        .toLowerCase();
+    const terms = query.split(/\s+/).filter(t => t.length > 0);
+    if (terms.length === 0) return sortedRecords;
 
-      return (
-        typeName.includes(q) ||
-        typeCode.includes(q) ||
-        componentId.includes(q) ||
-        elev.includes(q) ||
-        status.includes(q) ||
-        remarks.includes(q) ||
-        refNo.includes(q) ||
-        cpReading.includes(q) ||
-        diveNo.includes(q) ||
-        tapeNo.includes(q) ||
-        crDateStr.toLowerCase().includes(q) ||
-        timecode.includes(q)
-      );
+    // Helper to extract all searchable data from a record
+    const getSearchableText = (r: any) => {
+      const texts: string[] = [];
+      
+      // 1. Basic Info
+      texts.push(r.inspection_type?.name || "");
+      texts.push(r.inspection_type_code || r.inspection_type?.code || "");
+      texts.push(r.structure_components?.q_id || r.component_name || "");
+      texts.push((r.elevation ?? "").toString());
+      texts.push((r.kp ?? "").toString());
+      texts.push(r.has_anomaly ? "anomaly" : r.status === "COMPLETED" ? "complete" : "incomplete");
+      texts.push(r.description || "");
+      texts.push(r.observation || "");
+      
+      // 2. Anomaly Info
+      if (r.insp_anomalies && r.insp_anomalies.length > 0) {
+        r.insp_anomalies.forEach((anom: any) => {
+          texts.push(anom.anomaly_ref_no || "");
+          texts.push(anom.defect_description || "");
+          texts.push(anom.defect_code || "");
+          texts.push(anom.priority || "");
+          texts.push(anom.priority_code || "");
+          texts.push(anom.priority_name || "");
+          if (anom.priority_code) texts.push(`priority ${anom.priority_code}`);
+        });
+      }
+
+      // 3. Dive & Tape Info
+      texts.push(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "");
+      texts.push(r.insp_video_tapes?.tape_no || "");
+      texts.push((r.tape_count_no ?? "").toString());
+
+      // 4. Date Info
+      if (r.inspection_date) {
+        texts.push(r.inspection_date);
+        const d = new Date(r.inspection_date);
+        texts.push(d.toLocaleDateString());
+      }
+      if (r.inspection_time) texts.push(r.inspection_time);
+
+      // 5. Deep Inspection Data Scan (Values only)
+      if (r.inspection_data && typeof r.inspection_data === 'object') {
+        const extractValues = (obj: any) => {
+          Object.values(obj).forEach(val => {
+            if (val === null || val === undefined) return;
+            if (typeof val === 'object') extractValues(val);
+            else texts.push(val.toString());
+          });
+        };
+        extractValues(r.inspection_data);
+      }
+
+      return texts.map(t => String(t).toLowerCase()).join(" ");
+    };
+
+    // Helper for boundary-aware matching
+    const matchesWord = (text: string, pattern: string) => {
+      try {
+        const hasWildcard = pattern.includes('*') || pattern.includes('?');
+        const escaped = pattern
+          .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+          .replace(/\\\*/g, '.*')
+          .replace(/\\\?/g, '.');
+        
+        if (hasWildcard) {
+          // For wildcards, we allow partial matches without strict word boundaries
+          return new RegExp(escaped, 'i').test(text);
+        }
+
+        // For regular terms, use strict boundary-aware regex
+        const regex = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
+        return regex.test(text);
+      } catch (e) {
+        return text.includes(pattern);
+      }
+    };
+
+    // PHASE 1: Try to find any record that matches the ENTIRE phrase exactly (with boundaries)
+    const exactMatches = sortedRecords.filter(r => matchesWord(getSearchableText(r), query));
+    
+    if (exactMatches.length > 0) {
+      return exactMatches;
+    }
+
+    // PHASE 2: Fallback - only if no exact matches found, break up and search terms
+    return sortedRecords.filter(r => {
+      const fullText = getSearchableText(r);
+      return terms.every(term => matchesWord(fullText, term));
     });
   }, [sortedRecords, recordSearchQuery]);
   const [isFetchingDeps, setIsFetchingDeps] = useState(true);
@@ -494,6 +685,7 @@ function V10PreviewLayout() {
   const [vidState, setVidState] = useState<"IDLE" | "RECORDING" | "PAUSED">("IDLE");
   const [videoVisible, setVideoVisible] = useState(true);
   const [streamActive, setStreamActive] = useState(false);
+  const [showVideoActionPrompt, setShowVideoActionPrompt] = useState(false);
 
   // Component Target Tab Mode
   const [compView, setCompView] = useState<"LIST" | "MODEL_3D">("LIST");
@@ -686,6 +878,7 @@ function V10PreviewLayout() {
   const [photoLinked, setPhotoLinked] = useState(false);
   const [recordNotes, setRecordNotes] = useState("");
 
+
   // Reclassification States
   const [pendingReclass, setPendingReclass] = useState<{
     type: "COMPONENT" | "TASK";
@@ -717,6 +910,7 @@ function V10PreviewLayout() {
 
   // Dynamic Form States
   const [dynamicProps, setDynamicProps] = useState<Record<string, any>>({});
+
   const [debouncedProps, setDebouncedProps] = useState<Record<string, any>>({});
   const [requiredSpec, setRequiredSpec] = useState<any>(null);
   const [requiredProps, setRequiredProps] = useState<Record<string, any>>({});
@@ -725,6 +919,14 @@ function V10PreviewLayout() {
     "Complete"
   );
   const [isUserInteraction, setIsUserInteraction] = useState(false);
+
+  useEffect(() => {
+    if (isUserInteraction) {
+      console.log("[SYNC] User interaction detected, invalidating queries...");
+      queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+      setIsUserInteraction(false);
+    }
+  }, [isUserInteraction, queryClient]);
   const [anomalyData, setAnomalyData] = useState<{
     defectCode: string;
     priority: string;
@@ -748,6 +950,44 @@ function V10PreviewLayout() {
     severity: "Minor",
     referenceNo: "",
   });
+  const [prevRefNo, setPrevRefNo] = useState("");
+
+  const validateAnomalyRef = async (newRef: string) => {
+    if (!newRef || newRef === prevRefNo) return true;
+
+    // Strip postfixes for fuzzy matching
+    const baseNew = newRef.replace(/[AR]$/, "").trim();
+
+    try {
+      const { data: allAnoms } = await supabase
+        .from("insp_anomalies")
+        .select("anomaly_id, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
+        .eq("insp_records.structure_id", parseInt(structureId || "0"))
+        .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"))
+        .eq("insp_records.sow_report_no", headerData.sowReportNo);
+
+      if (allAnoms) {
+        // Find if any existing anomaly (other than one we might be editing) shares the same base ref
+        const isDuplicate = allAnoms.some(a => {
+           // We ignore the match if it's the exact same string AND we are in an edit session
+           // (Though strictly speaking, we check against prevRefNo above)
+           const baseExisting = (a.anomaly_ref_no || "").replace(/[AR]$/, "").trim();
+           return baseExisting === baseNew;
+        });
+
+        if (isDuplicate) {
+          toast.error(`Duplicate Reference No: "${newRef}" conflicts with an existing sequence. Rolling back.`);
+          setAnomalyData(prev => ({ ...prev, referenceNo: prevRefNo }));
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      console.error("[Validation] Error checking duplicate ref:", e);
+      return true;
+    }
+  };
+
   const [incompleteReason, setIncompleteReason] = useState("");
   const [openPopovers, setOpenPopovers] = useState<Record<string, boolean>>({});
   const [libOptionsMap, setLibOptionsMap] = useState<Record<string, any[]>>({});
@@ -847,27 +1087,29 @@ function V10PreviewLayout() {
     setDynamicProps((prev) => {
       const updated = { ...prev, [name]: value };
 
-      if (activeSpec?.toUpperCase() === "RSEAB" && (name === "northing" || name === "easting")) {
-        const n = parseFloat(name === "northing" ? value : updated.northing) || 0;
-        const e = parseFloat(name === "easting" ? value : updated.easting) || 0;
+      if (activeSpec?.toUpperCase() === "RSEAB") {
+        if (name === "northing" || name === "easting") {
+          const n = parseFloat(name === "northing" ? value : updated.northing) || 0;
+          const e = parseFloat(name === "easting" ? value : updated.easting) || 0;
 
-        if (n !== 0 && e !== 0 && libOptionsMap.legs && libOptionsMap.legs.length > 0) {
-          let nearest: any = null;
-          let minDistance = Infinity;
+          if (n !== 0 && e !== 0 && libOptionsMap.legs && libOptionsMap.legs.length > 0) {
+            let nearest: any = null;
+            let minDistance = Infinity;
 
-          for (const leg of libOptionsMap.legs) {
-            const dx = leg.easting - e;
-            const dy = leg.northing - n;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < minDistance) {
-              minDistance = dist;
-              nearest = leg;
+            for (const leg of libOptionsMap.legs) {
+              const dx = leg.easting - e;
+              const dy = leg.northing - n;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < minDistance) {
+                minDistance = dist;
+                nearest = leg;
+              }
             }
-          }
 
-          if (nearest) {
-            updated.nearest_leg = nearest.name;
-            updated.distance_from_leg = parseFloat(minDistance.toFixed(2));
+            if (nearest) {
+              updated.nearest_leg = nearest.name;
+              updated.distance_from_leg = parseFloat(minDistance.toFixed(2));
+            }
           }
         }
       }
@@ -884,7 +1126,8 @@ function V10PreviewLayout() {
   const renderInspectionField = (p: any, type: "primary" | "secondary") => {
     const handler = type === "primary" ? handleDynamicPropChange : handleRequiredPropChange;
     const currentProps = type === "primary" ? dynamicProps : requiredProps;
-    const currentValue = currentProps[p.name || p.label] || "";
+    const fieldKey = p.name || p.label;
+    const currentValue = currentProps[fieldKey] || "";
 
     // Auto-calculated fields that should be read-only
     let readOnly = false;
@@ -1086,6 +1329,42 @@ function V10PreviewLayout() {
     vessel: "N/A",
   });
 
+  // AUTO-GENERATE ANOMALY REFERENCE NO WHEN TYPE CHANGES
+  useEffect(() => {
+    if ((findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo && structureId && headerData?.sowReportNo) {
+      const isAnomaly = findingType === "Anomaly";
+      const category = isAnomaly ? "ANOMALY" : "FINDING";
+      const prefix = isAnomaly ? "A" : "F";
+
+      const generateRef = async () => {
+        try {
+          const { data: allAnoms } = await supabase
+            .from("insp_anomalies")
+            .select("sequence_no, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
+            .eq("insp_records.structure_id", parseInt(structureId || "0"))
+            .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"))
+            .eq("insp_records.sow_report_no", headerData.sowReportNo);
+
+          let vMaxSeq = 0;
+          if (allAnoms) {
+            for (const a of allAnoms) {
+              const refCategory = a.anomaly_ref_no?.includes(` / ${prefix}-`) ? category : (isAnomaly ? "FINDING" : "ANOMALY");
+              if (refCategory === category && a.sequence_no > vMaxSeq) {
+                vMaxSeq = a.sequence_no;
+              }
+            }
+          }
+          const seq = vMaxSeq + 1;
+          const baseRef = `${new Date().getFullYear()} / ${headerData.platformName || "REF"} / ${prefix}-${seq.toString().padStart(3, "0")}`;
+          setAnomalyData(prev => ({ ...prev, referenceNo: baseRef }));
+        } catch (e) {
+          console.error("[AnomalyRef] Failed to pre-generate ref:", e);
+        }
+      };
+      generateRef();
+    }
+  }, [findingType, structureId, headerData?.sowReportNo, jobPackId, headerData?.platformName]);
+
   const {
     previewOpen,
     setPreviewOpen,
@@ -1107,8 +1386,12 @@ function V10PreviewLayout() {
     setItisiPreviewOpen,
     anodePreviewOpen,
     setAnodePreviewOpen,
+    anodeRsaniPreviewOpen,
+    setAnodeRsaniPreviewOpen,
     cpPreviewOpen,
     setCpPreviewOpen,
+    rswniPreviewOpen,
+    setRswniPreviewOpen,
     rgviPreviewOpen,
     setRgviPreviewOpen,
     rcasnPreviewOpen,
@@ -1135,6 +1418,16 @@ function V10PreviewLayout() {
     setPhotographyLogPreviewOpen,
     gvinsPreviewOpen,
     setGvinsPreviewOpen,
+    bsinsPreviewOpen,
+    setBsinsPreviewOpen,
+    cvinsPreviewOpen,
+    setCvinsPreviewOpen,
+    cleanPreviewOpen,
+    setCleanPreviewOpen,
+    mpinsPreviewOpen,
+    setMpinsPreviewOpen,
+    utwtkPreviewOpen,
+    setUtwtkPreviewOpen,
     szonePreviewOpen,
     setSzonePreviewOpen,
     cpclbPreviewOpen,
@@ -1175,8 +1468,12 @@ function V10PreviewLayout() {
     generateITISIReportBlob,
     generateAnodeReport,
     generateAnodeReportBlob,
+    generateAnodeRsaniReport,
+    generateAnodeRsaniReportBlob,
     generateCPReport,
     generateCPReportBlob,
+    generateRSWNIReport,
+    generateRSWNIReportBlob,
     generateRGVIReport,
     generateRGVIReportBlob,
     generateRCASNReport,
@@ -1195,6 +1492,16 @@ function V10PreviewLayout() {
     generatePhotographyLogReportBlob,
     generateGVINSReport,
     generateGVINSReportBlob,
+    generateBSINSReport,
+    generateBSINSReportBlob,
+    generateCVINSReport,
+    generateCVINSReportBlob,
+    generateCLEANReport,
+    generateCLEANReportBlob,
+    generateMPINSReport,
+    generateMPINSReportBlob,
+    generateUTWTKReport,
+    generateUTWTKReportBlob,
     generateSZONEReport,
     generateSZONEReportBlob,
     generateCPCLBReport,
@@ -1205,6 +1512,15 @@ function V10PreviewLayout() {
     divingMgiPreviewOpen,
     setDivingMgiPreviewOpen,
     generateDivingMGIReportBlob,
+    divingAcfmcPreviewOpen,
+    setDivingAcfmcPreviewOpen,
+    generateDivingACFMCReportBlob,
+    divingPlcoPreviewOpen,
+    setDivingPlcoPreviewOpen,
+    generateDivingPLCOReportBlob,
+    rovRwdiPreviewOpen,
+    setRovRwdiPreviewOpen,
+    generateROVRWDIReportBlob,
 
     generateInspectionReportByType,
     generateFullInspectionReport,
@@ -1213,7 +1529,7 @@ function V10PreviewLayout() {
     jobPackId,
     structureId,
     headerData,
-    currentRecords,
+    allWorkspaceRecords,
     pendingAttachments,
     allInspectionTypes
   );
@@ -1237,7 +1553,7 @@ function V10PreviewLayout() {
         console.log("[SOW Sync] Resolving missing sowId...");
         const { data: existingSow } = await supabase
           .from("u_sow")
-          .select("id, report_number")
+          .select("id, report_numbers")
           .eq("jobpack_id", Number(jobPackId))
           .eq("structure_id", Number(structureId))
           .limit(1)
@@ -1245,11 +1561,16 @@ function V10PreviewLayout() {
 
         if (existingSow) {
           activeSowId = existingSow.id;
-          if (!activeReportNo || activeReportNo === "N/A")
-            activeReportNo = existingSow.report_number;
+          if (!activeReportNo || activeReportNo === "N/A") {
+            const firstReport = existingSow.report_numbers?.[0];
+            activeReportNo = firstReport ? firstReport.number : null;
+          }
         } else {
           const userRes = await supabase.auth.getUser();
           const userId = userRes.data.user?.id || "system";
+          const resolvedReport = activeReportNo && activeReportNo !== "N/A"
+            ? activeReportNo
+            : `SOW-${new Date().getFullYear()}`;
           const { data: newSow } = await supabase
             .from("u_sow")
             .insert({
@@ -1257,10 +1578,7 @@ function V10PreviewLayout() {
               structure_id: Number(structureId),
               structure_type: headerData.structureType === "pipeline" ? "PIPELINE" : "PLATFORM",
               structure_title: headerData.platformName,
-              report_number:
-                activeReportNo && activeReportNo !== "N/A"
-                  ? activeReportNo
-                  : `SOW-${new Date().getFullYear()}`,
+              report_numbers: [{ number: resolvedReport, job_type: jtParam || "UNKNOWN" }],
               total_items: 0,
               completed_items: 0,
               incomplete_items: 0,
@@ -1507,177 +1825,307 @@ function V10PreviewLayout() {
     [sowId, supabase, queryClient, allInspectionTypes, allComps, headerData, jobPackId, structureId]
   );
 
+  // Resolver effect to convert name parameters into ID parameters
+  useEffect(() => {
+    async function resolveParams() {
+      if (!jobPackId || !structureId) return;
+
+      const isJpNaN = isNaN(Number(jobPackId));
+      const isStrNaN = isNaN(Number(structureId));
+
+      // If both are already numbers, no need to resolve
+      if (!isJpNaN && !isStrNaN) return;
+
+      let resolvedJobPackId = jobPackId;
+      let resolvedStructureId = structureId;
+      let resolvedSowId = sowIdFull;
+      let resolvedSowReport = targetReportNumber;
+      let resolvedJobType = searchParams.get("jobType") || "";
+
+      // 1. Resolve Jobpack Name to ID
+      if (isJpNaN) {
+        const { data: jpExact } = await supabase
+          .from("jobpack")
+          .select("id")
+          .eq("name", jobPackId)
+          .maybeSingle();
+
+        if (jpExact) {
+          resolvedJobPackId = String(jpExact.id);
+        } else {
+          const prefix = jobPackId.substring(0, 4);
+          const { data: candidates } = await supabase
+            .from("jobpack")
+            .select("id, name")
+            .ilike("name", `${prefix}%`);
+
+          if (candidates) {
+            const normalize = (s: string) => s.toUpperCase().replace(/0/g, 'O').replace(/\s+/g, '');
+            const targetNorm = normalize(jobPackId);
+            const matched = candidates.find(c => normalize(c.name) === targetNorm);
+            if (matched) {
+              resolvedJobPackId = String(matched.id);
+            }
+          }
+        }
+      }
+
+      // 2. Resolve Structure Title to ID
+      if (isStrNaN) {
+        const { data: platData } = await supabase
+          .from("platform" as any)
+          .select("plat_id")
+          .eq("title", structureId)
+          .maybeSingle() as any;
+
+        if (platData) {
+          resolvedStructureId = String(platData.plat_id);
+        } else {
+          const { data: pipeData } = await supabase
+            .from("u_pipeline" as any)
+            .select("pipe_id")
+            .eq("title", structureId)
+            .maybeSingle() as any;
+
+          if (pipeData) {
+            resolvedStructureId = String(pipeData.pipe_id);
+          }
+        }
+      }
+
+      // 3. Resolve SOW Report and Job Type if combined (e.g. "2010 / MAJOR")
+      if (targetReportNumber && targetReportNumber.includes("/")) {
+        const parts = targetReportNumber.split("/");
+        resolvedSowReport = parts[0].trim();
+        resolvedJobType = parts[1].trim();
+      }
+
+      // 4. Resolve SOW ID using the resolved jobpack & structure
+      if (resolvedJobPackId && resolvedStructureId && !resolvedSowId) {
+        const { data: sowData } = await supabase
+          .from("u_sow")
+          .select("id")
+          .eq("jobpack_id", Number(resolvedJobPackId))
+          .eq("structure_id", Number(resolvedStructureId))
+          .maybeSingle();
+
+        if (sowData) {
+          resolvedSowId = String(sowData.id);
+        }
+      }
+
+      // 5. Update URL search parameters if anything changed
+      if (
+        resolvedJobPackId !== jobPackId ||
+        resolvedStructureId !== structureId ||
+        resolvedSowId !== sowIdFull ||
+        resolvedSowReport !== targetReportNumber ||
+        resolvedJobType !== searchParams.get("jobType")
+      ) {
+        const params = new URLSearchParams(window.location.search);
+        if (resolvedJobPackId) params.set("jobpack", resolvedJobPackId);
+        if (resolvedStructureId) params.set("structure", resolvedStructureId);
+        if (resolvedSowId) params.set("sow", resolvedSowId);
+        if (resolvedSowReport) params.set("sowReport", resolvedSowReport);
+        if (resolvedJobType) params.set("jobType", resolvedJobType);
+
+        console.log("[Resolver] Redirecting with resolved parameters:", params.toString());
+        router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
+      }
+    }
+
+    resolveParams();
+  }, [jobPackId, structureId, sowIdFull, targetReportNumber, supabase, router, searchParams]);
+
   useEffect(() => {
     async function fetchHeaderInfo() {
       if (!jobPackId || !structureId) return;
+      if (isNaN(Number(jobPackId)) || isNaN(Number(structureId))) return;
 
+      const currentParams = new URLSearchParams(window.location.search);
       let jobpackName = jpParam || `JP-${jobPackId}`;
       let platformName = strParam || "Unknown Structure";
       let sowReportNo = sowParam || "Unknown Report";
       let waterDepth = 0;
 
-      // Fetch Jobpack Name
-      if (!jpParam) {
-        const { data: jpData } = await supabase
-          .from("jobpack")
-          .select("name")
-          .eq("id", Number(jobPackId))
-          .single();
-        if (jpData?.name) jobpackName = jpData.name;
-      }
+      try {
+        // Fetch Jobpack Name, Structure Type, Vessel Metadata, Platform, Pipeline, SOW, and SOW items in PARALLEL
+        const [jpResult, strTypeResult, jpMetaResult, platResult, pipeResult, sowResult, sowItemsResult] = await Promise.all([
+          // Jobpack name
+          !jpParam
+            ? supabase.from("jobpack").select("name").eq("id", Number(jobPackId)).single()
+            : Promise.resolve({ data: null }),
+          // Structure type
+          supabase.from("structure").select("str_type").eq("str_id", Number(structureId)).single(),
+          // Vessel from Jobpack metadata
+          supabase.from("jobpack").select("metadata").eq("id", Number(jobPackId)).single(),
+          // Platform details
+          supabase.from("platform" as any).select("title, depth").eq("plat_id", Number(structureId)).maybeSingle() as any,
+          // Pipeline details
+          supabase.from("u_pipeline" as any).select("title, depth").eq("pipe_id", Number(structureId)).maybeSingle() as any,
+          // SOW resolution (only if sowId is not present)
+          !sowId
+            ? supabase.from("u_sow").select("id, report_numbers").eq("jobpack_id", Number(jobPackId)).eq("structure_id", Number(structureId))
+            : Promise.resolve({ data: null }),
+          // SOW items resolution (only if sowId is present)
+          (sowId && !sowParam)
+            ? supabase.from("u_sow_items").select("report_number").eq("sow_id", sowId).not("report_number", "is", null).limit(1)
+            : Promise.resolve({ data: null }),
+        ]);
 
-      // Fetch Structure Type for data acquisition
-      let detectedStructureType: "platform" | "pipeline" = "platform";
-      const { data: strTypeData } = await supabase
-        .from("structure")
-        .select("str_type")
-        .eq("str_id", Number(structureId))
-        .single();
-      if (strTypeData?.str_type) {
-        detectedStructureType = strTypeData.str_type.toLowerCase().includes("pipeline")
-          ? "pipeline"
-          : "platform";
-      }
-
-      // Always fetch from platform table — it has 'title' (name) and 'depth' (water depth)
-      if (detectedStructureType === "platform") {
-        const { data: platData } = (await supabase
-          .from("platform" as any)
-          .select("title, depth")
-          .eq("plat_id", Number(structureId))
-          .maybeSingle()) as any;
-
-        if (platData) {
-          if (!strParam && platData.title) platformName = platData.title;
-          if (platData.depth) waterDepth = Number(platData.depth);
-        }
-      } else {
-        // Fetch from pipeline
-        const { data: pipeData } = (await supabase
-          .from("u_pipeline" as any)
-          .select("pipeline_name, water_depth")
-          .eq("pipe_id", Number(structureId))
-          .maybeSingle()) as any;
-
-        if (pipeData) {
-          if (!strParam && pipeData.pipeline_name) platformName = pipeData.pipeline_name;
-          if (pipeData.water_depth) waterDepth = Number(pipeData.water_depth);
-        }
-      }
-
-      // Resolve SOW ID and Report Number
-      if (!sowId) {
-        // Try to resolve SOW by (Jobpack + Structure) AND Report Number (if available)
-        let sowQuery = supabase
-          .from("u_sow")
-          .select("id, report_number")
-          .eq("jobpack_id", Number(jobPackId))
-          .eq("structure_id", Number(structureId));
-
-        if (sowParam) {
-          sowQuery = sowQuery.eq("report_number", sowParam);
-        }
-
-        const { data: resolvedSow } = await sowQuery
-          .order("id", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (resolvedSow) {
-          if (resolvedSow.report_number) sowReportNo = resolvedSow.report_number;
-          // Patch the URL so the workspace knows the sow going forward
-          const newParams = new URLSearchParams(window.location.search);
-          if (!newParams.get("sow")) {
-            newParams.set("sow", String(resolvedSow.id));
-            router.replace(`${window.location.pathname}?${newParams.toString()}`, {
-              scroll: false,
-            });
-          }
-        } else if (sowParam) {
-          // Create it if sowParam is provided but no record exists yet
-          const userRes = await supabase.auth.getUser();
-          const userId = userRes.data.user?.id || "system";
-          const { data: newSow } = await supabase
-            .from("u_sow")
-            .insert({
-              jobpack_id: Number(jobPackId),
-              structure_id: Number(structureId),
-              structure_type: detectedStructureType === "pipeline" ? "PIPELINE" : "PLATFORM",
-              structure_title: platformName,
-              report_number: sowParam,
-              total_items: 0,
-              completed_items: 0,
-              incomplete_items: 0,
-              pending_items: 0,
-              status: "pending",
-              created_by: userId,
-            })
-            .select("id")
-            .single();
-
-          if (newSow) {
-            const newParams = new URLSearchParams(window.location.search);
-            newParams.set("sow", String(newSow.id));
-            router.replace(`${window.location.pathname}?${newParams.toString()}`, {
-              scroll: false,
-            });
+        // Process Jobpack Name
+        if (jpResult.data?.name) {
+          jobpackName = jpResult.data.name;
+          if (!currentParams.get("jpName")) {
+            currentParams.set("jpName", jpResult.data.name);
+            router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
           }
         }
-      } else if (!sowParam && sowId) {
-        const { data: sowItemData } = await supabase
-          .from("u_sow_items")
-          .select("report_number")
-          .eq("sow_id", sowId)
-          .not("report_number", "is", null)
-          .limit(1);
 
-        if (sowItemData && sowItemData.length > 0) {
-          sowReportNo = sowItemData[0].report_number;
-        } else if (sowIdFull && sowIdFull.includes("-")) {
-          sowReportNo = sowIdFull.split("-").slice(1).join("-");
+        // Process Structure Type
+        let detectedStructureType: "platform" | "pipeline" = "platform";
+        if (strTypeResult.data?.str_type) {
+          detectedStructureType = strTypeResult.data.str_type.toLowerCase().includes("pipeline")
+            ? "pipeline"
+            : "platform";
+        }
+
+        // Process structure-specific details
+        if (detectedStructureType === "platform") {
+          const platData = platResult.data;
+          if (platData) {
+            setHeaderData((prev) => ({
+              ...prev,
+              platformName: platData.title || prev.platformName,
+              waterDepth: platData.depth || prev.waterDepth,
+              structureType: "platform",
+            }));
+            if (!strParam && platData.title && !currentParams.get("structName")) {
+              currentParams.set("structName", platData.title);
+              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+            }
+            if (!strParam && platData.title) platformName = platData.title;
+            if (platData.depth) waterDepth = Number(platData.depth);
+          }
         } else {
-          sowReportNo = sowIdFull || `SOW-${sowId}`;
+          const pipeData = pipeResult.data;
+          if (pipeData) {
+            setHeaderData((prev) => ({
+              ...prev,
+              platformName: pipeData.title || prev.platformName,
+              structureType: "pipeline",
+            }));
+            if (!strParam && pipeData.title && !currentParams.get("structName")) {
+              currentParams.set("structName", pipeData.title);
+              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+            }
+            if (!strParam && pipeData.title) platformName = pipeData.title;
+            if (pipeData.depth) waterDepth = Number(pipeData.depth);
+          }
         }
 
-        // Sanitize if it's a filter string from a malformed link
-        if (sowReportNo && sowReportNo.includes("=")) {
-          sowReportNo = sowReportNo.split("=").pop() || sowReportNo;
+        // Resolve SOW ID and Report Number
+        if (!sowId) {
+          const resolvedSows = sowResult.data;
+          const resolvedSow = resolvedSows?.[0];
+
+          if (resolvedSow) {
+            // Find report number
+            let resolvedReportNo = "";
+            const currentReports = resolvedSow.report_numbers || [];
+            if (sowParam) {
+              const match = currentReports.find(
+                (r: any) => r.number === sowParam || r.REP_PREFIX === sowParam
+              );
+              if (match) resolvedReportNo = match.number || match.REP_PREFIX || "";
+            } else if (currentReports.length > 0) {
+              resolvedReportNo = currentReports[0].number || currentReports[0].REP_PREFIX || "";
+            }
+            if (resolvedReportNo) sowReportNo = resolvedReportNo;
+
+            // Patch the URL so the workspace knows the sow going forward
+            if (!currentParams.get("sow")) {
+              currentParams.set("sow", String(resolvedSow.id));
+              router.replace(`${window.location.pathname}?${currentParams.toString()}`, {
+                scroll: false,
+              });
+            }
+          } else if (sowParam) {
+            // Create it if sowParam is provided but no record exists yet
+            const userRes = await supabase.auth.getUser();
+            const userId = userRes.data.user?.id || "system";
+            const { data: newSow } = await supabase
+              .from("u_sow")
+              .insert({
+                jobpack_id: Number(jobPackId),
+                structure_id: Number(structureId),
+                structure_type: detectedStructureType === "pipeline" ? "PIPELINE" : "PLATFORM",
+                structure_title: platformName,
+                report_numbers: [{ number: sowParam, job_type: jtParam || "UNKNOWN" }],
+                total_items: 0,
+                completed_items: 0,
+                incomplete_items: 0,
+                pending_items: 0,
+                status: "pending",
+                created_by: userId,
+              })
+              .select("id")
+              .single();
+
+            if (newSow) {
+              currentParams.set("sow", String(newSow.id));
+              router.replace(`${window.location.pathname}?${currentParams.toString()}`, {
+                scroll: false,
+              });
+            }
+          }
+        } else if (!sowParam && sowId) {
+          const sowItemData = sowItemsResult.data;
+          if (sowItemData && sowItemData.length > 0) {
+            sowReportNo = sowItemData[0].report_number;
+          } else if (sowIdFull && sowIdFull.includes("-")) {
+            sowReportNo = sowIdFull.split("-").slice(1).join("-");
+          } else {
+            sowReportNo = sowIdFull || `SOW-${sowId}`;
+          }
+
+          // Sanitize if it's a filter string from a malformed link
+          if (sowReportNo && sowReportNo.includes("=")) {
+            sowReportNo = sowReportNo.split("=").pop() || sowReportNo;
+          }
         }
+
+        // Process Vessel from Jobpack (already fetched in parallel above)
+        let vessel = "N/A";
+        if (jpMetaResult.data?.metadata) {
+          const meta = jpMetaResult.data.metadata as any;
+          if (
+            meta.vessel_history &&
+            Array.isArray(meta.vessel_history) &&
+            meta.vessel_history.length > 0
+          ) {
+            vessel = meta.vessel_history.map((v: any) => v.name || v).join(", ");
+          } else if (meta.vessel) {
+            vessel = meta.vessel;
+          }
+        }
+
+        setHeaderData({
+          jobpackName,
+          platformName,
+          sowReportNo,
+          jobType: jtParam || "",
+          structureType: detectedStructureType,
+          waterDepth,
+          vessel,
+        });
+        setGlobalUrlType(detectedStructureType);
+      } catch (err) {
+        console.error("fetchHeaderInfo error", err);
       }
-
-      // Fetch Vessel from Jobpack
-      let vessel = "N/A";
-      const { data: jpMetadata } = await supabase
-        .from("jobpack")
-        .select("metadata")
-        .eq("id", Number(jobPackId))
-        .single();
-      if (jpMetadata?.metadata) {
-        const meta = jpMetadata.metadata as any;
-        if (
-          meta.vessel_history &&
-          Array.isArray(meta.vessel_history) &&
-          meta.vessel_history.length > 0
-        ) {
-          vessel = meta.vessel_history.map((v: any) => v.name || v).join(", ");
-        } else if (meta.vessel) {
-          vessel = meta.vessel;
-        }
-      }
-
-      setHeaderData({
-        jobpackName,
-        platformName,
-        sowReportNo,
-        jobType: jtParam || "",
-        structureType: detectedStructureType,
-        waterDepth,
-        vessel,
-      });
-      setGlobalUrlType(detectedStructureType);
     }
     fetchHeaderInfo();
-  }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam]);
+  }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam, router]);
 
   useEffect(() => {
     if ((findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo) {
@@ -1846,7 +2294,7 @@ function V10PreviewLayout() {
         .from("attachment")
         .select("path, id")
         .eq("source_id", id)
-        .eq("source_type", "INSPECTION");
+        .in("source_type", ["inspection", "INSPECTION"]);
 
       if (attachments && attachments.length > 0) {
         const paths = attachments.map((a) => a.path).filter(Boolean);
@@ -1860,7 +2308,7 @@ function V10PreviewLayout() {
           .from("attachment")
           .delete()
           .eq("source_id", id)
-          .eq("source_type", "INSPECTION");
+          .in("source_type", ["inspection", "INSPECTION"]);
       }
 
       // 2. Delete anomalies
@@ -1985,6 +2433,31 @@ function V10PreviewLayout() {
     } else {
       setSelectedComp(c);
       resetForm();
+      // AUTO-SELECT LOGIC: 
+      // If exactly one task exists, auto-select it.
+      // If multiple tasks exist, leave activeSpec null so the user sees the new selection screen.
+      if (c.taskStatuses && c.taskStatuses.length > 0) {
+        const validTasks = c.taskStatuses.filter((ts: any) => {
+          const it = (allInspectionTypes || []).find(
+            (type: any) => type.code === ts.code || type.name === ts.code
+          );
+          if (!it) return true;
+          const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+          const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+          
+          if (inspMethod === "DIVING" && !isDiving) return false;
+          if (inspMethod === "ROV" && !isRov) return false;
+          return true;
+        });
+
+        if (validTasks.length === 1) {
+          console.log(`[Workspace] Auto-selecting only valid task: ${validTasks[0].code}`);
+          setActiveSpec(validTasks[0].code);
+        } else if (validTasks.length > 1) {
+          console.log(`[Workspace] Multiple tasks found (${validTasks.length}). Showing selection screen.`);
+          setActiveSpec(null);
+        }
+      }
     }
   };
 
@@ -2070,15 +2543,63 @@ function V10PreviewLayout() {
       return;
     }
 
-    const orphaned = diffSpecifications(selectedComp, newTask);
     setPendingReclass({
       type: "TASK",
       newComponent: selectedComp,
       newTask: newTask,
       componentTaskStatuses: selectedComp.taskStatuses || [],
-      orphanedFields: orphaned,
+      orphanedFields: [],
     });
     setShowTaskSelector(false);
+  };
+
+  const handleDeleteTaskFromScope = async (taskCode: string, compId: number) => {
+    if (!confirm(`Are you sure you want to remove ${taskCode} from the SOW for this component?`)) {
+      return;
+    }
+
+    // 1. Safety Check: Check if there is any inspection data in insp_records
+    const { data: existingRecords, error: checkError } = await supabase
+      .from("insp_records")
+      .select("id")
+      .eq("component_id", compId)
+      .eq("inspection_type_code", taskCode)
+      .limit(1);
+
+    if (checkError) {
+      toast.error("Error checking for existing records");
+      return;
+    }
+
+    if (existingRecords && existingRecords.length > 0) {
+      toast.error("Cannot delete inspection type. Existing inspection records found for this component.", {
+        description: "Please delete the inspection records first if you wish to remove this task from the scope."
+      });
+      return;
+    }
+
+    // 2. Perform deletion from u_sow_items
+    let deleteQuery = supabase
+      .from("u_sow_items")
+      .delete()
+      .eq("sow_id", sowId)
+      .eq("component_id", compId)
+      .eq("inspection_code", taskCode);
+
+    if (targetReportNumber) {
+      deleteQuery = deleteQuery.eq("report_number", targetReportNumber);
+    }
+
+    const { error: deleteErr } = await deleteQuery;
+
+    if (deleteErr) {
+      toast.error("Failed to remove inspection type from SOW");
+      console.error(deleteErr);
+      return;
+    }
+
+    toast.success("Inspection type removed from scope");
+    queryClient.invalidateQueries({ queryKey: ["sow-data"] });
   };
 
   const {
@@ -2097,16 +2618,30 @@ function V10PreviewLayout() {
 
   // Data Acquisition Disconnect Wrapper
   const handleDataAcqDisconnect = async () => {
-    await dataAcqDisconnect();
+    await dataAcqDisconnect(true);
   };
 
   // Explicitly disconnect when navigating away from the workspace
   useEffect(() => {
     return () => {
       console.log("[Workspace] Navigating away, terminating ROV connection...");
-      dataAcqDisconnect();
+      dataAcqDisconnect(true);
     };
   }, [dataAcqDisconnect]);
+
+  // Implement User Request: Disconnect ROV port if open when entering ROV mode
+  useEffect(() => {
+    if (inspMethod === "ROV" && dataAcqConnected && !hasAutoDisconnectedRef.current) {
+      console.log("[Workspace] ROV Mode detected with active connection. Closing port as per safety requirement.");
+      dataAcqDisconnect(true); // Silent disconnect from provider to use custom message
+      toast.info("Active ROV connection detected and closed for new session.");
+      hasAutoDisconnectedRef.current = true;
+    }
+    // Reset the ref if we switch away from ROV, so it can trigger again if they come back
+    if (inspMethod !== "ROV") {
+      hasAutoDisconnectedRef.current = false;
+    }
+  }, [inspMethod, dataAcqConnected, dataAcqDisconnect]);
 
   // Load Settings on Mount
   useEffect(() => {
@@ -2528,6 +3063,12 @@ function V10PreviewLayout() {
   }, [isStreamRecording, isStreamPaused]);
 
   const syncDeploymentState = useCallback(async () => {
+    if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) {
+      console.log("[Sync] Skipping sync: jobPackId or structureId is non-numeric");
+      setIsReadyForComps(true);
+      return;
+    }
+
     if (!activeDep?.id || activeDep.id === "AWAITING") {
       console.log("[Sync] Skipping sync: no active deployment");
       setIsReadyForComps(true);
@@ -2541,45 +3082,142 @@ function V10PreviewLayout() {
       const movTable = inspMethod === "DIVING" ? "insp_dive_movements" : "insp_rov_movements";
       const movCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
 
-      // 1 & 2. Fetch Movements and Tapes in parallel
-      const [movsRes, tapesRes] = await Promise.all([
-        supabase
-          .from(movTable)
-          .select("*")
-          .eq(movCol, depId)
-          .order("movement_time", { ascending: true }),
-        supabase
-          .from("insp_video_tapes")
-          .select("*")
-          .eq(movCol, depId)
-          .order("tape_id", { ascending: false }),
+      // Construct inspsQuery first so we can fetch it in parallel
+      const inspCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+      let inspsQuery = supabase
+        .from("insp_records")
+        .select(
+          `
+                *,
+                inspection_type:inspection_type_id!left(id, code, name),
+                structure_components:component_id!left (
+                    id,
+                    q_id, 
+                    code,
+                    metadata
+                ),
+                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
+                insp_video_tapes:tape_id!left(tape_no),
+                insp_anomalies(*)
+            `,
+          { count: "exact" }
+        )
+        .eq("jobpack_id", parseInt(jobPackId || "0"))
+        .not(inspCol, "is", null)
+        .order("inspection_date", { ascending: false })
+        .order("inspection_time", { ascending: false });
+
+      let allInspsQuery = supabase
+        .from("insp_records")
+        .select(
+          `
+                *,
+                inspection_type:inspection_type_id!left(id, code, name),
+                structure_components:component_id!left (
+                    id,
+                    q_id, 
+                    code,
+                    metadata
+                ),
+                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
+                insp_video_tapes:tape_id!left(tape_no),
+                insp_anomalies(*)
+            `
+        )
+        .eq("jobpack_id", parseInt(jobPackId || "0"))
+        .not(inspCol, "is", null)
+        .order("inspection_date", { ascending: false })
+        .order("inspection_time", { ascending: false });
+
+      if (recordSearchQuery) {
+        // When searching, we bypass pagination to allow the client-side Smart Filter 
+        // to scan a much larger set of records (up to 3000) globally.
+        inspsQuery = inspsQuery.limit(3000);
+      } else {
+        // Standard browsing uses pagination for performance
+        inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
+      }
+
+      if (structureId && !isNaN(Number(structureId))) {
+        inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
+        allInspsQuery = allInspsQuery.eq("structure_id", Number(structureId));
+      }
+      if (
+        headerData.sowReportNo &&
+        headerData.sowReportNo !== "N/A" &&
+        headerData.sowReportNo !== "Unknown Report"
+      ) {
+        const sowOrFilter = `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`;
+        inspsQuery = inspsQuery.or(sowOrFilter);
+        allInspsQuery = allInspsQuery.or(sowOrFilter);
+      }
+
+      // Fetch Movements, Tapes, and Inspection Records in PARALLEL
+      const movementsPromise = supabase
+        .from(movTable)
+        .select("*")
+        .eq(movCol, depId)
+        .order("movement_time", { ascending: true });
+
+      const tapesPromise = supabase
+        .from("insp_video_tapes")
+        .select("*")
+        .eq(movCol, depId)
+        .order("tape_id", { ascending: false });
+
+      let [movsRes, tapesRes, inspsRes, allInspsRes] = await Promise.all([
+        movementsPromise,
+        tapesPromise,
+        inspsQuery,
+        allInspsQuery,
       ]);
 
       const movs = movsRes.data;
       let tapes = tapesRes.data;
 
-      if (movsRes.error) console.error("[Sync] Movement fetch error:", movsRes.error);
-      if (tapesRes.error) console.error("[Sync] Tape fetch error:", tapesRes.error);
+      if (movsRes.error) {
+        console.error("[Sync] Movement fetch error:", movsRes.error.message, movsRes.error.details, movsRes.error.hint);
+      }
+      if (tapesRes.error) {
+        console.error("[Sync] Tape fetch error:", tapesRes.error.message, tapesRes.error.details, tapesRes.error.hint);
+      }
 
       if (movs && movs.length > 0) {
         const last = movs[movs.length - 1];
-        let mvtLabel = last.movement_type || "Awaiting Deployment";
+        let mvtLabel = "Awaiting Deployment";
+        
         if (inspMethod === "DIVING") {
+          mvtLabel = last.activity || last.movement_type || "Awaiting Deployment";
           const mappedItem = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(
             (a) => a.value === mvtLabel || a.label === mvtLabel
           );
           if (mappedItem) mvtLabel = mappedItem.label;
+          setDiveStartTime(last.timestamp || last.event_time || last.movement_time);
+        } else {
+          mvtLabel = last.movement_type || "Awaiting Deployment";
+          setDiveStartTime(last.movement_time || last.event_time);
         }
+        
         setCurrentMovement(mvtLabel);
-        setDiveStartTime(movs[0].movement_time || movs[0].event_time);
 
-        const recoveryEvent = movs.find(
-          (m) =>
-            m.movement_type?.toLowerCase().includes("arrived surface") ||
-            m.movement_type?.toLowerCase().includes("recovered") ||
-            m.movement_type === "BACK_TO_SURFACE"
-        );
-        setDiveEndTime(recoveryEvent?.movement_time || recoveryEvent?.event_time || null);
+        const recoveryEvent = movs.find((m) => {
+          const type = (m.activity || m.movement_type || "").toLowerCase();
+          return (
+            type.includes("arrived surface") ||
+            type.includes("recovered") ||
+            type.includes("back to surface") ||
+            type === "back_to_surface" ||
+            type === "rov recovered"
+          );
+        });
+        
+        const endTime = inspMethod === "DIVING" 
+          ? (recoveryEvent?.timestamp || recoveryEvent?.event_time) 
+          : (recoveryEvent?.movement_time || recoveryEvent?.event_time);
+          
+        setDiveEndTime(endTime || null);
       } else {
         setCurrentMovement("Awaiting Deployment");
         setDiveStartTime(null);
@@ -2602,7 +3240,9 @@ function V10PreviewLayout() {
           headerData.sowReportNo !== "N/A" &&
           headerData.sowReportNo !== "Unknown Report"
         ) {
-          recTapesQuery = recTapesQuery.eq("sow_report_no", headerData.sowReportNo);
+          recTapesQuery = recTapesQuery.or(
+            `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
+          );
         }
 
         const { data: recTapes } = await recTapesQuery;
@@ -2669,55 +3309,48 @@ function V10PreviewLayout() {
         setTapeId(null);
         setVidState("IDLE");
         setVidTimer(0);
+
+        // Carry-over tape number logic for new jobs
+        const { data: overallLatestTape } = await supabase
+          .from("insp_video_tapes")
+          .select("tape_no, chapter_no")
+          .order("tape_id", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (overallLatestTape && overallLatestTape.tape_no) {
+          setTapeNo(overallLatestTape.tape_no);
+          const { data: latestTapeForNo } = await supabase
+            .from("insp_video_tapes")
+            .select("chapter_no")
+            .eq("tape_no", overallLatestTape.tape_no)
+            .order("chapter_no", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const nextChapter = latestTapeForNo ? (Number(latestTapeForNo.chapter_no) || 1) + 1 : 1;
+          setActiveChapter(nextChapter);
+        } else {
+          setTapeNo("VDO-03-2026");
+          setActiveChapter(1);
+        }
       }
 
       let allEv: any[] = [];
-      const inspCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-      let inspsQuery = supabase
-        .from("insp_records")
-        .select(
-          `
-                *,
-                inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (
-                    id,
-                    q_id, 
-                    code,
-                    metadata
-                ),
-                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
-                insp_video_tapes:tape_id!left(tape_no),
-                insp_anomalies(*)
-            `
-        )
-        .eq(inspCol, depId);
 
-      if (structureId && !isNaN(Number(structureId))) {
-        inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
-      }
-      if (
-        headerData.sowReportNo &&
-        headerData.sowReportNo !== "N/A" &&
-        headerData.sowReportNo !== "Unknown Report"
-      ) {
-        inspsQuery = inspsQuery.eq("sow_report_no", headerData.sowReportNo);
-      }
-
-      // 3 & 4. Fetch Logs and Inspection Records in parallel to reduce network roundtrips
-      const [logsRes, inspsRes] = await Promise.all([
-        tapeIds.length > 0
-          ? supabase
-              .from("insp_video_logs")
-              .select("*")
-              .in("tape_id", tapeIds)
-              .order("event_time", { ascending: false })
-          : Promise.resolve({ data: [] }),
-        inspsQuery,
-      ]);
+      // Fetch Video Logs for all tapeIds
+      const logsRes = tapeIds.length > 0
+        ? await supabase
+            .from("insp_video_logs")
+            .select("*")
+            .in("tape_id", tapeIds)
+            .order("event_time", { ascending: false })
+        : { data: [] };
 
       const logs = logsRes.data;
       const insps = inspsRes.data;
+      const count = inspsRes.count;
+
+      if (count !== null) setTotalRecords(count);
 
       if (logs) {
         allEv.push(
@@ -2751,7 +3384,7 @@ function V10PreviewLayout() {
         const { data: allAtts } = await supabase
           .from("attachment")
           .select("source_id")
-          .eq("source_type", "INSPECTION")
+          .in("source_type", ["inspection", "INSPECTION"])
           .in(
             "source_id",
             insps.map((r) => r.insp_id)
@@ -2774,6 +3407,21 @@ function V10PreviewLayout() {
         }));
 
         setCurrentRecords(inspsWithCounts);
+
+        if (allInspsRes && allInspsRes.data) {
+          const mappedAll = allInspsRes.data.map((r) => ({
+            ...r,
+            inspection_type: r.inspection_type
+              ? {
+                  ...r.inspection_type,
+                  name: formatInspectionTypeName(r.inspection_type.name),
+                }
+              : null,
+          }));
+          setAllWorkspaceRecords(mappedAll);
+        } else {
+          setAllWorkspaceRecords([]);
+        }
 
         // PERFORMANCE FIX: Use a Set for O(1) lookup during synchronization to avoid O(N*M) lag
         const logInspectionIds = new Set(allEv.map((ev) => ev.inspectionId).filter(Boolean));
@@ -2815,7 +3463,18 @@ function V10PreviewLayout() {
       setSyncLoading(false);
       setIsReadyForComps(true);
     }
-  }, [activeDep, inspMethod, supabase, parseDbDate, structureId, headerData.sowReportNo]);
+  }, [
+    activeDep,
+    inspMethod,
+    supabase,
+    parseDbDate,
+    structureId,
+    headerData.sowReportNo,
+    recordSearchQuery,
+    recordsOffset,
+    recordsLimit,
+    jobPackId,
+  ]);
 
   // Active deployment effect: sync tape, movements, records
   useEffect(() => {
@@ -2823,7 +3482,7 @@ function V10PreviewLayout() {
   }, [syncDeploymentState]);
 
   const fetchHistory = useCallback(async () => {
-    if (!selectedComp || !structureId) return;
+    if (!selectedComp || !structureId || isNaN(Number(structureId))) return;
 
     try {
       setHistoryLoading(true);
@@ -2838,7 +3497,9 @@ function V10PreviewLayout() {
         headerData.sowReportNo !== "N/A" &&
         headerData.sowReportNo !== "Unknown Report"
       ) {
-        query = query.eq("sow_report_no", headerData.sowReportNo);
+        query = query.or(
+          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
+        );
       }
 
       const { data, error } = await query.order("cr_date", { ascending: false });
@@ -3073,43 +3734,71 @@ function V10PreviewLayout() {
 
     // Auto-increment chapter logic ON Stop Tape is now at the end of the function.
     // Fallback for first tape if none exists when starting
-    if (!tId && activeDep?.id) {
-      const user = (await supabase.auth.getUser()).data.user;
-      let uniqueTapeNo = tapeNo;
-      if (!uniqueTapeNo) {
-        const base = headerData.sowReportNo || "SOW_REPORT";
-        const platform = headerData.platformName || "STRUCTURE";
-        const postfix = inspMethod === "DIVING" ? "D" : "R";
-        let maxSeq = 0;
-        jobTapes.forEach((t) => {
-          const match = t.tape_no.match(/V(\d{3})[DR]$/);
-          if (match) {
-            const seq = parseInt(match[1], 10);
-            if (seq > maxSeq) maxSeq = seq;
-          }
-        });
-        const nextSeq = String(maxSeq + 1).padStart(3, "0");
-        uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
-      }
-      const { data: newTape } = await supabase
-        .from("insp_video_tapes")
-        .insert({
-          tape_no: uniqueTapeNo,
-          tape_type: "DIGITAL - PRIMARY",
-          chapter_no: 1,
-          status: "ACTIVE",
-          [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: Number(activeDep.id),
-          cr_user: user?.id || "system",
-        })
-        .select()
-        .single();
+    const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+    const jobVal = Number(activeDep?.id);
 
-      if (newTape) {
-        setJobTapes((prev) => [newTape, ...prev]);
-        setTapeId(newTape.tape_id);
-        setTapeNo(newTape.tape_no);
-        setActiveChapter(newTape.chapter_no || 1);
-        tId = newTape.tape_id;
+    if (activeDep?.id && (!tId || action === "Start Tape")) {
+      // 1. Try to find if this tape_no and chapter_no is already registered for this job
+      const { data: existingTape } = await supabase
+        .from("insp_video_tapes")
+        .select("*")
+        .eq("tape_no", tapeNo || "")
+        .eq("chapter_no", activeChapter)
+        .eq(jobCol, jobVal)
+        .maybeSingle();
+
+      if (existingTape) {
+        tId = existingTape.tape_id;
+        setTapeId(existingTape.tape_id);
+        setJobTapes((prev) => {
+          if (!prev.some((t) => t.tape_id === existingTape.tape_id)) {
+            return [existingTape, ...prev];
+          }
+          return prev;
+        });
+      } else {
+        // 2. If it is not registered, create a new record in insp_video_tapes
+        const user = (await supabase.auth.getUser()).data.user;
+        let uniqueTapeNo = tapeNo;
+        if (!uniqueTapeNo) {
+          const base = headerData.sowReportNo || "SOW_REPORT";
+          const platform = headerData.platformName || "STRUCTURE";
+          const postfix = inspMethod === "DIVING" ? "D" : "R";
+          let maxSeq = 0;
+          jobTapes.forEach((t) => {
+            const match = t.tape_no.match(/V(\d{3})[DR]$/);
+            if (match) {
+              const seq = parseInt(match[1], 10);
+              if (seq > maxSeq) maxSeq = seq;
+            }
+          });
+          const nextSeq = String(maxSeq + 1).padStart(3, "0");
+          uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
+        }
+
+        const { data: newTape, error: insErr } = await supabase
+          .from("insp_video_tapes")
+          .insert({
+            tape_no: uniqueTapeNo,
+            tape_type: "DIGITAL - PRIMARY",
+            chapter_no: activeChapter,
+            status: "ACTIVE",
+            [jobCol]: jobVal,
+            cr_user: user?.id || "system",
+          })
+          .select()
+          .single();
+
+        if (insErr) {
+          console.error("[Start Tape] Error registering tape:", insErr.message);
+          toast.error(`Error registering tape: ${insErr.message}`);
+        } else if (newTape) {
+          setJobTapes((prev) => [newTape, ...prev]);
+          setTapeId(newTape.tape_id);
+          setTapeNo(newTape.tape_no);
+          setActiveChapter(newTape.chapter_no || 1);
+          tId = newTape.tape_id;
+        }
       }
     }
 
@@ -3418,7 +4107,9 @@ function V10PreviewLayout() {
         headerData.sowReportNo !== "N/A" &&
         headerData.sowReportNo !== "Unknown Report"
       ) {
-        calibQuery = calibQuery.eq("sow_report_no", headerData.sowReportNo);
+        calibQuery = calibQuery.or(
+          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
+        );
       }
 
       const { data, error } = await calibQuery
@@ -3468,7 +4159,7 @@ function V10PreviewLayout() {
       setRequiredProps({});
       setRequiredRecordId(null);
 
-      if (!jobPackId) return;
+      if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) return;
       const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
       const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
 
@@ -3489,35 +4180,7 @@ function V10PreviewLayout() {
         query = query.eq("structure_id", Number(structureId));
       }
 
-      // ADD SOW FILTERING (Include jobs with NO report number as they might be new)
-      if (
-        headerData.sowReportNo &&
-        headerData.sowReportNo !== "N/A" &&
-        headerData.sowReportNo !== "Unknown Report"
-      ) {
-        if (sowIdFull) {
-          query = query.or(
-            `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.eq."${sowIdFull}",sow_report_no.is.null`
-          );
-        } else {
-          query = query.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`);
-        }
-      }
-
-      const { data, error } = await query;
-      let results = data || [];
-      if (error) {
-        console.warn("[fetchDeps] Primary fetch error:", error.message);
-        results = [];
-      }
-
-      // REMOVED BAD FALLBACK (that was cross-pollinating jobs)
-
-      // DEEP FALLBACK & MERGE: Check if any inspection records exist for this jobpack/structure/sow
-      // that are NOT represented in the job table results. This happens if the job records were
-      // deleted/missing but the inspection records remain.
       const targetColumn = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-      const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
 
       let recQuery = supabase
         .from("insp_records")
@@ -3535,7 +4198,20 @@ function V10PreviewLayout() {
         recQuery = recQuery.eq("sow_report_no", headerData.sowReportNo);
       }
 
-      const { data: recJobs } = await recQuery;
+      // Execute primary deployment query and records fallback query in parallel
+      const [primaryRes, recJobsRes] = await Promise.all([
+        query,
+        recQuery,
+      ]);
+
+      let results = primaryRes.data || [];
+      if (primaryRes.error) {
+        console.warn("[fetchDeps] Primary fetch error:", primaryRes.error.message);
+        results = [];
+      }
+
+      const recJobs = recJobsRes.data;
+      const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
 
       if (recJobs && recJobs.length > 0) {
         const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]))).filter(
@@ -3583,6 +4259,7 @@ function V10PreviewLayout() {
         console.log(
           `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
         );
+        setIsReadyForComps(true);
       } else {
         console.warn("[fetchDeps] No deployment records found.");
         setDeployments([]);
@@ -3597,7 +4274,7 @@ function V10PreviewLayout() {
   // Replacement: useQuery for SOW and Component Data
   const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
     queryKey: ["sow-data", structureId, sowId, inspMethod],
-    enabled: !!(structureId && !isNaN(Number(structureId)) && isReadyForComps),
+    enabled: !!(structureId && !isNaN(Number(structureId))),
     queryFn: async () => {
       if (!structureId) return { assigned: [], unassigned: [], all: [] };
 
@@ -3849,8 +4526,15 @@ function V10PreviewLayout() {
 
   useEffect(() => {
     async function fetchInitialLists() {
-      // Fetch Inspection Types
-      const { data: typesData } = await supabase.from("inspection_type").select("*").order("name");
+      // Fetch Inspection Types and Anomaly Lists in PARALLEL
+      const [typesRes, codesRes, priosRes, fndsRes] = await Promise.all([
+        supabase.from("inspection_type").select("*").order("name"),
+        supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_COD").order("lib_desc"),
+        supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_TYP").order("lib_desc"),
+        supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_FND").order("lib_desc"),
+      ]);
+
+      const typesData = typesRes.data;
       if (typesData) {
         // Merge with JSON Registry
         const registryMap = new Map();
@@ -3883,27 +4567,9 @@ function V10PreviewLayout() {
         setAllInspectionTypes(mergedTypes.filter((it) => !discardedCodes.includes(it.code)));
       }
 
-      // Fetch Anomaly Lists from Library
-      const { data: codes } = await supabase
-        .from("u_lib_list")
-        .select("lib_id, lib_desc")
-        .eq("lib_code", "AMLY_COD")
-        .order("lib_desc");
-      if (codes) setDefectCodes(codes);
-
-      const { data: prios } = await supabase
-        .from("u_lib_list")
-        .select("lib_id, lib_desc")
-        .eq("lib_code", "AMLY_TYP")
-        .order("lib_desc");
-      if (prios) setPriorities(prios);
-
-      const { data: fnds } = await supabase
-        .from("u_lib_list")
-        .select("lib_id, lib_desc")
-        .eq("lib_code", "AMLY_FND")
-        .order("lib_desc");
-      if (fnds) setAllDefectTypes(fnds);
+      if (codesRes.data) setDefectCodes(codesRes.data);
+      if (priosRes.data) setPriorities(priosRes.data);
+      if (fndsRes.data) setAllDefectTypes(fndsRes.data);
     }
     fetchInitialLists();
   }, [supabase]);
@@ -3951,8 +4617,6 @@ function V10PreviewLayout() {
       if (matchingOverrides.length > 0) {
         const lastMatch = matchingOverrides[matchingOverrides.length - 1];
         if (lastMatch.fields && Array.isArray(lastMatch.fields)) {
-          // Logic: If override provides fields, we use them.
-          // To support "replace/hide", the override fields list is the source.
           props = [...lastMatch.fields];
         } else {
           props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
@@ -3960,6 +4624,15 @@ function V10PreviewLayout() {
       } else {
         props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
       }
+      
+      // Resolve $ref references using sharedFields
+      const shared = (inspectionRegistry as any)?.sharedFields || {};
+      props = props.map((f: any) => {
+          if (f.$ref && shared[f.$ref]) {
+              return { ...shared[f.$ref], ...f, $ref: undefined };
+          }
+          return f;
+      });
     }
 
     // 1. Historical data preservation (Legacy Fields) - THE UNION STRATEGY
@@ -4138,36 +4811,50 @@ function V10PreviewLayout() {
   const handleMovementLog = async (actionLabel: string) => {
     if (!activeDep?.id) return;
 
-    // Find the database record value for the label
-    // We save the exact label to avoid ambiguity when reading since multiple actions map to the same value in constants
-    const dbValue = actionLabel;
+    // Check if the action is leaving the worksite
+    const actionLower = actionLabel.toLowerCase();
+    const isLeavingWorksite = 
+      actionLower.includes("leaving the worksite") ||
+      actionLower.includes("left bottom") ||
+      actionLower.includes("leaving_worksite") ||
+      actionLower.includes("rov_leaving_worksite");
 
+    // Find the database record value for the label
+    const dbValue = actionLabel;
     const mvtTable = inspMethod === "DIVING" ? "insp_dive_movements" : "insp_rov_movements";
     const mvtCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
     const jobTable = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
 
-    const payload: any = {
-      [mvtCol]: activeDep.id,
-      movement_time: new Date().toISOString(),
-      movement_type: dbValue,
-      remarks: "",
-    };
+    const payload: any = {};
+    if (inspMethod === "DIVING") {
+      const mappedAction = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.label === dbValue);
+      payload.dive_job_id = activeDep.id;
+      payload.movement_time = new Date().toISOString();
+      payload.movement_type = dbValue;
+      payload.remarks = mappedAction?.location ? `Location: ${mappedAction.location}` : "";
+    } else {
+      payload.rov_job_id = activeDep.id;
+      payload.movement_time = new Date().toISOString();
+      payload.movement_type = dbValue;
+      payload.remarks = "";
+    }
 
     const { error } = await supabase.from(mvtTable).insert(payload);
     if (!error) {
       setCurrentMovement(actionLabel);
+      const mvtTime = payload.movement_time;
       if (
         actionLabel.toLowerCase().includes("left surface") ||
         actionLabel.toLowerCase().includes("deployed") ||
         actionLabel.toLowerCase().includes("launched")
       )
-        setDiveStartTime(payload.movement_time);
+        setDiveStartTime(mvtTime);
       if (
         actionLabel.toLowerCase().includes("arrived surface") ||
         actionLabel.toLowerCase().includes("recovered") ||
         actionLabel.toLowerCase().includes("off hire")
       )
-        setDiveEndTime(payload.movement_time);
+        setDiveEndTime(mvtTime);
 
       // Auto-complete deployment if final action
       if (
@@ -4181,6 +4868,28 @@ function V10PreviewLayout() {
         ].includes(actionLabel)
       ) {
         await supabase.from(jobTable).update({ status: "COMPLETED" }).eq(mvtCol, activeDep.id);
+      }
+
+      // Check if we need to alert or auto-stop video recording
+      if (isLeavingWorksite && vidState === "RECORDING") {
+        setShowVideoActionPrompt(true);
+      } else {
+        const isBackToSurfaceOrRecovered =
+          actionLower.includes("arrived surface") ||
+          actionLower.includes("bell on surface") ||
+          actionLower.includes("recovered") ||
+          actionLower.includes("back to surface") ||
+          actionLower.includes("system on deck") ||
+          actionLower.includes("off hire");
+
+        if (isBackToSurfaceOrRecovered && (vidState === "RECORDING" || vidState === "PAUSED")) {
+          // Auto STOP video and log STOP (no prompt, and do not blank the tape no)
+          toast.info("Diver/ROV back to surface. Auto-stopping video recording.");
+          await handleLogEvent("Stop Tape");
+          if (isStreamRecording) {
+            handleStopStreamRecording();
+          }
+        }
       }
     } else {
       console.error("Failed to insert movement log", error);
@@ -4214,6 +4923,26 @@ function V10PreviewLayout() {
     if (data && !error) {
       await supabase.from(mvtTable).delete().eq("movement_id", data.movement_id);
       syncDeploymentState(); // triggers refresh
+    }
+  };
+
+  const handlePrevDep = () => {
+    if (!activeDep || deployments.length <= 1) return;
+    const idx = deployments.findIndex(d => String(d.id) === String(activeDep.id));
+    if (idx > 0) {
+      setActiveDep(deployments[idx - 1]);
+    } else {
+        toast.info("This is the first dive");
+    }
+  };
+
+  const handleNextDep = () => {
+    if (!activeDep || deployments.length <= 1) return;
+    const idx = deployments.findIndex(d => String(d.id) === String(activeDep.id));
+    if (idx !== -1 && idx < deployments.length - 1) {
+      setActiveDep(deployments[idx + 1]);
+    } else {
+        toast.info("This is the latest dive");
     }
   };
 
@@ -4469,13 +5198,16 @@ function V10PreviewLayout() {
       let tId = tapeId;
       let autoRefNo = "";
       if (!tId && activeDep?.id) {
-        // Try to fetch existing active tape for this deployment
+        const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+        const jobVal = Number(activeDep.id);
+
+        // Try to fetch existing active tape for this deployment matching current tapeNo and activeChapter
         const { data: existingTape } = await supabase
           .from("insp_video_tapes")
           .select("tape_id")
-          .eq(inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id", Number(activeDep.id))
-          .order("tape_id", { ascending: false })
-          .limit(1)
+          .eq("tape_no", tapeNo || "")
+          .eq("chapter_no", activeChapter)
+          .eq(jobCol, jobVal)
           .maybeSingle();
 
         if (existingTape) {
@@ -4506,9 +5238,9 @@ function V10PreviewLayout() {
             .insert({
               tape_no: uniqueTapeNo,
               tape_type: "DIGITAL - PRIMARY",
-              chapter_no: 1,
+              chapter_no: activeChapter,
               status: "ACTIVE",
-              [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: Number(activeDep.id),
+              [jobCol]: jobVal,
               cr_user: user?.id || "system",
             })
             .select("tape_id")
@@ -4537,18 +5269,141 @@ function V10PreviewLayout() {
 
       const activeProps = { ...dynamicProps, ...currentDataAcq };
 
+      // Apply synchronous auto-calculations to guarantee computed fields are saved 
+      // even if the user clicks 'Save' before the React useEffect finishes its cycle.
+      const specStr = String(activeSpec || '').toUpperCase();
+      if (['UTWTK', 'RUTWT', 'DUTWT', 'SZONE', 'RSZCI', 'DSZCI'].includes(specStr)) {
+        const readings: number[] = [];
+        const r3 = parseFloat(activeProps.ut_3_o_clock); if (!isNaN(r3)) readings.push(r3);
+        const r6 = parseFloat(activeProps.ut_6_o_clock); if (!isNaN(r6)) readings.push(r6);
+        const r9 = parseFloat(activeProps.ut_9_o_clock); if (!isNaN(r9)) readings.push(r9);
+        const r12 = parseFloat(activeProps.ut_12_o_clock); if (!isNaN(r12)) readings.push(r12);
+        if (Array.isArray(activeProps.ut_readings_additional)) {
+            activeProps.ut_readings_additional.forEach((item: any) => {
+                const addR = parseFloat(item.reading);
+                if (!isNaN(addR)) readings.push(addR);
+            });
+        }
+        
+        let min = 0;
+        if (readings.length > 0) {
+            const sum = readings.reduce((a, b) => a + b, 0);
+            activeProps.avg_reading = parseFloat((sum / readings.length).toFixed(2));
+            min = Math.min(...readings);
+            activeProps.min_reading = parseFloat(min.toFixed(2));
+            activeProps.max_reading = parseFloat(Math.max(...readings).toFixed(2));
+        } else {
+            const minRaw = activeProps.min_reading;
+            min = (minRaw === undefined || minRaw === null || minRaw === "") ? 0 : parseFloat(minRaw);
+            if (isNaN(min)) min = 0;
+        }
+
+        const ntRaw = activeProps.nominal_thickness;
+        const nt = (ntRaw === undefined || ntRaw === null || ntRaw === "") ? 0 : parseFloat(ntRaw);
+        const safeNt = isNaN(nt) ? 0 : nt;
+
+        const loss = safeNt - min;
+        let pctLoss = 0;
+        if (safeNt > 0) {
+            pctLoss = (loss / safeNt) * 100;
+        }
+
+        activeProps.wall_thickness_loss = parseFloat(loss.toFixed(2));
+        activeProps['%_wall_thickness_loss'] = parseFloat(pctLoss.toFixed(2));
+      }
+
+      // Synchronous auto-calculations for Marine Growth
+      const specName = (allInspectionTypes?.find(t => t.code === activeSpec)?.name || '').toUpperCase();
+      const keys = Object.keys(activeProps || {});
+      const isMG = specStr.includes('MGROW') || specStr.includes('RMGI') || specStr.includes('MARINE GROWTH') || specName.includes('MARINE GROWTH') || keys.some(k => k.toLowerCase().includes('circumferential')) || keys.some(k => k.toLowerCase().replace(/[\s_]/g, '') === 'effectivethickness');
+      
+      if (isMG) {
+          const getVal = (baseName: string) => {
+              const target = baseName.toLowerCase().replace(/[\s_]/g, '');
+              const matchingKeys = Object.keys(activeProps).filter(k => k.toLowerCase().replace(/[\s_]/g, '') === target);
+              if (matchingKeys.length === 0) return 0;
+              const preferredKey = matchingKeys.find(k => k !== baseName) || matchingKeys[0];
+              return parseFloat(activeProps[preferredKey]) || 0;
+          };
+          const c1 = getVal('circumferential_measurement_5m_above');
+          const c2 = getVal('circumferential_measurement_0m');
+          const c3 = getVal('circumferential_measurement_5m_below');
+          const nominalDia = getVal('nominal_diameter');
+          const avgC = (c1 + c2 + c3) / 3;
+          const etValue = avgC > 0 ? ((avgC / 3.142) - nominalDia) / 2 : 0;
+          
+          const etKey = Object.keys(activeProps || {}).find(k => k.toLowerCase().replace(/[\s_]/g, '') === 'effectivethickness') || 'effective_thickness';
+          activeProps[etKey] = parseFloat(etValue.toFixed(2));
+      }
+
+      // Synchronous auto-calculation for MGI Profile threshold
+      if (['MGI', 'RMGI'].includes(specStr) && activeMGIProfile && activeMGIProfile.thresholds?.length > 0) {
+          const vDepthRaw = activeProps.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
+          const vDepthUnit = activeProps.verification_depth_unit || 'm';
+          const waterDepth = Math.abs(headerData.waterDepth || 0);
+          
+          let val = parseFloat(vDepthRaw);
+          if (!isNaN(val)) {
+             if (vDepthUnit === 'ft') val = val * 0.3048;
+             const sorted = [...activeMGIProfile.thresholds].sort((a: any, b: any) => a.depth - b.depth);
+             let foundThreshold = null;
+             for (let i = 0; i < sorted.length; i++) {
+                 if (val <= sorted[i].depth) {
+                     foundThreshold = sorted[i].max_thickness;
+                     break;
+                 }
+             }
+             if (foundThreshold === null && sorted.length > 0) {
+                 foundThreshold = sorted[sorted.length - 1].max_thickness;
+             }
+             
+             if (foundThreshold !== null) {
+                 activeProps.mgi_profile = `${foundThreshold.toFixed(1)}mm`;
+             }
+          }
+      }
+
       // Process Archived Data during Re-classification
       const newArchivedData = { ...archivedData };
-      const currentFieldNames = new Set(activeFormProps.map((p: any) => p.name));
+      const currentFieldNames = new Set(activeFormProps.map((p: any) => p.name).filter(Boolean));
+
+      // Also include all resolved field names from the JSON registry as a safety net.
+      // This prevents $ref resolution failures in activeFormProps from stripping valid data.
+      const registryShared = (inspectionRegistry as any)?.sharedFields || {};
+      const registryType = (inspectionRegistry as any)?.inspectionTypes?.find(
+        (t: any) => t.code === (allInspectionTypes.find((it: any) => it.name === activeSpec || it.code === activeSpec)?.code || activeSpec)
+      );
+      if (registryType?.fields) {
+        registryType.fields.forEach((f: any) => {
+          if (f.$ref && registryShared[f.$ref]?.name) {
+            currentFieldNames.add(registryShared[f.$ref].name);
+          }
+          if (f.name) currentFieldNames.add(f.name);
+        });
+        // Also add component_override fields
+        if (registryType.component_overrides) {
+          registryType.component_overrides.forEach((ov: any) => {
+            (ov.fields || []).forEach((f: any) => {
+              if (f.$ref && registryShared[f.$ref]?.name) currentFieldNames.add(registryShared[f.$ref].name);
+              if (f.name) currentFieldNames.add(f.name);
+            });
+          });
+        }
+      }
 
       if (activeFormProps.length > 0) {
         // 1. Move orphaned activeProps to archived pool
-        // NOTE: We whitelist 'verification_depth' and its unit because they are hardcoded in the UI
-        // and should always be preserved in inspection_data even if not in the spec fields list.
-        const whitelist = new Set(["verification_depth", "verification_depth_unit"]);
+        // Whitelist: hardcoded UI fields + any key ending with _unit (auto-set by InspectionField)
+        const whitelist = new Set([
+          "verification_depth", "verification_depth_unit",
+          "inspection_date", "inspection_time", "tape_count_no",
+          "incomplete_reason", "has_anomaly",
+        ]);
 
         Object.keys(activeProps).forEach((key) => {
           if (key.startsWith("_")) return; // Ignore metadata
+          if (/^\d+$/.test(key)) { delete activeProps[key]; return; } // Remove numeric-index garbage keys
+          if (key.endsWith("_unit")) return; // Always keep unit fields
           if (!currentFieldNames.has(key) && !whitelist.has(key)) {
             newArchivedData[key] = activeProps[key];
             delete activeProps[key];
@@ -4709,10 +5564,10 @@ function V10PreviewLayout() {
       if (editingRecordId) {
         payload.insp_id = editingRecordId;
         payload.md_user = user?.id || "system";
-        // payload.md_date is auto-set by DB trigger
+        payload.md_date = new Date().toISOString();
       } else {
         payload.cr_user = user?.id || "system";
-        // payload.cr_date is auto-set by DB default
+        payload.cr_date = new Date().toISOString();
       }
 
       // Commit Calibration/Required Record if needed
@@ -4747,9 +5602,11 @@ function V10PreviewLayout() {
 
         if (requiredRecordId) {
           reqPayload.md_user = user?.id || "system";
+          reqPayload.md_date = new Date().toISOString();
           await supabase.from("insp_records").update(reqPayload).eq("insp_id", requiredRecordId);
         } else {
           reqPayload.cr_user = user?.id || "system";
+          reqPayload.cr_date = new Date().toISOString();
           const { data: newReqData } = await supabase
             .from("insp_records")
             .insert(reqPayload)
@@ -4835,11 +5692,16 @@ function V10PreviewLayout() {
           const seq = vMaxSeq + 1;
           finalSeq = seq;
 
-          const baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, "0")}`;
-          if (anomalyData.rectify) {
-            autoRefNo = baseRef + "R";
+          // If user manually edited the reference, use it. Otherwise generate default.
+          if (anomalyData.referenceNo) {
+            autoRefNo = anomalyData.referenceNo;
           } else {
-            autoRefNo = baseRef;
+            const baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, "0")}`;
+            if (anomalyData.rectify) {
+              autoRefNo = baseRef + "R";
+            } else {
+              autoRefNo = baseRef;
+            }
           }
         } else {
           // Postfix logic for amendment/rectification
@@ -4865,7 +5727,7 @@ function V10PreviewLayout() {
           defect_description: anomalyData.description,
           recommended_action: anomalyData.recommendedAction,
           rectified_date: anomalyData.rectify
-            ? anomalyData.rectifiedDate || new Date().toISOString()
+            ? anomalyData.rectifiedDate || format(new Date(), "yyyy-MM-dd")
             : null,
           rectified_remarks: anomalyData.rectify ? anomalyData.rectifiedRemarks : null,
           severity: (anomalyData.severity || "MINOR").toUpperCase(),
@@ -5140,13 +6002,53 @@ function V10PreviewLayout() {
     setEditingRecordId(fullRecord.insp_id || fullRecord.id);
     setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
 
-    const initialProps = { ...(fullRecord.inspection_data || {}) };
+    let parsedData: Record<string, any> = {};
+    if (fullRecord.inspection_data) {
+        try {
+            let raw = typeof fullRecord.inspection_data === 'string' 
+                ? JSON.parse(fullRecord.inspection_data) 
+                : fullRecord.inspection_data;
+            
+            // Handle case where inspection_data was incorrectly saved as an array
+            // (e.g., field definitions array instead of data object)
+            if (Array.isArray(raw)) {
+                console.warn('[handleEditRecord] inspection_data is an array — extracting data from last element');
+                // The last element might be the actual data object if field defs were saved as array
+                const lastItem = raw[raw.length - 1];
+                if (lastItem && typeof lastItem === 'object' && !Array.isArray(lastItem) && (lastItem.inspno || lastItem.insp_id || lastItem.scan_type || lastItem.ut_3_o_clock)) {
+                    raw = lastItem;
+                } else {
+                    raw = {};
+                }
+            }
+            
+            // Filter out numeric-index garbage keys (from array spread contamination)
+            Object.keys(raw).forEach(key => {
+                if (/^\d+$/.test(key)) {
+                    delete raw[key];
+                }
+            });
+            
+            parsedData = raw;
+        } catch (e) {
+            console.error('[handleEditRecord] Failed to parse inspection_data:', e);
+        }
+    }
+    
+    const initialProps: Record<string, any> = { ...parsedData };
     if (fullRecord.tape_count_no !== undefined && fullRecord.tape_count_no !== null) {
       initialProps.tape_count_no = formatTime(Number(fullRecord.tape_count_no));
     }
     if (fullRecord.inspection_date) initialProps.inspection_date = fullRecord.inspection_date;
     if (fullRecord.inspection_time) initialProps.inspection_time = fullRecord.inspection_time;
-    setDynamicProps(initialProps);
+
+    // Sync debris_desc from description on load if it's a Debris record
+    if (activeSpec === 'RSEAB' && initialProps.category === 'Debris') {
+       if (!initialProps.debris_desc || initialProps.debris_desc === '') {
+          initialProps.debris_desc = fullRecord.description || fullRecord.observation || "";
+       }
+    }
+
     // Save Context for Re-classification feature
     setOriginalRecordContext({
       component_id: fullRecord.component_id,
@@ -5154,19 +6056,39 @@ function V10PreviewLayout() {
       inspection_type_code: fullRecord.inspection_type?.code || fullRecord.inspection_type_code,
       sow_report_no: fullRecord.sow_report_no,
     });
-    setArchivedData(fullRecord.archived_data || {});
-
+    
+    let parsedArchive: Record<string, any> = {};
+    try {
+        if (fullRecord.archived_data) {
+            parsedArchive = typeof fullRecord.archived_data === 'string'
+                ? JSON.parse(fullRecord.archived_data)
+                : fullRecord.archived_data;
+            // Filter out numeric keys from archive too
+            Object.keys(parsedArchive).forEach(key => {
+                if (/^\d+$/.test(key)) delete parsedArchive[key];
+            });
+        }
+    } catch (e) {
+        console.error('[handleEditRecord] Failed to parse archived_data:', e);
+    }
+    setArchivedData(parsedArchive);
+    
+    // Auto-restore any fields that were accidentally archived (due to earlier $ref unresolved bug)
+    // If they are valid fields now, they will naturally be saved to inspection_data on next commit.
+    const mergedProps: Record<string, any> = { ...parsedArchive, ...initialProps };
+    
     // Explicitly load elevation if missing in inspection_data but present in column
     if (
       fullRecord.elevation !== undefined &&
       fullRecord.elevation !== null &&
-      !initialProps.verification_depth
+      !mergedProps.verification_depth
     ) {
-      initialProps.verification_depth = String(fullRecord.elevation);
+      mergedProps.verification_depth = String(fullRecord.elevation);
     }
 
     // Do not set debounced props immediately to avoid triggering validation without user interaction
-    setDebouncedProps(initialProps);
+    setDynamicProps(mergedProps);
+    setDebouncedProps(mergedProps);
     setIsUserInteraction(false);
     setLastAutoMatchedRuleId(null);
     setPendingRule(null);
@@ -5175,10 +6097,10 @@ function V10PreviewLayout() {
 
     // Fetch existing attachments
     const { data: atts } = await supabase
-      .from("attachment")
-      .select("*")
-      .eq("source_id", recordId)
-      .eq("source_type", "INSPECTION");
+        .from("attachment")
+        .select("*")
+        .eq("source_id", recordId)
+        .in("source_type", ["inspection", "INSPECTION"]);
 
     if (atts && atts.length > 0) {
       const mapped = atts.map((a) => {
@@ -5236,7 +6158,7 @@ function V10PreviewLayout() {
         description: anomalyObj.defect_description || anomalyObj.description || "",
         recommendedAction: anomalyObj.recommended_action || "",
         rectify: anomalyObj.status === "CLOSED" || anomalyObj.rectified || false,
-        rectifiedDate: anomalyObj.rectified_date || "",
+        rectifiedDate: anomalyObj.rectified_date ? anomalyObj.rectified_date.substring(0, 10) : "",
         rectifiedRemarks: anomalyObj.rectified_remarks || "",
         severity: (anomalyObj.severity || "MINOR").toUpperCase(),
         referenceNo: anomalyObj.anomaly_ref_no || "",
@@ -5385,7 +6307,7 @@ function V10PreviewLayout() {
     if (!targetSowId && jobPackId && structureId) {
       const { data: existingSow } = await supabase
         .from("u_sow")
-        .select("id, report_number")
+        .select("id, report_numbers")
         .eq("jobpack_id", Number(jobPackId))
         .eq("structure_id", Number(structureId))
         .limit(1)
@@ -5393,8 +6315,12 @@ function V10PreviewLayout() {
 
       if (existingSow) {
         targetSowId = existingSow.id;
-        if (!sowReportNo) sowReportNo = existingSow.report_number;
+        if (!sowReportNo) {
+          const firstReport = existingSow.report_numbers?.[0];
+          sowReportNo = firstReport ? firstReport.number : null;
+        }
       } else {
+        const resolvedReport = sowReportNo || `SOW-${new Date().getFullYear()}`;
         const { data: newSow, error: newSowError } = await supabase
           .from("u_sow")
           .insert({
@@ -5402,7 +6328,7 @@ function V10PreviewLayout() {
             structure_id: Number(structureId),
             structure_type: headerData.structureType === "pipeline" ? "PIPELINE" : "PLATFORM",
             structure_title: headerData.platformName,
-            report_number: sowReportNo || `SOW-${new Date().getFullYear()}`,
+            report_numbers: [{ number: resolvedReport, job_type: jtParam || "UNKNOWN" }],
             total_items: 0,
             completed_items: 0,
             incomplete_items: 0,
@@ -5678,76 +6604,350 @@ function V10PreviewLayout() {
     }
   };
 
-  const renderStreamUI = () => (
-    <VideoInterface
-      onPopOut={handlePopOutStream}
-      onStopStream={() => setStreamActive(false)}
-      pipActive={!!pipWindow}
-      onCapturePhoto={handleGrabPhoto}
-      onStartRecording={handleStartStreamRecording}
-      vidState={vidState}
-      vidTimer={vidTimer}
-      tapeNo={tapeNo}
-      videoVisible={videoVisible}
-      setVideoVisible={setVideoVisible}
-      streamActive={streamActive}
-      setStreamActive={setStreamActive}
-      isStreamRecording={isStreamRecording}
-      isStreamPaused={isStreamPaused}
-      previewStream={previewStream}
-      videoRef={videoRef}
-      canvasRef={canvasRef}
-      onPauseRecording={handlePauseStreamRecording}
-      onResumeRecording={handleResumeStreamRecording}
-      onStopRecording={handleStopStreamRecording}
-      onToggleRecording={handleToggleStreamRecording}
-      formatTime={formatTime}
-      showDrawingTools={showDrawingTools}
-      setShowDrawingTools={setShowDrawingTools}
-    />
+
+  const layoutFactory = useCallback((node: TabNode) => {
+    const component = node.getComponent();
+    const name = node.getName();
+    console.log("[DEBUG] layoutFactory rendering component:", component, "with name:", name);
+
+    switch (component) {
+      case "opsLog":
+        return (
+          <DiverLogPanel
+            inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
+            activeDep={activeDep}
+            timeInWater={timeInWater}
+            currentMovement={currentMovement}
+            diveStartTime={diveStartTime}
+            diveEndTime={diveEndTime}
+            setIsDiveSetupForNew={setIsDiveSetupForNew}
+            setIsDiveSetupOpen={setIsDiveSetupOpen}
+            setIsMovementLogOpen={setIsMovementLogOpen}
+            handleMovementPrev={handleMovementPrev}
+            handleMovementNext={handleMovementNext}
+            handleMovementLog={handleMovementLog}
+            handlePrevDep={handlePrevDep}
+            handleNextDep={handleNextDep}
+            diveActionsList={diveActionsList}
+            ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+          />
+        );
+       case "videoLog":
+        return (
+          <div className="flex flex-col h-full bg-[#0f172a] overflow-hidden">
+            <div className="p-2 shrink-0">
+               <TapeManagementCard
+                vidState={vidState}
+                vidTimer={vidTimer}
+                tapeId={tapeId}
+                tapeNo={tapeNo}
+                activeChapter={activeChapter}
+                jobTapes={jobTapes}
+                handleLogEvent={handleLogEvent}
+                setTapeId={setTapeId}
+                setTapeNo={setTapeNo}
+                setActiveChapter={setActiveChapter}
+                setIsNewTapeOpen={setIsNewTapeOpen}
+                handleOpenEditTape={handleOpenEditTape}
+                formatTime={formatTime}
+                onOpenHistory={() => setVideoLogExpanded(true)}
+              />
+            </div>
+            <div className="flex-1 min-h-0 border-t border-slate-800 overflow-hidden bg-slate-900/50">
+               <TapeLogEvents
+                videoEvents={videoEvents}
+                handleDeleteEvent={handleDeleteEvent}
+                onEditEvent={(ev) => setEditingEvent(ev)}
+                expanded={videoLogExpanded}
+                setExpanded={setVideoLogExpanded}
+                inline={true}
+              />
+            </div>
+          </div>
+        );
+      case "videoPreview":
+        return (
+          <VideoInterface
+            videoRef={videoRef}
+            canvasRef={canvasRef}
+            vidState={vidState}
+            streamActive={streamActive}
+            setStreamActive={setStreamActive}
+            vidTimer={vidTimer}
+            tapeNo={tapeNo}
+            videoVisible={videoVisible}
+            setVideoVisible={setVideoVisible}
+            isStreamRecording={isStreamRecording}
+            isStreamPaused={isStreamPaused}
+            previewStream={previewStream}
+            onStartRecording={handleStartStreamRecording}
+            onPauseRecording={handlePauseStreamRecording}
+            onResumeRecording={handleResumeStreamRecording}
+            onStopRecording={handleStopStreamRecording}
+            onCapturePhoto={handleGrabPhoto}
+            onToggleRecording={handleToggleStreamRecording}
+            onPopOut={handlePopOutStream}
+            onStopStream={() => setStreamActive(false)}
+            pipActive={!!pipWindow}
+            formatTime={formatTime}
+            showDrawingTools={showDrawingTools}
+            setShowDrawingTools={setShowDrawingTools}
+          />
+        );
+      case "form":
+        return (
+          <InspectionFormPanel
+            selectedComp={selectedComp}
+            editingRecordId={editingRecordId}
+            activeSpec={activeSpec}
+            resetForm={resetForm}
+            FORM_AREA_ID={FORM_AREA_ID}
+            setIsAddInspOpen={setIsAddInspOpen}
+            activeMGIProfile={activeMGIProfile}
+            allInspectionTypes={allInspectionTypes}
+            activeFormProps={activeFormProps}
+            findingType={findingType}
+            setFindingType={setFindingType}
+            renderInspectionField={renderInspectionField}
+            dynamicProps={dynamicProps}
+            handleDynamicPropChange={handleDynamicPropChange}
+            anomalyData={anomalyData}
+            setAnomalyData={setAnomalyData}
+            defectCodes={defectCodes}
+            allDefectTypes={allDefectTypes}
+            availableDefectTypes={availableDefectTypes}
+            priorities={priorities}
+            headerData={headerData}
+            manualOverride={manualOverride}
+            setManualOverride={setManualOverride}
+            setLastAutoMatchedRuleId={setLastAutoMatchedRuleId}
+            handleCommitRecord={handleCommitRecord}
+            handleGrabPhoto={handleGrabPhoto}
+            isCommitting={isCommitting}
+            vidTimer={vidTimer}
+            formatTime={formatTime}
+            setCompSpecDialogOpen={setCompSpecDialogOpen}
+            incompleteReason={incompleteReason}
+            setIncompleteReason={setIncompleteReason}
+            recordNotes={recordNotes}
+            setRecordNotes={setRecordNotes}
+            pendingAttachments={pendingAttachments}
+            setPendingAttachments={setPendingAttachments}
+            deletedAttachmentIds={deletedAttachmentIds}
+            setDeletedAttachmentIds={setDeletedAttachmentIds}
+            setEditingAttachment={setEditingAttachment}
+            setIsAttachmentManagerOpen={setIsAttachmentManagerOpen}
+            recordedFiles={recordedFiles}
+            activeDep={activeDep}
+            currentMovement={currentMovement}
+            tapeId={tapeId}
+            vidState={vidState}
+            setShowTaskSelector={setShowTaskSelector}
+            setShowCompSelector={setShowCompSelector}
+            libOptionsMap={libOptionsMap}
+            handleDeleteRecord={handleDeleteRecord}
+            currentRecords={currentRecords}
+            handlePrintAnomaly={handlePrintAnomaly}
+            handleTaskChange={handleTaskChange}
+            handleDeleteTaskFromScope={handleDeleteTaskFromScope}
+            validateAnomalyRef={validateAnomalyRef}
+            setPrevRefNo={setPrevRefNo}
+          />
+        );
+      case "events":
+        return (
+          <EventsTablePanel
+            syncLoading={syncLoading}
+            recordSearchQuery={recordSearchQuery}
+            setRecordSearchQuery={setRecordSearchQuery}
+            displayRecords={displayRecords}
+            sortedRecords={sortedRecords}
+            capturedEventsPipWindow={capturedEventsPipWindow}
+            handlePopoutCapturedEvents={handlePopoutCapturedEvents}
+            activeTableColumns={activeTableColumns}
+            columnSettings={columnSettings}
+            handleMoveColumn={handleMoveColumn}
+            toggleColumnVisibility={toggleColumnVisibility}
+            handleSort={handleSort}
+            sortConfig={sortConfig}
+            handleEditRecord={handleEditRecord}
+            handlePrintAnomaly={handlePrintAnomaly}
+            handleDeleteRecord={handleDeleteRecord}
+            setViewingRecordAttachments={setViewingRecordAttachments}
+            supabase={supabase}
+            recordsOffset={recordsOffset}
+            setRecordsOffset={setRecordsOffset}
+            recordsLimit={recordsLimit}
+            setRecordsLimit={setRecordsLimit}
+            totalRecords={totalRecords}
+          />
+        );
+      case "components":
+        return (
+          <ComponentListPanel
+            compView={compView}
+            setCompView={setCompView}
+            compSearchTerm={compSearchTerm}
+            setCompSearchTerm={setCompSearchTerm}
+            componentsSow={componentsSow}
+            componentsNonSow={componentsNonSow}
+            selectedComp={selectedComp}
+            handleComponentSelection={handleComponentSelection}
+            setCompSpecDialogOpen={setCompSpecDialogOpen}
+            currentRecords={currentRecords}
+            currentCompRecords={currentCompRecords}
+            historicalRecords={historicalRecords}
+            historyLoading={historyLoading}
+            inspMethod={inspMethod}
+            supabase={supabase}
+            structureId={structureId ? Number(structureId) : 0}
+            onRefreshComponents={() => { queryClient.invalidateQueries({ queryKey: ["sow-data"] }); }}
+            allInspectionTypes={allInspectionTypes}
+            structureType={headerData.structureType === "pipeline" ? "pipeline" : "platform"}
+            unitSystem={unitSystem}
+            handleEditRecord={handleEditRecord}
+            handleTaskChange={handleTaskChange}
+            setShowTaskSelector={setShowTaskSelector}
+          />
+        );
+      case "history":
+        return (
+          <HistoryDataPanel
+            historicalRecords={historicalRecords}
+            historyLoading={historyLoading}
+            handleEditRecord={handleEditRecord}
+          />
+        );
+      default:
+        return <div className="p-4 text-slate-500">Panel {name} under construction</div>;
+    }
+  }, [
+    activeDep,
+    inspMethod,
+    vidState,
+    tapeId,
+    selectedComp,
+    currentRecords,
+    displayRecords,
+    dynamicProps,
+    findingType,
+    compView,
+    compSearchTerm,
+    componentsSow,
+    componentsNonSow,
+    currentCompRecords,
+    historicalRecords,
+    historyLoading,
+    timeInWater,
+    currentMovement,
+    diveStartTime,
+    diveEndTime,
+    setIsDiveSetupForNew,
+    setIsDiveSetupOpen,
+    setIsMovementLogOpen,
+    videoRef,
+    canvasRef,
+    streamActive,
+    setStreamActive,
+    vidTimer,
+    tapeNo,
+    videoVisible,
+    setVideoVisible,
+    isStreamRecording,
+    isStreamPaused,
+    previewStream,
+    handleStartStreamRecording,
+    handlePauseStreamRecording,
+    handleResumeStreamRecording,
+    handleStopStreamRecording,
+    handleGrabPhoto,
+    handleToggleStreamRecording,
+    handlePopOutStream,
+    pipWindow,
+    formatTime,
+    showDrawingTools,
+    setShowDrawingTools,
+    videoEvents,
+    supabase,
+    setVideoEvents,
+    setEditingEvent,
+    handleDeleteEvent,
+    activeSpec,
+    setFindingType,
+    editingRecordId,
+    resetForm,
+    FORM_AREA_ID,
+    setIsAddInspOpen,
+    allInspectionTypes,
+    activeFormProps,
+    renderInspectionField,
+    handleDynamicPropChange,
+    anomalyData,
+    setAnomalyData,
+    defectCodes,
+    allDefectTypes,
+    availableDefectTypes,
+    priorities,
+    headerData,
+    manualOverride,
+    setManualOverride,
+    setLastAutoMatchedRuleId,
+    handleCommitRecord,
+    isCommitting,
+    setCompSpecDialogOpen,
+    incompleteReason,
+    setIncompleteReason,
+    recordNotes,
+    setRecordNotes,
+    pendingAttachments,
+    setPendingAttachments,
+    deletedAttachmentIds,
+    setDeletedAttachmentIds,
+    setEditingAttachment,
+    setIsAttachmentManagerOpen,
+    recordedFiles,
+    setShowTaskSelector,
+    setShowCompSelector,
+    libOptionsMap,
+    handleDeleteRecord,
+    handlePrintAnomaly,
+    syncLoading,
+    recordSearchQuery,
+    setRecordSearchQuery,
+    sortedRecords,
+    capturedEventsPipWindow,
+    handlePopoutCapturedEvents,
+    activeTableColumns,
+    columnSettings,
+    handleMoveColumn,
+    toggleColumnVisibility,
+    handleSort,
+    sortConfig,
+    handleEditRecord,
+    setViewingRecordAttachments,
+    handleComponentSelection,
+    structureId,
+    unitSystem,
+  ]);
+
+  const flexLayoutStyles = (
+    <style dangerouslySetInnerHTML={{ __html: `
+      .flexlayout__layout { background-color: #0f172a !important; }
+      .flexlayout__tabset { background-color: #0f172a !important; }
+      .flexlayout__tabset_header { background-color: #1e293b !important; color: #94a3b8 !important; }
+      .flexlayout__tab_button { background-color: transparent !important; color: #94a3b8 !important; }
+      .flexlayout__tab_button--selected { background-color: #334155 !important; color: #fff !important; }
+      .flexlayout__splitter { background-color: #334155 !important; }
+      .flexlayout__tab { background-color: #0f172a !important; overflow: hidden; border: 1px solid #334155 !important; }
+      .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+    `}} />
   );
 
-  // Handle arrival from Component Details Modal (Auto-select component)
-  useEffect(() => {
-    if (!compIdParam || !allComps || allComps.length === 0 || selectedComp) return;
-
-    const targetComp = allComps.find((c) => String(c.id) === String(compIdParam));
-    if (targetComp) {
-      console.log("[Redirect] Auto-selecting component:", targetComp.name);
-      setSelectedComp(targetComp);
-    }
-  }, [compIdParam, allComps, selectedComp]);
-
-  // Handle arrival from Component Details Modal (Auto-edit record)
-  useEffect(() => {
-    if (!recordIdParam || !selectedComp) return;
-
-    async function loadAndEditRecord() {
-      // Check if record is in current list
-      const localRecord = currentRecords.find((r) => String(r.insp_id) === String(recordIdParam));
-      if (localRecord) {
-        console.log("[Redirect] Editing local record:", localRecord.insp_id);
-        handleEditRecord(localRecord);
-        return;
-      }
-
-      // If not in current list (maybe historical), fetch it explicitly
-      console.log("[Redirect] Fetching record for edit:", recordIdParam);
-      const { data: record } = await supabase
-        .from("insp_records")
-        .select("*, inspection_type:inspection_type_id(*), insp_anomalies(*)")
-        .eq("insp_id", Number(recordIdParam))
-        .maybeSingle();
-
-      if (record) {
-        handleEditRecord(record);
-      }
-    }
-
-    loadAndEditRecord();
-  }, [recordIdParam, selectedComp, currentRecords, supabase]);
-
   return (
+
     <div className="flex flex-col h-[calc(100vh)] bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 overflow-hidden">
       <InspectionHeader
         headerData={headerData}
@@ -5769,12 +6969,16 @@ function V10PreviewLayout() {
         generateITISIReport={() => setItisiPreviewOpen(true)}
         generateAnodeReport={() => setAnodePreviewOpen(true)}
         generateCPReport={() => setCpPreviewOpen(true)}
+        generateRSWNIReport={() => setRswniPreviewOpen(true)}
         generateRGVIReport={() => setRgviPreviewOpen(true)}
         generateGVINSReport={() => setGvinsPreviewOpen(true)}
         generateSZONEReport={() => setSzonePreviewOpen(true)}
         generateCPCLBReport={() => setCpclbPreviewOpen(true)}
         generateUTCLBReport={() => setUtclbPreviewOpen(true)}
         generateDivingAnodeReport={() => setDivingAnodePreviewOpen(true)}
+        generateDivingACFMCReport={() => setDivingAcfmcPreviewOpen(true)}
+        generateDivingPLCOReport={() => setDivingPlcoPreviewOpen(true)}
+        generateROVRWDIReport={() => setRovRwdiPreviewOpen(true)}
         generateRCASNReport={() => setRcasnPreviewOpen(true)}
         generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
         generateRCONDReport={() => setRcondPreviewOpen(true)}
@@ -5789,6 +6993,8 @@ function V10PreviewLayout() {
         jobPackId={jobPackId}
         structureId={structureId}
         onSummaryOpen={() => setIsSummaryOpen(true)}
+        setIsReportWizardOpen={setIsReportWizardOpen}
+        onResetLayout={handleResetLayout}
       />
 
       {/* ── INSPECTION SUMMARY PANEL ───────────────────────────────────────── */}
@@ -6118,10 +7324,10 @@ function V10PreviewLayout() {
                   className="flex items-center gap-1.5 bg-slate-700/80 dark:bg-slate-700/80 px-3 py-1 rounded-md border border-slate-600 dark:border-slate-500 shrink-0 min-w-[80px]"
                 >
                   <span className="text-[9px] font-black uppercase text-amber-300 dark:text-amber-300 tracking-wide">
-                    {field.targetField.replace(/_/g, " ")}
+                    {field.targetField?.replace(/_/g, " ") || "Field"}
                   </span>
                   <span className="text-[12px] font-mono font-black text-white dark:text-white">
-                    {field.value}
+                    {field.value ?? "0"}
                   </span>
                 </div>
               ))
@@ -6208,1921 +7414,25 @@ function V10PreviewLayout() {
         </div>
       )}
 
-      {/* MAIN 3-COLUMN LAYOUT */}
-      <div className="flex-1 flex min-h-0 p-3 gap-3 overflow-hidden">
-        {/* ======== COL 1: OPERATIONS (Diver/ROV + Video) ======== */}
-        <div className="w-[320px] flex flex-col gap-3 shrink-0 overflow-hidden">
-          {/* 1. Diver / ROV Log */}
-          <Card className="flex flex-col border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md shrink-0 mb-2 bg-white dark:bg-slate-900/60 backdrop-blur-md">
-            <div className="bg-[#1f2937] text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md">
-              <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DIVE LOG"}</span>
-              <div className="flex items-center gap-2 text-slate-300">
-                <button
-                  onClick={() => {
-                    setIsDiveSetupForNew(true);
-                    setIsDiveSetupOpen(true);
-                  }}
-                  className="flex items-center gap-1 p-1 hover:text-white transition"
-                  title="New Dive"
-                >
-                  <Plus className="w-4 h-4" />{" "}
-                  <span className="text-[10px] hidden lg:inline">New Dive</span>
-                </button>
-                <button
-                  onClick={() => setIsMovementLogOpen(true)}
-                  className="p-1 hover:text-white transition"
-                  title="Edit Events"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => {
-                    setIsDiveSetupForNew(false);
-                    setIsDiveSetupOpen(true);
-                  }}
-                  className="p-1 hover:text-white transition"
-                  title="Settings"
-                >
-                  <Settings className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div className="p-2.5 bg-white dark:bg-slate-900 space-y-2 rounded-b-md">
-              <div className="flex justify-between text-xs px-1">
-                <div>
-                  <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold block uppercase tracking-wider mb-0.5">
-                    Active Selection
-                  </span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
-                    {activeDep?.jobNo || "None"}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold block uppercase tracking-wider mb-0.5">
-                    Time In Water
-                  </span>
-                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
-                    {timeInWater}
-                  </span>
-                </div>
-              </div>
-
-              {/* Movement Control */}
-              <div className="bg-slate-50 dark:bg-slate-950/80 border border-slate-100/60 dark:border-slate-700 rounded px-2 py-1.5 text-center relative ring-1 ring-white/5">
-                <span className="text-[9px] font-black text-slate-400 dark:text-slate-300 uppercase tracking-widest block mb-0.5">
-                  Current Movement
-                </span>
-                <span className="font-black text-slate-900 dark:text-white text-[14px] leading-tight flex items-center justify-center drop-shadow-sm">
-                  {currentMovement || "Awaiting Deployment"}
-                </span>
-              </div>
-
-              <div className="flex gap-1.5">
-                <Button
-                  onClick={handleMovementPrev}
-                  disabled={
-                    currentMovement === "Awaiting Deployment" ||
-                    (inspMethod === "DIVING" && currentMovement === diveActionsList[0].label)
-                  }
-                  variant="outline"
-                  className="flex-1 h-7 text-[11px] font-bold text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-700 dark:hover:text-slate-200 bg-white dark:bg-slate-900 shadow-sm"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Rollback
-                </Button>
-
-                {inspMethod === "DIVING" ? (
-                  <Button
-                    onClick={handleMovementNext}
-                    disabled={currentMovement === diveActionsList[diveActionsList.length - 1].label}
-                    className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm"
-                  >
-                    {currentMovement === "Awaiting Deployment"
-                      ? "Next"
-                      : diveActionsList.findIndex((a) => a.label === currentMovement) <
-                          diveActionsList.length - 1
-                        ? "Next"
-                        : "Completed"}{" "}
-                    <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                  </Button>
-                ) : (
-                  (() => {
-                    const options =
-                      ROV_MOVEMENT_BRANCHES[currentMovement || "Awaiting Deployment"] || [];
-                    const isCompleted = options.length === 0;
-
-                    if (isCompleted) {
-                      return (
-                        <Button
-                          disabled
-                          className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm"
-                        >
-                          Completed <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                        </Button>
-                      );
-                    }
-
-                    if (options.length === 1) {
-                      return (
-                        <Button
-                          onClick={() => handleMovementLog(options[0])}
-                          className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm truncate"
-                        >
-                          Next: {options[0]} <ArrowRight className="w-3.5 h-3.5 ml-1 shrink-0" />
-                        </Button>
-                      );
-                    }
-
-                    return (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button className="flex-[1.5] h-7 text-[11px] font-bold bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm">
-                            Next Action... <ChevronDown className="w-3.5 h-3.5 ml-1 shrink-0" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          {options.map((opt) => (
-                            <DropdownMenuItem
-                              key={opt}
-                              onClick={() => handleMovementLog(opt)}
-                              className="text-xs font-bold cursor-pointer"
-                            >
-                              Select: {opt}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    );
-                  })()
-                )}
-              </div>
-            </div>
-          </Card>
-
-          {/* 2. Video Tape Management (MODULAR) */}
-          <TapeManagementCard
-            vidState={vidState}
-            vidTimer={vidTimer}
-            tapeId={tapeId}
-            tapeNo={tapeNo}
-            activeChapter={activeChapter}
-            jobTapes={jobTapes}
-            handleLogEvent={handleLogEvent}
-            setTapeId={setTapeId}
-            setTapeNo={setTapeNo}
-            setActiveChapter={setActiveChapter}
-            setIsNewTapeOpen={setIsNewTapeOpen}
-            handleOpenEditTape={handleOpenEditTape}
-            formatTime={formatTime}
-            handleDeleteTape={handleDeleteTape}
-            canDelete={
-              tapeId ? !videoEvents.some((evt) => String(evt.tape_id) === String(tapeId)) : false
-            }
-          >
-            {/* Tape Log Events (MODULAR) */}
-            <TapeLogEvents
-              videoEvents={videoEvents.filter((evt) => String(evt.tape_id) === String(tapeId))}
-              handleDeleteEvent={handleDeleteEvent}
-              onEditEvent={setEditingEvent}
-              expanded={tapeLogExpanded}
-              setExpanded={setTapeLogExpanded}
-              isFloating={!!pipWindow}
-            />
-          </TapeManagementCard>
-
-          {/* 6. Video Interface (Reduced Size) */}
-          {!pipWindow && (
-            <div className="flex-1 min-h-[180px] bg-black rounded-lg overflow-hidden border border-slate-800 shadow-xl relative">
-              {renderStreamUI()}
-            </div>
-          )}
-
-          {/* PiP Portal */}
-          {pipWindow &&
-            createPortal(
-              <div className="h-full w-full bg-black flex flex-col overflow-hidden select-none">
-                <div className="bg-slate-900 p-2.5 flex justify-between items-center border-b border-white/10 z-50 shrink-0">
-                  <span className="text-[11px] text-white font-black uppercase tracking-widest flex items-center gap-2">
-                    <Video className="w-3.5 h-3.5 text-red-500 animate-pulse" /> LIVE STREAMING
-                    CONTROL
-                  </span>
-                  <button
-                    onClick={() => pipWindow.close()}
-                    className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                  {renderStreamUI()}
-                </div>
-              </div>,
-              pipWindow.document.body
-            )}
-        </div>
-
-        {/* ======== COL 2: INSPECTION WORKSPACE (CENTRE) ======== */}
-        <div className="flex-1 flex flex-col gap-3 min-w-[500px] overflow-hidden">
-          {/* 5. Inspection Task Form Handling */}
-          <Card className="flex flex-col flex-1 border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden relative">
-            {!selectedComp ? (
-              <div className="flex-1 flex items-center justify-center flex-col text-slate-400 p-10 text-center">
-                <Activity className="w-12 h-12 mb-4 opacity-30 text-blue-500" />
-                <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">
-                  Awaiting Target Selection
-                </h2>
-                <p className="text-xs max-w-[280px]">
-                  Please select a component from the right column (List or 3D view) to review
-                  history and begin logging inspection scopes.
-                </p>
-              </div>
-            ) : (
-              <div
-                id={FORM_AREA_ID}
-                className="flex flex-col flex-1 min-h-0 overflow-hidden relative"
-              >
-                {!activeSpec ? (
-                  <div className="p-5 flex flex-col items-center justify-center text-center h-full">
-                    <div className="w-full max-w-2xl flex flex-col items-center">
-                      <div className="text-[11px] font-bold uppercase text-slate-400 dark:text-slate-500 tracking-widest mb-4">
-                        Select Scope to Inspect ({selectedComp.name})
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
-                        {selectedComp.tasks &&
-                          selectedComp.tasks
-                            .filter((t: string) => {
-                              const it = (allInspectionTypes || []).find(
-                                (type: any) => type.code === t || type.name === t
-                              );
-                              const localIt = (inspectionRegistry as any).inspectionTypes?.find(
-                                (type: any) => type.code === t || type.name === t
-                              );
-
-                              const methods =
-                                it?.default_properties?.methods ||
-                                it?.methods ||
-                                localIt?.methods ||
-                                [];
-                              const isRov =
-                                methods.includes("ROV") ||
-                                it?.metadata?.rov === 1 ||
-                                it?.metadata?.rov === "1" ||
-                                it?.metadata?.rov === true ||
-                                (it?.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                              const isDiving =
-                                methods.includes("DIVING") ||
-                                it?.metadata?.diving === 1 ||
-                                it?.metadata?.diving === "1" ||
-                                it?.metadata?.diving === true ||
-                                (it?.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-
-                              if (!it && !localIt) {
-                                const isCodeRov =
-                                  String(t).startsWith("R") ||
-                                  String(t).startsWith("ROV") ||
-                                  String(t).toLowerCase().includes("rov");
-                                if (inspMethod === "DIVING" && isCodeRov) return false;
-                                if (inspMethod === "ROV" && !isCodeRov) return false;
-                                return true;
-                              }
-
-                              if (inspMethod === "DIVING" && !isDiving) return false;
-                              if (inspMethod === "ROV" && !isRov) return false;
-                              return true;
-                            })
-                            .map((t: string) => {
-                              const taskStatus = selectedComp.taskStatuses?.find(
-                                (ts: any) => ts.code === t
-                              );
-                              const status = taskStatus?.status || "pending";
-                              const isCompleted = status === "completed";
-                              const isIncomplete = status === "incomplete";
-
-                              // Records for this specific task
-                              const taskRecords = currentRecords.filter(
-                                (r: any) =>
-                                  (r.inspection_type?.code === t || r.inspection_type_code === t) &&
-                                  r.component_id === selectedComp.id
-                              );
-
-                              const hasAnomaly = taskRecords.some(
-                                (r: any) =>
-                                  r.has_anomaly && r.inspection_data?._meta_status !== "Finding"
-                              );
-                              const hasFinding = taskRecords.some(
-                                (r: any) =>
-                                  r.has_anomaly && r.inspection_data?._meta_status === "Finding"
-                              );
-
-                              const isRectified = taskRecords.some(
-                                (r: any) =>
-                                  r.has_anomaly && r.insp_anomalies?.[0]?.status === "CLOSED"
-                              );
-                              const it = allInspectionTypes.find(
-                                (type) => type.code === t || type.name === t
-                              );
-
-                              // Determine color based on priority: Anomaly (Red) > Finding (Orange) > Complete (Green)
-                              const statusColor =
-                                hasAnomaly && !isRectified
-                                  ? "red"
-                                  : hasFinding
-                                    ? "orange"
-                                    : isRectified
-                                      ? "teal"
-                                      : isCompleted
-                                        ? "green"
-                                        : isIncomplete
-                                          ? "amber"
-                                          : "blue";
-
-                              const statusLabel =
-                                hasAnomaly && !isRectified
-                                  ? "Anomaly Registered"
-                                  : hasFinding
-                                    ? "Finding Registered"
-                                    : isRectified
-                                      ? "Rectified"
-                                      : isCompleted
-                                        ? "Completed"
-                                        : isIncomplete
-                                          ? "Incomplete"
-                                          : "Pending";
-
-                              return (
-                                <div
-                                  key={t}
-                                  className="flex gap-2 items-center w-full relative group/item"
-                                >
-                                  <Button
-                                    onClick={() => {
-                                      setActiveSpec(t);
-                                      const now = new Date();
-                                      const newProps: Record<string, any> = {
-                                        inspection_date: format(now, "yyyy-MM-dd"),
-                                        inspection_time: format(now, "HH:mm:ss"),
-                                      };
-
-                                      // 2. Resolve field definitions (from registry or DB)
-                                      const specProps = it?.default_properties || [];
-                                      let propsList: any[] = [];
-                                      if (typeof specProps === "string") {
-                                        try {
-                                          const parsed = JSON.parse(specProps);
-                                          propsList =
-                                            parsed.fields ||
-                                            parsed.properties ||
-                                            (Array.isArray(parsed) ? parsed : []);
-                                        } catch (e) {}
-                                      } else {
-                                        const parsed = specProps as any;
-                                        propsList =
-                                          parsed.fields ||
-                                          parsed.properties ||
-                                          (Array.isArray(parsed) ? parsed : []);
-                                      }
-
-                                      // 3. Apply JSON Defaults
-                                      propsList.forEach((p: any) => {
-                                        if (p.default !== undefined) {
-                                          newProps[p.name || p.label] = p.default;
-                                        }
-                                      });
-
-                                      // 4. Auto-insert current tape counter for LIVE entry mode
-                                      if (!manualOverride) {
-                                        newProps.tape_count_no = formatTime(vidTimer);
-                                      }
-
-                                      // 5. Auto-fill Nominal Thickness from Component Data
-                                      const compNT =
-                                        selectedComp.nominalThk && selectedComp.nominalThk !== "-"
-                                          ? selectedComp.nominalThk
-                                          : selectedComp.wallThickness &&
-                                              selectedComp.wallThickness !== "-"
-                                            ? selectedComp.wallThickness
-                                            : null;
-                                      if (compNT) {
-                                        const ntField = propsList.find((p: any) => {
-                                          const label = String(p.label || "").toLowerCase();
-                                          const name = String(p.name || "").toLowerCase();
-                                          return (
-                                            label === "nominal" ||
-                                            label.includes("nominal thickness") ||
-                                            name === "nt" ||
-                                            name === "nominal_thickness" ||
-                                            label.includes("wall thickness") ||
-                                            name === "wt" ||
-                                            name === "wall_thk"
-                                          );
-                                        });
-
-                                        if (ntField) {
-                                          const fieldKey = ntField.name || ntField.label;
-                                          newProps[fieldKey] = compNT;
-
-                                          // Also auto-fill unit
-                                          const unitFieldKey = `${fieldKey}_unit`;
-                                          const defaultUnit =
-                                            (unitSystem === "IMPERIAL"
-                                              ? ntField.defaultImperial
-                                              : ntField.defaultMetric) || ntField.defaultUnit;
-                                          if (defaultUnit) {
-                                            newProps[unitFieldKey] = defaultUnit;
-                                          }
-
-                                          console.log(
-                                            `[Auto-fill] Populating ${fieldKey} with ${compNT} and unit from component data.`
-                                          );
-                                        }
-                                      }
-
-                                      // 6. Populate from ROV Data Acquisition if connected
-                                      if (inspMethod === "ROV" && dataAcqConnected) {
-                                        dataAcqFields.forEach((f) => {
-                                          if (f.value && f.value !== "--" && f.targetField) {
-                                            newProps[f.targetField] = f.value;
-                                          }
-                                        });
-                                      }
-
-                                      // 7. Default elevation for underwater types to negative
-                                      if (inspMethod === "ROV" || inspMethod === "DIVING") {
-                                        const depthVal =
-                                          selectedComp.depth ||
-                                          (selectedComp.lowestElev !== "-"
-                                            ? selectedComp.lowestElev
-                                            : null);
-                                        if (depthVal) {
-                                          const numericDepth = parseFloat(
-                                            String(depthVal).replace(/[^\d.-]/g, "")
-                                          );
-                                          if (!isNaN(numericDepth)) {
-                                            newProps.verification_depth = -Math.abs(numericDepth);
-                                          }
-                                        }
-                                      }
-
-                                      setDynamicProps(newProps);
-                                      setFindingType("Complete");
-                                      setRecordNotes("");
-                                      setAnomalyData({
-                                        defectCode: "",
-                                        priority: "",
-                                        defectType: "",
-                                        description: "",
-                                        recommendedAction: "",
-                                        rectify: false,
-                                        rectifiedDate: "",
-                                        rectifiedRemarks: "",
-                                        severity: "Minor",
-                                        referenceNo: "",
-                                      });
-                                      setIsManualOverride(false);
-                                      setIsUserInteraction(false);
-                                    }}
-                                    className={`flex-1 h-14 bg-white dark:bg-slate-900 border font-bold shadow-sm flex justify-between items-center group transition-all ${
-                                      statusColor === "green"
-                                        ? "border-green-200 dark:border-green-900 hover:bg-green-50/50 dark:hover:bg-green-900/30"
-                                        : statusColor === "red"
-                                          ? "border-red-200 dark:border-red-900 hover:bg-red-50/30 dark:hover:bg-red-900/20"
-                                          : statusColor === "orange"
-                                            ? "border-orange-200 dark:border-orange-900 hover:bg-orange-50/30 dark:hover:bg-orange-900/20"
-                                            : statusColor === "teal"
-                                              ? "border-teal-200 dark:border-teal-900 hover:bg-teal-50/30 dark:hover:bg-teal-900/20"
-                                              : statusColor === "amber"
-                                                ? "border-amber-200 dark:border-amber-900 hover:bg-amber-50/30 dark:hover:bg-amber-900/20"
-                                                : "border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-900/40"
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2.5">
-                                      {/* Status indicator dot */}
-                                      <div
-                                        className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${
-                                          statusColor === "green"
-                                            ? "bg-green-500"
-                                            : statusColor === "red"
-                                              ? "bg-red-500 animate-pulse"
-                                              : statusColor === "orange"
-                                                ? "bg-orange-500"
-                                                : statusColor === "teal"
-                                                  ? "bg-teal-500"
-                                                  : statusColor === "amber"
-                                                    ? "bg-amber-500"
-                                                    : "bg-slate-300"
-                                        }`}
-                                      >
-                                        {statusColor === "green" && (
-                                          <Check className="w-2 h-2 text-white" />
-                                        )}
-                                        {(statusColor === "red" || statusColor === "orange") && (
-                                          <AlertTriangle className="w-2 h-2 text-white" />
-                                        )}
-                                      </div>
-                                      <div className="flex flex-col items-start overflow-hidden flex-1 max-w-[170px]">
-                                        <div className="flex items-baseline gap-1.5 w-full text-left truncate">
-                                          <span
-                                            className={`text-sm font-bold truncate ${
-                                              statusColor === "green"
-                                                ? "text-green-700"
-                                                : statusColor === "red"
-                                                  ? "text-red-700"
-                                                  : statusColor === "orange"
-                                                    ? "text-orange-700"
-                                                    : statusColor === "teal"
-                                                      ? "text-teal-700"
-                                                      : statusColor === "amber"
-                                                        ? "text-amber-700"
-                                                        : "text-blue-700"
-                                            }`}
-                                            title={it?.name || t}
-                                          >
-                                            {it?.name || t}
-                                          </span>
-                                          <span
-                                            className={`text-[9px] font-mono px-1 py-0.5 rounded-md shrink-0 border ${
-                                              statusColor === "green"
-                                                ? "bg-green-50 border-green-200 text-green-700"
-                                                : statusColor === "red"
-                                                  ? "bg-red-50 border-red-200 text-red-700"
-                                                  : statusColor === "orange"
-                                                    ? "bg-orange-50 border-orange-200 text-orange-700"
-                                                    : statusColor === "teal"
-                                                      ? "bg-teal-50 border-teal-200 text-teal-700"
-                                                      : statusColor === "amber"
-                                                        ? "bg-amber-50 border-amber-200 text-amber-700"
-                                                        : "bg-blue-50 border-blue-200 text-blue-700"
-                                            }`}
-                                          >
-                                            {it?.code || t}
-                                          </span>
-                                        </div>
-                                        <span
-                                          className={`text-[9px] mt-0.5 font-medium uppercase tracking-wider ${
-                                            statusColor === "green"
-                                              ? "text-green-500"
-                                              : statusColor === "red"
-                                                ? "text-red-500"
-                                                : statusColor === "orange"
-                                                  ? "text-orange-500"
-                                                  : statusColor === "teal"
-                                                    ? "text-teal-500"
-                                                    : statusColor === "amber"
-                                                      ? "text-amber-500"
-                                                      : "text-slate-400"
-                                          }`}
-                                        >
-                                          {statusLabel}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <ArrowRight
-                                      className={`w-4 h-4 ${
-                                        statusColor === "green"
-                                          ? "text-green-300"
-                                          : statusColor === "red"
-                                            ? "text-red-300"
-                                            : statusColor === "orange"
-                                              ? "text-orange-300"
-                                              : statusColor === "amber"
-                                                ? "text-amber-300"
-                                                : "text-blue-300"
-                                      }`}
-                                    />
-                                  </Button>
-
-                                  {taskRecords.length === 0 && (
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      className="h-14 w-10 shrink-0 text-slate-400 border-dashed hover:text-red-600 hover:border-red-200 hover:bg-red-50/50"
-                                      title={`Remove ${t}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        handleDeleteInspectionSpec(t);
-                                      }}
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  )}
-                                </div>
-                              );
-                            })}
-                      </div>
-                      <div className="w-full max-w-[350px] space-y-3 mt-4">
-                        <div className="py-2">
-                          <Separator />
-                        </div>
-
-                        <Popover open={isAddInspOpen} onOpenChange={setIsAddInspOpen}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="w-full h-12 border-dashed border-2 text-slate-500 font-bold hover:border-blue-400 hover:bg-blue-50/30 flex items-center justify-center gap-2"
-                            >
-                              <Plus className="w-4 h-4" /> Add Additional Inspection Type
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-[350px] p-0 shadow-2xl border-slate-200"
-                            align="center"
-                            side="top"
-                          >
-                            <div className="flex flex-col">
-                              <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex gap-2 items-center">
-                                <div className="relative flex-1">
-                                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                                  <Input
-                                    placeholder="Search type name or code..."
-                                    className="pl-9 h-9 text-xs bg-white border-slate-200 focus-visible:ring-blue-500"
-                                    value={inspectionTypeSearch}
-                                    onChange={(e) => setInspectionTypeSearch(e.target.value)}
-                                    autoFocus
-                                  />
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setIsAddInspOpen(false)}
-                                  className="h-9 px-2 text-xs font-bold text-slate-500 hover:text-slate-700 shrink-0"
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                              <ScrollArea className="h-[300px]">
-                                <div className="p-1.5 space-y-1">
-                                  {allInspectionTypes
-                                    .filter((it) => {
-                                      // Filter by mode
-                                      const methods =
-                                        it.default_properties?.methods || it.methods || [];
-                                      const isRov =
-                                        methods.includes("ROV") ||
-                                        it.metadata?.rov === 1 ||
-                                        it.metadata?.rov === "1" ||
-                                        it.metadata?.rov === true ||
-                                        it.metadata?.job_type?.includes("ROV");
-                                      const isDiving =
-                                        methods.includes("DIVING") ||
-                                        it.metadata?.diving === 1 ||
-                                        it.metadata?.diving === "1" ||
-                                        it.metadata?.diving === true ||
-                                        it.metadata?.job_type?.includes("DIVING");
-                                      if (inspMethod === "DIVING" && !isDiving) return false;
-                                      if (inspMethod === "ROV" && !isRov) return false;
-
-                                      // Filter by search query
-                                      if (inspectionTypeSearch) {
-                                        const q = inspectionTypeSearch.toLowerCase();
-                                        return (
-                                          (it.name || "").toLowerCase().includes(q) ||
-                                          (it.code || "").toLowerCase().includes(q)
-                                        );
-                                      }
-                                      return true;
-                                    })
-                                    .map((it) => (
-                                      <button
-                                        key={it.id}
-                                        onClick={async () => {
-                                          await handleAddNewInspectionSpec(it.id.toString());
-                                          setIsAddInspOpen(false);
-                                          setInspectionTypeSearch("");
-                                        }}
-                                        className="w-full text-left px-3 py-2.5 rounded-md hover:bg-blue-50 transition-colors group"
-                                      >
-                                        <div className="flex flex-col">
-                                          <span className="text-xs font-bold text-slate-700 group-hover:text-blue-700">
-                                            {it.name}
-                                          </span>
-                                          <span className="text-[10px] font-mono font-medium text-slate-400 group-hover:text-blue-500">
-                                            {it.code}
-                                          </span>
-                                        </div>
-                                      </button>
-                                    ))}
-                                  {allInspectionTypes.filter((it) => {
-                                    const isRov =
-                                      it.metadata?.rov === 1 ||
-                                      it.metadata?.rov === "1" ||
-                                      it.metadata?.rov === true ||
-                                      it.metadata?.job_type?.includes("ROV");
-                                    const isDiving =
-                                      it.metadata?.diving === 1 ||
-                                      it.metadata?.diving === "1" ||
-                                      it.metadata?.diving === true ||
-                                      it.metadata?.job_type?.includes("DIVING");
-                                    if (inspMethod === "DIVING" && !isDiving) return false;
-                                    if (inspMethod === "ROV" && !isRov) return false;
-                                    if (inspectionTypeSearch) {
-                                      const q = inspectionTypeSearch.toLowerCase();
-                                      return (
-                                        (it.name || "").toLowerCase().includes(q) ||
-                                        (it.code || "").toLowerCase().includes(q)
-                                      );
-                                    }
-                                    return true;
-                                  }).length === 0 && (
-                                    <div className="py-10 text-center">
-                                      <p className="text-xs text-slate-400 italic">
-                                        No matching inspection types found
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              </ScrollArea>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <InspectionForm
-                    activeMGIProfile={activeMGIProfile}
-                    selectedComp={selectedComp}
-                    activeSpec={activeSpec}
-                    allInspectionTypes={allInspectionTypes}
-                    activeFormProps={activeFormProps}
-                    findingType={findingType}
-                    setFindingType={setFindingType}
-                    renderInspectionField={renderInspectionField}
-                    dynamicProps={dynamicProps}
-                    handleDynamicPropChange={handleDynamicPropChange}
-                    isEditing={!!editingRecordId}
-                    anomalyData={anomalyData}
-                    setAnomalyData={setAnomalyData}
-                    defectCodes={defectCodes}
-                    allDefectTypes={allDefectTypes}
-                    availableDefectTypes={availableDefectTypes}
-                    priorities={priorities}
-                    headerData={headerData}
-                    isManualOverride={manualOverride}
-                    setIsManualOverride={setManualOverride}
-                    setLastAutoMatchedRuleId={setLastAutoMatchedRuleId}
-                    handleCommitRecord={handleCommitRecord}
-                    onClose={resetForm}
-                    onCapturePhoto={handleGrabPhoto}
-                    isCommitting={isCommitting}
-                    vidTimer={vidTimer}
-                    formatTime={formatTime}
-                    setCompSpecDialogOpen={setCompSpecDialogOpen}
-                    resetForm={resetForm}
-                    incompleteReason={incompleteReason}
-                    setIncompleteReason={setIncompleteReason}
-                    recordNotes={recordNotes}
-                    setRecordNotes={setRecordNotes}
-                    pendingAttachments={pendingAttachments}
-                    setPendingAttachments={setPendingAttachments}
-                    deletedAttachmentIds={deletedAttachmentIds}
-                    setDeletedAttachmentIds={setDeletedAttachmentIds}
-                    setEditingAttachment={setEditingAttachment}
-                    setIsAttachmentManagerOpen={setIsAttachmentManagerOpen}
-                    recordedFiles={recordedFiles}
-                    activeDep={activeDep}
-                    currentMovement={currentMovement}
-                    tapeId={tapeId}
-                    vidState={vidState}
-                    onChangeTaskClick={() => setShowTaskSelector(true)}
-                    onChangeComponentClick={() => setShowCompSelector(true)}
-                    libOptionsMap={libOptionsMap}
-                    onDeleteRecord={() => editingRecordId && handleDeleteRecord(editingRecordId)}
-                    onPrintReport={() => {
-                      const r = currentRecords.find((rec: any) => rec.insp_id === editingRecordId);
-                      if (r) handlePrintAnomaly(r);
-                    }}
-                  />
-                )}
-              </div>
-            )}
-          </Card>
-          <Card
-            className={`flex flex-col ${capturedEventsPipWindow ? "h-[40px]" : "h-[280px]"} border-2 border-slate-200 dark:border-slate-500 shadow-2xl rounded-md bg-white dark:bg-slate-900/60 overflow-hidden shrink-0 transition-all duration-500 ease-in-out`}
-          >
-            <div className="bg-slate-800 dark:bg-slate-900/80 text-white px-3 py-2 text-[11px] font-black uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0 border-b dark:border-slate-700 backdrop-blur-sm">
-              <div className="flex items-center gap-2">
-                <span>CAPTURED EVENTS</span>
-                <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                  {recordSearchQuery
-                    ? `${displayRecords.length} / ${sortedRecords.length}`
-                    : sortedRecords.length}{" "}
-                  Captured
-                </Badge>
-              </div>
-
-              <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                <Input
-                  placeholder="Smart Filter (Record, Component, Type, Status)..."
-                  className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
-                  value={recordSearchQuery}
-                  onChange={(e) => setRecordSearchQuery(e.target.value)}
-                />
-                {recordSearchQuery && (
-                  <button
-                    onClick={() => setRecordSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
-                  >
-                    <X className="w-2.5 h-2.5 text-slate-500" />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
-                    >
-                      <Settings2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-64 p-0 shadow-2xl border-slate-700 bg-slate-900 text-slate-200"
-                    align="end"
-                  >
-                    <div className="p-3 border-b border-slate-800 bg-slate-950/50">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          Table Configuration
-                        </h3>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-[9px] uppercase font-bold text-blue-400 hover:text-blue-300 p-0"
-                          onClick={() => {
-                            const defaultCols = [
-                              { id: "cr_date", label: "Date", visible: true },
-                              { id: "type", label: "Type", visible: true },
-                              { id: "component", label: "Component", visible: true },
-                              { id: "elev", label: "Elev/KP", visible: true },
-                              { id: "anomaly_ref", label: "Anom. Ref", visible: true },
-                              { id: "cp_reading", label: "CP (mV)", visible: true },
-                              { id: "dive_no", label: "Dive No", visible: true },
-                              { id: "tape_no", label: "Tape No", visible: true },
-                            ];
-                            setColumnSettings(defaultCols);
-                          }}
-                        >
-                          Reset
-                        </Button>
-                      </div>
-                    </div>
-                    <ScrollArea className="h-72">
-                      <div className="p-1.5 space-y-0.5">
-                        {columnSettings.map((col, idx) => (
-                          <div
-                            key={col.id}
-                            className="flex items-center gap-2 p-1.5 rounded hover:bg-slate-800 group"
-                          >
-                            <GripVertical className="w-3 h-3 text-slate-600 shrink-0" />
-                            <button
-                              onClick={() => toggleColumnVisibility(col.id)}
-                              className={`flex-1 flex items-center gap-2 text-left transition-opacity ${col.visible ? "opacity-100" : "opacity-40"}`}
-                            >
-                              {col.visible ? (
-                                <Eye className="w-3.5 h-3.5 text-blue-400" />
-                              ) : (
-                                <EyeOff className="w-3.5 h-3.5 text-slate-500" />
-                              )}
-                              <span className="text-[11px] font-bold tracking-tight">
-                                {col.label}
-                              </span>
-                            </button>
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 hover:bg-slate-700"
-                                disabled={idx === 0}
-                                onClick={() => handleMoveColumn(idx, "up")}
-                              >
-                                <ChevronUp className="w-3 h-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 hover:bg-slate-700"
-                                disabled={idx === columnSettings.length - 1}
-                                onClick={() => handleMoveColumn(idx, "down")}
-                              >
-                                <ChevronDown className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                    <div className="p-2 border-t border-slate-800 bg-slate-950/30">
-                      <p className="text-[9px] text-slate-500 italic text-center">
-                        Actions & Status columns are fixed at start.
-                      </p>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-[10px] text-slate-300 hover:text-white hover:bg-slate-700"
-                  onClick={handlePopoutCapturedEvents}
-                  title={capturedEventsPipWindow ? "Close Floating Window" : "Float as Window"}
-                >
-                  {capturedEventsPipWindow ? (
-                    <X className="w-3.5 h-3.5 mr-1" />
-                  ) : (
-                    <Maximize2 className="w-3.5 h-3.5 mr-1" />
-                  )}
-                  {capturedEventsPipWindow ? "Dock" : "Float"}
-                </Button>
-              </div>
-            </div>
-
-            {!capturedEventsPipWindow && (
-              <ScrollArea className="flex-1 w-full relative">
-                <div className="min-w-full inline-block align-middle overflow-x-auto">
-                  <table className="w-full text-left text-xs whitespace-nowrap table-auto bg-white dark:bg-slate-950">
-                    <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 border-b border-slate-200 dark:border-slate-600 font-black text-slate-500 dark:text-white uppercase tracking-wider z-20">
-                      <tr>
-                        {activeTableColumns.map((col) => (
-                          <th
-                            key={col.id}
-                            className={`px-3 py-3 transition-colors group ${
-                              col.id !== "actions" && col.id !== "status"
-                                ? "cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                                : ""
-                            } ${col.id === "cr_date" ? "w-20" : ""} ${
-                              ["elev", "cp_reading", "status"].includes(col.id) ? "text-center" : ""
-                            }`}
-                            onClick={() =>
-                              col.id !== "actions" && col.id !== "status" && handleSort(col.id)
-                            }
-                          >
-                            <div
-                              className={`flex items-center gap-1.5 ${["elev", "cp_reading", "status"].includes(col.id) ? "justify-center" : ""}`}
-                            >
-                              {col.label}
-                              {sortConfig.key === col.id ? (
-                                sortConfig.direction === "asc" ? (
-                                  <ChevronUp className="w-3 h-3 text-blue-600" />
-                                ) : (
-                                  <ChevronDown className="w-3 h-3 text-blue-600" />
-                                )
-                              ) : (
-                                col.id !== "actions" &&
-                                col.id !== "status" && (
-                                  <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
-                                )
-                              )}
-                            </div>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {displayRecords.map((r: any) => {
-                        const formatCounter = (val: any) => {
-                          if (!val) return null;
-                          if (typeof val === "string" && val.includes(":")) return val;
-                          const sec = Number(val);
-                          if (!isNaN(sec)) {
-                            const h = Math.floor(sec / 3600)
-                              .toString()
-                              .padStart(2, "0");
-                            const m = Math.floor((sec % 3600) / 60)
-                              .toString()
-                              .padStart(2, "0");
-                            const s = Math.floor(sec % 60)
-                              .toString()
-                              .padStart(2, "0");
-                            return `${h}:${m}:${s}`;
-                          }
-                          return val;
-                        };
-
-                        return (
-                          <tr
-                            key={r.insp_id}
-                            className="hover:bg-slate-50 dark:hover:bg-slate-900 group cursor-pointer border-b border-slate-100 dark:border-slate-800/50 last:border-0"
-                            onDoubleClick={() => handleEditRecord(r)}
-                          >
-                            {activeTableColumns.map((col) => {
-                              switch (col.id) {
-                                case "actions":
-                                  return (
-                                    <td key={col.id} className="px-3 py-3 text-right align-top">
-                                      <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <button
-                                              className="p-1.5 px-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600"
-                                              title="Report Options"
-                                            >
-                                              <FileText className="w-3.5 h-3.5" /> Actions
-                                            </button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="start" className="w-48">
-                                            {r.has_anomaly && (
-                                              <>
-                                                <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">
-                                                  Reports
-                                                </div>
-                                                {r.inspection_data?._meta_status === "Finding" ? (
-                                                  <DropdownMenuItem
-                                                    onClick={() => handlePrintAnomaly(r)}
-                                                    className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700"
-                                                  >
-                                                    <ClipboardCheck className="w-3.5 h-3.5 mr-2" />{" "}
-                                                    Print Finding Report
-                                                  </DropdownMenuItem>
-                                                ) : (
-                                                  <DropdownMenuItem
-                                                    onClick={() => handlePrintAnomaly(r)}
-                                                    className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700"
-                                                  >
-                                                    <AlertTriangle className="w-3.5 h-3.5 mr-2" />{" "}
-                                                    Print{" "}
-                                                    {r.inspection_data?._meta_status || "Defect"}{" "}
-                                                    Report
-                                                  </DropdownMenuItem>
-                                                )}
-                                                <div className="border-t border-slate-50 my-1"></div>
-                                              </>
-                                            )}
-                                            <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                              Details
-                                            </div>
-                                            <DropdownMenuItem
-                                              onClick={() => {
-                                                const comp = (allComps || []).find(
-                                                  (c: any) => c.id === r.component_id
-                                                );
-                                                if (comp) {
-                                                  setSelectedComp(comp);
-                                                  setCompSpecDialogOpen(true);
-                                                }
-                                              }}
-                                              className="text-xs py-2 cursor-pointer"
-                                            >
-                                              <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" />{" "}
-                                              View Component Spec
-                                            </DropdownMenuItem>
-                                            <div className="border-t border-slate-50 my-1"></div>
-                                            <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                              Modify
-                                            </div>
-                                            <DropdownMenuItem
-                                              onClick={() => handleEditRecord(r)}
-                                              className="text-xs py-2 cursor-pointer"
-                                            >
-                                              <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" />{" "}
-                                              Edit Record
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
-                                              onClick={() => handleDeleteRecord(r.insp_id)}
-                                              className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700"
-                                            >
-                                              <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
-                                            </DropdownMenuItem>
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
-                                      </div>
-                                    </td>
-                                  );
-                                case "status":
-                                  return (
-                                    <td key={col.id} className="px-3 py-3 align-top text-center">
-                                      <div className="flex flex-col items-center gap-1.5 mt-0.5">
-                                        {r.has_anomaly ? (
-                                          <div
-                                            title="Anomaly/Finding Found"
-                                            className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100"
-                                          >
-                                            <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                                          </div>
-                                        ) : r.status === "COMPLETED" ? (
-                                          <div
-                                            title="Completed Inspection"
-                                            className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100"
-                                          >
-                                            <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                                          </div>
-                                        ) : (
-                                          <div
-                                            title="Incomplete / Draft"
-                                            className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100"
-                                          >
-                                            <FileClock className="w-3.5 h-3.5 text-amber-600" />
-                                          </div>
-                                        )}
-                                        {(r.attachment_count > 0 ||
-                                          (r.insp_media && r.insp_media[0]?.count > 0)) && (
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
-                                            onClick={async () => {
-                                              const { data } = await supabase
-                                                .from("attachment")
-                                                .select("*")
-                                                .eq("source_id", r.insp_id)
-                                                .eq("source_type", "INSPECTION");
-                                              if (data) setViewingRecordAttachments(data);
-                                            }}
-                                          >
-                                            <Paperclip className="w-3 h-3" />
-                                          </Button>
-                                        )}
-                                      </div>
-                                    </td>
-                                  );
-                                case "cr_date":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 text-slate-600 dark:text-white align-top"
-                                    >
-                                      <div className="text-sm font-medium">
-                                        {r.cr_date ? format(new Date(r.cr_date), "dd MMM") : "-"}
-                                      </div>
-                                      <div className="text-[10px] opacity-70 mt-0.5">
-                                        {r.cr_date ? format(new Date(r.cr_date), "HH:mm") : "-"}
-                                      </div>
-                                    </td>
-                                  );
-                                case "type":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 font-bold text-slate-800 dark:text-white align-top"
-                                    >
-                                      <div
-                                        className="truncate max-w-[200px] text-sm"
-                                        title={r.inspection_type?.name}
-                                      >
-                                        {r.inspection_type?.name || "UNK"}
-                                      </div>
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1"
-                                      >
-                                        {r.inspection_type_code || r.inspection_type?.code || "UNK"}
-                                      </Badge>
-                                    </td>
-                                  );
-                                case "component":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 align-top text-slate-700 dark:text-white"
-                                    >
-                                      <div className="font-bold text-sm">
-                                        {r.structure_components?.q_id || "-"}
-                                      </div>
-                                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
-                                        {r.component_type || r.structure_components?.code || "-"}
-                                      </div>
-                                    </td>
-                                  );
-                                case "elev":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-white align-top"
-                                    >
-                                      {r.elevation ? `${r.elevation}m` : r.fp_kp || "-"}
-                                    </td>
-                                  );
-                                case "anomaly_ref":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 align-top text-slate-700 dark:text-white"
-                                    >
-                                      {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
-                                        <div className="flex flex-col gap-1">
-                                          <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">
-                                            {r.insp_anomalies[0].anomaly_ref_no}
-                                          </span>
-                                          {r.insp_anomalies[0].priority_code && (
-                                            <span
-                                              className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded shadow-sm w-fit uppercase tracking-wider ${
-                                                r.insp_anomalies[0].priority_code.includes("1")
-                                                  ? "bg-red-600"
-                                                  : r.insp_anomalies[0].priority_code.includes("2")
-                                                    ? "bg-orange-500"
-                                                    : r.insp_anomalies[0].priority_code.includes(
-                                                          "3"
-                                                        )
-                                                      ? "bg-yellow-500 text-black"
-                                                      : r.insp_anomalies[0].priority_code.includes(
-                                                            "4"
-                                                          )
-                                                        ? "bg-blue-500"
-                                                        : r.insp_anomalies[0].priority_code.includes(
-                                                              "5"
-                                                            )
-                                                          ? "bg-slate-500"
-                                                          : "bg-slate-900"
-                                              }`}
-                                            >
-                                              {r.insp_anomalies[0].priority_code}
-                                            </span>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <span className="text-slate-300">-</span>
-                                      )}
-                                    </td>
-                                  );
-                                case "cp_reading":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-white align-top"
-                                    >
-                                      {(() => {
-                                        const cp =
-                                          r.inspection_data?.cp_rdg ??
-                                          r.inspection_data?.cp_reading_mv ??
-                                          r.inspection_data?.cp;
-                                        return cp ? (
-                                          <span className="font-mono text-xs">{cp}</span>
-                                        ) : (
-                                          <span className="text-slate-300">-</span>
-                                        );
-                                      })()}
-                                    </td>
-                                  );
-                                case "dive_no":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 align-top text-slate-700 dark:text-white"
-                                    >
-                                      <span className="text-xs font-medium">
-                                        {r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || (
-                                          <span className="text-slate-300">-</span>
-                                        )}
-                                      </span>
-                                    </td>
-                                  );
-                                case "tape_no":
-                                  return (
-                                    <td
-                                      key={col.id}
-                                      className="px-3 py-3 align-top text-slate-700 dark:text-white"
-                                    >
-                                      <span className="text-xs font-medium">
-                                        {r.insp_video_tapes?.tape_no || (
-                                          <span className="text-slate-300">-</span>
-                                        )}
-                                      </span>
-                                      {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                        <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
-                                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                          {formatCounter(
-                                            r.inspection_data?._meta_timecode || r.tape_count_no
-                                          )}
-                                        </div>
-                                      )}
-                                    </td>
-                                  );
-                                default:
-                                  return null;
-                              }
-                            })}
-                          </tr>
-                        );
-                      })}
-
-                      {displayRecords.length === 0 && (
-                        <tr>
-                          <td colSpan={10} className="px-3 py-12 text-center bg-white/50">
-                            {syncLoading ? (
-                              <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
-                                <div className="relative">
-                                  <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
-                                  <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                    Synchronizing
-                                  </span>
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                    Fetching live workspace data...
-                                  </span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center gap-2 text-slate-300">
-                                <Search className="w-8 h-8 opacity-20" />
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                    Inventory Empty
-                                  </span>
-                                  <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">
-                                    No events match your current filter or session
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <ScrollBar orientation="horizontal" />
-              </ScrollArea>
-            )}
-          </Card>
-        </div>
-
-        <WorkspaceResources
-          compView={compView}
-          setCompView={setCompView}
-          compSearchTerm={compSearchTerm}
-          setCompSearchTerm={setCompSearchTerm}
-          componentsSow={componentsSow}
-          componentsNonSow={componentsNonSow}
-          selectedComp={selectedComp}
-          handleComponentSelection={handleComponentSelection}
-          setCompSpecDialogOpen={setCompSpecDialogOpen}
-          currentRecords={currentRecords}
-          currentCompRecords={currentCompRecords}
-          historicalRecords={historicalRecords}
-          historyLoading={historyLoading}
-          inspMethod={inspMethod}
-          supabase={supabase}
-          structureId={structureId || 0}
-          onRefreshComponents={() => {
-            queryClient.invalidateQueries({ queryKey: ["sow-data"] });
-          }}
-          allInspectionTypes={allInspectionTypes}
-          structureType={headerData.structureType === "pipeline" ? "pipeline" : "platform"}
-          unitSystem={unitSystem}
-        />
-      </div>
-
-      {capturedEventsPipWindow &&
-        createPortal(
-          <div className="h-screen w-screen flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
-            <div className="bg-slate-800 dark:bg-slate-950 text-white px-3 py-2 text-[11px] font-bold uppercase tracking-widest flex justify-between items-center h-[40px] shrink-0 border-b dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <span>CAPTURED EVENTS (FLOATING)</span>
-                <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                  {recordSearchQuery
-                    ? `${displayRecords.length} / ${sortedRecords.length}`
-                    : sortedRecords.length}{" "}
-                  Captured
-                </Badge>
-              </div>
-
-              <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                <Input
-                  placeholder="Smart Filter..."
-                  className="h-7 text-[10px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
-                  value={recordSearchQuery}
-                  onChange={(e) => setRecordSearchQuery(e.target.value)}
-                />
-                {recordSearchQuery && (
-                  <button
-                    onClick={() => setRecordSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-800 rounded transition-colors"
-                  >
-                    <X className="w-2.5 h-2.5 text-slate-500" />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
-                    >
-                      <Settings2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-64 p-0 shadow-2xl border-slate-700 bg-slate-900 text-slate-200"
-                    align="end"
-                    container={capturedEventsPipWindow?.document.body}
-                  >
-                    <div className="p-3 border-b border-slate-800 bg-slate-950/50">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          Table Configuration
-                        </h3>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-[9px] uppercase font-bold text-blue-400 hover:text-blue-300 p-0"
-                          onClick={() => {
-                            const defaultCols = [
-                              { id: "cr_date", label: "Date", visible: true },
-                              { id: "type", label: "Type", visible: true },
-                              { id: "component", label: "Component", visible: true },
-                              { id: "elev", label: "Elev/KP", visible: true },
-                              { id: "anomaly_ref", label: "Anom. Ref", visible: true },
-                              { id: "cp_reading", label: "CP (mV)", visible: true },
-                              { id: "dive_no", label: "Dive No", visible: true },
-                              { id: "tape_no", label: "Tape No", visible: true },
-                            ];
-                            setColumnSettings(defaultCols);
-                          }}
-                        >
-                          Reset
-                        </Button>
-                      </div>
-                    </div>
-                    <ScrollArea className="h-72">
-                      <div className="p-1.5 space-y-0.5">
-                        {columnSettings.map((col, idx) => (
-                          <div
-                            key={col.id}
-                            className="flex items-center gap-2 p-1.5 rounded hover:bg-slate-800 group"
-                          >
-                            <GripVertical className="w-3 h-3 text-slate-600 shrink-0" />
-                            <button
-                              onClick={() => toggleColumnVisibility(col.id)}
-                              className={`flex-1 flex items-center gap-2 text-left transition-opacity ${col.visible ? "opacity-100" : "opacity-40"}`}
-                            >
-                              {col.visible ? (
-                                <Eye className="w-3.5 h-3.5 text-blue-400" />
-                              ) : (
-                                <EyeOff className="w-3.5 h-3.5 text-slate-500" />
-                              )}
-                              <span className="text-[11px] font-bold tracking-tight">
-                                {col.label}
-                              </span>
-                            </button>
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 hover:bg-slate-700"
-                                disabled={idx === 0}
-                                onClick={() => handleMoveColumn(idx, "up")}
-                              >
-                                <ChevronUp className="w-3 h-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 hover:bg-slate-700"
-                                disabled={idx === columnSettings.length - 1}
-                                onClick={() => handleMoveColumn(idx, "down")}
-                              >
-                                <ChevronDown className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                    <div className="p-2 border-t border-slate-800 bg-slate-950/30">
-                      <p className="text-[9px] text-slate-500 italic text-center">
-                        Actions & Status columns are fixed at start.
-                      </p>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                <button
-                  onClick={() => {
-                    if (capturedEventsPipWindow) {
-                      const s = capturedEventsPipWindow.screen;
-                      capturedEventsPipWindow.moveTo(s.availLeft || 0, s.availTop || 0);
-                      capturedEventsPipWindow.resizeTo(s.availWidth, s.availHeight);
-                    }
-                  }}
-                  className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"
-                  title="Maximize"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => {
-                    if (capturedEventsPipWindow) {
-                      const s = capturedEventsPipWindow.screen;
-                      capturedEventsPipWindow.resizeTo(1000, 600);
-                      capturedEventsPipWindow.moveTo(
-                        (s.availLeft || 0) + (s.availWidth - 1000) / 2,
-                        (s.availTop || 0) + (s.availHeight - 600) / 2
-                      );
-                    }
-                  }}
-                  className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"
-                  title="Restore Size"
-                >
-                  <Minimize2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => capturedEventsPipWindow.close()}
-                  className="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-all"
-                  title="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <ScrollArea className="flex-1 w-full relative">
-              <div className="min-w-full inline-block align-middle overflow-x-auto">
-                <table className="w-full text-left text-xs whitespace-nowrap table-auto bg-white dark:bg-slate-900">
-                  <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 border-b border-slate-200 dark:border-slate-500 font-black text-slate-500 dark:text-white uppercase tracking-wider z-20">
-                    <tr>
-                      {activeTableColumns.map((col) => (
-                        <th
-                          key={col.id}
-                          className={`px-3 py-3 transition-colors group ${
-                            col.id !== "actions" && col.id !== "status"
-                              ? "cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                              : ""
-                          } ${col.id === "cr_date" ? "w-20" : ""} ${
-                            ["elev", "cp_reading", "status"].includes(col.id) ? "text-center" : ""
-                          }`}
-                          onClick={() =>
-                            col.id !== "actions" && col.id !== "status" && handleSort(col.id)
-                          }
-                        >
-                          <div
-                            className={`flex items-center gap-1.5 ${["elev", "cp_reading", "status"].includes(col.id) ? "justify-center" : ""}`}
-                          >
-                            {col.label}
-                            {sortConfig.key === col.id ? (
-                              sortConfig.direction === "asc" ? (
-                                <ChevronUp className="w-3 h-3 text-blue-600" />
-                              ) : (
-                                <ChevronDown className="w-3 h-3 text-blue-600" />
-                              )
-                            ) : (
-                              col.id !== "actions" &&
-                              col.id !== "status" && (
-                                <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
-                              )
-                            )}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {displayRecords.map((r: any) => {
-                      const formatCounter = (val: any) => {
-                        if (!val) return null;
-                        if (typeof val === "string" && val.includes(":")) return val;
-                        const sec = Number(val);
-                        if (!isNaN(sec)) {
-                          const h = Math.floor(sec / 3600)
-                            .toString()
-                            .padStart(2, "0");
-                          const m = Math.floor((sec % 3600) / 60)
-                            .toString()
-                            .padStart(2, "0");
-                          const s = Math.floor(sec % 60)
-                            .toString()
-                            .padStart(2, "0");
-                          return `${h}:${m}:${s}`;
-                        }
-                        return val;
-                      };
-
-                      return (
-                        <tr
-                          key={r.insp_id}
-                          className="hover:bg-slate-50 dark:hover:bg-slate-900/50 group cursor-pointer border-b border-slate-100 dark:border-slate-700/50 last:border-0"
-                          onDoubleClick={() => handleEditRecord(r)}
-                        >
-                          {activeTableColumns.map((col) => {
-                            switch (col.id) {
-                              case "actions":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 text-right align-top">
-                                    <div className="flex items-center justify-start gap-1 group-hover:opacity-100 opacity-60 transition-opacity mt-0.5">
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <button
-                                            className="p-1.5 px-2 bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white rounded flex items-center gap-1.5 transition-colors text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300"
-                                            title="Report Options"
-                                          >
-                                            <FileText className="w-3.5 h-3.5" /> Actions
-                                          </button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent
-                                          align="start"
-                                          className="w-48"
-                                          container={capturedEventsPipWindow?.document.body}
-                                        >
-                                          {r.has_anomaly && (
-                                            <>
-                                              <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">
-                                                Reports
-                                              </div>
-                                              {r.inspection_data?._meta_status === "Finding" ? (
-                                                <DropdownMenuItem
-                                                  onClick={() => handlePrintAnomaly(r)}
-                                                  className="text-xs py-2 cursor-pointer text-blue-600 focus:text-blue-700"
-                                                >
-                                                  <ClipboardCheck className="w-3.5 h-3.5 mr-2" />{" "}
-                                                  Print Finding Report
-                                                </DropdownMenuItem>
-                                              ) : (
-                                                <DropdownMenuItem
-                                                  onClick={() => handlePrintAnomaly(r)}
-                                                  className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700"
-                                                >
-                                                  <AlertTriangle className="w-3.5 h-3.5 mr-2" />{" "}
-                                                  Print{" "}
-                                                  {r.inspection_data?._meta_status || "Defect"}{" "}
-                                                  Report
-                                                </DropdownMenuItem>
-                                              )}
-                                              <div className="border-t border-slate-50 my-1"></div>
-                                            </>
-                                          )}
-                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                            Details
-                                          </div>
-                                          <DropdownMenuItem
-                                            onClick={() => {
-                                              const comp = (allComps || []).find(
-                                                (c: any) => c.id === r.component_id
-                                              );
-                                              if (comp) {
-                                                setSelectedComp(comp);
-                                                setCompSpecDialogOpen(true);
-                                              }
-                                            }}
-                                            className="text-xs py-2 cursor-pointer"
-                                          >
-                                            <Info className="w-3.5 h-3.5 mr-2 text-indigo-600" />{" "}
-                                            View Component Spec
-                                          </DropdownMenuItem>
-                                          <div className="border-t border-slate-50 my-1"></div>
-                                          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                                            Modify
-                                          </div>
-                                          <DropdownMenuItem
-                                            onClick={() => handleEditRecord(r)}
-                                            className="text-xs py-2 cursor-pointer"
-                                          >
-                                            <Edit className="w-3.5 h-3.5 mr-2 text-blue-600" /> Edit
-                                            Record
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            onClick={() => handleDeleteRecord(r.insp_id)}
-                                            className="text-xs py-2 cursor-pointer text-red-600 focus:text-red-700"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                  </td>
-                                );
-                              case "status":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-center">
-                                    <div className="flex flex-col items-center gap-1.5 mt-0.5">
-                                      {r.has_anomaly ? (
-                                        <div
-                                          title="Anomaly/Finding Found"
-                                          className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100"
-                                        >
-                                          <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                                        </div>
-                                      ) : r.status === "COMPLETED" ? (
-                                        <div
-                                          title="Completed Inspection"
-                                          className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100"
-                                        >
-                                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                                        </div>
-                                      ) : (
-                                        <div
-                                          title="Incomplete / Draft"
-                                          className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100"
-                                        >
-                                          <FileClock className="w-3.5 h-3.5 text-amber-600" />
-                                        </div>
-                                      )}
-                                      {(r.attachment_count > 0 ||
-                                        (r.insp_media && r.insp_media[0]?.count > 0)) && (
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500"
-                                          onClick={async () => {
-                                            const { data } = await supabase
-                                              .from("attachment")
-                                              .select("*")
-                                              .eq("source_id", r.insp_id)
-                                              .eq("source_type", "INSPECTION");
-                                            if (data) setViewingRecordAttachments(data);
-                                          }}
-                                        >
-                                          <Paperclip className="w-3 h-3" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </td>
-                                );
-                              case "cr_date":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 text-slate-600 align-top">
-                                    <div className="text-sm font-medium">
-                                      {r.cr_date ? format(new Date(r.cr_date), "dd MMM") : "-"}
-                                    </div>
-                                    <div className="text-[10px] opacity-70 mt-0.5">
-                                      {r.cr_date ? format(new Date(r.cr_date), "HH:mm") : "-"}
-                                    </div>
-                                  </td>
-                                );
-                              case "type":
-                                return (
-                                  <td
-                                    key={col.id}
-                                    className="px-3 py-3 font-bold text-slate-800 align-top"
-                                  >
-                                    <div
-                                      className="truncate max-w-[200px] text-sm"
-                                      title={r.inspection_type?.name}
-                                    >
-                                      {r.inspection_type?.name || "UNK"}
-                                    </div>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-muted-foreground border-slate-200 shadow-none mt-1"
-                                    >
-                                      {r.inspection_type_code || r.inspection_type?.code || "UNK"}
-                                    </Badge>
-                                  </td>
-                                );
-                              case "component":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    <div className="font-bold text-sm">
-                                      {r.structure_components?.q_id || "-"}
-                                    </div>
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
-                                      {r.component_type || r.structure_components?.code || "-"}
-                                    </div>
-                                  </td>
-                                );
-                              case "elev":
-                                return (
-                                  <td
-                                    key={col.id}
-                                    className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top"
-                                  >
-                                    {r.elevation ? `${r.elevation}m` : r.fp_kp || "-"}
-                                  </td>
-                                );
-                              case "anomaly_ref":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
-                                      <div className="flex flex-col gap-1">
-                                        <span className="text-xs font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-fit">
-                                          {r.insp_anomalies[0].anomaly_ref_no}
-                                        </span>
-                                        {r.insp_anomalies[0].priority_code && (
-                                          <span
-                                            className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded shadow-sm w-fit uppercase tracking-wider ${
-                                              r.insp_anomalies[0].priority_code.includes("1")
-                                                ? "bg-red-600"
-                                                : r.insp_anomalies[0].priority_code.includes("2")
-                                                  ? "bg-orange-500"
-                                                  : r.insp_anomalies[0].priority_code.includes("3")
-                                                    ? "bg-yellow-500 text-black"
-                                                    : r.insp_anomalies[0].priority_code.includes(
-                                                          "4"
-                                                        )
-                                                      ? "bg-blue-500"
-                                                      : r.insp_anomalies[0].priority_code.includes(
-                                                            "5"
-                                                          )
-                                                        ? "bg-slate-500"
-                                                        : "bg-slate-900"
-                                            }`}
-                                          >
-                                            {r.insp_anomalies[0].priority_code}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <span className="text-slate-300">-</span>
-                                    )}
-                                  </td>
-                                );
-                              case "cp_reading":
-                                return (
-                                  <td
-                                    key={col.id}
-                                    className="px-3 py-3 text-center text-sm font-medium text-slate-600 align-top"
-                                  >
-                                    {(() => {
-                                      const cp =
-                                        r.inspection_data?.cp_rdg ??
-                                        r.inspection_data?.cp_reading_mv ??
-                                        r.inspection_data?.cp;
-                                      return cp ? (
-                                        <span className="font-mono text-xs">{cp}</span>
-                                      ) : (
-                                        <span className="text-slate-300">-</span>
-                                      );
-                                    })()}
-                                  </td>
-                                );
-                              case "dive_no":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    <span className="text-xs font-medium">
-                                      {r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || (
-                                        <span className="text-slate-300">-</span>
-                                      )}
-                                    </span>
-                                  </td>
-                                );
-                              case "tape_no":
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    <span className="text-xs font-medium">
-                                      {r.insp_video_tapes?.tape_no || (
-                                        <span className="text-slate-300">-</span>
-                                      )}
-                                    </span>
-                                    {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
-                                      <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                        {formatCounter(
-                                          r.inspection_data?._meta_timecode || r.tape_count_no
-                                        )}
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              default:
-                                return null;
-                            }
-                          })}
-                        </tr>
-                      );
-                    })}
-
-                    {displayRecords.length === 0 && (
-                      <tr>
-                        <td colSpan={10} className="px-3 py-12 text-center bg-white/50">
-                          {syncLoading ? (
-                            <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500">
-                              <div className="relative">
-                                <div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" />
-                                <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                  Synchronizing
-                                </span>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                  Fetching live workspace data...
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-center gap-2 text-slate-300">
-                              <Search className="w-8 h-8 opacity-20" />
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                  Inventory Empty
-                                </span>
-                                <p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">
-                                  No events match your current filter or session
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
-          </div>,
-          capturedEventsPipWindow.document.body
+      {/* MAIN DOCKABLE LAYOUT */}
+      {flexLayoutStyles}
+      <div className="flex-1 relative bg-[#0f172a] min-h-0 w-full h-full text-xs overflow-hidden">
+        {!isReadyForComps ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm z-50">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <div className="text-blue-400 font-black uppercase tracking-[0.3em] text-sm animate-pulse">Initializing Workspace</div>
+            <div className="text-slate-500 text-[10px] font-bold uppercase mt-2 tracking-widest">Restoring Dockable Environment</div>
+          </div>
+        ) : null}
+        
+        {layoutModel && (
+          <Layout 
+            model={layoutModel} 
+            factory={layoutFactory} 
+            onModelChange={onLayoutChange} 
+          />
         )}
-
+      </div>
       <WorkspaceDialogs
         supabase={supabase}
         jobPackId={jobPackId}
@@ -8131,7 +7441,7 @@ function V10PreviewLayout() {
         sowIdFull={sowIdFull}
         headerData={headerData}
         inspMethod={inspMethod}
-        currentRecords={currentRecords}
+        currentRecords={allWorkspaceRecords}
         recordedFiles={recordedFiles}
         pendingAttachments={pendingAttachments}
         setPendingAttachments={setPendingAttachments}
@@ -8174,7 +7484,9 @@ function V10PreviewLayout() {
           pendingRule,
           rscorPreviewOpen,
           anodePreviewOpen,
+          anodeRsaniPreviewOpen,
           cpPreviewOpen,
+          rswniPreviewOpen,
           rgviPreviewOpen,
           rcondSketchPreviewOpen,
           showRemovalConfirm,
@@ -8209,11 +7521,20 @@ function V10PreviewLayout() {
           jtisiPreviewOpen,
           itisiPreviewOpen,
           gvinsPreviewOpen,
+          bsinsPreviewOpen,
+          cvinsPreviewOpen,
+          cleanPreviewOpen,
+          mpinsPreviewOpen,
+          utwtkPreviewOpen,
           szonePreviewOpen,
           cpclbPreviewOpen,
           utclbPreviewOpen,
           divingAnodePreviewOpen,
           divingMgiPreviewOpen,
+          divingAcfmcPreviewOpen,
+          divingPlcoPreviewOpen,
+          rovRwdiPreviewOpen,
+          isReportWizardOpen,
         }}
         setters={{
           setIsDiveSetupOpen,
@@ -8244,7 +7565,9 @@ function V10PreviewLayout() {
           setShowCriteriaConfirm,
           setRscorPreviewOpen,
           setAnodePreviewOpen,
+          setAnodeRsaniPreviewOpen,
           setCpPreviewOpen,
+          setRswniPreviewOpen,
           setRgviPreviewOpen,
           setRcondSketchPreviewOpen,
           setShowRemovalConfirm,
@@ -8269,11 +7592,20 @@ function V10PreviewLayout() {
           setJtisiPreviewOpen,
           setItisiPreviewOpen,
           setGvinsPreviewOpen,
+          setBsinsPreviewOpen,
+          setCvinsPreviewOpen,
+          setCleanPreviewOpen,
+          setMpinsPreviewOpen,
+          setUtwtkPreviewOpen,
           setSzonePreviewOpen,
           setCpclbPreviewOpen,
           setUtclbPreviewOpen,
           setDivingAnodePreviewOpen,
           setDivingMgiPreviewOpen,
+          setDivingAcfmcPreviewOpen,
+          setDivingPlcoPreviewOpen,
+          setRovRwdiPreviewOpen,
+          setIsReportWizardOpen,
         }}
         handlers={{
           handleEditEventSave,
@@ -8301,7 +7633,10 @@ function V10PreviewLayout() {
           generateJTISIReportBlob,
           generateITISIReportBlob,
           generateAnodeReportBlob,
+          generateAnodeRsaniReportBlob,
           generateCPReportBlob,
+          generateRSWNIReport,
+          generateRSWNIReportBlob,
           generateRGVIReportBlob,
           generateRCASNReportBlob,
           generateRCASNSketchReportBlob,
@@ -8312,16 +7647,80 @@ function V10PreviewLayout() {
           generatePhotographyLogReportBlob,
           generateGVINSReport,
           generateGVINSReportBlob,
+          generateBSINSReport,
+          generateBSINSReportBlob,
+          generateCVINSReport,
+          generateCVINSReportBlob,
+          generateCLEANReport,
+          generateCLEANReportBlob,
+          generateMPINSReport,
+          generateMPINSReportBlob,
+          generateUTWTKReport,
+          generateUTWTKReportBlob,
           generateSZONEReportBlob,
           generateCPCLBReportBlob,
           generateUTCLBReportBlob,
           generateDivingAnodeReportBlob,
           generateDivingMGIReportBlob,
+          generateDivingACFMCReportBlob,
+          generateDivingPLCOReportBlob,
+          generateROVRWDIReportBlob,
         }}
         refs={{
           fileInputRef,
         }}
       />
+
+      <Dialog open={showVideoActionPrompt} onOpenChange={setShowVideoActionPrompt}>
+        <DialogContent className="max-w-md bg-white dark:bg-slate-950 border-2 border-amber-500/30 shadow-2xl p-0 overflow-hidden">
+          <DialogHeader className="p-4 bg-amber-500 dark:bg-amber-600/20 text-white dark:text-amber-400 space-y-1">
+            <DialogTitle className="text-xs font-black uppercase tracking-widest opacity-80 mb-0 flex items-center gap-1.5">
+              <Video className="w-4 h-4 animate-pulse" /> Video Recording Alert
+            </DialogTitle>
+            <DialogDescription className="text-sm font-bold text-slate-100 dark:text-slate-300">
+              Diver or ROV action has left the worksite, but the video is still recording. How would you like to proceed?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-5 flex flex-col gap-3 bg-white dark:bg-slate-950">
+            <Button
+              className="w-full h-11 text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/20 border-b-4 border-red-800 transition-all active:scale-95"
+              onClick={async () => {
+                setShowVideoActionPrompt(false);
+                await handleLogEvent("Stop Tape");
+                if (isStreamRecording) {
+                  handleStopStreamRecording();
+                }
+                toast.success("Stopped recording and logged STOP event.");
+              }}
+            >
+              <Square className="w-4 h-4 mr-2" /> Stop Recording & Log Stop Event
+            </Button>
+            <Button
+              className="w-full h-11 text-xs font-black uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20 border-b-4 border-amber-700 transition-all active:scale-95"
+              onClick={async () => {
+                setShowVideoActionPrompt(false);
+                await handleLogEvent("Pause");
+                if (isStreamRecording) {
+                  handlePauseStreamRecording();
+                }
+                toast.success("Paused recording and logged PAUSE event.");
+              }}
+            >
+              <Pause className="w-4 h-4 mr-2" /> Pause Recording & Log Pause Event
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full h-11 text-xs font-black uppercase tracking-wider border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all active:scale-95"
+              onClick={() => {
+                setShowVideoActionPrompt(false);
+                toast.info("Continuing video recording (no event logged).");
+              }}
+            >
+              <Play className="w-4 h-4 mr-2" /> Continue Recording
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
