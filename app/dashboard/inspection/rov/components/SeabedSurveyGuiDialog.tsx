@@ -1324,7 +1324,10 @@ export function SeabedSurveyGuiInline({
                                                     <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={formData.length} onChange={e => setFormData(p => ({...p, length: e.target.value}))} />
                                                     <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={formData.lengthUnit} onChange={e => setFormData(p => ({...p, lengthUnit: e.target.value}))}>
                                                         <option value="m">m</option>
+                                                        <option value="cm">cm</option>
                                                         <option value="mm">mm</option>
+                                                        <option value="ft">ft</option>
+                                                        <option value="in">in</option>
                                                     </select>
                                                 </div>
                                             </div>
@@ -1334,7 +1337,10 @@ export function SeabedSurveyGuiInline({
                                                     <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={formData.width} onChange={e => setFormData(p => ({...p, width: e.target.value}))} />
                                                     <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={formData.widthUnit} onChange={e => setFormData(p => ({...p, widthUnit: e.target.value}))}>
                                                         <option value="m">m</option>
+                                                        <option value="cm">cm</option>
                                                         <option value="mm">mm</option>
+                                                        <option value="ft">ft</option>
+                                                        <option value="in">in</option>
                                                     </select>
                                                 </div>
                                             </div>
@@ -1344,7 +1350,10 @@ export function SeabedSurveyGuiInline({
                                                     <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={formData.height} onChange={e => setFormData(p => ({...p, height: e.target.value}))} />
                                                     <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={formData.heightUnit} onChange={e => setFormData(p => ({...p, heightUnit: e.target.value}))}>
                                                         <option value="m">m</option>
+                                                        <option value="cm">cm</option>
                                                         <option value="mm">mm</option>
+                                                        <option value="ft">ft</option>
+                                                        <option value="in">in</option>
                                                     </select>
                                                 </div>
                                             </div>
@@ -1354,7 +1363,10 @@ export function SeabedSurveyGuiInline({
                                                     <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={formData.diameter} onChange={e => setFormData(p => ({...p, diameter: e.target.value}))} />
                                                     <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={formData.diameterUnit} onChange={e => setFormData(p => ({...p, diameterUnit: e.target.value}))}>
                                                         <option value="m">m</option>
+                                                        <option value="cm">cm</option>
                                                         <option value="mm">mm</option>
+                                                        <option value="ft">ft</option>
+                                                        <option value="in">in</option>
                                                     </select>
                                                 </div>
                                             </div>
@@ -1403,7 +1415,10 @@ export function SeabedSurveyGuiInline({
                                                     onChange={e => setFormData(p => ({...p, craterDiameterUnit: e.target.value}))}
                                                 >
                                                     <option value="m">m</option>
+                                                    <option value="cm">cm</option>
                                                     <option value="mm">mm</option>
+                                                    <option value="ft">ft</option>
+                                                    <option value="in">in</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -1423,7 +1438,10 @@ export function SeabedSurveyGuiInline({
                                                     onChange={e => setFormData(p => ({...p, craterDepthUnit: e.target.value}))}
                                                 >
                                                     <option value="m">m</option>
+                                                    <option value="cm">cm</option>
                                                     <option value="mm">mm</option>
+                                                    <option value="ft">ft</option>
+                                                    <option value="in">in</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -1631,7 +1649,10 @@ export function SeabedSurveyGuiInline({
                                                         <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={editFormData.length} onChange={e => setEditFormData((p: any) => ({...p, length: e.target.value}))} />
                                                         <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={editFormData.lengthUnit} onChange={e => setEditFormData((p: any) => ({...p, lengthUnit: e.target.value}))}>
                                                             <option value="m">m</option>
+                                                            <option value="cm">cm</option>
                                                             <option value="mm">mm</option>
+                                                            <option value="ft">ft</option>
+                                                            <option value="in">in</option>
                                                         </select>
                                                     </div>
                                                 </div>
@@ -1641,7 +1662,10 @@ export function SeabedSurveyGuiInline({
                                                         <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={editFormData.width} onChange={e => setEditFormData((p: any) => ({...p, width: e.target.value}))} />
                                                         <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={editFormData.widthUnit} onChange={e => setEditFormData((p: any) => ({...p, widthUnit: e.target.value}))}>
                                                             <option value="m">m</option>
+                                                            <option value="cm">cm</option>
                                                             <option value="mm">mm</option>
+                                                            <option value="ft">ft</option>
+                                                            <option value="in">in</option>
                                                         </select>
                                                     </div>
                                                 </div>
@@ -1651,7 +1675,10 @@ export function SeabedSurveyGuiInline({
                                                         <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={editFormData.height} onChange={e => setEditFormData((p: any) => ({...p, height: e.target.value}))} />
                                                         <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={editFormData.heightUnit} onChange={e => setEditFormData((p: any) => ({...p, heightUnit: e.target.value}))}>
                                                             <option value="m">m</option>
+                                                            <option value="cm">cm</option>
                                                             <option value="mm">mm</option>
+                                                            <option value="ft">ft</option>
+                                                            <option value="in">in</option>
                                                         </select>
                                                     </div>
                                                 </div>
@@ -1661,7 +1688,10 @@ export function SeabedSurveyGuiInline({
                                                         <Input className="h-7 text-xs flex-1 dark:bg-slate-800 dark:border-slate-700" value={editFormData.diameter} onChange={e => setEditFormData((p: any) => ({...p, diameter: e.target.value}))} />
                                                         <select className="h-7 px-1 text-[9px] font-bold border rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 focus:outline-none" value={editFormData.diameterUnit} onChange={e => setEditFormData((p: any) => ({...p, diameterUnit: e.target.value}))}>
                                                             <option value="m">m</option>
+                                                            <option value="cm">cm</option>
                                                             <option value="mm">mm</option>
+                                                            <option value="ft">ft</option>
+                                                            <option value="in">in</option>
                                                         </select>
                                                     </div>
                                                 </div>
@@ -1708,7 +1738,10 @@ export function SeabedSurveyGuiInline({
                                                         onChange={e => setEditFormData((p: any) => ({...p, craterDiameterUnit: e.target.value}))}
                                                     >
                                                         <option value="m">m</option>
+                                                        <option value="cm">cm</option>
                                                         <option value="mm">mm</option>
+                                                        <option value="ft">ft</option>
+                                                        <option value="in">in</option>
                                                     </select>
                                                 </div>
                                             </div>
@@ -1727,7 +1760,10 @@ export function SeabedSurveyGuiInline({
                                                         onChange={e => setEditFormData((p: any) => ({...p, craterDepthUnit: e.target.value}))}
                                                     >
                                                         <option value="m">m</option>
+                                                        <option value="cm">cm</option>
                                                         <option value="mm">mm</option>
+                                                        <option value="ft">ft</option>
+                                                        <option value="in">in</option>
                                                     </select>
                                                 </div>
                                             </div>
