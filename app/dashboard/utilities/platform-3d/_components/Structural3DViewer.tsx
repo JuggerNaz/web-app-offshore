@@ -129,6 +129,28 @@ const ComponentMesh = ({
                             <meshStandardMaterial color="#b45309" metalness={0.8} />
                         </mesh>
                     )}
+                    {isAnode && (
+                        <group>
+                            {/* Top Stub */}
+                            <mesh position={[0, meshLength / 2 + 0.05, 0]}>
+                                <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
+                                <meshStandardMaterial color="#ef4444" roughness={0.4} />
+                            </mesh>
+                            <mesh position={[-0.2, meshLength / 2 + 0.1, 0]} rotation={[0, 0, Math.PI / 2]}>
+                                <cylinderGeometry args={[0.03, 0.03, 0.4, 8]} />
+                                <meshStandardMaterial color="#ef4444" roughness={0.4} />
+                            </mesh>
+                            {/* Bottom Stub */}
+                            <mesh position={[0, -meshLength / 2 - 0.05, 0]}>
+                                <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
+                                <meshStandardMaterial color="#ef4444" roughness={0.4} />
+                            </mesh>
+                            <mesh position={[-0.2, -meshLength / 2 - 0.1, 0]} rotation={[0, 0, Math.PI / 2]}>
+                                <cylinderGeometry args={[0.03, 0.03, 0.4, 8]} />
+                                <meshStandardMaterial color="#ef4444" roughness={0.4} />
+                            </mesh>
+                        </group>
+                    )}
                 </mesh>
 
                 {/* Invisible Hit Box */}
