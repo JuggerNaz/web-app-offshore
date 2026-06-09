@@ -322,7 +322,7 @@ export function Structural3DViewer({
     }, [elevations]);
 
     const availableFaces = useMemo(() => {
-        return faces.map(f => f.face).filter(Boolean);
+        return Array.from(new Set(faces.map(f => f.face).filter(Boolean)));
     }, [faces]);
 
     const { componentLayouts, foundationMembers, elvMarkers } = useMemo(() => {

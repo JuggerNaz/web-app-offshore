@@ -36,10 +36,10 @@ export function FacesDialog() {
 
   const { data } = useSWR(`/api/${pageType}/${pageId}`, fetcher);
 
-  const legs = data?.data ? Object.keys(data.data)
+  const legs = data?.data ? Array.from(new Map(Object.keys(data.data)
     .filter((x) => x.startsWith("leg_t"))
-    .map((x) => ({ label: x.toUpperCase().replace('_', ' '), value: data.data[x] }))
-    .filter((x) => x.value) : [];
+    .map((x) => [data.data[x], { label: x.toUpperCase().replace('_', ' '), value: data.data[x] }])
+  ).values()).filter((x: any) => x.value) : [];
 
   const onSubmit = async (values: z.infer<typeof FacesSchema>) => {
     const facesObject = {

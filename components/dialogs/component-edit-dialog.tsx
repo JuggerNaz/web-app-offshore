@@ -158,11 +158,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
   );
 
   const legOptions = platformData?.data
-    ? Array.from({ length: 20 }, (_, i) => {
+    ? Array.from(new Map(Array.from({ length: 20 }, (_, i) => {
         const key = `leg_t${i + 1}`;
         const val = platformData.data[key];
-        return val ? { value: val, label: val } : null;
-      }).filter(Boolean)
+        return val ? [val, { value: val, label: val }] : null;
+      }).filter(Boolean) as [string, { value: string; label: string }][]).values())
     : [];
 
   // All components for association
@@ -1283,8 +1283,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           <SelectValue placeholder="Select position" />
                         </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          {positionLib?.data
+                          {Array.from(new Map(positionLib?.data
                             ?.filter((x: any) => x.lib_code === "POSITION")
+                            .map((x: any) => [x.lib_id, x]) || []).values())
                             .map((x: any) => (
                               <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                 {x.lib_id}
@@ -1497,8 +1498,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                               <SelectValue placeholder="Select position" />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
-                              {positionLib?.data
+                              {Array.from(new Map(positionLib?.data
                                 ?.filter((x: any) => x.lib_code === "POSITION")
+                                .map((x: any) => [x.lib_id, x]) || []).values())
                                 .map((x: any) => (
                                   <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                     {x.lib_id}
@@ -1605,8 +1607,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                               <SelectValue placeholder="Select structural group" />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl z-[9999]">
-                              {compGroupLib?.data
+                              {Array.from(new Map(compGroupLib?.data
                                 ?.filter((x: any) => x.lib_code === "COMPGRP")
+                                .map((x: any) => [x.lib_id, x]) || []).values())
                                 .map((x: any) => (
                                   <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                     {x.lib_desc}

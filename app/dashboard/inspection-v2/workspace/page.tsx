@@ -229,6 +229,7 @@ function V10PreviewLayout() {
   const targetReportNumber = searchParams.get("sowReport");
   const initialMode = searchParams.get("mode") as "DIVING" | "ROV" | null;
   const hasAutoDisconnectedRef = useRef(false);
+  const hasAutoEditedRef = useRef(false);
 
   // Jotai State Sync for Dialog
   const [, setGlobalUrlId] = useAtom(urlId);
@@ -6780,6 +6781,7 @@ function V10PreviewLayout() {
             recordsLimit={recordsLimit}
             setRecordsLimit={setRecordsLimit}
             totalRecords={totalRecords}
+            editingRecordId={editingRecordId}
           />
         );
       case "components":
@@ -6929,6 +6931,25 @@ function V10PreviewLayout() {
     structureId,
     unitSystem,
   ]);
+
+  // --- AUTO-EDIT FROM URL PARAMETERS ---
+  useEffect(() => {
+    if (recordIdParam && isReadyForComps && allComps.length > 0 && !hasAutoEditedRef.current) {
+      hasAutoEditedRef.current = true;
+      const targetRecordId = Number(recordIdParam);
+      console.log(`[Auto-Edit] Triggering edit mode for record: ${targetRecordId}`);
+      
+      // If we don't have the record locally yet, handleEditRecord will fetch it
+      // we just need to pass an object with insp_id
+      handleEditRecord({ insp_id: targetRecordId });
+
+      // Clean up the URL so it doesn't trigger again on re-renders
+      const newParams = new URLSearchParams(window.location.search);
+      newParams.delete("recordId");
+      newParams.delete("compId");
+      router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
+    }
+  }, [recordIdParam, isReadyForComps, allComps, handleEditRecord, router]);
 
   const flexLayoutStyles = (
     <style dangerouslySetInnerHTML={{ __html: `

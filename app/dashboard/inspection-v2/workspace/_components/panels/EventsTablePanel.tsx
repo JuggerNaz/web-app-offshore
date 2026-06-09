@@ -58,6 +58,7 @@ interface EventsTablePanelProps {
   handlePrintAnomaly: (rec: any) => void;
   handleDeleteRecord: (id: number) => void;
   setViewingRecordAttachments: (val: any) => void;
+  editingRecordId?: number | null;
   supabase: any;
   recordsOffset: number;
   setRecordsOffset: (val: number) => void;
@@ -90,6 +91,7 @@ export function EventsTablePanel({
   recordsLimit,
   setRecordsLimit,
   totalRecords,
+  editingRecordId,
 }: EventsTablePanelProps) {
   function formatCounter(seconds: number | string): string {
     const totalSeconds = typeof seconds === "string" ? parseFloat(seconds) : seconds;
@@ -102,6 +104,12 @@ export function EventsTablePanel({
 
   const [selectedRowId, setSelectedRowId] = React.useState<number | null>(null);
   const rowRefs = React.useRef<Record<number, HTMLTableRowElement | null>>({});
+
+  React.useEffect(() => {
+    if (editingRecordId !== undefined && editingRecordId !== null) {
+      setSelectedRowId(editingRecordId);
+    }
+  }, [editingRecordId]);
 
   React.useEffect(() => {
     if (selectedRowId && rowRefs.current[selectedRowId]) {
