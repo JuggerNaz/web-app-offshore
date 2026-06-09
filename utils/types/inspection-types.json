@@ -239,6 +239,27 @@
                     "type": "text"
                 }
             ]
+        },
+        "it_main_detail_readings": {
+            "name": "it_main_detail_readings",
+            "label": "Item Maintenance Detail Readings",
+            "type": "repeater",
+            "subFields": [
+                {
+                    "name": "label",
+                    "label": "Label"
+                },
+                {
+                    "name": "reading",
+                    "label": "Reading",
+                    "type": "text"
+                },
+                {
+                    "name": "units",
+                    "label": "Units",
+                    "type": "text"
+                }
+            ]
         }
     },
     "inspectionTypes": [
@@ -337,6 +358,15 @@
                 {
                     "name": "length",
                     "label": "Length",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "name": "depth",
+                    "label": "Depth",
                     "type": "number",
                     "unitCategory": "LENGTH",
                     "required": true,
@@ -2846,6 +2876,120 @@
                 },
                 {
                     "$ref": "ut_readings_additional"
+                }
+            ]
+        },
+        {
+            "code": "RICMI",
+            "name": "Inclinometer Reading",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "name": "angle_rdg",
+                    "label": "Angle Reading",
+                    "type": "number",
+                    "unitCategory": "ANGLE",
+                    "required": true
+                },
+                {
+                    "name": "inc_reading_additional",
+                    "label": "Inclimeter Reading Additional",
+                    "type": "repeater",
+                    "subFields": [
+                        {
+                            "name": "reading",
+                            "label": "Reading",
+                            "type": "number",
+                            "unitCategory": "ANGLE"
+                        },
+                        {
+                            "name": "location",
+                            "label": "Location",
+                            "type": "text"
+                        }
+                    ],
+                    "required": false
+                }
+            ]
+        },
+        {
+            "code": "ANMAIN",
+            "name": "Anodes Maintainance Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "anode_type",
+                    "label": "Anode Type",
+                    "type": "combo",
+                    "lib_code": "ANOD_TYP",
+                    "required": true
+                },
+                {
+                    "name": "position",
+                    "label": "Position",
+                    "type": "combo",
+                    "lib_code": "POSITION",
+                    "required": true
+                },
+                {
+                    "name": "fitting",
+                    "label": "Fitting",
+                    "type": "combo",
+                    "lib_code": "FITTING",
+                    "required": true
+                },
+                {
+                    "name": "installed_date",
+                    "label": "Installed Date",
+                    "type": "date",
+                    "required": true
+                },
+                {
+                    "name": "material_alloy",
+                    "label": "Material Alloy",
+                    "type": "combo",
+                    "lib_code": "ANOD_MAT",
+                    "required": true
+                },
+                {
+                    "name": "installed_type",
+                    "label": "Installed Type",
+                    "type": "select",
+                    "options": [
+                        "Original",
+                        "Retrofit"
+                    ],
+                    "required": true
+                },
+                {
+                    "name": "life",
+                    "label": "Life",
+                    "type": "number",
+                    "unitCategory": "TIME",
+                    "required": true
+                },
+                {
+                    "name": "replaced",
+                    "label": "Replaced",
+                    "type": "boolean",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "code": "ITMAIN",
+            "name": "Item Maintenance Inspection",
+            "methods": [
+                "ROV",
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "$ref": "it_main_detail_readings"
                 }
             ]
         }
