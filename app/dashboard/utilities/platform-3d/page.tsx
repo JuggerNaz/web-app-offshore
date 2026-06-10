@@ -32,6 +32,8 @@ const Structural3DViewer = dynamic(
     }
 );
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
+import { useAtom } from "jotai";
+import { urlId, urlType } from "@/utils/client-state";
 
 interface Platform {
     plat_id: number;
@@ -59,6 +61,19 @@ export default function Platform3DPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
     const [isSpecOpen, setIsSpecOpen] = useState(false);
+
+    const [, setGlobalUrlId] = useAtom(urlId);
+    const [, setGlobalUrlType] = useAtom(urlType);
+
+    React.useEffect(() => {
+        if (selectedPlatform) {
+            setGlobalUrlId(selectedPlatform.plat_id);
+            setGlobalUrlType(selectedPlatform.ptype === "PIPELINE" ? "pipeline" : "platform");
+        } else {
+            setGlobalUrlId(0);
+            setGlobalUrlType("");
+        }
+    }, [selectedPlatform, setGlobalUrlId, setGlobalUrlType]);
 
     // 1. Fetch Platforms
     const { data: platformsData, isLoading: isPlatformsLoading } = useSWR("/api/platform", fetcher);

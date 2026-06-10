@@ -65,6 +65,10 @@ const ComponentMesh = ({
     // calculate position, rotation, length
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
+
+    // Guard against NaN coordinates — skip render entirely if bad data
+    const hasNaN = [startVec.x, startVec.y, startVec.z, endVec.x, endVec.y, endVec.z].some(v => !isFinite(v));
+
     const length = startVec.distanceTo(endVec);
     const position = startVec.clone().add(endVec).multiplyScalar(0.5);
     const direction = endVec.clone().sub(startVec).normalize();
@@ -80,6 +84,8 @@ const ComponentMesh = ({
         }
     }
     const meshLength = isAnode ? 0.8 : isClamp ? 0.8 : isWeld ? 1.2 : length;
+    // Clamp to safe minimum to prevent zero-height geometry (causes NaN bounds)
+    const safeMeshLength = Math.max(meshLength, 0.01);
 
     const quaternion = new THREE.Quaternion();
     if (length > 0.001) {
@@ -100,7 +106,12 @@ const ComponentMesh = ({
     }
 
     // Offset anodes from the center of the member so they sit on the surface
-    const offsetPos = isAnode ? [0.4, 0, 0] : [0, 0, 0];
+    // Note: dist/clk_pos positioning is now handled in the layout pass (useMemo),
+    // so no additional local offset is needed here.
+    const offsetPos: [number, number, number] = [0, 0, 0];
+
+    // Skip rendering entirely if coordinates are invalid — prevents NaN from poisoning Bounds
+    if (hasNaN) return null;
 
     return (
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
@@ -108,13 +119,13 @@ const ComponentMesh = ({
                 {/* Visual Mesh */}
                 <mesh>
                     {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
-                        <sphereGeometry args={[thickness * 1.5, 16, 16]} />
+                        <sphereGeometry args={[Math.max(thickness * 1.5, 0.01), 16, 16]} />
                     ) : isAnode ? (
-                        <boxGeometry args={[0.2, meshLength, 0.2]} />
+                        <boxGeometry args={[0.2, safeMeshLength, 0.2]} />
                     ) : isClamp ? (
                         <boxGeometry args={[baseThickness, 0.8, baseThickness]} />
                     ) : (
-                        <cylinderGeometry args={[baseThickness, baseThickness, meshLength, 12]} />
+                        <cylinderGeometry args={[baseThickness, baseThickness, safeMeshLength, 12]} />
                     )}
                     <meshStandardMaterial
                         color={isSelected ? "#3b82f6" : hovered ? "#60a5fa" : isAnode ? "#f97316" : isWeld ? "#d946ef" : isClamp ? "#b45309" : "#e2e8f0"}
@@ -132,20 +143,20 @@ const ComponentMesh = ({
                     {isAnode && (
                         <group>
                             {/* Top Stub */}
-                            <mesh position={[0, meshLength / 2 + 0.05, 0]}>
+                            <mesh position={[0, safeMeshLength / 2 + 0.05, 0]}>
                                 <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
                                 <meshStandardMaterial color="#ef4444" roughness={0.4} />
                             </mesh>
-                            <mesh position={[-0.2, meshLength / 2 + 0.1, 0]} rotation={[0, 0, Math.PI / 2]}>
+                            <mesh position={[-0.2, safeMeshLength / 2 + 0.1, 0]} rotation={[0, 0, Math.PI / 2]}>
                                 <cylinderGeometry args={[0.03, 0.03, 0.4, 8]} />
                                 <meshStandardMaterial color="#ef4444" roughness={0.4} />
                             </mesh>
                             {/* Bottom Stub */}
-                            <mesh position={[0, -meshLength / 2 - 0.05, 0]}>
+                            <mesh position={[0, -safeMeshLength / 2 - 0.05, 0]}>
                                 <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
                                 <meshStandardMaterial color="#ef4444" roughness={0.4} />
                             </mesh>
-                            <mesh position={[-0.2, -meshLength / 2 - 0.1, 0]} rotation={[0, 0, Math.PI / 2]}>
+                            <mesh position={[-0.2, -safeMeshLength / 2 - 0.1, 0]} rotation={[0, 0, Math.PI / 2]}>
                                 <cylinderGeometry args={[0.03, 0.03, 0.4, 8]} />
                                 <meshStandardMaterial color="#ef4444" roughness={0.4} />
                             </mesh>
@@ -169,17 +180,17 @@ const ComponentMesh = ({
                     }}
                 >
                     {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
-                        <sphereGeometry args={[thickness * 2, 8, 8]} />
+                        <sphereGeometry args={[Math.max(thickness * 2, 0.01), 8, 8]} />
                     ) : isAnode ? (
-                        <boxGeometry args={[0.5, meshLength + 0.2, 0.5]} />
+                        <boxGeometry args={[0.5, safeMeshLength + 0.2, 0.5]} />
                     ) : (
-                        <cylinderGeometry args={[baseThickness + 0.3, baseThickness + 0.3, isWeld ? meshLength + 0.5 : length + 0.5, 8]} />
+                        <cylinderGeometry args={[baseThickness + 0.3, baseThickness + 0.3, Math.max(isWeld ? safeMeshLength + 0.5 : length + 0.5, 0.01), 8]} />
                     )}
                     <meshBasicMaterial transparent opacity={0} />
                 </mesh>
 
                 {showLabel && (
-                    <Html distanceFactor={15} position={[0, (isAnode || isWeld ? meshLength : length) / 2 + 0.5, 0]} center>
+                    <Html distanceFactor={15} position={[0, (isAnode || isWeld ? safeMeshLength : length) / 2 + 0.5, 0]} center>
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
                                 ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
@@ -216,7 +227,13 @@ const FoundationMember = ({
 }) => {
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
+
+    // Skip if any coordinate is NaN/Infinite
+    const hasNaN = [startVec.x, startVec.y, startVec.z, endVec.x, endVec.y, endVec.z].some(v => !isFinite(v));
+    if (hasNaN) return null;
+
     const length = startVec.distanceTo(endVec);
+    const safeLength = Math.max(length, 0.01);
     const position = startVec.clone().add(endVec).multiplyScalar(0.5);
     const direction = endVec.clone().sub(startVec).normalize();
 
@@ -230,12 +247,12 @@ const FoundationMember = ({
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
             {renderMesh && (
                 <mesh>
-                    <cylinderGeometry args={[thickness, thickness, length, 8]} />
+                    <cylinderGeometry args={[thickness, thickness, safeLength, 8]} />
                     <meshStandardMaterial color={color} metalness={0.5} roughness={0.4} />
                 </mesh>
             )}
             {showLabel && label && (
-                <Html distanceFactor={20} position={[0, length / 2 + 1, 0]} center>
+                <Html distanceFactor={20} position={[0, safeLength / 2 + 1, 0]} center>
                     <div className="px-3 py-1 bg-white/10 backdrop-blur-md text-[14px] font-black text-slate-900 dark:text-white rounded-full border border-white/20 shadow-2xl pointer-events-none uppercase tracking-[0.2em]">
                         {label}
                     </div>
@@ -451,7 +468,15 @@ export function Structural3DViewer({
             const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG", "WN", "CF", "CG", "CD", "CO", "CA"].includes(code);
 
             const processNode = (nodeName: string | undefined, legName: string | undefined, elv: string | undefined) => {
-                if (!nodeName || nodeMap.has(nodeName)) return;
+                if (!nodeName) return;
+
+                // Node IDs are NOT globally unique — they are only unique within a leg.
+                // Key the map as "nodeId|LEG" so that node "71" on A1 and node "71" on A2
+                // are stored as separate entries with correct positions.
+                const legKey = legName?.toUpperCase() || "";
+                const mapKey = legKey ? `${nodeName}|${legKey}` : nodeName;
+
+                if (nodeMap.has(mapKey)) return;
 
                 let x = 0, y = 0, z = 0;
 
@@ -463,12 +488,12 @@ export function Structural3DViewer({
                 }
 
                 // Determine base horizontal coordinates
-                const legKey = legName?.toUpperCase();
                 if (legKey) {
                     const coords = getLegCoordsAtElv(legKey, y);
                     x = coords.x;
                     z = coords.z;
-                    nodeLegMap.set(nodeName, legKey);
+                    // Also store in nodeLegMap using the composite key
+                    nodeLegMap.set(mapKey, legKey);
                 } else if (md.easting || md.northing) {
                     x = parseFloat(md.easting || "0") / 100 || 0;
                     z = parseFloat(md.northing || "0") / 100 || 0;
@@ -486,12 +511,27 @@ export function Structural3DViewer({
                     }
                 }
 
-                nodeMap.set(nodeName, new THREE.Vector3(x, y, z));
+                nodeMap.set(mapKey, new THREE.Vector3(x, y, z));
             };
 
             processNode(md.s_node, md.s_leg, md.elv_1);
             processNode(md.f_node, md.f_leg, md.elv_2);
         });
+
+        // Helper: look up a node using its paired leg as disambiguator.
+        // Tries composite key "nodeId|LEG" first, falls back to bare "nodeId" for
+        // platforms where node IDs are globally unique (legacy data).
+        const lookupNode = (nodeId: string | undefined, legName: string | undefined): THREE.Vector3 | undefined => {
+            if (!nodeId) return undefined;
+            const legKey = legName?.toUpperCase() || "";
+            if (legKey) {
+                const compositeKey = `${nodeId}|${legKey}`;
+                if (nodeMap.has(compositeKey)) return nodeMap.get(compositeKey);
+            }
+            // Fallback: bare node id (for globally-unique node datasets)
+            if (nodeMap.has(nodeId)) return nodeMap.get(nodeId);
+            return undefined;
+        };
 
         // 5. Resolve Structural Layouts for components
         const intermediateLayouts = new Map<number, { component: any, start: THREE.Vector3, end: THREE.Vector3, thickness: number }>();
@@ -501,22 +541,57 @@ export function Structural3DViewer({
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
 
+            const isAnode = code === "AN" || code.includes("ANOD");
+            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
+            const isClamp = code === "CL" || code.includes("CLAM");
+            // Point-like accessories: their s_node/f_node describe the HOST member endpoints,
+            // not the accessory's own span. Position them as a single point at elv_1 on s_leg.
+            const isPointAccessory = isAnode || isWeld || isClamp;
+
             let thickness = 0.15;
             if (code.includes("LG")) thickness = 0.5;
             else if (code.includes("HM") || code.includes("HD")) thickness = 0.25;
             else if (code.includes("VM") || code.includes("VD")) thickness = 0.20;
             else if (code === "CO" || code === "CA" || code.includes("COND") || code.includes("CAIS")) thickness = 0.35;
 
-            const hasStartNode = md.s_node && nodeMap.has(md.s_node);
-            const hasEndNode = md.f_node && nodeMap.has(md.f_node);
+            // Resolve nodes using composite key (nodeId + paired leg) to avoid collisions
+            const startNode = lookupNode(md.s_node, md.s_leg);
+            const endNode = lookupNode(md.f_node, md.f_leg);
+            const hasStartNode = !!startNode;
+            const hasEndNode = !!endNode;
 
             let start = new THREE.Vector3();
             let end = new THREE.Vector3();
             let resolved = false;
 
-            if (hasStartNode || hasEndNode) {
-                if (hasStartNode) start.copy(nodeMap.get(md.s_node)!);
-                if (hasEndNode) end.copy(nodeMap.get(md.f_node)!);
+            if (isPointAccessory && (hasStartNode || hasStartNode !== hasEndNode || md.s_leg)) {
+                // For point-like accessories: anchor to elv_1 on s_leg.
+                // elv_1 is the depth at which the accessory is fitted on the member.
+                const y = md.elv_1 ? sanitizeElevation(md.elv_1) : (startNode?.y ?? endNode?.y ?? 0);
+                if (md.s_leg) {
+                    const coords = getLegCoordsAtElv(md.s_leg.toUpperCase(), y);
+                    start.set(coords.x, y, coords.z);
+                } else if (startNode) {
+                    // No s_leg — use s_node XZ but override Y with elv_1
+                    start.set(startNode.x, y, startNode.z);
+                } else if (endNode) {
+                    start.set(endNode.x, y, endNode.z);
+                }
+                // Apply clock-position offset (dist / clk_pos) if present
+                if (md.dist) {
+                    const distance = parseFloat(md.dist);
+                    if (distance > 0 && distance < 3.0) {
+                        const clockPos = parseFloat(md.clk_pos || "12");
+                        const angle = (clockPos / 12) * Math.PI * 2;
+                        start.x += Math.sin(angle) * distance;
+                        start.z += Math.cos(angle) * distance;
+                    }
+                }
+                end.copy(start); // Point accessory: start === end, mesh uses fixed safeMeshLength
+                resolved = true;
+            } else if (hasStartNode || hasEndNode) {
+                if (hasStartNode) start.copy(startNode!);
+                if (hasEndNode) end.copy(endNode!);
 
                 if (hasStartNode && !hasEndNode) end.copy(start);
                 else if (!hasStartNode && hasEndNode) start.copy(end);
@@ -529,7 +604,14 @@ export function Structural3DViewer({
                 const y = sanitizeElevation(md.elv_1 || (md.depth ? -parseFloat(md.depth) / 10 : 0));
                 const coords = getLegCoordsAtElv(md.s_leg, y);
                 start.set(coords.x, y, coords.z);
-                end.copy(start);
+                // If f_leg is also present at a different elevation, use it for end
+                if (md.f_leg && md.elv_2) {
+                    const y2 = sanitizeElevation(md.elv_2);
+                    const coords2 = getLegCoordsAtElv(md.f_leg, y2);
+                    end.set(coords2.x, y2, coords2.z);
+                } else {
+                    end.copy(start);
+                }
                 resolved = true;
             } else if (md.easting || md.northing) {
                 // Vertical drops (conductors, caissons)
@@ -600,12 +682,18 @@ export function Structural3DViewer({
             intermediateLayouts.set(c.id, { component: c, start, end, thickness });
         });
 
-        const resolvedLayouts = Array.from(intermediateLayouts.values()).map(layout => ({
-            component: layout.component,
-            start: [layout.start.x, layout.start.y, layout.start.z] as [number, number, number],
-            end: [layout.end.x, layout.end.y, layout.end.z] as [number, number, number],
-            thickness: layout.thickness
-        }));
+        const resolvedLayouts = Array.from(intermediateLayouts.values())
+            // Filter out any layouts where coordinates are NaN or non-finite
+            .filter(layout => {
+                const coords = [layout.start.x, layout.start.y, layout.start.z, layout.end.x, layout.end.y, layout.end.z];
+                return coords.every(v => isFinite(v));
+            })
+            .map(layout => ({
+                component: layout.component,
+                start: [layout.start.x, layout.start.y, layout.start.z] as [number, number, number],
+                end: [layout.end.x, layout.end.y, layout.end.z] as [number, number, number],
+                thickness: layout.thickness
+            }));
 
         const getComponentLegs = (comp: any) => {
             const compMd = comp.metadata || {};
