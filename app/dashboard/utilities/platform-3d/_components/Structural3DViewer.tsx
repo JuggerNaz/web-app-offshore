@@ -462,80 +462,228 @@ export function Structural3DViewer({
         const nodeMap = new Map<string, THREE.Vector3>();
         const nodeLegMap = new Map<string, string>();
 
+        // Helper to register a vector under multiple alias keys in nodeMap
+        const registerNodeAlias = (alias: string, vec: THREE.Vector3, legKey: string) => {
+            const key = alias.toUpperCase();
+            if (!nodeMap.has(key) || (nodeMap.get(key)!.x === 0 && nodeMap.get(key)!.z === 0)) {
+                nodeMap.set(key, vec);
+                if (legKey) nodeLegMap.set(key, legKey);
+            }
+            if (legKey) {
+                const compositeKey = `${key}|${legKey}`;
+                if (!nodeMap.has(compositeKey) || (nodeMap.get(compositeKey)!.x === 0 && nodeMap.get(compositeKey)!.z === 0)) {
+                    nodeMap.set(compositeKey, vec);
+                    nodeLegMap.set(compositeKey, legKey);
+                }
+            }
+        };
+
+        const processNode = (nodeName: string | undefined, legName: string | undefined, elv: string | undefined, depth: string | undefined, easting: string | undefined, northing: string | undefined, isPrimary: boolean) => {
+            if (!nodeName) return;
+
+            const normalizedNodeName = nodeName.toUpperCase();
+            const legKey = legName?.toUpperCase() || "";
+            const mapKey = legKey ? `${normalizedNodeName}|${legKey}` : normalizedNodeName;
+
+            let x = 0, y = 0, z = 0;
+
+            if (elv) {
+                y = sanitizeElevation(elv);
+            } else if (depth) {
+                y = -sanitizeElevation(depth) / 10 || 0;
+            }
+
+            if (legKey) {
+                const coords = getLegCoordsAtElv(legKey, y);
+                x = coords.x;
+                z = coords.z;
+            } else if (easting || northing) {
+                x = parseFloat(easting || "0") / 100 || 0;
+                z = parseFloat(northing || "0") / 100 || 0;
+            }
+
+            const vec = new THREE.Vector3(x, y, z);
+            registerNodeAlias(normalizedNodeName, vec, legKey);
+        };
+
+        // Helper to extract bare node from q_id
+        const extractBareNode = (q_id: string): string => {
+            const matchFull = q_id.match(/WN\s*(N?[A-Za-z0-9]+)/i);
+            const matchBare = q_id.match(/(?:WN\s*)?(N?(\d+))$/i);
+            if (matchFull) return matchFull[1].toUpperCase();
+            if (matchBare) return matchBare[1].toUpperCase();
+            return q_id.toUpperCase();
+        };
+
+        // PASS 1: Authoritative Root Node Providers (WN, ND, NODE that define their own absolute coords)
+        const intermediateWelds: typeof components = [];
+
         components.forEach(c => {
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
-            const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG", "WN", "CF", "CG", "CD", "CO", "CA"].includes(code);
+            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
+            
+            if (isWeld || code.includes("NODE") || code === "ND") {
+                const bareNode = extractBareNode(c.q_id);
+                const sNode = (md.s_node || "").toUpperCase();
+                const fNode = (md.f_node || "").toUpperCase();
+                
+                // If it has s_node and f_node, and neither is itself, it's an intermediate weld on a member!
+                const isIntermediate = sNode && fNode && sNode !== bareNode && fNode !== bareNode;
 
-            const processNode = (nodeName: string | undefined, legName: string | undefined, elv: string | undefined) => {
-                if (!nodeName) return;
-
-                // Node IDs are NOT globally unique — they are only unique within a leg.
-                // Key the map as "nodeId|LEG" so that node "71" on A1 and node "71" on A2
-                // are stored as separate entries with correct positions.
-                const legKey = legName?.toUpperCase() || "";
-                const mapKey = legKey ? `${nodeName}|${legKey}` : nodeName;
-
-                if (nodeMap.has(mapKey)) return;
-
-                let x = 0, y = 0, z = 0;
-
-                // Determine vertical coordinate (elevation) first
-                if (elv) {
-                    y = sanitizeElevation(elv);
-                } else if (md.depth) {
-                    y = -sanitizeElevation(md.depth) / 10 || 0;
+                if (isIntermediate) {
+                    intermediateWelds.push(c);
+                    return; // Process in Pass 2
                 }
 
-                // Determine base horizontal coordinates
-                if (legKey) {
-                    const coords = getLegCoordsAtElv(legKey, y);
+                // Root Node Weld Processing
+                const leg = (md.s_leg || md.f_leg || md.leg || "").toUpperCase();
+                const elv = md.elv_1 || md.elv_2 || md.depth;
+                const ePlainNum = md.elv_1 || md.elv_2;
+
+                let y = 0;
+                if (ePlainNum) y = sanitizeElevation(ePlainNum);
+                else if (md.depth) y = -sanitizeElevation(md.depth) / 10;
+
+                let x = 0, z = 0;
+                if (leg) {
+                    const coords = getLegCoordsAtElv(leg, y);
                     x = coords.x;
                     z = coords.z;
-                    // Also store in nodeLegMap using the composite key
-                    nodeLegMap.set(mapKey, legKey);
                 } else if (md.easting || md.northing) {
                     x = parseFloat(md.easting || "0") / 100 || 0;
                     z = parseFloat(md.northing || "0") / 100 || 0;
                 }
 
-                // Only apply distance/clock position offsets for non-primary components (like clamps/anodes)
-                // and only if the distance is small (e.g. less than 3 meters)
-                if (md.dist && !isPrimary) {
+                if (leg || md.easting || md.northing || ePlainNum || md.depth) {
+                    const vec = new THREE.Vector3(x, y, z);
+                    
+                    registerNodeAlias(c.q_id, vec, leg);
+
+                    const matchFull = c.q_id.match(/WN\s*(N?[A-Za-z0-9]+)/i);
+                    const matchBare = c.q_id.match(/(?:WN\s*)?(N?(\d+))$/i);
+                    if (matchFull) {
+                        const withN = matchFull[1].toUpperCase();
+                        registerNodeAlias(withN, vec, leg);
+                        const numOnly = withN.replace(/^N/, "");
+                        registerNodeAlias(numOnly, vec, leg);
+                        registerNodeAlias(`N${numOnly}`, vec, leg);
+                    } else if (matchBare) {
+                        const withN = matchBare[1].toUpperCase();
+                        registerNodeAlias(withN, vec, leg);
+                        registerNodeAlias(matchBare[2], vec, leg);
+                    }
+                }
+            }
+        });
+
+        // lookupNode tries multiple alias forms so that whatever format s_node/f_node uses,
+        // it resolves correctly ("N164", "164", "WN N164", etc.)
+        const lookupNode = (nodeId: string | undefined, legName: string | undefined): THREE.Vector3 | undefined => {
+            if (!nodeId) return undefined;
+            const normalizedNodeId = nodeId.toUpperCase().trim();
+            const legKey = legName?.toUpperCase() || "";
+
+            const aliases: string[] = [normalizedNodeId];
+            if (/^N\d+$/.test(normalizedNodeId)) aliases.push(normalizedNodeId.slice(1));
+            if (/^\d+$/.test(normalizedNodeId)) aliases.push(`N${normalizedNodeId}`);
+            if (!normalizedNodeId.startsWith("WN")) {
+                aliases.push(`WN ${normalizedNodeId}`);
+                aliases.push(`WN${normalizedNodeId}`);
+                if (/^\d+$/.test(normalizedNodeId)) {
+                    aliases.push(`WN N${normalizedNodeId}`);
+                    aliases.push(`WNN${normalizedNodeId}`);
+                }
+            }
+
+            for (const alias of aliases) {
+                if (legKey) {
+                    const compositeKey = `${alias}|${legKey}`;
+                    if (nodeMap.has(compositeKey)) return nodeMap.get(compositeKey);
+                }
+                if (nodeMap.has(alias)) return nodeMap.get(alias);
+            }
+            return undefined;
+        };
+
+        // PASS 2: Intermediate Node Welds (e.g. WN N170 sitting on HOM N166-N164)
+        // Group by endpoints, interpolate, and REGISTER back to nodeMap!
+        const intermediateWeldGroups = new Map<string, typeof intermediateWelds>();
+        intermediateWelds.forEach(c => {
+            const md = c.metadata || {};
+            const sNode = lookupNode(md.s_node, md.s_leg);
+            const fNode = lookupNode(md.f_node, md.f_leg);
+            if (sNode && fNode) {
+                const key = `${sNode.x.toFixed(3)},${sNode.y.toFixed(3)},${sNode.z.toFixed(3)}|${fNode.x.toFixed(3)},${fNode.y.toFixed(3)},${fNode.z.toFixed(3)}`;
+                if (!intermediateWeldGroups.has(key)) intermediateWeldGroups.set(key, []);
+                intermediateWeldGroups.get(key)!.push(c);
+            }
+        });
+
+        intermediateWeldGroups.forEach((items, key) => {
+            const md0 = items[0].metadata || {};
+            const sNode = lookupNode(md0.s_node, md0.s_leg)!;
+            const fNode = lookupNode(md0.f_node, md0.f_leg)!;
+            
+            items.sort((a, b) => a.q_id.localeCompare(b.q_id));
+            const count = items.length;
+            
+            items.forEach((item, idx) => {
+                const md = item.metadata || {};
+                let pos = new THREE.Vector3();
+                
+                if ((md.elv_1 || md.depth) && Math.abs(fNode.y - sNode.y) > 0.001) {
+                    const targetY = sanitizeElevation(md.elv_1 || (-parseFloat(md.depth) / 10));
+                    const t = (targetY - sNode.y) / (fNode.y - sNode.y);
+                    pos.copy(sNode).lerp(fNode, Math.max(0, Math.min(1, t)));
+                } else {
+                    // For horizontal members, distribute them evenly
+                    const t = (idx + 1) / (count + 1);
+                    pos.copy(sNode).lerp(fNode, t);
+                }
+                
+                if (md.dist) {
                     const distance = parseFloat(md.dist);
-                    if (distance < 3.0) {
+                    if (distance > 0 && distance < 3.0) {
                         const clockPos = parseFloat(md.clk_pos || "12");
                         const angle = (clockPos / 12) * Math.PI * 2;
-                        x += Math.sin(angle) * distance;
-                        z += Math.cos(angle) * distance;
+                        pos.x += Math.sin(angle) * distance;
+                        pos.z += Math.cos(angle) * distance;
                     }
                 }
 
-                nodeMap.set(mapKey, new THREE.Vector3(x, y, z));
-            };
-
-            processNode(md.s_node, md.s_leg, md.elv_1);
-            processNode(md.f_node, md.f_leg, md.elv_2);
+                // Register interpolated position to nodeMap so HDM members can use it!
+                const bareNode = extractBareNode(item.q_id);
+                registerNodeAlias(item.q_id, pos, "");
+                registerNodeAlias(bareNode, pos, "");
+                if (/^N\d+$/.test(bareNode)) {
+                    registerNodeAlias(bareNode.slice(1), pos, "");
+                } else if (/^\d+$/.test(bareNode)) {
+                    registerNodeAlias(`N${bareNode}`, pos, "");
+                }
+            });
         });
 
-        // Helper: look up a node using its paired leg as disambiguator.
-        // Tries composite key "nodeId|LEG" first, falls back to bare "nodeId" for
-        // platforms where node IDs are globally unique (legacy data).
-        const lookupNode = (nodeId: string | undefined, legName: string | undefined): THREE.Vector3 | undefined => {
-            if (!nodeId) return undefined;
-            const legKey = legName?.toUpperCase() || "";
-            if (legKey) {
-                const compositeKey = `${nodeId}|${legKey}`;
-                if (nodeMap.has(compositeKey)) return nodeMap.get(compositeKey);
+        // PASS 3: Fallback registrations for endpoints on non-node components
+        components.forEach(c => {
+            const md = c.metadata || {};
+            const code = (c.code || "").toUpperCase();
+            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
+            const isNode = isWeld || code.includes("NODE") || code === "ND";
+            
+            if (!isNode) {
+                const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG", "CF", "CG", "CD", "CO", "CA"].includes(code);
+                processNode(md.s_node, md.s_leg, md.elv_1, md.depth, md.easting, md.northing, isPrimary);
+                processNode(md.f_node, md.f_leg, md.elv_2, md.depth, md.easting, md.northing, isPrimary);
             }
-            // Fallback: bare node id (for globally-unique node datasets)
-            if (nodeMap.has(nodeId)) return nodeMap.get(nodeId);
-            return undefined;
-        };
+        });
+
+
 
         // 5. Resolve Structural Layouts for components
         const intermediateLayouts = new Map<number, { component: any, start: THREE.Vector3, end: THREE.Vector3, thickness: number }>();
         const pendingAttachments: typeof components = [];
+        const pendingSpanAccessories: { component: any, sNode: THREE.Vector3, fNode: THREE.Vector3 }[] = [];
 
         components.forEach((c, i) => {
             const md = c.metadata || {};
@@ -544,8 +692,6 @@ export function Structural3DViewer({
             const isAnode = code === "AN" || code.includes("ANOD");
             const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
             const isClamp = code === "CL" || code.includes("CLAM");
-            // Point-like accessories: their s_node/f_node describe the HOST member endpoints,
-            // not the accessory's own span. Position them as a single point at elv_1 on s_leg.
             const isPointAccessory = isAnode || isWeld || isClamp;
 
             let thickness = 0.15;
@@ -554,7 +700,6 @@ export function Structural3DViewer({
             else if (code.includes("VM") || code.includes("VD")) thickness = 0.20;
             else if (code === "CO" || code === "CA" || code.includes("COND") || code.includes("CAIS")) thickness = 0.35;
 
-            // Resolve nodes using composite key (nodeId + paired leg) to avoid collisions
             const startNode = lookupNode(md.s_node, md.s_leg);
             const endNode = lookupNode(md.f_node, md.f_leg);
             const hasStartNode = !!startNode;
@@ -564,20 +709,22 @@ export function Structural3DViewer({
             let end = new THREE.Vector3();
             let resolved = false;
 
-            if (isPointAccessory && (hasStartNode || hasStartNode !== hasEndNode || md.s_leg)) {
-                // For point-like accessories: anchor to elv_1 on s_leg.
-                // elv_1 is the depth at which the accessory is fitted on the member.
+            if (md.associated_comp_id) {
+                pendingAttachments.push(c);
+                return;
+            } else if (isPointAccessory && hasStartNode && hasEndNode && startNode!.distanceTo(endNode!) > 0.001) {
+                pendingSpanAccessories.push({ component: c, sNode: startNode!, fNode: endNode! });
+                return;
+            } else if (isPointAccessory && (hasStartNode || hasStartNode !== hasEndNode || md.s_leg)) {
                 const y = md.elv_1 ? sanitizeElevation(md.elv_1) : (startNode?.y ?? endNode?.y ?? 0);
                 if (md.s_leg) {
                     const coords = getLegCoordsAtElv(md.s_leg.toUpperCase(), y);
                     start.set(coords.x, y, coords.z);
                 } else if (startNode) {
-                    // No s_leg — use s_node XZ but override Y with elv_1
                     start.set(startNode.x, y, startNode.z);
                 } else if (endNode) {
                     start.set(endNode.x, y, endNode.z);
                 }
-                // Apply clock-position offset (dist / clk_pos) if present
                 if (md.dist) {
                     const distance = parseFloat(md.dist);
                     if (distance > 0 && distance < 3.0) {
@@ -587,7 +734,7 @@ export function Structural3DViewer({
                         start.z += Math.cos(angle) * distance;
                     }
                 }
-                end.copy(start); // Point accessory: start === end, mesh uses fixed safeMeshLength
+                end.copy(start);
                 resolved = true;
             } else if (hasStartNode || hasEndNode) {
                 if (hasStartNode) start.copy(startNode!);
@@ -597,14 +744,10 @@ export function Structural3DViewer({
                 else if (!hasStartNode && hasEndNode) start.copy(end);
 
                 resolved = true;
-            } else if (md.associated_comp_id) {
-                pendingAttachments.push(c);
-                return; // Skip to next, resolve in Pass 2
             } else if (md.s_leg) {
                 const y = sanitizeElevation(md.elv_1 || (md.depth ? -parseFloat(md.depth) / 10 : 0));
                 const coords = getLegCoordsAtElv(md.s_leg, y);
                 start.set(coords.x, y, coords.z);
-                // If f_leg is also present at a different elevation, use it for end
                 if (md.f_leg && md.elv_2) {
                     const y2 = sanitizeElevation(md.elv_2);
                     const coords2 = getLegCoordsAtElv(md.f_leg, y2);
@@ -614,7 +757,6 @@ export function Structural3DViewer({
                 }
                 resolved = true;
             } else if (md.easting || md.northing) {
-                // Vertical drops (conductors, caissons)
                 const x = parseFloat(md.easting || "0") / 100 || 0;
                 const z = parseFloat(md.northing || "0") / 100 || 0;
                 start.set(x, maxElv + 2, z);
@@ -623,7 +765,6 @@ export function Structural3DViewer({
             }
 
             if (!resolved) {
-                // Fallback circle for components with absolutely no location data
                 const layer = Math.floor(i / 16);
                 const posInLayer = i % 16;
                 const radius = 20 + layer * 2;
@@ -635,51 +776,153 @@ export function Structural3DViewer({
             intermediateLayouts.set(c.id, { component: c, start, end, thickness });
         });
 
-        // Pass 2: Resolve attachments relative to their parents
-        pendingAttachments.forEach((c, index) => {
-            const md = c.metadata || {};
-            const code = (c.code || "").toUpperCase();
-            let thickness = 0.15;
+        const spanMap = new Map<string, typeof pendingSpanAccessories>();
+        pendingSpanAccessories.forEach(item => {
+            const key = `${item.sNode.x.toFixed(3)},${item.sNode.y.toFixed(3)},${item.sNode.z.toFixed(3)}|${item.fNode.x.toFixed(3)},${item.fNode.y.toFixed(3)},${item.fNode.z.toFixed(3)}`;
+            if (!spanMap.has(key)) spanMap.set(key, []);
+            spanMap.get(key)!.push(item);
+        });
 
-            const parentId = md.associated_comp_id;
-            const parentLayout = intermediateLayouts.get(parentId);
-
-            let start = new THREE.Vector3();
-            let end = new THREE.Vector3();
-
-            if (parentLayout) {
-                const { start: pStart, end: pEnd } = parentLayout;
-                thickness = parentLayout.thickness; // Inherit parent thickness for proper relative scaling
-                start.copy(pStart).add(pEnd).multiplyScalar(0.5); // Midpoint default
-
-                if (md.depth || md.elv_1) {
+        spanMap.forEach((items, key) => {
+            const sNode = items[0].sNode;
+            const fNode = items[0].fNode;
+            
+            items.sort((a, b) => a.component.q_id.localeCompare(b.component.q_id));
+            const count = items.length;
+            
+            items.forEach((item, idx) => {
+                const md = item.component.metadata || {};
+                let start = new THREE.Vector3();
+                let end = new THREE.Vector3();
+                
+                if ((md.elv_1 || md.depth) && Math.abs(fNode.y - sNode.y) > 0.001) {
                     const targetY = sanitizeElevation(md.elv_1 || (-parseFloat(md.depth) / 10));
-                    if (Math.abs(pEnd.y - pStart.y) > 0.001) {
-                        const t = (targetY - pStart.y) / (pEnd.y - pStart.y);
-                        const clampedT = Math.max(0, Math.min(1, t));
-                        start.copy(pStart).lerp(pEnd, clampedT);
-                    } else {
-                        start.setY(targetY); // Parent is horizontal, just match Y
+                    const t = (targetY - sNode.y) / (fNode.y - sNode.y);
+                    const clampedT = Math.max(0, Math.min(1, t));
+                    start.copy(sNode).lerp(fNode, clampedT);
+                } else {
+                    const t = (idx + 1) / (count + 1);
+                    start.copy(sNode).lerp(fNode, t);
+                }
+                
+                if (md.dist) {
+                    const distance = parseFloat(md.dist);
+                    if (distance > 0 && distance < 3.0) {
+                        const clockPos = parseFloat(md.clk_pos || "12");
+                        const angle = (clockPos / 12) * Math.PI * 2;
+                        start.x += Math.sin(angle) * distance;
+                        start.z += Math.cos(angle) * distance;
                     }
                 }
+                
+                end.copy(start);
+                
+                intermediateLayouts.set(item.component.id, { 
+                    component: item.component, 
+                    start, 
+                    end, 
+                    thickness: 0.15 
+                });
+            });
+        });
 
-                // Preserve parent direction so the attachment aligns parallel to the parent
-                const direction = pEnd.clone().sub(pStart).normalize();
+        // Pass 2: Resolve attachments relative to their parents
+        const pendingAttachmentsByParent = new Map<number, typeof components>();
+        pendingAttachments.forEach(c => {
+            const parentId = c.metadata?.associated_comp_id;
+            if (parentId) {
+                if (!pendingAttachmentsByParent.has(parentId)) {
+                    pendingAttachmentsByParent.set(parentId, []);
+                }
+                pendingAttachmentsByParent.get(parentId)!.push(c);
+            } else {
+                const fallbackId = -1;
+                if (!pendingAttachmentsByParent.has(fallbackId)) {
+                    pendingAttachmentsByParent.set(fallbackId, []);
+                }
+                pendingAttachmentsByParent.get(fallbackId)!.push(c);
+            }
+        });
+
+        let unattachedIndex = 0;
+        pendingAttachmentsByParent.forEach((children, parentId) => {
+            if (parentId === -1) {
+                children.forEach(c => {
+                    let start = new THREE.Vector3();
+                    const layer = Math.floor(unattachedIndex / 16);
+                    const radius = 25 + layer * 2;
+                    const angle = (unattachedIndex / 16) * Math.PI * 2;
+                    start.set(Math.cos(angle) * radius, maxElv, Math.sin(angle) * radius);
+                    let end = start.clone();
+                    intermediateLayouts.set(c.id, { component: c, start, end, thickness: 0.15 });
+                    unattachedIndex++;
+                });
+                return;
+            }
+
+            const parentLayout = intermediateLayouts.get(parentId);
+            if (!parentLayout) {
+                children.forEach(c => {
+                    let start = new THREE.Vector3();
+                    const layer = Math.floor(unattachedIndex / 16);
+                    const radius = 25 + layer * 2;
+                    const angle = (unattachedIndex / 16) * Math.PI * 2;
+                    start.set(Math.cos(angle) * radius, maxElv, Math.sin(angle) * radius);
+                    let end = start.clone();
+                    intermediateLayouts.set(c.id, { component: c, start, end, thickness: 0.15 });
+                    unattachedIndex++;
+                });
+                return;
+            }
+
+            const { start: pStart, end: pEnd, thickness: pThickness } = parentLayout;
+            const direction = pEnd.clone().sub(pStart).normalize();
+
+            const childrenWithPos = children.filter(c => c.metadata?.depth || c.metadata?.elv_1);
+            const childrenWithoutPos = children.filter(c => !c.metadata?.depth && !c.metadata?.elv_1);
+
+            childrenWithoutPos.sort((a, b) => a.q_id.localeCompare(b.q_id));
+
+            childrenWithPos.forEach(c => {
+                const md = c.metadata || {};
+                let thickness = pThickness;
+                let start = new THREE.Vector3();
+                let end = new THREE.Vector3();
+
+                const targetY = sanitizeElevation(md.elv_1 || (-parseFloat(md.depth) / 10));
+                if (Math.abs(pEnd.y - pStart.y) > 0.001) {
+                    const t = (targetY - pStart.y) / (pEnd.y - pStart.y);
+                    const clampedT = Math.max(0, Math.min(1, t));
+                    start.copy(pStart).lerp(pEnd, clampedT);
+                } else {
+                    start.copy(pStart).add(pEnd).multiplyScalar(0.5);
+                    start.setY(targetY);
+                }
+
                 if (direction.lengthSq() > 0.1) {
                     end.copy(start).add(direction.multiplyScalar(0.1));
                 } else {
                     end.copy(start);
                 }
-            } else {
-                // Parent not found in rendering context, fallback to circle
-                const layer = Math.floor(index / 16);
-                const radius = 25 + layer * 2;
-                const angle = (index / 16) * Math.PI * 2;
-                start.set(Math.cos(angle) * radius, maxElv, Math.sin(angle) * radius);
-                end.copy(start);
-            }
+                intermediateLayouts.set(c.id, { component: c, start, end, thickness });
+            });
 
-            intermediateLayouts.set(c.id, { component: c, start, end, thickness });
+            const count = childrenWithoutPos.length;
+            childrenWithoutPos.forEach((c, idx) => {
+                let thickness = pThickness;
+                let start = new THREE.Vector3();
+                let end = new THREE.Vector3();
+
+                const t = (idx + 1) / (count + 1);
+                start.copy(pStart).lerp(pEnd, t);
+
+                if (direction.lengthSq() > 0.1) {
+                    end.copy(start).add(direction.multiplyScalar(0.1));
+                } else {
+                    end.copy(start);
+                }
+                intermediateLayouts.set(c.id, { component: c, start, end, thickness });
+            });
         });
 
         const resolvedLayouts = Array.from(intermediateLayouts.values())
@@ -697,8 +940,10 @@ export function Structural3DViewer({
 
         const getComponentLegs = (comp: any) => {
             const compMd = comp.metadata || {};
-            const sLeg = (compMd.s_leg || nodeLegMap.get(compMd.s_node) || "").toUpperCase();
-            const fLeg = (compMd.f_leg || nodeLegMap.get(compMd.f_node) || "").toUpperCase();
+            const sNodeKey = (compMd.s_node || "").toUpperCase();
+            const fNodeKey = (compMd.f_node || "").toUpperCase();
+            const sLeg = (compMd.s_leg || nodeLegMap.get(sNodeKey) || nodeLegMap.get(`N${sNodeKey}`) || "").toUpperCase();
+            const fLeg = (compMd.f_leg || nodeLegMap.get(fNodeKey) || nodeLegMap.get(`N${fNodeKey}`) || "").toUpperCase();
             return { sLeg, fLeg };
         };
 
@@ -738,8 +983,8 @@ export function Structural3DViewer({
                 const startY = layout.start[1];
                 const endY = layout.end[1];
 
-                const matchesStart = selectedElevations.some(selElv => Math.abs(startY - selElv) < 0.1);
-                const matchesEnd = selectedElevations.some(selElv => Math.abs(endY - selElv) < 0.1);
+                const matchesStart = selectedElevations.some(selElv => Math.abs(startY - selElv) < 0.5);
+                const matchesEnd = selectedElevations.some(selElv => Math.abs(endY - selElv) < 0.5);
 
                 // Both start and end coordinates must match one of the selected elevations
                 // (keeps only the horizontal members/components at this level slice)
