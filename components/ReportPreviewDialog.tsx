@@ -14,6 +14,12 @@ interface ReportPreviewDialogProps {
     title: string;
     fileName: string;
     generateReport: (printFriendly: boolean, showSignatures: boolean) => Promise<Blob | void>;
+    /** Initial value for the Signatory toggle — driven by the Report Wizard config */
+    initialShowSignatures?: boolean;
+    /** Initial value for the Ink Saver (print-friendly) toggle — driven by the Report Wizard config */
+    initialPrintFriendly?: boolean;
+    /** The active report configuration including watermark, etc. */
+    reportConfig?: any;
 }
 
 export function ReportPreviewDialog({
@@ -21,17 +27,25 @@ export function ReportPreviewDialog({
     onOpenChange,
     title,
     fileName,
-    generateReport
+    generateReport,
+    initialShowSignatures,
+    initialPrintFriendly,
+    reportConfig,
 }: ReportPreviewDialogProps) {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [blob, setBlob] = useState<Blob | null>(null);
-    const [printFriendly, setPrintFriendly] = useState(false);
-    const [showSignatures, setShowSignatures] = useState(true);
+    const [printFriendly, setPrintFriendly] = useState(initialPrintFriendly ?? false);
+    const [showSignatures, setShowSignatures] = useState(initialShowSignatures ?? true);
 
     useEffect(() => {
         if (open) {
-            loadPreview(printFriendly, showSignatures);
+            // Re-seed toggles from the wizard config each time the dialog opens
+            const initPF = initialPrintFriendly ?? false;
+            const initSig = initialShowSignatures ?? true;
+            setPrintFriendly(initPF);
+            setShowSignatures(initSig);
+            loadPreview(initPF, initSig);
         } else {
             // Cleanup on close
             if (previewUrl) {
@@ -40,6 +54,7 @@ export function ReportPreviewDialog({
                 setBlob(null);
             }
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
 
     const loadPreview = async (isPrintFriendly: boolean, isShowSignatures: boolean) => {
@@ -51,6 +66,23 @@ export function ReportPreviewDialog({
             setBlob(null);
         }
         try {
+            if (typeof window !== "undefined") {
+                const baseConfig = reportConfig || (window as any).__reportConfig || {};
+                (window as any).__reportConfig = {
+                    ...baseConfig,
+                    printFriendly: isPrintFriendly,
+                    showSignatures: isShowSignatures,
+                    watermark: {
+                        ...baseConfig.watermark,
+                        enabled: baseConfig.watermark?.enabled ?? false,
+                        text: baseConfig.watermark?.text ?? "DRAFT",
+                        transparency: baseConfig.watermark?.transparency ?? 0.15,
+                        color: baseConfig.watermark?.color ?? "gray"
+                    }
+                };
+                console.log("ReportPreviewDialog: set window.__reportConfig =", (window as any).__reportConfig);
+            }
+
             console.log("ReportPreviewDialog: Calling generateReport...", { isPrintFriendly, isShowSignatures });
             console.log("ReportPreviewDialog: Generator function source:", generateReport.toString().substring(0, 500));
             
@@ -241,19 +273,26 @@ export function ReportPreviewDialog({
                     )}
                 </div>
 
-                <div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-950 flex justify-end gap-2">
-                    <Button variant="outline" onClick={handleOpenNewTab} disabled={!previewUrl}>
-                        <Eye className="w-4 h-4 mr-2" /> Open PDF
-                    </Button>
-                    <Button variant="outline" onClick={handleShare} disabled={!blob}>
-                        <Share2 className="w-4 h-4 mr-2" /> Share
-                    </Button>
-                    <Button variant="outline" onClick={handlePrint} disabled={!previewUrl}>
-                        <Printer className="w-4 h-4 mr-2" /> Print
-                    </Button>
-                    <Button onClick={handleDownload} disabled={!blob} className="bg-blue-600 hover:bg-blue-700">
-                        <Download className="w-4 h-4 mr-2" /> Download
-                    </Button>
+                <div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-950 flex justify-between items-center gap-2">
+                    <div>
+                        <Button variant="outline" onClick={() => onOpenChange(false)}>
+                            Back
+                        </Button>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={handleOpenNewTab} disabled={!previewUrl}>
+                            <Eye className="w-4 h-4 mr-2" /> Open PDF
+                        </Button>
+                        <Button variant="outline" onClick={handleShare} disabled={!blob}>
+                            <Share2 className="w-4 h-4 mr-2" /> Share
+                        </Button>
+                        <Button variant="outline" onClick={handlePrint} disabled={!previewUrl}>
+                            <Printer className="w-4 h-4 mr-2" /> Print
+                        </Button>
+                        <Button onClick={handleDownload} disabled={!blob} className="bg-blue-600 hover:bg-blue-700">
+                            <Download className="w-4 h-4 mr-2" /> Download
+                        </Button>
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>

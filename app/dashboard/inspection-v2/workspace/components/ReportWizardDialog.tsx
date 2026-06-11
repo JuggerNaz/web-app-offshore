@@ -31,6 +31,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ReportTemplate {
     id: string;
@@ -43,6 +46,117 @@ interface ReportTemplate {
     available: boolean;
 }
 
+export function getMatchingRecordsForTemplate(templateId: string, records: any[]): any[] {
+    const hasCode = (r: any, codes: string[]) => 
+        codes.includes((r.inspection_type_code || r.inspection_type?.code || "").toUpperCase());
+
+    switch (templateId) {
+        case 'rgvi':
+        case 'dgvi':
+            return records.filter(r => hasCode(r, ['RGVI', 'DGVI']));
+        case 'cp_rov':
+        case 'cp_div':
+            return records.filter(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined || r.inspection_data?.cp !== undefined);
+        case 'rswni_rov':
+            return records.filter(r => hasCode(r, ['RSWNI', 'SWNI']));
+        case 'anode_rov':
+            return records.filter(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
+                return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
+            });
+        case 'anode_rsani_rov':
+            return records.filter(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                return typeCode === 'RSANI' && compCode === 'AN';
+            });
+        case 'fmd_rov':
+            return records.filter(r => hasCode(r, ['RFMD', 'FMD']));
+        case 'utwt_rov':
+            return records.filter(r => hasCode(r, ['RUTWT']));
+        case 'seabed_rov':
+            return records.filter(r => hasCode(r, ['RSEAB', 'SEABED']));
+        case 'rwdi':
+            return records.filter(r => hasCode(r, ['RWDI']));
+        case 'mgi_rov':
+            return records.filter(r => hasCode(r, ['RMGI', 'MGROW']));
+        case 'szci_rov':
+            return records.filter(r => hasCode(r, ['RSZCI']));
+        case 'rscor_rov':
+            return records.filter(r => hasCode(r, ['RSCOR', 'SCOUR']));
+        case 'rrisi_rov':
+            return records.filter(r => hasCode(r, ['RRISI']));
+        case 'jtisi_rov':
+            return records.filter(r => hasCode(r, ['JTISI']));
+        case 'itisi_rov':
+            return records.filter(r => hasCode(r, ['ITISI']));
+        case 'rcasn_rov':
+        case 'rcasn_sketch_rov':
+            return records.filter(r => hasCode(r, ['RCASN']));
+        case 'rcond_rov':
+        case 'rcond_sketch_rov':
+            return records.filter(r => hasCode(r, ['RCOND', 'RCON']));
+        case 'bl_rov':
+            return records.filter(r => hasCode(r, ['BL', 'BOATLANDING']));
+        case 'rg_rov':
+            return records.filter(r => hasCode(r, ['RG', 'RISERGUARD']));
+        case 'sg_rov':
+            return records.filter(r => hasCode(r, ['SG', 'CAISSONGUARD']));
+        case 'cu_rov':
+            return records.filter(r => hasCode(r, ['CU', 'CONDUCTORGUARD']));
+            
+        // DIVING
+        case 'gvins':
+            return records.filter(r => hasCode(r, ['GVINS']));
+        case 'bsins':
+            return records.filter(r => hasCode(r, ['BSINS']));
+        case 'cvins':
+            return records.filter(r => hasCode(r, ['CVINS']));
+        case 'clean':
+            return records.filter(r => hasCode(r, ['CLEAN']));
+        case 'mpins':
+            return records.filter(r => hasCode(r, ['MPINS']));
+        case 'utwtk':
+            return records.filter(r => hasCode(r, ['UTWTK', 'DUTWT']));
+        case 'szone':
+            return records.filter(r => hasCode(r, ['SZONE', 'DSZCI']));
+        case 'mgi_div':
+            return records.filter(r => hasCode(r, ['DMGI', 'MGROW']));
+        case 'cpclb':
+            return records.filter(r => hasCode(r, ['CPCLB']));
+        case 'utclb':
+            return records.filter(r => hasCode(r, ['UTCLB']));
+        case 'divingAnode':
+        case 'diving_anode':
+        case 'divingAnode_rov':
+            return records.filter(r => hasCode(r, ['PL_AN']));
+        case 'acfmc':
+            return records.filter(r => hasCode(r, ['ACFMC']));
+        case 'plco':
+            return records.filter(r => hasCode(r, ['PL_CO']));
+            
+        // BOTH
+        case 'defect_summary':
+        case 'anomaly':
+            return records.filter(r => r.has_anomaly || r.is_anomaly);
+        case 'findings':
+        case 'photo':
+        case 'video_log':
+        case 'diver_log':
+        case 'compliance':
+        case 'jp_summary':
+        case 'sow_report':
+        case 'struct_over':
+        case 'exec_sum':
+        case 'insp_report':
+            return records;
+        default:
+            return records.filter(r => r.inspection_type_id === templateId || r.inspection_type_code === templateId);
+    }
+}
+
 interface ReportWizardDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -50,6 +164,8 @@ interface ReportWizardDialogProps {
     currentRecords: any[];
     allInspectionTypes: any[];
     headerData?: any;
+    config: any;
+    setConfig: (cfg: any) => void;
     handlers: {
         generateRGVIReport: () => void;
         generateGVINSReport: () => void;
@@ -74,6 +190,7 @@ interface ReportWizardDialogProps {
         generateFMDReport: () => void;
         generateUTWTReport: () => void;
         generateMGIReport: () => void;
+        generateDivingMGIReport: () => void;
         generateSZCIReport: () => void;
         generateRSCORReport: () => void;
         generateRRISIReport: () => void;
@@ -185,6 +302,8 @@ export function ReportWizardDialog({
     currentRecords,
     allInspectionTypes,
     headerData,
+    config,
+    setConfig,
     handlers
 }: ReportWizardDialogProps) {
     const [currentStep, setCurrentStep] = useState(1);
@@ -192,15 +311,6 @@ export function ReportWizardDialog({
     const [search, setSearch] = useState("");
     const [activeCategory, setActiveCategory] = useState<string>("Inspection");
     const [activeMode, setActiveMode] = useState<string>("ALL");
-    
-    // Configuration State
-    const [config, setConfig] = useState({
-        preparedBy: "",
-        reviewedBy: "",
-        watermark: "DRAFT",
-        includeImages: true,
-        includeAnomalies: true
-    });
 
     const templates: ReportTemplate[] = useMemo(() => {
         const hasRecords = (codes: string[]) => 
@@ -223,10 +333,24 @@ export function ReportWizardDialog({
                 return typeCode === 'RSANI' && compCode === 'AN';
             }) },
             { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: true },
-            { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey', description: 'Flooded Member Detection using ultrasonic or gamma methods.', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD']) },
+            { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey', description: 'Flooded Member Detection using ultrasonic or gamma methods.', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD', 'FMD']) },
             { id: 'utwt_rov', code: 'RUTWT', name: 'UTWT Survey', description: 'Ultrasonic Wall Thickness measurements of members.', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT']) },
-            { id: 'seabed_rov', code: 'RSEAB', name: 'ROV Seabed Survey', description: 'Debris, gas seepage, and crater survey of the seabed.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB']) },
+            { id: 'seabed_rov', code: 'RSEAB', name: 'ROV Seabed Survey', description: 'Debris, gas seepage, and crater survey of the seabed.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
             { id: 'rwdi', code: 'RWDI', name: 'ROV Water Depth Inspection Report', description: 'Portrait ROV Water Depth Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
+            { id: 'mgi_rov', code: 'RMGI', name: 'ROV Marine Growth (RMGI)', description: 'ROV Marine Growth Inspection report including coverage and thickness measurements.', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
+            { id: 'szci_rov', code: 'RSZCI', name: 'ROV Splash Zone (SZCI)', description: 'ROV Splash Zone inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
+            { id: 'rscor_rov', code: 'RSCOR', name: 'ROV Scour Report (RSCOR)', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rrisi_rov', code: 'RRISI', name: 'ROV Riser Report (RRISI)', description: 'ROV Riser Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI']) },
+            { id: 'jtisi_rov', code: 'JTISI', name: 'ROV J-Tube Report (JTISI)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI']) },
+            { id: 'itisi_rov', code: 'ITISI', name: 'ROV I-Tube Report (ITISI)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI']) },
+            { id: 'rcasn_rov', code: 'RCASN', name: 'ROV Caisson Report (RCASN)', description: 'ROV Caisson Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNReport, available: hasRecords(['RCASN']) },
+            { id: 'rcasn_sketch_rov', code: 'RCASN-S', name: 'ROV Caisson Sketch Report', description: 'ROV Caisson Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNSketchReport, available: hasRecords(['RCASN']) },
+            { id: 'rcond_rov', code: 'RCOND', name: 'ROV Conductor Report (RCOND)', description: 'ROV Conductor Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDReport, available: hasRecords(['RCOND', 'RCON']) },
+            { id: 'rcond_sketch_rov', code: 'RCOND-S', name: 'ROV Conductor Sketch Report', description: 'ROV Conductor Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDSketchReport, available: hasRecords(['RCOND', 'RCON']) },
+            { id: 'bl_rov', code: 'BL', name: 'ROV Boatlanding Report (BL)', description: 'ROV Boatlanding Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateBLReport, available: hasRecords(['BL', 'BOATLANDING']) },
+            { id: 'rg_rov', code: 'RG', name: 'ROV Riser Guard Report (RG)', description: 'ROV Riser Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGReport, available: hasRecords(['RG', 'RISERGUARD']) },
+            { id: 'sg_rov', code: 'SG', name: 'ROV Caisson Guard Report (SG)', description: 'ROV Caisson Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSGReport, available: hasRecords(['SG', 'CAISSONGUARD']) },
+            { id: 'cu_rov', code: 'CU', name: 'ROV Conductor Guard Report (CU)', description: 'ROV Conductor Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCUReport, available: hasRecords(['CU', 'CONDUCTORGUARD']) },
 
             // ── INSPECTION REPORTS (DIVING) ────────────────────────────────────────
             { id: 'dgvi', code: 'DGVI', name: 'Diver GVI', description: 'Diver visual assessment of structural integrity.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['DGVI']) },
@@ -235,13 +359,14 @@ export function ReportWizardDialog({
             { id: 'cvins', code: 'CVINS', name: 'Diving Close Visual (CVINS)', description: 'Close visual inspection report with findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCVINSReport, available: hasRecords(['CVINS']) },
             { id: 'clean', code: 'CLEAN', name: 'Diving Cleaning (CLEAN)', description: 'Cleaning inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCLEANReport, available: hasRecords(['CLEAN']) },
             { id: 'mpins', code: 'MPINS', name: 'Diving Magnetic Particle (MPINS)', description: 'Detailed magnetic particle inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateMPINSReport, available: hasRecords(['MPINS']) },
-            { id: 'utwtk', code: 'UTWTK', name: 'Diving UT Wall Thickness (UTWTK)', description: 'UT Wall Thickness Inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateUTWTKReport, available: hasRecords(['UTWTK']) },
-            { id: 'szone', code: 'SZONE', name: 'Diving Splash Zone (SZONE)', description: 'Splash zone wall thickness and CP inspection summary with grouped clock positions', mode: 'DIVING', category: 'Inspection', handler: handlers.generateSZONEReport, available: hasRecords(['SZONE']) },
+            { id: 'utwtk', code: 'UTWTK', name: 'Diving UT Wall Thickness (UTWTK)', description: 'UT Wall Thickness Inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateUTWTKReport, available: hasRecords(['UTWTK', 'DUTWT']) },
+            { id: 'szone', code: 'SZONE', name: 'Diving Splash Zone (SZONE)', description: 'Splash zone wall thickness and CP inspection summary with grouped clock positions', mode: 'DIVING', category: 'Inspection', handler: handlers.generateSZONEReport, available: hasRecords(['SZONE', 'DSZCI']) },
             { id: 'diver_log', code: 'DIVLOG', name: 'Diver Log Report', description: 'Chronological diver activities and findings per dive.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: true },
             { id: 'acfmc', code: 'ACFMC', name: 'Diving ACFMC Inspection', description: 'Landscape Diving ACFM Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingACFMCReport, available: hasRecords(['ACFMC']) },
             { id: 'plco', code: 'PL_CO', name: 'Diving Coating Damage Inspection', description: 'Landscape Diving Coating Damage Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingPLCOReport, available: hasRecords(['PL_CO']) },
             { id: 'cp_div', code: 'CP', name: 'Diving CP Survey', description: 'Diver-held CP probe measurements and potential readings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
             { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
+            { id: 'mgi_div', code: 'DMGI', name: 'Diving Marine Growth (DMGI)', description: 'Diving Marine Growth Inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMGIReport, available: hasRecords(['DMGI', 'MGROW']) },
             
             // ── INSPECTION REPORTS (BOTH / GENERAL) ────────────────────────────────
             { id: 'insp_report', code: 'INSP', name: 'Inspection Report', description: 'Detailed inspection findings, observations and results.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
@@ -549,7 +674,11 @@ export function ReportWizardDialog({
                                             </div>
                                             <div>
                                                 <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SOW Record Count</Label>
-                                                <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{currentRecords.length} Records Identified</p>
+                                                <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                                    {selectedTemplate 
+                                                        ? `${getMatchingRecordsForTemplate(selectedTemplate.id, currentRecords).length} / ${currentRecords.length} Matching Records` 
+                                                        : `${currentRecords.length} Records Identified`}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
@@ -565,71 +694,182 @@ export function ReportWizardDialog({
                         )}
 
                         {currentStep === 3 && (
-                            <motion.div 
-                                key="step3"
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                className="absolute inset-0 p-6 flex flex-col gap-8 items-center justify-center overflow-y-auto"
-                            >
-                                <div className="max-w-lg w-full space-y-6">
-                                    <div className="text-center">
-                                        <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Configuration</h2>
-                                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Fine-tune your report output</p>
-                                    </div>
+                             <motion.div 
+                                 key="step3"
+                                 initial={{ opacity: 0, x: 20 }}
+                                 animate={{ opacity: 1, x: 0 }}
+                                 exit={{ opacity: 0, x: -20 }}
+                                 className="absolute inset-0 p-6 flex flex-col gap-8 items-center justify-center overflow-y-auto"
+                             >
+                                 <div className="max-w-lg w-full space-y-6">
+                                     <div className="text-center">
+                                         <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Configuration</h2>
+                                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Fine-tune your report output</p>
+                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prepared By</Label>
-                                            <Input 
-                                                value={config.preparedBy}
-                                                onChange={(e) => setConfig({...config, preparedBy: e.target.value})}
-                                                placeholder="Inspector Name" 
-                                                className="h-10 bg-white dark:bg-slate-950"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reviewed By</Label>
-                                            <Input 
-                                                value={config.reviewedBy}
-                                                onChange={(e) => setConfig({...config, reviewedBy: e.target.value})}
-                                                placeholder="Reviewer Name" 
-                                                className="h-10 bg-white dark:bg-slate-950"
-                                            />
-                                        </div>
-                                        <div className="space-y-2 col-span-2">
-                                            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Watermark Text</Label>
-                                            <Input 
-                                                value={config.watermark}
-                                                onChange={(e) => setConfig({...config, watermark: e.target.value})}
-                                                placeholder="DRAFT, CONFIDENTIAL, etc." 
-                                                className="h-10 bg-white dark:bg-slate-950 font-black"
-                                            />
-                                        </div>
-                                    </div>
+                                     {/* Signatory Section */}
+                                     <div className="space-y-4">
+                                         <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-850">
+                                             <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Signatory Settings</span>
+                                             <div className="flex items-center gap-2">
+                                                 <Label htmlFor="print-signatures" className="text-[10px] font-bold text-slate-500 uppercase">Print Signatory Block</Label>
+                                                 <Switch 
+                                                     id="print-signatures"
+                                                     checked={config.showSignatures !== false}
+                                                     onCheckedChange={(checked) => setConfig({ ...config, showSignatures: checked })}
+                                                 />
+                                             </div>
+                                         </div>
 
-                                    <div className="space-y-4 pt-2">
-                                        <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-                                            <div className="flex items-center gap-3">
-                                                <Camera className="w-4 h-4 text-slate-400" />
-                                                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Include High-Res Images</span>
-                                            </div>
-                                            <div className="w-10 h-5 bg-blue-600 rounded-full relative">
-                                                <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full" />
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-                                            <div className="flex items-center gap-3">
-                                                <Activity className="w-4 h-4 text-slate-400" />
-                                                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Prioritize Anomaly Summary</span>
-                                            </div>
-                                            <div className="w-10 h-5 bg-blue-600 rounded-full relative">
-                                                <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </motion.div>
+                                         {config.showSignatures !== false && (
+                                             <div className="space-y-4 animate-in fade-in duration-200">
+                                                 {/* Prepared By */}
+                                                 <div className="grid grid-cols-3 gap-3 items-center">
+                                                     <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prepared By</Label>
+                                                     <Input 
+                                                         value={config.preparedBy?.name || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             preparedBy: { ...(config.preparedBy || {}), name: e.target.value }
+                                                         })}
+                                                         placeholder="Inspector Name" 
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                     <Input 
+                                                         type="date"
+                                                         value={config.preparedBy?.date || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             preparedBy: { ...(config.preparedBy || {}), date: e.target.value }
+                                                         })}
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                 </div>
+
+                                                 {/* Reviewed By */}
+                                                 <div className="grid grid-cols-3 gap-3 items-center">
+                                                     <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reviewed By</Label>
+                                                     <Input 
+                                                         value={config.reviewedBy?.name || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             reviewedBy: { ...(config.reviewedBy || {}), name: e.target.value }
+                                                         })}
+                                                         placeholder="Reviewer Name" 
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                     <Input 
+                                                         type="date"
+                                                         value={config.reviewedBy?.date || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             reviewedBy: { ...(config.reviewedBy || {}), date: e.target.value }
+                                                         })}
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                 </div>
+
+                                                 {/* Approved By */}
+                                                 <div className="grid grid-cols-3 gap-3 items-center">
+                                                     <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Approved By</Label>
+                                                     <Input 
+                                                         value={config.approvedBy?.name || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             approvedBy: { ...(config.approvedBy || {}), name: e.target.value }
+                                                         })}
+                                                         placeholder="Approver Name" 
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                     <Input 
+                                                         type="date"
+                                                         value={config.approvedBy?.date || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             approvedBy: { ...(config.approvedBy || {}), date: e.target.value }
+                                                         })}
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                 </div>
+                                             </div>
+                                         )}
+                                     </div>
+
+                                     {/* Watermark Section */}
+                                     <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                         <div className="flex items-center justify-between pb-2">
+                                             <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Watermark Settings</span>
+                                             <div className="flex items-center gap-2">
+                                                 <Label htmlFor="print-watermark" className="text-[10px] font-bold text-slate-500 uppercase">Print Watermark</Label>
+                                                 <Switch 
+                                                     id="print-watermark"
+                                                     checked={config.watermark?.enabled || false}
+                                                     onCheckedChange={(checked) => setConfig({
+                                                         ...config,
+                                                         watermark: { ...(config.watermark || {}), enabled: checked }
+                                                     })}
+                                                 />
+                                             </div>
+                                         </div>
+
+                                         {config.watermark?.enabled && (
+                                             <div className="space-y-4 animate-in fade-in duration-200">
+                                                 <div className="grid grid-cols-2 gap-4">
+                                                     <div className="space-y-2">
+                                                         <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Watermark Text</Label>
+                                                         <Input 
+                                                             value={config.watermark?.text || ""}
+                                                             onChange={(e) => setConfig({
+                                                                 ...config,
+                                                                 watermark: { ...(config.watermark || {}), text: e.target.value }
+                                                             })}
+                                                             placeholder="e.g. DRAFT" 
+                                                             className="h-10 bg-white dark:bg-slate-950 font-black text-xs uppercase"
+                                                         />
+                                                     </div>
+
+                                                     <div className="space-y-2">
+                                                         <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Watermark Color</Label>
+                                                         <Select
+                                                             value={config.watermark?.color || "gray"}
+                                                             onValueChange={(val) => setConfig({
+                                                                 ...config,
+                                                                 watermark: { ...(config.watermark || {}), color: val }
+                                                             })}
+                                                         >
+                                                             <SelectTrigger className="h-10 bg-white dark:bg-slate-950 text-xs font-bold">
+                                                                 <SelectValue placeholder="Select color" />
+                                                             </SelectTrigger>
+                                                             <SelectContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+                                                                 <SelectItem value="gray" className="text-xs font-bold">Transparent Gray</SelectItem>
+                                                                 <SelectItem value="red" className="text-xs font-bold text-red-500">Transparent Red</SelectItem>
+                                                                 <SelectItem value="blue" className="text-xs font-bold text-blue-500">Transparent Blue</SelectItem>
+                                                             </SelectContent>
+                                                         </Select>
+                                                     </div>
+                                                 </div>
+
+                                                 <div className="space-y-2">
+                                                     <div className="flex justify-between items-center">
+                                                         <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">How dark it appears (transparency)</Label>
+                                                         <span className="text-[10px] font-bold text-slate-500">{Math.round((config.watermark?.transparency || 0.15) * 100)}%</span>
+                                                     </div>
+                                                     <Slider
+                                                         value={[(config.watermark?.transparency || 0.15) * 100]}
+                                                         onValueChange={(vals) => setConfig({
+                                                             ...config,
+                                                             watermark: { ...(config.watermark || {}), transparency: vals[0] / 100 }
+                                                         })}
+                                                         max={80}
+                                                         min={5}
+                                                         step={5}
+                                                     />
+                                                 </div>
+                                             </div>
+                                         )}
+                                     </div>
+                                 </div>
+                             </motion.div>
                         )}
 
                         {currentStep === 4 && (
@@ -667,23 +907,37 @@ export function ReportWizardDialog({
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-y-4 gap-x-8 pt-4 border-t border-slate-100 dark:border-slate-900">
-                                            <div>
-                                                <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Records</Label>
-                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{currentRecords.length} Items</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Watermark</Label>
-                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{config.watermark || "None"}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inspector</Label>
-                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{config.preparedBy || "Not Specified"}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Date</Label>
-                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{new Date().toLocaleDateString()}</p>
-                                            </div>
-                                        </div>
+                                             <div>
+                                                 <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filtered Records</Label>
+                                                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                     {selectedTemplate ? `${getMatchingRecordsForTemplate(selectedTemplate.id, currentRecords).length} Items` : "0 Items"}
+                                                 </p>
+                                             </div>
+                                             <div>
+                                                 <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Watermark</Label>
+                                                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                     {config.watermark?.enabled ? `${config.watermark.text} (${Math.round((config.watermark.transparency || 0.15) * 100)}% opacity)` : "None"}
+                                                 </p>
+                                             </div>
+                                             <div>
+                                                 <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inspector (Prepared By)</Label>
+                                                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{config.preparedBy?.name || "Not Specified"}</p>
+                                             </div>
+                                             <div>
+                                                 <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Date</Label>
+                                                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                     {(() => {
+                                                         const dateStr = config.preparedBy?.date;
+                                                         if (!dateStr) return new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+                                                         const parts = dateStr.split("-");
+                                                         if (parts.length === 3) {
+                                                             return `${parts[2]}-${parts[1]}-${parts[0]}`;
+                                                         }
+                                                         return dateStr;
+                                                     })()}
+                                                 </p>
+                                             </div>
+                                         </div>
 
                                         <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 flex gap-3">
                                             <Check className="w-5 h-5 text-emerald-600 shrink-0" />

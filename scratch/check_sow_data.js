@@ -1,36 +1,41 @@
-const { createClient } = require('@supabase/supabase-js');
+const { createClient } = require("@supabase/supabase-js");
+const dotenv = require("dotenv");
+dotenv.config({ path: ".env.local" });
 
-const supabaseUrl = 'https://zpsmxtdqlpbdwfzctqzd.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpwc214dGRxbHBiZHdmemN0cXpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjY4NDIzODIsImV4cCI6MjA0MjQxODM4Mn0.t3uO7vnabDlwaz5iM6i8A-ya9cc6X20ZTn0bcR3zzs4';
-const supabase = createClient(supabaseUrl, supabaseKey);
+async function run() {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
 
-async function checkData() {
-    try {
-        // 1. Get u_sow entries
-        const { data: sow, error: sowErr } = await supabase.from('u_sow').select('*');
-        if (sowErr) throw sowErr;
-        console.log('--- u_sow ---');
-        console.table(sow?.map(s => ({ id: s.id, jp: s.jobpack_id, str: s.structure_id, rep: s.report_number, total: s.total_items })));
+  // Let's find structure with name D21JT-A
+  const { data: platforms } = await supabase.from("plat_structure").select("*").eq("title", "D21JT-A");
+  console.log("Platforms:", platforms);
 
-        // 2. Get u_sow_items for the latest sow
-        if (sow && sow.length > 0) {
-            const latestSow = sow[sow.length - 1];
-            const { data: items, error: itemsErr } = await supabase.from('u_sow_items').select('report_number').eq('sow_id', latestSow.id);
-            if (itemsErr) throw itemsErr;
-            
-            if (items) {
-                const counts = items.reduce((acc, it) => {
-                    const rep = it.report_number || 'NULL';
-                    acc[rep] = (acc[rep] || 0) + 1;
-                    return acc;
-                }, {});
-                console.log(`--- u_sow_items for SOW ${latestSow.id} ---`);
-                console.table(counts);
-            }
-        }
-    } catch (e) {
-        console.error(e);
+  // Let's find jobpack with name UIMC14/DIV/SKO/PLAT2
+  const { data: jobpacks } = await supabase.from("jobpack").select("*").eq("name", "UIMC14/DIV/SKO/PLAT2");
+  console.log("Jobpacks:", jobpacks);
+
+  if (platforms?.length && jobpacks?.length) {
+    const structId = platforms[0].plat_id;
+    const jpId = jobpacks[0].id;
+
+    // Fetch u_sow
+    const { data: sow, error: sowErr } = await supabase
+      .from("u_sow")
+      .select("*, u_sow_items(*)")
+      .eq("jobpack_id", jpId)
+      .eq("structure_id", structId);
+
+    if (sowErr) {
+      console.error("SOW error:", sowErr);
+    } else {
+      console.log("SOW found:", sow?.length);
+      if (sow?.length > 0) {
+        console.log("SOW structure:", JSON.stringify(sow[0], null, 2));
+      }
     }
+  }
 }
 
-checkData();
+run();

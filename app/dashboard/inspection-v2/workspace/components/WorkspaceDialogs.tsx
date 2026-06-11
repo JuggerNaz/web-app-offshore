@@ -163,6 +163,7 @@ interface WorkspaceDialogsProps {
 
         rovCalibrationDialogOpen: boolean;
         isReportWizardOpen: boolean;
+        reportConfig: any;
     };
 
 
@@ -239,6 +240,7 @@ interface WorkspaceDialogsProps {
         setCalibrationDialogOpen: (open: boolean) => void;
 
         setRovCalibrationDialogOpen: (open: boolean) => void;
+        setReportConfig: (cfg: any) => void;
     };
 
 
@@ -412,7 +414,9 @@ export function WorkspaceDialogs({
         divingMgiPreviewOpen,
         divingAcfmcPreviewOpen,
         divingPlcoPreviewOpen,
-        rovRwdiPreviewOpen
+        rovRwdiPreviewOpen,
+        isReportWizardOpen,
+        reportConfig
     } = states;
 
 
@@ -482,7 +486,9 @@ export function WorkspaceDialogs({
         setDivingMgiPreviewOpen,
         setDivingAcfmcPreviewOpen,
         setDivingPlcoPreviewOpen,
-        setRovRwdiPreviewOpen
+        setRovRwdiPreviewOpen,
+        setIsReportWizardOpen,
+        setReportConfig
     } = setters;
 
 
@@ -564,6 +570,11 @@ export function WorkspaceDialogs({
         const s = secs % 60;
         return [h, m, s].map(v => v < 10 ? "0" + v : v).join(":");
     };
+
+    // Derive initial toggle values from the Report Wizard config so that
+    // every ReportPreviewDialog opens with the settings the user chose in the wizard.
+    const wizardShowSignatures: boolean = reportConfig?.showSignatures !== false;
+    const wizardPrintFriendly: boolean = reportConfig?.printFriendly === true;
 
     return (
         <>
@@ -1192,6 +1203,8 @@ export function WorkspaceDialogs({
             </Dialog>
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rscorPreviewOpen} 
                 onOpenChange={setRscorPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1228,6 +1241,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={anodePreviewOpen} 
                 onOpenChange={setAnodePreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1282,6 +1297,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cpPreviewOpen}
                 onOpenChange={setCpPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1341,6 +1358,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rswniPreviewOpen}
                 onOpenChange={setRswniPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1400,6 +1419,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rgviPreviewOpen}
                 onOpenChange={setRgviPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1458,6 +1479,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcondSketchPreviewOpen}
                 onOpenChange={setRcondSketchPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1858,6 +1881,8 @@ export function WorkspaceDialogs({
             )}
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={previewOpen} 
                 onOpenChange={setPreviewOpen} 
                 title="Anomaly Report Preview" 
@@ -1865,6 +1890,8 @@ export function WorkspaceDialogs({
                 generateReport={generateAnomalyReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={mPreviewOpen} 
                 onOpenChange={setMPreviewOpen} 
                 title="ROV MGI Survey Report Preview" 
@@ -1872,6 +1899,8 @@ export function WorkspaceDialogs({
                 generateReport={handlers.generateMGIReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={fmdPreviewOpen} 
                 onOpenChange={setFmdPreviewOpen} 
                 title="ROV FMD Survey Report Preview" 
@@ -1879,6 +1908,8 @@ export function WorkspaceDialogs({
                 generateReport={handlers.generateFMDReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={utwtPreviewOpen} 
                 onOpenChange={setUtwtPreviewOpen} 
                 title="ROV UTWT Survey Report Preview" 
@@ -1886,6 +1917,8 @@ export function WorkspaceDialogs({
                 generateReport={handlers.generateUTWTReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={szciPreviewOpen} 
                 onOpenChange={setSzciPreviewOpen} 
                 title="ROV SZCI Survey Report Preview" 
@@ -1893,6 +1926,8 @@ export function WorkspaceDialogs({
                 generateReport={generateSZCIReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rgPreviewOpen} 
                 onOpenChange={setRgPreviewOpen} 
                 title="ROV Riser Guard Inspection Report Preview" 
@@ -1900,6 +1935,8 @@ export function WorkspaceDialogs({
                 generateReport={generateRGReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={sgPreviewOpen} 
                 onOpenChange={setSgPreviewOpen} 
                 title="ROV Caisson Guard Inspection Report Preview" 
@@ -1907,6 +1944,8 @@ export function WorkspaceDialogs({
                 generateReport={generateSGReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cuPreviewOpen} 
                 onOpenChange={setCuPreviewOpen} 
                 title="ROV Conductor Guard Inspection Report Preview" 
@@ -1914,6 +1953,8 @@ export function WorkspaceDialogs({
                 generateReport={generateCUReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={blPreviewOpen} 
                 onOpenChange={setBlPreviewOpen} 
                 title="ROV Boatlanding Survey Report Preview" 
@@ -1921,6 +1962,8 @@ export function WorkspaceDialogs({
                 generateReport={generateBLReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rscorPreviewOpen} 
                 onOpenChange={setRscorPreviewOpen} 
                 title="ROV Scour Survey Report Preview" 
@@ -1928,6 +1971,8 @@ export function WorkspaceDialogs({
                 generateReport={generateRSCORReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rrisiPreviewOpen} 
                 onOpenChange={setRrisiPreviewOpen} 
                 title="ROV Riser Survey Report Preview" 
@@ -1935,6 +1980,8 @@ export function WorkspaceDialogs({
                 generateReport={generateRRISIReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={jtisiPreviewOpen} 
                 onOpenChange={setJtisiPreviewOpen} 
                 title="ROV J-Tube Inspection Report Preview" 
@@ -1942,6 +1989,8 @@ export function WorkspaceDialogs({
                 generateReport={generateJTISIReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={itisiPreviewOpen} 
                 onOpenChange={setItisiPreviewOpen} 
                 title="ROV I-Tube Inspection Report Preview" 
@@ -1949,6 +1998,8 @@ export function WorkspaceDialogs({
                 generateReport={generateITISIReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={anodePreviewOpen} 
                 onOpenChange={setAnodePreviewOpen} 
                 title="ROV Anode Survey Report Preview" 
@@ -1956,6 +2007,8 @@ export function WorkspaceDialogs({
                 generateReport={generateAnodeReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={anodeRsaniPreviewOpen} 
                 onOpenChange={setAnodeRsaniPreviewOpen} 
                 title="ROV Selected Anode Report (SANI) Preview" 
@@ -1963,6 +2016,8 @@ export function WorkspaceDialogs({
                 generateReport={generateAnodeRsaniReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cpPreviewOpen} 
                 onOpenChange={setCpPreviewOpen} 
                 title="ROV CP Survey Report Preview" 
@@ -1970,6 +2025,8 @@ export function WorkspaceDialogs({
                 generateReport={generateCPReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingAnodePreviewOpen} 
                 onOpenChange={setDivingAnodePreviewOpen} 
                 title="Diving Selected Anode Report Preview" 
@@ -1977,6 +2034,8 @@ export function WorkspaceDialogs({
                 generateReport={generateDivingAnodeReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rgviPreviewOpen} 
                 onOpenChange={setRgviPreviewOpen} 
                 title="ROV General Visual Inspection Report Preview" 
@@ -1984,6 +2043,8 @@ export function WorkspaceDialogs({
                 generateReport={generateRGVIReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcasnPreviewOpen} 
                 onOpenChange={setRcasnPreviewOpen} 
                 title="ROV Caisson Inspection Report Preview" 
@@ -1991,6 +2052,8 @@ export function WorkspaceDialogs({
                 generateReport={generateRCASNReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcasnSketchPreviewOpen} 
                 onOpenChange={setRcasnSketchPreviewOpen} 
                 title="ROV Caisson Sketch Report Preview" 
@@ -1998,6 +2061,8 @@ export function WorkspaceDialogs({
                 generateReport={generateRCASNSketchReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcondPreviewOpen} 
                 onOpenChange={setRcondPreviewOpen} 
                 title="ROV Conductor Inspection Report Preview" 
@@ -2005,6 +2070,8 @@ export function WorkspaceDialogs({
                 generateReport={generateRCONDReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcondSketchPreviewOpen} 
                 onOpenChange={setRcondSketchPreviewOpen} 
                 title="ROV Conductor Sketch Report Preview" 
@@ -2012,6 +2079,8 @@ export function WorkspaceDialogs({
                 generateReport={generateRCONDSketchReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={seabedPreviewOpen} 
                 onOpenChange={setSeabedPreviewOpen} 
                 title="ROV Seabed Survey Report Preview" 
@@ -2019,6 +2088,8 @@ export function WorkspaceDialogs({
                 generateReport={generateSeabedReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={photographyPreviewOpen} 
                 onOpenChange={setPhotographyPreviewOpen} 
                 title="ROV Photography Report Preview" 
@@ -2026,6 +2097,8 @@ export function WorkspaceDialogs({
                 generateReport={generatePhotographyReportBlob} 
             />
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={photographyLogPreviewOpen} 
                 onOpenChange={setPhotographyLogPreviewOpen} 
                 title="ROV Photography Log Report Preview" 
@@ -2034,6 +2107,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={gvinsPreviewOpen} 
                 onOpenChange={setGvinsPreviewOpen} 
                 title="Diving General Visual Inspection Report Preview" 
@@ -2042,6 +2117,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={bsinsPreviewOpen} 
                 onOpenChange={setBsinsPreviewOpen} 
                 title="Diving Bolted Support (BSINS) Report Preview" 
@@ -2050,6 +2127,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cleanPreviewOpen} 
                 onOpenChange={setCleanPreviewOpen} 
                 title="Diving Cleaning Inspection (CLEAN) Report Preview" 
@@ -2058,6 +2137,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cvinsPreviewOpen} 
                 onOpenChange={setCvinsPreviewOpen} 
                 title="Diving Close Visual Inspection (CVINS) Report Preview" 
@@ -2066,6 +2147,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={mpinsPreviewOpen} 
                 onOpenChange={setMpinsPreviewOpen} 
                 title="Diving Magnetic Particle (MPINS) Report Preview" 
@@ -2074,6 +2157,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={utwtkPreviewOpen} 
                 onOpenChange={setUtwtkPreviewOpen} 
                 title="Diving UT Wall Thickness Inspection (UTWTK) Report Preview" 
@@ -2082,6 +2167,8 @@ export function WorkspaceDialogs({
             />
             
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={szonePreviewOpen} 
                 onOpenChange={setSzonePreviewOpen} 
                 title="Diving Splash Zone Inspection Report Preview" 
@@ -2090,6 +2177,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cpclbPreviewOpen} 
                 onOpenChange={setCpclbPreviewOpen} 
                 title="Diving CP Calibration Report Preview" 
@@ -2098,6 +2187,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={utclbPreviewOpen} 
                 onOpenChange={setUtclbPreviewOpen} 
                 title="Diving UT Calibration Report Preview" 
@@ -2106,6 +2197,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingMgiPreviewOpen} 
                 onOpenChange={setDivingMgiPreviewOpen} 
                 title="Diving Marine Growth Inspection Report Preview" 
@@ -2114,6 +2207,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingAcfmcPreviewOpen} 
                 onOpenChange={setDivingAcfmcPreviewOpen} 
                 title="Diving ACFMC Inspection Report Preview" 
@@ -2122,6 +2217,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingPlcoPreviewOpen} 
                 onOpenChange={setDivingPlcoPreviewOpen} 
                 title="Diving Coating Damage Inspection Report Preview" 
@@ -2130,6 +2227,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog 
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rovRwdiPreviewOpen} 
                 onOpenChange={setRovRwdiPreviewOpen} 
                 title="ROV Water Depth Inspection Report Preview" 
@@ -2276,12 +2375,14 @@ export function WorkspaceDialogs({
                 }}
             />
             <ReportWizardDialog
-                open={states.isReportWizardOpen}
-                onOpenChange={setters.setIsReportWizardOpen}
+                open={isReportWizardOpen}
+                onOpenChange={setIsReportWizardOpen}
                 inspMethod={inspMethod}
                 currentRecords={currentRecords}
                 headerData={headerData}
-                allInspectionTypes={states.allInspectionTypes}
+                allInspectionTypes={allInspectionTypes}
+                config={reportConfig}
+                setConfig={setReportConfig}
                 handlers={{
                     generateRGVIReport: () => setters.setRgviPreviewOpen(true),
                     generateGVINSReport: () => setters.setGvinsPreviewOpen(true),
@@ -2306,6 +2407,7 @@ export function WorkspaceDialogs({
                     generateFMDReport: () => setters.setFmdPreviewOpen(true),
                     generateUTWTReport: () => setters.setUtwtPreviewOpen(true),
                     generateMGIReport: () => setters.setMPreviewOpen(true),
+                    generateDivingMGIReport: () => setters.setDivingMgiPreviewOpen(true),
                     generateSZCIReport: () => setters.setSzciPreviewOpen(true),
                     generateRSCORReport: () => setters.setRscorPreviewOpen(true),
                     generateRRISIReport: () => setters.setRrisiPreviewOpen(true),

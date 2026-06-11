@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { jsPDF } from "jspdf";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getReportHeaderData } from "@/utils/company-settings";
@@ -36,6 +37,7 @@ import { generateDivingACFMCReport as generateDivingACFMCReportTemplate } from "
 import { generateDivingPLCOReport as generateDivingPLCOReportTemplate } from "@/utils/report-generators/diving-plco-report";
 import { generateROVRWDIReport as generateROVRWDIReportTemplate } from "@/utils/report-generators/rov-rwdi-report";
 
+import { applyWatermarkAndSignaturesGlobal } from "@/utils/report-generators/shared-logo";
 
 export function useWorkspaceReports(
     supabase: any,
@@ -46,6 +48,20 @@ export function useWorkspaceReports(
     pendingAttachments: any[],
     allInspectionTypes: any[]
 ) {
+    const [reportConfig, setReportConfig] = useState({
+        preparedBy: { name: "", date: format(new Date(), "yyyy-MM-dd") },
+        reviewedBy: { name: "", date: format(new Date(), "yyyy-MM-dd") },
+        approvedBy: { name: "", date: format(new Date(), "yyyy-MM-dd") },
+        watermark: { enabled: false, text: "DRAFT", transparency: 0.15, color: "gray" },
+        showSignatures: true
+    });
+
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            (window as any).__reportConfig = reportConfig;
+        }
+    }, [reportConfig]);
+
     const [previewOpen, setPreviewOpen] = useState(false);
     const [mPreviewOpen, setMPreviewOpen] = useState(false);
     const [fmdPreviewOpen, setFmdPreviewOpen] = useState(false);
@@ -106,7 +122,7 @@ export function useWorkspaceReports(
                 inspectionId: record.insp_id,
                 returnBlob: true,
                 printFriendly: printFriendly || false,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             };
             return await generateDefectAnomalyReport(
                 { id: jobPackId || "0", name: headerData.jobpackName },
@@ -179,7 +195,7 @@ export function useWorkspaceReports(
                 showPageNumbers: true,
                 printFriendly: printFriendly || false,
                 returnBlob: true,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             },
             itemTypeFilter
         );
@@ -231,7 +247,7 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             }
         );
         return result as Blob;
@@ -274,7 +290,7 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             }
         );
         return result as Blob;
@@ -317,7 +333,7 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             }
         );
         return result as Blob;
@@ -360,7 +376,7 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             }
         );
         return result as Blob;
@@ -408,7 +424,7 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             }
         );
         return result as Blob;
@@ -460,7 +476,7 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             }
         );
         return result as Blob;
@@ -512,7 +528,7 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             }
         );
         return result as Blob;
@@ -562,7 +578,7 @@ export function useWorkspaceReports(
                 preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
-                showSignatures: showSignatures ?? true
+                showSignatures: showSignatures ?? reportConfig.showSignatures
             }
         );
         return result as Blob;
@@ -587,7 +603,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVRSCORReport(rscorRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
+        return await generateROVRSCORReport(rscorRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
     };
 
     const generateRRISIReport = async () => {
@@ -633,7 +649,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId), reportType: 'R' }) as Blob;
+        return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'R' }) as Blob;
     };
 
     const generateJTISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
@@ -646,7 +662,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId), reportType: 'J' }) as Blob;
+        return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'J' }) as Blob;
     };
 
     const generateITISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
@@ -659,7 +675,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId), reportType: 'I' }) as Blob;
+        return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'I' }) as Blob;
     };
 
     const generateAnodeReport = async () => {
@@ -691,7 +707,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVAnodeReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        return await generateROVAnodeReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
 
     const generateAnodeRsaniReport = async () => {
@@ -721,7 +737,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVAnodeRSANIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        return await generateROVAnodeRSANIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
 
     const generateCPReport = async () => {
@@ -749,7 +765,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVCPReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        return await generateROVCPReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
 
     const generateRSWNIReport = async () => {
@@ -777,7 +793,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVSelectedNodeReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        return await generateROVSelectedNodeReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
 
     const generateRGVIReport = async () => {
@@ -818,12 +834,12 @@ export function useWorkspaceReports(
                     preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
                     returnBlob: true,
                     printFriendly: printFriendly || false,
-                    showSignatures: showSignatures ?? true
+                    showSignatures: showSignatures ?? reportConfig.showSignatures
                 }
             );
         }
 
-        return await generateROVRGVIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        return await generateROVRGVIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
 
     const generateGVINSReport = async () => {
@@ -845,7 +861,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateDivingGVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        return await generateDivingGVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
 
     const generateDivingACFMCReport = async () => {
@@ -867,7 +883,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateDivingACFMCReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true });
+        return await generateDivingACFMCReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures });
     };
 
     const generateDivingPLCOReport = async () => {
@@ -889,7 +905,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateDivingPLCOReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true });
+        return await generateDivingPLCOReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures });
     };
 
     const generateROVRWDIReport = async () => {
@@ -911,7 +927,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVRWDIReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true });
+        return await generateROVRWDIReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures });
     };
 
     const generateBSINSReport = async () => {
@@ -935,7 +951,7 @@ export function useWorkspaceReports(
         }
         try {
             const { generateDivingBSINSReport } = await import("@/utils/report-generators/diving-bsins-report");
-            return await generateDivingBSINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+            return await generateDivingBSINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
         } catch (error) {
             console.error("BSINS report error:", error);
         }
@@ -962,7 +978,7 @@ export function useWorkspaceReports(
         }
         try {
             const { generateDivingCVINSReport } = await import("@/utils/report-generators/diving-cvins-report");
-            return await generateDivingCVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+            return await generateDivingCVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
         } catch (error) {
             console.error("CVINS report error:", error);
         }
@@ -989,7 +1005,7 @@ export function useWorkspaceReports(
         }
         try {
             const { generateDivingCLEANReport } = await import("@/utils/report-generators/diving-clean-report");
-            return await generateDivingCLEANReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+            return await generateDivingCLEANReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
         } catch (error) {
             console.error("CLEAN report error:", error);
         }
@@ -1016,7 +1032,7 @@ export function useWorkspaceReports(
         }
         try {
             const { generateDivingMPINSReport } = await import("@/utils/report-generators/diving-mpins-report");
-            return await generateDivingMPINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+            return await generateDivingMPINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
         } catch (error) {
             console.error("MPINS report error:", error);
         }
@@ -1043,7 +1059,7 @@ export function useWorkspaceReports(
         }
         try {
             const { generateDivingUTWTKReport } = await import("@/utils/report-generators/diving-utwtk-report");
-            return await generateDivingUTWTKReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+            return await generateDivingUTWTKReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
         } catch (error) {
             console.error("UTWTK report error:", error);
         }
@@ -1076,7 +1092,7 @@ export function useWorkspaceReports(
             { 
                 returnBlob: true, 
                 printFriendly, 
-                showSignatures: showSignatures ?? true,
+                showSignatures: showSignatures ?? reportConfig.showSignatures,
                 structureId: Number(structureId),
                 jobPackId: Number(jobPackId)
             },
@@ -1143,7 +1159,7 @@ export function useWorkspaceReports(
             { 
                 returnBlob: true, 
                 printFriendly, 
-                showSignatures: showSignatures ?? true,
+                showSignatures: showSignatures ?? reportConfig.showSignatures,
                 structureId: Number(structureId),
                 jobPackId: Number(jobPackId)
             }
@@ -1209,7 +1225,7 @@ export function useWorkspaceReports(
             { 
                 returnBlob: true, 
                 printFriendly, 
-                showSignatures: showSignatures ?? true,
+                showSignatures: showSignatures ?? reportConfig.showSignatures,
                 structureId: Number(structureId),
                 jobPackId: Number(jobPackId)
             }
@@ -1275,7 +1291,7 @@ export function useWorkspaceReports(
             { 
                 returnBlob: true, 
                 printFriendly, 
-                showSignatures: showSignatures ?? true,
+                showSignatures: showSignatures ?? reportConfig.showSignatures,
                 structureId: Number(structureId),
                 jobPackId: Number(jobPackId)
             },
@@ -1310,7 +1326,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVCasnReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
+        return await generateROVCasnReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
     };
 
     const generateRCASNSketchReport = async () => {
@@ -1340,7 +1356,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVCasnSketchReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
+        return await generateROVCasnSketchReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
     };
 
     const generateRCONDReport = async () => {
@@ -1370,7 +1386,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVCondReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
+        return await generateROVCondReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
     };
 
     const generateRCONDSketchReport = async () => {
@@ -1400,7 +1416,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVCondSketchReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true, structureId: Number(structureId) }) as Blob;
+        return await generateROVCondSketchReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
     };
 
 
@@ -1443,7 +1459,7 @@ export function useWorkspaceReports(
         const allPhotos = [...photosFromDb, ...photosFromPending];
 
         // Ensure we always return a Blob (even if empty) to avoid "Preview unavailable"
-        return await generateROVPhotographyReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        return await generateROVPhotographyReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
 
     const generatePhotographyLogReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
@@ -1469,7 +1485,7 @@ export function useWorkspaceReports(
 
         const allPhotos = [...dbAttachments, ...pendingAttachments];
 
-        return await generateROVPhotographyLogReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? true }) as Blob;
+        return await generateROVPhotographyLogReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
 
     const generatePhotographyReport = async () => {
@@ -1650,7 +1666,7 @@ export function useWorkspaceReports(
         );
     };
 
-    return {
+    const outputs = {
         previewOpen, setPreviewOpen,
         mPreviewOpen, setMPreviewOpen,
         fmdPreviewOpen, setFmdPreviewOpen,
@@ -1826,7 +1842,30 @@ export function useWorkspaceReports(
             );
         },
         generateInspectionReportByType,
-
-        generateFullInspectionReport
+        generateFullInspectionReport,
+        reportConfig,
+        setReportConfig
     };
+
+    // Intercept and wrap blob-generating helper functions
+    const wrappedOutputs: any = { ...outputs };
+    Object.keys(wrappedOutputs).forEach((key) => {
+        if (key.endsWith("Blob") && typeof wrappedOutputs[key] === "function") {
+            const originalFn = wrappedOutputs[key];
+            wrappedOutputs[key] = async function (printFriendly?: boolean, showSignatures?: boolean, ...args: any[]) {
+                if (typeof window !== "undefined") {
+                    const currentConfig = (window as any).__reportConfig || reportConfig;
+                    (window as any).__reportConfig = {
+                        ...currentConfig,
+                        printFriendly: printFriendly !== undefined ? printFriendly : currentConfig.printFriendly,
+                        showSignatures: showSignatures !== undefined ? showSignatures : currentConfig.showSignatures,
+                    };
+                }
+                return originalFn(printFriendly, showSignatures, ...args);
+            };
+        }
+    });
+
+    return wrappedOutputs;
 }
+

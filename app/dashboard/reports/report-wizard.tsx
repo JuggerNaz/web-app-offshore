@@ -270,7 +270,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [activePreviewTemplate, setActivePreviewTemplate] = useState<string>("");
     const [previewMode, setPreviewMode] = useState<"all" | "individual">("all");
 
-    // Default Configuration
     const [config, setConfig] = useState<ReportConfig>({
         reportNoPrefix: "RPT",
         reportYear: new Date().getFullYear().toString(),
@@ -283,6 +282,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         printFriendly: false,
         showSignatures: true,
     });
+
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            (window as any).__reportConfig = config;
+        }
+    }, [config]);
 
     // Data Fetching
     const { data: structuresData } = useSWR("/api/structures", fetcher);

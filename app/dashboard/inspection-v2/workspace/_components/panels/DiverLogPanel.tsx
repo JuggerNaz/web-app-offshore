@@ -57,7 +57,7 @@ export function DiverLogPanel({
   return (
     <Card className="flex flex-col border-none shadow-none rounded-none h-full bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-y-auto custom-scrollbar">
       <div className="bg-[#1f2937] text-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] flex justify-between items-center shrink-0">
-        <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DIVE LOG"}</span>
+        <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV LOG"}</span>
         <div className="flex items-center gap-2 text-slate-300">
           <button
             onClick={() => {
