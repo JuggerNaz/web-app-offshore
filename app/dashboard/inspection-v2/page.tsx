@@ -67,16 +67,7 @@ export default function InspectionLanding() {
     // State to track which years are expanded in the jobpack list
     const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
 
-    // Derive all unique structures from jobPacks list
-    const allStructures = useMemo(() => {
-        const uniqueMap = new Map<number, Structure>();
-        jobPacks.forEach((jp) => {
-            jp.structures.forEach((s) => {
-                uniqueMap.set(s.id, s);
-            });
-        });
-        return Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-    }, [jobPacks]);
+    const [allStructures, setAllStructures] = useState<Structure[]>([]);
 
     // Derive job packs that are assigned to the selected structure, sorted by start date desc
     const jobPacksForSelectedStructure = useMemo(() => {
@@ -134,10 +125,10 @@ export default function InspectionLanding() {
         return b.localeCompare(a); // Descending order
     });
 
-    // Restore saved selections on mount
+    // Refresh job packs and structure names when component mounts or structure changes
     useEffect(() => {
         loadJobPacks();
-    }, []);
+    }, [selectedStructure]);
 
     // Restore selections AFTER jobPacks are loaded
     useEffect(() => {
@@ -319,43 +310,35 @@ export default function InspectionLanding() {
 
             console.log("Raw jobpack data from API:", data);
 
+            // Unconditionally fetch all platforms and pipelines to populate the structure selection list
+            const [platformsRes, pipelinesRes] = await Promise.all([
+                fetch("/api/platform?limit=1000").then(r => r.json()),
+                fetch("/api/pipeline?limit=1000").then(r => r.json())
+            ]);
+
+            const platforms = platformsRes.data || [];
+            const pipelines = pipelinesRes.data || [];
+
+            const structureMap = new Map<number, string>();
+            const structuresList: Structure[] = [];
+
+            platforms.forEach((p: any) => {
+                const id = Number(p.plat_id);
+                structureMap.set(id, p.title);
+                structuresList.push({ id, name: p.title });
+            });
+
+            pipelines.forEach((p: any) => {
+                const id = Number(p.pipe_id);
+                structureMap.set(id, p.title);
+                structuresList.push({ id, name: p.title });
+            });
+
+            // Sort structures list alphabetically and update state
+            structuresList.sort((a, b) => a.name.localeCompare(b.name));
+            setAllStructures(structuresList);
+
             if (data && data.length > 0) {
-                // Extract structure IDs from metadata.structures array
-                const structureIds: number[] = [];
-                data.forEach((jp: any) => {
-                    const structures = (jp.metadata as any)?.structures || [];
-                    if (Array.isArray(structures)) {
-                        structures.forEach((s: any) => {
-                            if (s.id && typeof s.id === 'number') {
-                                structureIds.push(s.id);
-                            }
-                        });
-                    }
-                });
-
-                const uniqueStructureIds = Array.from(new Set(structureIds));
-                console.log("Extracted structure IDs from metadata:", uniqueStructureIds);
-
-                let structureMap = new Map<number, string>();
-
-                if (uniqueStructureIds.length > 0) {
-                    const [platformsRes, pipelinesRes] = await Promise.all([
-                        fetch("/api/platform?limit=1000").then(r => r.json()),
-                        fetch("/api/pipeline?limit=1000").then(r => r.json())
-                    ]);
-
-                    const platforms = platformsRes.data || [];
-                    const pipelines = pipelinesRes.data || [];
-
-                    platforms.forEach((p: any) => {
-                        structureMap.set(p.plat_id, p.title);
-                    });
-
-                    pipelines.forEach((p: any) => {
-                        structureMap.set(p.pipe_id, p.title);
-                    });
-                }
-
                 const formatted = data.map((jp: any) => {
                     const structures = (jp.metadata as any)?.structures || [];
                     const structureList = Array.isArray(structures)

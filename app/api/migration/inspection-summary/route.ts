@@ -298,10 +298,27 @@ export const POST = withAuth(
 
       try {
         const result = await connection.execute(
-          `SELECT COUNT(*) AS CNT FROM ANOMALY WHERE STR_ID = :strId AND INSPNO = :inspNo`,
+          `SELECT COUNT(*) AS CNT FROM u_defect WHERE STR_ID = :strId AND INSP_ID IN (
+             SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+             UNION
+             SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+           )`,
           { strId: str_id, inspNo: String(inspno) }
         );
         anomalyCount = result.rows?.[0]?.CNT || result.rows?.[0]?.[0] || 0;
+      } catch (e) {}
+
+      let compNotInspCount = 0;
+      try {
+        const result = await connection.execute(
+          `SELECT COUNT(*) AS CNT FROM COMP_NOT_INSP WHERE INSP_ID IN (
+             SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+             UNION
+             SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+           )`,
+          { strId: str_id, inspNo: String(inspno) }
+        );
+        compNotInspCount = result.rows?.[0]?.CNT || result.rows?.[0]?.[0] || 0;
       } catch (e) {}
 
       try {
@@ -333,6 +350,7 @@ export const POST = withAuth(
       let pgAnomalyCount = 0;
       let pgCompAttachCount = 0;
       let pgInspAttachCount = 0;
+      let pgCompNotInspCount = 0;
 
       try {
         const { count } = await (supabase as any).from('jobpack').select('*', { count: 'exact', head: true }).eq('jobpack_id', Number(inspno));
@@ -430,6 +448,14 @@ export const POST = withAuth(
         }
       } catch (e) {}
 
+      try {
+        const { count } = await (supabase as any).from('insp_records')
+          .select('*', { count: 'exact', head: true })
+          .eq('jobpack_id', Number(inspno))
+          .eq('status', 'INCOMPLETE');
+        pgCompNotInspCount = count || 0;
+      } catch (e) {}
+
       // Calculate total Oracle counts
       const totalRovCount = rovInspections.reduce((sum: number, r: any) => sum + r.count, 0);
       const totalDivingCount = divingInspections.reduce((sum: number, r: any) => sum + r.count, 0);
@@ -455,7 +481,8 @@ export const POST = withAuth(
           { code: "INSP_DIVING", name: "Diving Inspections (insp_records)", row_count: Number(totalDivingCount), pg_row_count: pgInspDivingCount },
           { code: "ANOMALY", name: "Anomalies (insp_anomalies)", row_count: Number(anomalyCount), pg_row_count: pgAnomalyCount },
           { code: "ATTACHMENT", name: "Component Attachments (attachment)", row_count: Number(compAttachCount), pg_row_count: pgCompAttachCount },
-          { code: "INSP_ATTACHMENT", name: "Inspection Attachments (attachment)", row_count: Number(inspAttachCount), pg_row_count: pgInspAttachCount }
+          { code: "INSP_ATTACHMENT", name: "Inspection Attachments (attachment)", row_count: Number(inspAttachCount), pg_row_count: pgInspAttachCount },
+          { code: "COMP_NOT_INSP", name: "Incomplete Inspections (comp_not_insp)", row_count: Number(compNotInspCount), pg_row_count: pgCompNotInspCount }
         ]
       });
 

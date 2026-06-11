@@ -677,6 +677,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required payload parameters" }, { status: 400 });
   }
 
+  // Resolve companyId for the logged-in user
+  const authSupabase = createClient();
+  const { data: { user }, error: authError } = await authSupabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+
+  const headerCompanyId = request.headers.get("x-company-id");
+  let resolvedCompanyId = headerCompanyId;
+  if (!resolvedCompanyId) {
+    const { data: membership } = await (authSupabase as any)
+      .from("company_memberships")
+      .select("company_id")
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    resolvedCompanyId = membership?.company_id || undefined;
+  }
+
+  if (!resolvedCompanyId) {
+    return NextResponse.json({ error: "No active company membership found" }, { status: 403 });
+  }
+
   // Run the migration asynchronously
   (async () => {
     let oracleConn: any;
@@ -717,7 +743,39 @@ export async function POST(request: NextRequest) {
       await setRlsStatus(true, logs);
 
       const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-      const supabase = useAdmin ? createAdminClient() : createClient();
+      const baseSupabase = useAdmin ? createAdminClient() : createClient();
+
+      // Proxy client to automatically inject company_id into all inserts, upserts, and updates
+      const supabase = new Proxy(baseSupabase, {
+        get(target, prop, receiver) {
+          if (prop === 'from') {
+            return (tableName: string) => {
+              const queryBuilder = (target as any).from(tableName);
+              return new Proxy(queryBuilder, {
+                get(qbTarget, qbProp, qbReceiver) {
+                  if (qbProp === 'insert' || qbProp === 'upsert' || qbProp === 'update') {
+                    return (values: any, options: any) => {
+                      const injectCompanyId = (row: any) => {
+                        if (row && typeof row === 'object') {
+                          if (Array.isArray(row)) {
+                            return row.map(r => ({ ...r, company_id: resolvedCompanyId }));
+                          } else {
+                            return { ...row, company_id: resolvedCompanyId };
+                          }
+                        }
+                        return row;
+                      };
+                      return qbTarget[qbProp](injectCompanyId(values), options);
+                    };
+                  }
+                  return Reflect.get(qbTarget, qbProp, qbReceiver);
+                }
+              });
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        }
+      });
 
       // Fetch all library items from u_lib_list in PostgreSQL for casing and description mapping
       const libDescMap = new Map<string, string>();
@@ -771,7 +829,7 @@ export async function POST(request: NextRequest) {
       report["U_LIB_LIST"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
       report["U_LIB_COMBO"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
       report["U_MGI_PROFILE"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
-      ["STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "INSP_ROV", "INSP_DIVING", "ANOMALY", "INSP_ATTACHMENT"].forEach(k => {
+      ["STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "INSP_ROV", "INSP_DIVING", "ANOMALY", "INSP_ATTACHMENT", "COMP_NOT_INSP"].forEach(k => {
         report[k] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [], filesCopied: 0 };
       });
 
@@ -4260,11 +4318,33 @@ export async function POST(request: NextRequest) {
         const compNotInspMap = new Map<number, string>();
         const compNotInspCols = await getOracleTableColumns(oracleConn, 'COMP_NOT_INSP');
         if (compNotInspCols.size > 0 && compNotInspCols.has('INSP_ID')) {
+          report["COMP_NOT_INSP"] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [] };
           try {
-            const notInspRes = await oracleConn.execute(`
+            let query = `
               SELECT INSP_ID, CMNTS FROM COMP_NOT_INSP
-            `);
+              WHERE INSP_ID IN (
+                SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSP_ID IS NOT NULL
+                UNION
+                SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSP_ID IS NOT NULL
+              )
+            `;
+            const binds: any = { strId: structureId };
+            
+            if (selectedInspNo) {
+              query = `
+                SELECT INSP_ID, CMNTS FROM COMP_NOT_INSP
+                WHERE INSP_ID IN (
+                  SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+                  UNION
+                  SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+                )
+              `;
+              binds.inspNo = selectedInspNo;
+            }
+            
+            const notInspRes = await oracleConn.execute(query, binds);
             if (notInspRes.rows) {
+              report["COMP_NOT_INSP"].oracleRows = notInspRes.rows.length;
               for (const r of notInspRes.rows as any[]) {
                 const rObj = Array.isArray(r) ? { INSP_ID: r[0], CMNTS: r[1] } : r;
                 const oInspId = Number(rObj.INSP_ID);
@@ -4272,9 +4352,14 @@ export async function POST(request: NextRequest) {
                   compNotInspMap.set(oInspId, String(rObj.CMNTS || '').trim());
                 }
               }
+              report["COMP_NOT_INSP"].status = "success";
+              logs.push(`Successfully loaded ${compNotInspMap.size} incomplete inspection reason records from 'COMP_NOT_INSP'.`);
+            } else {
+              report["COMP_NOT_INSP"].status = "success";
             }
           } catch (err: any) {
             logs.push(`WARNING: Fetching COMP_NOT_INSP comments failed: ${err.message}`);
+            report["COMP_NOT_INSP"].errors.push(err.message);
           }
         }
 
@@ -4430,8 +4515,8 @@ export async function POST(request: NextRequest) {
             });
 
             const whereCond = platgiCols.has('DESCRIPTION')
-              ? "(DESCRIPTION != 'TAPE LOG' OR DESCRIPTION IS NULL)"
-              : (platgiCols.has('DESCR') ? "(DESCR != 'TAPE LOG' OR DESCR IS NULL)" : "1=1");
+              ? "(DESCRIPTION IS NULL OR (DESCRIPTION != 'TAPE LOG' AND NOT (DESCRIPTION IN ('CP LOG', 'IMAGE LOG') AND (COMP_ID IS NULL OR COMP_ID = 0))))"
+              : (platgiCols.has('DESCR') ? "(DESCR IS NULL OR (DESCR != 'TAPE LOG' AND NOT (DESCR IN ('CP LOG', 'IMAGE LOG') AND (COMP_ID IS NULL OR COMP_ID = 0))))" : "1=1");
 
             try {
               const result = await oracleConn.execute(`
@@ -4444,6 +4529,53 @@ export async function POST(request: NextRequest) {
               logs.push(`ERROR fetching ROV inspections: ${err.message}`);
               report[reportKey].errors.push(err.message);
               return;
+            }
+
+            // Query for eliminated CP LOG and IMAGE LOG records for logging/reporting
+            try {
+              const descColForElim = platgiCols.has('DESCRIPTION') ? 'DESCRIPTION' : (platgiCols.has('DESCR') ? 'DESCR' : null);
+              const scodeColForElim = platgiCols.has('INSP_SCODE') ? 'INSP_SCODE' : (platgiCols.has('SCODE') ? 'SCODE' : (platgiCols.has('CODE') ? 'CODE' : null));
+              
+              if (descColForElim && scodeColForElim) {
+                const elimResult = await oracleConn.execute(`
+                  SELECT INSP_ID, INSPNO, COMP_ID, ${descColForElim} as LOG_DESC, ${scodeColForElim} as TYPE_CODE
+                  FROM PLATGI
+                  WHERE STR_ID = :strId AND INSP_ID IS NOT NULL AND INSP_ID > 0
+                    AND ${descColForElim} IN ('CP LOG', 'IMAGE LOG')
+                    AND (COMP_ID IS NULL OR COMP_ID = 0)
+                `, { strId: structureId });
+                
+                if (elimResult.rows && elimResult.rows.length > 0) {
+                  let filteredElimRows = elimResult.rows;
+                  // If selectedInspNo is provided, filter by that
+                  if (selectedInspNo) {
+                    filteredElimRows = elimResult.rows.filter((row: any) => {
+                      const val = String(row.INSPNO || row.inspno || row[1] || '').trim();
+                      return val === selectedInspNo;
+                    });
+                  }
+                  
+                  if (filteredElimRows.length > 0) {
+                    logs.push(`INFO: Found ${filteredElimRows.length} eliminated/skipped logs (CP LOG / IMAGE LOG with COMP_ID null or 0):`);
+                    const countsByType: Record<string, number> = {};
+                    filteredElimRows.forEach((row: any) => {
+                      const typeCode = String(row.TYPE_CODE || row.type_code || row[4] || 'UNKNOWN').trim();
+                      const desc = String(row.LOG_DESC || row.log_desc || row[3] || 'UNKNOWN').trim();
+                      const inspId = row.INSP_ID || row.insp_id || row[0];
+                      const compId = row.COMP_ID || row.comp_id || row[2];
+                      countsByType[typeCode] = (countsByType[typeCode] || 0) + 1;
+                      logs.push(` - Skipped Record: INSP_ID ${inspId}, Type: ${typeCode}, Desc: ${desc}, COMP_ID: ${compId}`);
+                    });
+                    
+                    logs.push(`INFO: Summary of eliminated logs by Inspection Type:`);
+                    Object.entries(countsByType).forEach(([type, count]) => {
+                      logs.push(`   * Type ${type}: ${count} record(s) eliminated`);
+                    });
+                  }
+                }
+              }
+            } catch (err: any) {
+              logs.push(`Warning: Failed to query eliminated log list: ${err.message}`);
             }
 
             // Query platform title
@@ -6656,6 +6788,10 @@ export async function POST(request: NextRequest) {
           }
 
           if (recordsToInsert.length > 0) {
+            const incompleteCount = recordsToInsert.filter((r: any) => r.status === 'INCOMPLETE').length;
+            if (report["COMP_NOT_INSP"]) {
+              report["COMP_NOT_INSP"].migratedRows = (report["COMP_NOT_INSP"].migratedRows || 0) + incompleteCount;
+            }
             const { data: insertedRecords, error: bulkErr } = await supabase
               .from("insp_records")
               .insert(recordsToInsert as any)
