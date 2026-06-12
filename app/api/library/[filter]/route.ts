@@ -55,6 +55,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       };
     });
 
+    // Deduplicate by lib_desc to avoid React duplicate key warnings
+    const uniqueValues = new Set();
+    visibleData = visibleData.filter((item: any) => {
+      if (uniqueValues.has(item.lib_desc)) return false;
+      uniqueValues.add(item.lib_desc);
+      return true;
+    });
+
     const positionOrder = [
       "N/A",
       "1 O' CLOCK",

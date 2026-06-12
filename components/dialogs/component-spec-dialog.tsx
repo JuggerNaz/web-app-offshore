@@ -1395,9 +1395,9 @@ export function ComponentSpecDialog({
                   </>
                 ) : (
                   <>
-                    <span className="flex items-center gap-2 mt-1">
+                    <span className="flex items-center gap-4 mt-1">
                       <span className="text-blue-600 font-black text-sm uppercase">
-                        {typeName || component?.id_no}
+                        {typeName || component?.id_no} {component?.q_id ? `- ${component.q_id}` : ""}
                       </span>
                       {component?.updated_at && (
                         <>
