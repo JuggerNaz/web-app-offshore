@@ -578,7 +578,7 @@ export default function InspectionLanding() {
                                                 ) : (
                                                     filteredStructures.map((struct) => (
                                                         <div
-                                                            key={struct.id}
+                                                            key={`${struct.id}-${struct.name}`}
                                                             onClick={() => {
                                                                 setSelectedStructure(struct.id.toString());
                                                                 setOpenStruct(false);

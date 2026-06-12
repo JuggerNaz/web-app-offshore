@@ -51,11 +51,13 @@ import { getReportHeaderData } from "@/utils/company-settings";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
+import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-report";
 import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-selected-node-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
 import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
+import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
 
 
 interface WorkspaceDialogsProps {
@@ -112,6 +114,8 @@ interface WorkspaceDialogsProps {
         anodeRsaniPreviewOpen: boolean;
         cpPreviewOpen: boolean;
         rswniPreviewOpen: boolean;
+        rovRicmiPreviewOpen: boolean;
+        divingAnmainPreviewOpen: boolean;
         rgviPreviewOpen: boolean;
         rcondSketchPreviewOpen: boolean;
         showRemovalConfirm: boolean;
@@ -199,6 +203,8 @@ interface WorkspaceDialogsProps {
         setAnodeRsaniPreviewOpen: (open: boolean) => void;
         setCpPreviewOpen: (open: boolean) => void;
         setRswniPreviewOpen: (open: boolean) => void;
+        setRovRicmiPreviewOpen: (open: boolean) => void;
+        setDivingAnmainPreviewOpen: (open: boolean) => void;
         setRgviPreviewOpen: (open: boolean) => void;
         setRcondSketchPreviewOpen: (open: boolean) => void;
         setShowRemovalConfirm: (open: boolean) => void;
@@ -276,6 +282,10 @@ interface WorkspaceDialogsProps {
         generateCPReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSWNIReport: () => void;
         generateRSWNIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateROVRICMIReport: () => void;
+        generateROVRICMIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingANMAINReport: () => void;
+        generateDivingANMAINReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRGVIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCASNReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCASNSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -368,6 +378,8 @@ export function WorkspaceDialogs({
         anodeRsaniPreviewOpen,
         cpPreviewOpen,
         rswniPreviewOpen,
+        rovRicmiPreviewOpen,
+        divingAnmainPreviewOpen,
         rgviPreviewOpen,
         rcondSketchPreviewOpen,
         showRemovalConfirm,
@@ -450,6 +462,8 @@ export function WorkspaceDialogs({
         setAnodeRsaniPreviewOpen,
         setCpPreviewOpen,
         setRswniPreviewOpen,
+        setRovRicmiPreviewOpen,
+        setDivingAnmainPreviewOpen,
         setRgviPreviewOpen,
         setRcondSketchPreviewOpen,
         setShowRemovalConfirm,
@@ -1421,6 +1435,128 @@ export function WorkspaceDialogs({
             <ReportPreviewDialog
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={rovRicmiPreviewOpen}
+                onOpenChange={setRovRicmiPreviewOpen}
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const ricmiRecords = (allRecords || []).filter((r: any) => {
+                        const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                        return typeCode === 'RICMI';
+                    });
+
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    return await generateROVRICMIReport(
+                        ricmiRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                            showSignatures
+                        }
+                    );
+                }}
+                title="ROV Inclinometer Reading Report"
+                fileName={`ROV_Inclinometer_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingAnmainPreviewOpen}
+                onOpenChange={setDivingAnmainPreviewOpen}
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const anmainRecords = (allRecords || []).filter((r: any) => {
+                        const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                        return typeCode === 'ANMAIN';
+                    });
+
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    return await generateDivingANMAINReport(
+                        anmainRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                            showSignatures
+                        }
+                    );
+                }}
+                title="Diving Anode Maintenance Report"
+                fileName={`Diving_Anode_Maintenance_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rgviPreviewOpen}
                 onOpenChange={setRgviPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1868,6 +2004,7 @@ export function WorkspaceDialogs({
                             telemetryData={dataAcqFields}
                             isStreamRecording={manualOverride || vidState !== "IDLE"}
                             isStreamPaused={manualOverride ? false : (vidState === "PAUSED")}
+                            manualOverride={manualOverride}
                             onRefreshInspection={() => {
                                 syncDeploymentState();
                                 if (queryClient) {
@@ -2394,6 +2531,8 @@ export function WorkspaceDialogs({
                     generateSZONEReport: () => setSzonePreviewOpen(true),
                     generateCPReport: () => setters.setCpPreviewOpen(true),
                     generateRSWNIReport: () => setters.setRswniPreviewOpen(true),
+                    generateROVRICMIReport: () => setters.setRovRicmiPreviewOpen(true),
+                    generateDivingANMAINReport: () => setters.setDivingAnmainPreviewOpen(true),
                     generateCPCLBReport: () => setters.setCpclbPreviewOpen(true),
                     generateUTCLBReport: () => setters.setUtclbPreviewOpen(true),
                     generateAnodeReport: () => setters.setAnodePreviewOpen(true),
@@ -2441,6 +2580,8 @@ export function WorkspaceDialogs({
                             case 'CP': setters.setCpPreviewOpen(true); break;
                             case 'RSWNI':
                             case 'SWNI': setters.setRswniPreviewOpen(true); break;
+                            case 'RICMI': setters.setRovRicmiPreviewOpen(true); break;
+                            case 'ANMAIN': setters.setDivingAnmainPreviewOpen(true); break;
                             case 'CPCLB': setters.setCpclbPreviewOpen(true); break;
                             case 'UTCLB': setters.setUtclbPreviewOpen(true); break;
                             case 'ANODE': setters.setAnodePreviewOpen(true); break;

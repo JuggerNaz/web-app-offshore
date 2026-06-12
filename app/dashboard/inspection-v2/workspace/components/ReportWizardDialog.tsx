@@ -59,6 +59,8 @@ export function getMatchingRecordsForTemplate(templateId: string, records: any[]
             return records.filter(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined || r.inspection_data?.cp !== undefined);
         case 'rswni_rov':
             return records.filter(r => hasCode(r, ['RSWNI', 'SWNI']));
+        case 'rov_ricmi_report':
+            return records.filter(r => hasCode(r, ['RICMI']));
         case 'anode_rov':
             return records.filter(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
@@ -136,6 +138,8 @@ export function getMatchingRecordsForTemplate(templateId: string, records: any[]
             return records.filter(r => hasCode(r, ['ACFMC']));
         case 'plco':
             return records.filter(r => hasCode(r, ['PL_CO']));
+        case 'diving_anmain_report':
+            return records.filter(r => hasCode(r, ['ANMAIN']));
             
         // BOTH
         case 'defect_summary':
@@ -178,6 +182,8 @@ interface ReportWizardDialogProps {
         generateCPCLBReport: () => void;
         generateCPReport: () => void;
         generateRSWNIReport: () => void;
+        generateROVRICMIReport: () => void;
+        generateDivingANMAINReport: () => void;
         generateUTCLBReport: () => void;
         generateAnodeReport: () => void;
         generateAnodeRsaniReport: () => void;
@@ -321,6 +327,7 @@ export function ReportWizardDialog({
             { id: 'rgvi', code: 'RGVI', name: 'General Visual (GVI)', description: 'Full visual assessment of structural integrity and coatings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['RGVI']) },
             { id: 'cp_rov', code: 'CP', name: 'CP Survey Report', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
             { id: 'rswni_rov', code: 'RSWNI', name: 'ROV Selected Node Report', description: 'Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSWNIReport, available: hasRecords(['RSWNI', 'SWNI']) },
+            { id: 'rov_ricmi_report', code: 'RICMI', name: 'ROV Inclinometer Survey Report', description: 'Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRICMIReport, available: hasRecords(['RICMI']) },
             { id: 'anode_rov', code: 'ANODE', name: 'ROV Anode Inspection Report (RGVI)', description: 'Detailed depletion measurements and attachment status (excluding RSANI).', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
@@ -367,6 +374,7 @@ export function ReportWizardDialog({
             { id: 'cp_div', code: 'CP', name: 'Diving CP Survey', description: 'Diver-held CP probe measurements and potential readings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
             { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
             { id: 'mgi_div', code: 'DMGI', name: 'Diving Marine Growth (DMGI)', description: 'Diving Marine Growth Inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMGIReport, available: hasRecords(['DMGI', 'MGROW']) },
+            { id: 'diving_anmain_report', code: 'ANMAIN', name: 'Diving Anode Maintenance Report (ANMAIN)', description: 'Landscape Anode Maintenance Inspection Report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingANMAINReport, available: hasRecords(['ANMAIN']) },
             
             // ── INSPECTION REPORTS (BOTH / GENERAL) ────────────────────────────────
             { id: 'insp_report', code: 'INSP', name: 'Inspection Report', description: 'Detailed inspection findings, observations and results.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
@@ -400,7 +408,21 @@ export function ReportWizardDialog({
             available: true
         }));
 
-        return [...baseTemplates, ...dynamicReports];
+        const combined = [...baseTemplates, ...dynamicReports];
+        const unique: ReportTemplate[] = [];
+        const seenNames = new Set<string>();
+        const seenCodes = new Set<string>();
+        for (const t of combined) {
+            const nameKey = t.name.trim().toLowerCase();
+            const codeKey = t.code.trim().toLowerCase();
+            if (!seenNames.has(nameKey) && !seenCodes.has(codeKey)) {
+                seenNames.add(nameKey);
+                seenCodes.add(codeKey);
+                unique.push(t);
+            }
+        }
+        unique.sort((a, b) => a.name.localeCompare(b.name));
+        return unique;
     }, [currentRecords, allInspectionTypes, handlers]);
 
     const filteredTemplates = useMemo(() => {

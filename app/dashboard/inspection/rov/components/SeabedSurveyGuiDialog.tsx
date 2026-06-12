@@ -27,10 +27,11 @@ interface SeabedSurveyGuiDialogProps {
     isStreamPaused?: boolean;
     onRefreshInspection?: () => void;
     sowIdFull?: string | null;
+    manualOverride?: boolean;
 }
 
 export function SeabedSurveyGuiInline({
-    open, onClose, structureId, jobpackId, sowRecordId, sowIdFull, sowReportNo, rovJob, tapeId, tapeCounter, telemetryData, isStreamRecording, isStreamPaused, onRefreshInspection
+    open, onClose, structureId, jobpackId, sowRecordId, sowIdFull, sowReportNo, rovJob, tapeId, tapeCounter, telemetryData, isStreamRecording, isStreamPaused, onRefreshInspection, manualOverride = false
 }: SeabedSurveyGuiDialogProps) {
     const supabase = createClient();
     const [existingDebris, setExistingDebris] = useState<any[]>([]);
@@ -268,7 +269,6 @@ export function SeabedSurveyGuiInline({
     };
 
     const fetchExistingDebris = async () => {
-        if (!rovJob) return;
         try {
             setIsSyncing(true);
             let query = supabase.from('insp_records')
@@ -384,6 +384,15 @@ export function SeabedSurveyGuiInline({
     }, [activeId, existingDebris, comparisonDebris]);
 
     const handleAddClick = (x: number, y: number, geometry: any) => {
+        if (!rovJob || (!rovJob.id && !rovJob.rov_job_id && !rovJob.raw?.rov_job_id)) {
+            toast.error("No active or selected deployment/dive available. Please select or configure a deployment/dive first.");
+            return;
+        }
+        const isCompleted = rovJob.raw?.status === "COMPLETED" || rovJob.status === "COMPLETED";
+        if (isCompleted && !manualOverride) {
+            toast.error("The selected deployment/dive is completed. Switch to MANUAL mode to add events to a completed deployment.");
+            return;
+        }
         if (!isStreamRecording || isStreamPaused) {
             toast.error("Video log is currently STOPPED or PAUSED. New survey flags can only be added when a video log is active/recording in live mode.");
             return;
@@ -416,6 +425,15 @@ export function SeabedSurveyGuiInline({
     const handleSaveNewDebris = async () => {
         if (!newPoint || isSaving) return;
 
+        if (!rovJob || (!rovJob.id && !rovJob.rov_job_id && !rovJob.raw?.rov_job_id)) {
+            toast.error("No active or selected deployment/dive available. Please select or configure a deployment/dive first.");
+            return;
+        }
+        const isCompleted = rovJob.raw?.status === "COMPLETED" || rovJob.status === "COMPLETED";
+        if (isCompleted && !manualOverride) {
+            toast.error("The selected deployment/dive is completed. Switch to MANUAL mode to add events to a completed deployment.");
+            return;
+        }
         if (!isStreamRecording || isStreamPaused) {
             toast.error("Video log is currently STOPPED or PAUSED. New survey flags can only be added when a video log is active/recording in live mode.");
             return;

@@ -62,6 +62,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     component_id, 
                     component_qid,
                     component_type, 
+                    inspection_code,
                     report_number
                 `)
                 .eq("company_id", companyId)
@@ -280,6 +281,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         let cpAdditionalDive = 0;
         let cpMinVal: number | null = null;
         let cpMaxVal: number | null = null;
+        const cpDetails: Record<string, Record<string, Array<{ val: number; type: "primary" | "additional"; mode: string }>>> = {};
 
         const trackCp = (val: number) => {
             if (!isNaN(val) && isFinite(val)) {
@@ -292,6 +294,13 @@ export const GET = withTenant(async (request, { companyId }) => {
             const d = r.inspection_data || {};
             const isRov  = !!r.rov_job_id;
             const isDive = !!r.dive_job_id && !r.rov_job_id;
+            const mode = isRov ? "ROV" : "DIVE";
+            const comp = r.structure_components || {};
+            const qid = comp.q_id || r.inspection_data?.q_id || `ID: ${r.component_id || "Unknown"}`;
+            const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
+            const typeName = r.inspection_type?.name || inspCode;
+
+            const readings: Array<{ val: number; type: "primary" | "additional"; mode: string }> = [];
 
             // --- Primary CP reading ---
             const primaryRaw = d.cp_rdg ?? d.cp_reading_mv ?? "";
@@ -301,6 +310,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                 if (isRov)  cpPrimaryRov++;
                 if (isDive) cpPrimaryDive++;
                 trackCp(primary);
+                readings.push({ val: primary, type: "primary", mode });
             }
 
             // --- Additional CP readings ---
@@ -311,8 +321,20 @@ export const GET = withTenant(async (request, { companyId }) => {
                     if (isRov)  cpAdditionalRov++;
                     if (isDive) cpAdditionalDive++;
                     trackCp(addVal);
+                    readings.push({ val: addVal, type: "additional", mode });
                 }
             });
+
+            if (readings.length > 0) {
+                const formattedName = formatInspectionTypeName(typeName);
+                if (!cpDetails[formattedName]) {
+                    cpDetails[formattedName] = {};
+                }
+                if (!cpDetails[formattedName][qid]) {
+                    cpDetails[formattedName][qid] = [];
+                }
+                cpDetails[formattedName][qid].push(...readings);
+            }
         });
 
         // --- 8. MGI ANALYSIS ---
@@ -385,6 +407,8 @@ export const GET = withTenant(async (request, { companyId }) => {
         };
 
         const anomalyByDefectType: Record<string, number> = {};
+        const anomalyByDefectTypeDetails: Record<string, Array<{ qid: string; inspectionTypeName: string }>> = {};
+
         anomalyRecords.forEach((r: any) => {
             const anomaly = r.insp_anomalies?.[0];
             const defectType = (
@@ -395,6 +419,21 @@ export const GET = withTenant(async (request, { companyId }) => {
             ).trim();
             if (!VALID_DEFECT_TYPE(defectType)) return; // skip unknown/empty
             anomalyByDefectType[defectType] = (anomalyByDefectType[defectType] || 0) + 1;
+
+            const comp = r.structure_components || {};
+            const qid = comp.q_id || r.inspection_data?.q_id || `ID: ${r.component_id || "Unknown"}`;
+            const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
+            const typeName = formatInspectionTypeName(r.inspection_type?.name || inspCode);
+
+            if (!anomalyByDefectTypeDetails[defectType]) {
+                anomalyByDefectTypeDetails[defectType] = [];
+            }
+            const exists = anomalyByDefectTypeDetails[defectType].some(
+                (item: any) => item.qid === qid && item.inspectionTypeName === typeName
+            );
+            if (!exists) {
+                anomalyByDefectTypeDetails[defectType].push({ qid, inspectionTypeName: typeName });
+            }
         });
 
         // Finding: group by priority_code
@@ -565,7 +604,6 @@ export const GET = withTenant(async (request, { companyId }) => {
                 const hasPriority = VALID_PRIORITY(rawPriority);
                 const hasDefect   = VALID_DEFECT_TYPE(rawDefect);
 
-                // Must have at least one valid identifier (priority or defect type) to count
                 if (hasPriority || hasDefect) {
                     if (isFinding) {
                         inspTypeBreakdown[code].finding++;
@@ -576,8 +614,184 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
+        const COMPONENT_TYPE_NAMES: Record<string, string> = {
+            "RS": "Riser",
+            "CD": "Conductor",
+            "CA": "Caisson",
+            "RG": "Riser Guard",
+            "BL": "Boat Landing",
+            "AN": "Anode",
+            "SD": "Seabed Debris",
+            "LG": "Leg",
+            "MB": "Member",
+            "PL": "Pipeline",
+            "SH": "Sheave",
+            "CP": "Cathodic Protection",
+            "CL": "Clamp"
+        };
+        const getComponentTypeName = (code: string) => {
+            const uc = (code || "").toUpperCase().trim();
+            return COMPONENT_TYPE_NAMES[uc] || uc || "Other";
+        };
+
+        const componentSummary: Record<string, Record<string, {
+            totalRecords: number;
+            inspectionTypes: Record<string, {
+                completed: number;
+                incomplete: number;
+                anomaly: number;
+                pending: number;
+            }>
+        }>> = {};
+
+        // 1. Initialize from SOW items (to capture any pending items)
+        allSowItems.forEach((item: any) => {
+            const compTypeRaw = item.component_type || "Other";
+            const compType = getComponentTypeName(compTypeRaw);
+            const qid = item.component_qid || `ID: ${item.component_id}`;
+            const inspCode = item.inspection_code || "UNKNOWN";
+            
+            if (!componentSummary[compType]) {
+                componentSummary[compType] = {};
+            }
+            if (!componentSummary[compType][qid]) {
+                componentSummary[compType][qid] = {
+                    totalRecords: 0,
+                    inspectionTypes: {}
+                };
+            }
+            if (!componentSummary[compType][qid].inspectionTypes[inspCode]) {
+                componentSummary[compType][qid].inspectionTypes[inspCode] = {
+                    completed: 0,
+                    incomplete: 0,
+                    anomaly: 0,
+                    pending: 0
+                };
+            }
+            
+            if (item.status === "pending" || item.status === "incomplete") {
+                componentSummary[compType][qid].inspectionTypes[inspCode].pending++;
+            }
+        });
+
+        // 2. Populate from actual inspection records
+        rawRecords.forEach((r: any) => {
+            const comp = r.structure_components || {};
+            const compTypeRaw = r.component_type || comp.code || "Other";
+            const compType = getComponentTypeName(compTypeRaw);
+            const qid = comp.q_id || r.inspection_data?.q_id || `ID: ${r.component_id || "Unknown"}`;
+            const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
+
+            if (!componentSummary[compType]) {
+                componentSummary[compType] = {};
+            }
+            if (!componentSummary[compType][qid]) {
+                componentSummary[compType][qid] = {
+                    totalRecords: 0,
+                    inspectionTypes: {}
+                };
+            }
+            if (!componentSummary[compType][qid].inspectionTypes[inspCode]) {
+                componentSummary[compType][qid].inspectionTypes[inspCode] = {
+                    completed: 0,
+                    incomplete: 0,
+                    anomaly: 0,
+                    pending: 0
+                };
+            }
+
+            componentSummary[compType][qid].totalRecords++;
+            
+            const isAnomaly = !!r.has_anomaly;
+            const status = (r.status || "").toUpperCase();
+            
+            if (isAnomaly) {
+                componentSummary[compType][qid].inspectionTypes[inspCode].anomaly++;
+            } else if (status === "COMPLETED") {
+                componentSummary[compType][qid].inspectionTypes[inspCode].completed++;
+            } else if (status === "INCOMPLETE") {
+                componentSummary[compType][qid].inspectionTypes[inspCode].incomplete++;
+            }
+        });
+
+        const inspectionTypeSummary: Record<string, Record<string, Record<string, {
+            completed: number;
+            incomplete: number;
+            anomaly: number;
+            pending: number;
+            total: number;
+        }>>> = {};
+
+        // 1. Initialize from SOW items (to capture any pending items)
+        allSowItems.forEach((item: any) => {
+            const inspCode = item.inspection_code || "UNKNOWN";
+            const compTypeRaw = item.component_type || "Other";
+            const compType = getComponentTypeName(compTypeRaw);
+            const qid = item.component_qid || `ID: ${item.component_id}`;
+            
+            if (!inspectionTypeSummary[inspCode]) {
+                inspectionTypeSummary[inspCode] = {};
+            }
+            if (!inspectionTypeSummary[inspCode][compType]) {
+                inspectionTypeSummary[inspCode][compType] = {};
+            }
+            if (!inspectionTypeSummary[inspCode][compType][qid]) {
+                inspectionTypeSummary[inspCode][compType][qid] = {
+                    completed: 0,
+                    incomplete: 0,
+                    anomaly: 0,
+                    pending: 0,
+                    total: 0
+                };
+            }
+            
+            if (item.status === "pending" || item.status === "incomplete") {
+                inspectionTypeSummary[inspCode][compType][qid].pending++;
+                inspectionTypeSummary[inspCode][compType][qid].total++;
+            }
+        });
+
+        // 2. Populate from actual inspection records
+        rawRecords.forEach((r: any) => {
+            const comp = r.structure_components || {};
+            const compTypeRaw = r.component_type || comp.code || "Other";
+            const compType = getComponentTypeName(compTypeRaw);
+            const qid = comp.q_id || r.inspection_data?.q_id || `ID: ${r.component_id || "Unknown"}`;
+            const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
+
+            if (!inspectionTypeSummary[inspCode]) {
+                inspectionTypeSummary[inspCode] = {};
+            }
+            if (!inspectionTypeSummary[inspCode][compType]) {
+                inspectionTypeSummary[inspCode][compType] = {};
+            }
+            if (!inspectionTypeSummary[inspCode][compType][qid]) {
+                inspectionTypeSummary[inspCode][compType][qid] = {
+                    completed: 0,
+                    incomplete: 0,
+                    anomaly: 0,
+                    pending: 0,
+                    total: 0
+                };
+            }
+
+            const isAnomaly = !!r.has_anomaly;
+            const status = (r.status || "").toUpperCase();
+            
+            inspectionTypeSummary[inspCode][compType][qid].total++;
+            if (isAnomaly) {
+                inspectionTypeSummary[inspCode][compType][qid].anomaly++;
+            } else if (status === "COMPLETED") {
+                inspectionTypeSummary[inspCode][compType][qid].completed++;
+            } else if (status === "INCOMPLETE") {
+                inspectionTypeSummary[inspCode][compType][qid].incomplete++;
+            }
+        });
+
         return NextResponse.json({
             data: {
+                componentSummary,
+                inspectionTypeSummary,
                 sow: { total: totalSow, completed: completedSow, incomplete: incompleteSow, pending: pendingSow, completionPct, completedPct, incompletePct, pendingPct },
                 records: { 
                     total: rawRecords.length, 
@@ -619,6 +833,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     totalCount: cpPrimaryCount + cpAdditionalCount,
                     minVal: cpMinVal,
                     maxVal: cpMaxVal,
+                    cpDetails: cpDetails,
                 },
                 anomalies: {
                     total: anomalyValidTotal,
@@ -626,6 +841,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     open: anomalyValidTotal - rectifiedCount,
                     byPriority: anomalyByPriority,
                     byDefectType: anomalyByDefectType,
+                    defectTypeDetails: anomalyByDefectTypeDetails,
                     items: anomalyRecords.map((r: any) => {
                         const anomaly = r.insp_anomalies?.[0];
                         return {

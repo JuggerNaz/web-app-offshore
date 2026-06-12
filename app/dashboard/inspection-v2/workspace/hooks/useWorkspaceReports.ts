@@ -14,6 +14,7 @@ import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-repo
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVAnodeRSANIReport } from "@/utils/report-generators/rov-anode-rsani-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
+import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-report";
 import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-selected-node-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
@@ -36,6 +37,7 @@ import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-re
 import { generateDivingACFMCReport as generateDivingACFMCReportTemplate } from "@/utils/report-generators/diving-acfmc-report";
 import { generateDivingPLCOReport as generateDivingPLCOReportTemplate } from "@/utils/report-generators/diving-plco-report";
 import { generateROVRWDIReport as generateROVRWDIReportTemplate } from "@/utils/report-generators/rov-rwdi-report";
+import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
 
 import { applyWatermarkAndSignaturesGlobal } from "@/utils/report-generators/shared-logo";
 
@@ -75,6 +77,7 @@ export function useWorkspaceReports(
     const [anodeRsaniPreviewOpen, setAnodeRsaniPreviewOpen] = useState(false);
     const [cpPreviewOpen, setCpPreviewOpen] = useState(false);
     const [rswniPreviewOpen, setRswniPreviewOpen] = useState(false);
+    const [rovRicmiPreviewOpen, setRovRicmiPreviewOpen] = useState(false);
     const [rgviPreviewOpen, setRgviPreviewOpen] = useState(false);
     const [rcasnPreviewOpen, setRcasnPreviewOpen] = useState(false);
     const [rcasnSketchPreviewOpen, setRcasnSketchPreviewOpen] = useState(false);
@@ -97,6 +100,7 @@ export function useWorkspaceReports(
     const [cpclbPreviewOpen, setCpclbPreviewOpen] = useState(false);
     const [utclbPreviewOpen, setUtclbPreviewOpen] = useState(false);
     const [divingAnodePreviewOpen, setDivingAnodePreviewOpen] = useState(false);
+    const [divingAnmainPreviewOpen, setDivingAnmainPreviewOpen] = useState(false);
     const [divingMgiPreviewOpen, setDivingMgiPreviewOpen] = useState(false);
     const [divingAcfmcPreviewOpen, setDivingAcfmcPreviewOpen] = useState(false);
     const [divingPlcoPreviewOpen, setDivingPlcoPreviewOpen] = useState(false);
@@ -794,6 +798,72 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVSelectedNodeReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
+    };
+
+    const generateROVRICMIReportAction = async () => {
+        const records = currentRecords.filter(r => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === 'RICMI';
+        });
+        if (records.length === 0) {
+            toast.error("No Inclinometer records found to generate report");
+            return;
+        }
+        setRovRicmiPreviewOpen(true);
+    };
+
+    const generateROVRICMIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === 'RICMI';
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateROVRICMIReport(
+            records.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, jobPackId: Number(jobPackId), structureId: Number(structureId), sowReportNo: headerData.sowReportNo }
+        ) as Blob;
+    };
+
+    const generateDivingANMAINReportAction = async () => {
+        const records = currentRecords.filter(r => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === 'ANMAIN';
+        });
+        if (records.length === 0) {
+            toast.error("No Anode Maintenance records found to generate report");
+            return;
+        }
+        setDivingAnmainPreviewOpen(true);
+    };
+
+    const generateDivingANMAINReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === 'ANMAIN';
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingANMAINReport(
+            records.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, jobPackId: Number(jobPackId), structureId: Number(structureId), sowReportNo: headerData.sowReportNo }
+        ) as Blob;
     };
 
     const generateRGVIReport = async () => {
@@ -1680,6 +1750,8 @@ export function useWorkspaceReports(
         anodeRsaniPreviewOpen, setAnodeRsaniPreviewOpen,
         cpPreviewOpen, setCpPreviewOpen,
         rswniPreviewOpen, setRswniPreviewOpen,
+        rovRicmiPreviewOpen, setRovRicmiPreviewOpen,
+        divingAnmainPreviewOpen, setDivingAnmainPreviewOpen,
         rgviPreviewOpen, setRgviPreviewOpen,
         rcasnPreviewOpen, setRcasnPreviewOpen,
         rcasnSketchPreviewOpen, setRcasnSketchPreviewOpen,
@@ -1740,6 +1812,10 @@ export function useWorkspaceReports(
         generateCPReportBlob,
         generateRSWNIReport,
         generateRSWNIReportBlob,
+        generateROVRICMIReport: generateROVRICMIReportAction,
+        generateROVRICMIReportBlob,
+        generateDivingANMAINReport: generateDivingANMAINReportAction,
+        generateDivingANMAINReportBlob,
         generateRGVIReport,
         generateRGVIReportBlob,
         generateRCASNReport,

@@ -1392,6 +1392,10 @@ function V10PreviewLayout() {
     setCpPreviewOpen,
     rswniPreviewOpen,
     setRswniPreviewOpen,
+    rovRicmiPreviewOpen,
+    setRovRicmiPreviewOpen,
+    divingAnmainPreviewOpen,
+    setDivingAnmainPreviewOpen,
     rgviPreviewOpen,
     setRgviPreviewOpen,
     rcasnPreviewOpen,
@@ -1474,6 +1478,10 @@ function V10PreviewLayout() {
     generateCPReportBlob,
     generateRSWNIReport,
     generateRSWNIReportBlob,
+    generateROVRICMIReport,
+    generateROVRICMIReportBlob,
+    generateDivingANMAINReport,
+    generateDivingANMAINReportBlob,
     generateRGVIReport,
     generateRGVIReportBlob,
     generateRCASNReport,
@@ -7283,21 +7291,12 @@ function V10PreviewLayout() {
         })()}
 
         {/* INSERT SEABED SURVEY MAP BUTTON */}
-        {activeDep && inspMethod === "ROV" && (
+        {inspMethod === "ROV" && (
           <Button
             variant="default"
             size="sm"
             className="ml-auto bg-blue-600 hover:bg-blue-700 text-white h-7 px-3 shadow-blue-500/20 shadow-lg text-[10px] font-black uppercase tracking-wider"
             onClick={async () => {
-              if (vidState === "IDLE") {
-                toast.error("Video recording must be actively started to open the Seabed Map.");
-                return;
-              }
-              if (!tapeId) {
-                toast.error("No active tape available. Please configure a tape first.");
-                return;
-              }
-
               // Pre-fetch check for Inspection Type (optional, fallbacks exist)
               const { data, error } = await supabase
                 .from("inspection_type")
@@ -7503,6 +7502,8 @@ function V10PreviewLayout() {
           anodeRsaniPreviewOpen,
           cpPreviewOpen,
           rswniPreviewOpen,
+          rovRicmiPreviewOpen,
+          divingAnmainPreviewOpen,
           rgviPreviewOpen,
           rcondSketchPreviewOpen,
           showRemovalConfirm,
@@ -7585,6 +7586,8 @@ function V10PreviewLayout() {
           setAnodeRsaniPreviewOpen,
           setCpPreviewOpen,
           setRswniPreviewOpen,
+          setRovRicmiPreviewOpen,
+          setDivingAnmainPreviewOpen,
           setRgviPreviewOpen,
           setRcondSketchPreviewOpen,
           setShowRemovalConfirm,
@@ -7655,6 +7658,10 @@ function V10PreviewLayout() {
           generateCPReportBlob,
           generateRSWNIReport,
           generateRSWNIReportBlob,
+          generateROVRICMIReport,
+          generateROVRICMIReportBlob,
+          generateDivingANMAINReport,
+          generateDivingANMAINReportBlob,
           generateRGVIReportBlob,
           generateRCASNReportBlob,
           generateRCASNSketchReportBlob,

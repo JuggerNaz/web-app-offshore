@@ -50,6 +50,8 @@ import { generateDivingCPCLBReport } from "@/utils/report-generators/diving-cpcl
 import { generateDivingUTCLBReport } from "@/utils/report-generators/diving-utclb-report";
 import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anode-report";
 import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-report";
+import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-report";
+import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
 import { FinalDatasheetBuilder } from "./final-datasheet-builder";
 
 // Types
@@ -126,6 +128,7 @@ export const REPORT_TEMPLATES = {
         { id: "rov-anode-report", name: "ROV Anode Inspection Report (RGVI)", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-rsani-report", name: "ROV Selected Anode Report (SANI)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (CVI) summary (SANI) with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "ROV CP Survey Report",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-ricmi-report", name: "ROV Inclinometer Survey Report", icon: FileBarChart, description: "Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-selected-node-report", name: "ROV Selected Node Report", icon: FileText, description: "Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rgvi-report",  name: "ROV GVI Report (RGVI)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcasn-report", name: "ROV Caisson Survey Report",    icon: FileBarChart, description: "Portrait Caisson Survey report — grouped by Caisson with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
@@ -150,6 +153,7 @@ export const REPORT_TEMPLATES = {
         { id: "diving-mgi-report", name: "Diving Marine Growth Inspection Graph Report", icon: FileBarChart, description: "Diving marine growth thickness vs allowable thresholds with graphical elevation profile", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-acfmc-report", name: "Diving ACFMC Inspection", icon: FileBarChart, description: "Landscape Diving ACFM Survey report — Chord/Weld/Brace, direction of travel, clock position, page, probe number, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-plco-report", name: "Diving Coating Damage Inspection", icon: FileBarChart, description: "Landscape Diving Coating Damage Survey report — Surface Condition, CP Reading, Length, Width, Assessment, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-anmain-report", name: "Diving Anode Maintenance Report (ANMAIN)", icon: FileBarChart, description: "Landscape Anode Maintenance Inspection Report (ANMAIN) with QID, Elevation, Dive No., Anode Type, Installed Date, Replaced/Installed, Position, Life, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rwdi-report", name: "ROV Water Depth Inspection Report", icon: FileBarChart, description: "Portrait ROV Water Depth Inspection report — QID, elevation, dive number, water depth, and findings.", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
@@ -176,7 +180,9 @@ const TOC_SECTIONS = [
       { id: "diving-utwtk-report", name: "Diving UT Wall Thickness Inspection (UTWTK)", mode: "Diving" },
       { id: "diving-acfmc-report", name: "Diving ACFMC Inspection (ACFMC)", mode: "Diving" },
       { id: "diving-plco-report", name: "Diving Coating Damage Inspection (PL_CO)", mode: "Diving" },
+      { id: "diving-anmain-report", name: "Diving Anode Maintenance Report (ANMAIN)", mode: "Diving" },
       { id: "rov-rwdi-report", name: "ROV Water Depth Inspection Report (RWDI)", mode: "ROV" },
+      { id: "rov-ricmi-report", name: "ROV Inclinometer Reading Inspection Report (RICMI)", mode: "ROV" },
       { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
   ]},
 
@@ -2340,6 +2346,146 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("CP Report Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV RICMI Inclinometer Report
+        if (currentTemplateId === "rov-ricmi-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(q_id, code),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const ricmiRecords = records?.filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isRICMI = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RICMI";
+                return sowMatches && jobPackMatches && isRICMI;
+            });
+
+            if (!ricmiRecords || ricmiRecords.length === 0) {
+                alert(`No Inclinometer readings found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            // Contractor logo
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack),
+            };
+
+            try {
+                return await generateROVRICMIReport(
+                    ricmiRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("RICMI Report Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving ANMAIN Anode Maintenance Report
+        if (currentTemplateId === "diving-anmain-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack   = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const { data: records, error: fetchError } = await supabase
+                .from("insp_records")
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(q_id, code),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq("structure_id", Number(selections.structureId));
+
+            if (fetchError) {
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const anmainRecords = records?.filter((r: any) => {
+                const sowMatches = !selections.sowReportNo ||
+                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const isANMAIN = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "ANMAIN";
+                return sowMatches && jobPackMatches && isANMAIN;
+            });
+
+            if (!anmainRecords || anmainRecords.length === 0) {
+                alert(`No Anode Maintenance records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            // Contractor logo
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Contractor logo error", e); }
+            }
+
+            const headerData = {
+                jobpackName:      jobPack.name || jobPack.title || "N/A",
+                sowReportNo:      selections.sowReportNo || "N/A",
+                platformName:     structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack),
+            };
+
+            try {
+                return await generateDivingANMAINReport(
+                    anmainRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("ANMAIN Report Generator Error:", error);
                 throw error;
             }
         }

@@ -130,6 +130,12 @@ const formatPdfDate = (dateStr?: string): string => {
 
 // Global watermark and signature overlay function
 export function applyWatermarkAndSignaturesGlobal(doc: jsPDF, config: any) {
+    if ((doc as any)._watermarkApplied) {
+        console.log("applyWatermarkAndSignaturesGlobal: Watermark already applied, skipping.");
+        return;
+    }
+    (doc as any)._watermarkApplied = true;
+
     console.log("applyWatermarkAndSignaturesGlobal: Started overlay process", { config });
     if (!config) {
         console.warn("applyWatermarkAndSignaturesGlobal: No config object passed!");
